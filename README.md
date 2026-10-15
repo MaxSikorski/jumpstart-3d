@@ -13,4 +13,3 @@ JumpStart 3D was created by **J.Siwek** (credited inside the app's About dialog)
 ## Notes
 
 - `.nojekyll` is present so GitHub Pages serves the file as-is without running it through Jekyll.
-- The app file is a single 14 MB HTML document with its JavaScript libraries inlined. Do not edit it in the GitHub web editor, which cannot handle lines that long and will blank the file.
