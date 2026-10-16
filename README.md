@@ -1,74 +1,94 @@
 # JumpStart 3D
 
-A browser-based parametric 3D CAD tool, somewhere between Tinkercad and a
-real B-rep modeler. It runs entirely in the browser: no install, no server,
-no account.
+A free 3D CAD tool that runs in your web browser. No install, no account,
+no server. Somewhere between Tinkercad and a real CAD program: drag shapes
+together in Beginner mode, or sketch, extrude, fillet and shell in Advanced
+mode.
 
-**Use it here:** https://maxsikorski.github.io/jumpstart-3d/
+Created by **J.Siwek**. This is a community-maintained copy; see
+[NOTICE.md](NOTICE.md) for credit and licensing.
 
-Or download the single-file build from the Releases page and open it in any
-modern browser. It works offline apart from the Google Fonts it loads for its
-UI.
+## I just want to use it
 
-Created by **J.Siwek**. See [NOTICE.md](NOTICE.md) for credit and licensing.
+Pick one:
 
-## What is in the box
+- **Online:** open https://maxsikorski.github.io/jumpstart-3d/
+- **Offline:** download
+  [jumpstart-3d.html](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)
+  and double-click it. That one file is the whole app. It works without an
+  internet connection (only the fonts come from the web).
 
-- Beginner mode: drag shapes, group them, cut with holes (Manifold mesh booleans)
+That is all. You do not need anything else in this repository.
+
+## What it does
+
+- Beginner mode: drag shapes, group them, cut holes
 - Advanced mode: sketches, extrude, revolve, loft, sweep, fillet, chamfer,
-  shell, patterns and a feature timeline (OpenCascade kernel running in a
-  Web Worker)
+  shell, patterns and a feature timeline, driven by a real CAD kernel
+  (OpenCascade)
 - Chisel: clay-style sculpting
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
 - Layer-by-layer print preview, section analysis, multi-filament colors
 - Export to STL, OBJ, 3MF, STEP and DXF
 
-## Repository layout
+## I want to change it or contribute
+
+The app is one big minified JavaScript bundle. Its lines are over a megabyte
+long, which is why it cannot be edited on the GitHub website: the web editor
+blanks the file. So the repository keeps the app split into pieces you can
+work with, and one command puts them back together.
+
+You need [Node.js](https://nodejs.org/) (version 18 or newer). Then:
 
 ```
-src/            editable source
-  index.html    page shell, CSS and markup
-  app.js        app bundle (minified; the original source was never published)
-  worker.js     geometry worker
-  occt-gz.wasm  OpenCascade kernel, gzipped
-  tools/        helper pages embedded into app.js at build time
-  vendor/       shared three.js builds used by the helper pages
-build.mjs       builds docs/ and dist/
-docs/           the GitHub Pages site (built output, committed)
-dist/           single-file build (not committed; attached to releases)
-tools/          extract.mjs (upstream file -> src/) and add-obj-export.mjs
-```
-
-## Building
-
-```
+git clone https://github.com/MaxSikorski/jumpstart-3d.git
+cd jumpstart-3d
 node build.mjs
 ```
 
-This writes `docs/` (split files, fast to load, served by GitHub Pages) and
-`dist/jumpstart-3d.html` (one self-contained file that runs from disk).
+That writes two things:
 
-To try the site locally:
+- `docs/` the website (the same files GitHub Pages serves)
+- `dist/jumpstart-3d.html` the single offline file
+
+To try the website locally, serve the `docs/` folder with any static
+server, for example:
 
 ```
-uv run python -m http.server 8765 --directory docs
+npx serve docs
 ```
 
-then open http://localhost:8765/.
+### Where things are
 
-## Changes from the original 1.93.8 file
+```
+src/index.html    page shell, CSS and menus (plain HTML, edit freely)
+src/app.js        the app bundle (minified; edit only by script)
+src/worker.js     geometry worker that runs the CAD kernel
+src/occt-gz.wasm  OpenCascade kernel, gzipped
+src/tools/        the helper pages: FlexiGen, Mesh to STEP, Chisel
+src/vendor/       three.js builds shared by the helper pages
+build.mjs         the build
+tools/            extract.mjs turns a new upstream file into src/;
+                  add-obj-export.mjs re-applies our OBJ export
+docs/             built website, committed so GitHub Pages can serve it
+jumpstart_3d_v1.93.8.htm   the untouched upstream file this version came from
+```
 
-- The site build loads the 7 MB kernel and the worker as separate files
-  instead of base64 inside the HTML, so the first page load is about 2 MB
-  instead of 14 MB. The single-file build still works offline.
-- The three helper pages share two three.js files instead of each carrying
-  its own copy.
-- Added OBJ export (Open/Export menu).
-- The app code is otherwise byte-for-byte the original.
+### Rules of thumb
 
-The repository keeps the upstream single files as received: `jumpstart_3d_v1.91.html`
-and `jumpstart_3d_v1.93.8.htm`. `src/` is extracted from the newest one.
+- Edit `src/index.html` directly. Patch `src/app.js` with a script that
+  checks its anchor text matches exactly once; never open it in a web editor.
+- After any change run `node build.mjs`, then test both outputs: the site in
+  a browser and `dist/jumpstart-3d.html` opened from disk.
+- Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
+  single file is attached to releases instead.
+- Keep "Created by J.Siwek" in the About dialog. Our additions are listed
+  below, not claimed as the original.
 
-Do not edit `src/app.js` in the GitHub web editor. It has lines over a
-megabyte long and the editor will blank the file.
+## What this repository adds on top of the original
+
+- OBJ export in the Open/Export menu
+- A split website build: the 7 MB kernel loads as a separate file, so the
+  first page load is about 2 MB instead of 14 MB
+- A reproducible way to take a new upstream file and rebuild everything
