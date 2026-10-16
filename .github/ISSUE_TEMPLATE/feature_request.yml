@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest something the app should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem you are trying to solve, not only the feature you have in mind. "I can't line up holes evenly along an edge" tells us more than "add a linear pattern option".
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do that is hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How do you imagine it working?
+      description: Optional. If another CAD program does it well, say which one and how.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Beginner mode (shapes)
+        - Advanced mode (sketches and features)
+        - Chisel
+        - FlexiGen
+        - Mesh to STEP
+        - Export or import
+        - 3D print preview
+        - Something else
+  - type: markdown
+    attributes:
+      value: |
+        Keep in mind the app's purpose: a simple CAD tool that runs in a browser with no install. Ideas that need a server, an account, or a plugin system are unlikely to fit.
