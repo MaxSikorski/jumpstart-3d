@@ -67,8 +67,9 @@ then open http://localhost:8765/.
 - Added OBJ export (Open/Export menu).
 - The app code is otherwise byte-for-byte the original.
 
-The repository keeps the upstream single files as received: `jumpstart_3d_v1.91.html`
-and `jumpstart_3d_v1.93.8.htm`. `src/` is extracted from the newest one.
+The repository keeps the newest upstream single file as received
+(`jumpstart_3d_v1.93.8.htm`); `src/` is extracted from it. Older upstream
+files are attached to their releases on the Releases page.
 
 Do not edit `src/app.js` in the GitHub web editor. It has lines over a
 megabyte long and the editor will blank the file.
