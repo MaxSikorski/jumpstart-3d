@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in the app does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. One bug per issue please. If you are not sure it is a bug, report it anyway.
+  - type: dropdown
+    id: version
+    attributes:
+      label: Where did it happen?
+      options:
+        - The website (maxsikorski.github.io/jumpstart-3d)
+        - The downloaded jumpstart-3d.html file
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and computer
+      description: The app runs entirely in the browser, so this is usually the key detail.
+      placeholder: "Chrome 130 on Windows 11, Safari on an iPad, Firefox on a Chromebook"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      description: The clicks, in order, starting from a new design if possible.
+      placeholder: |
+        1. Drag a Box onto the workplane
+        2. Switch to Advanced, click Fillet, click a face
+        3. Set radius to 5 and press OK
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: |
+        Drag a screenshot or short recording in here. A saved project file helps most: Open/Export, then "Project file" (.json), then drag the file in. If you see red text in the browser console (F12, or Cmd+Option+J on a Mac), paste it too.
