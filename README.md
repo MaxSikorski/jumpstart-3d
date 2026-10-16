@@ -32,6 +32,21 @@ That is all. You do not need anything else in this repository.
 - Layer-by-layer print preview, section analysis, multi-filament colors
 - Export to STL, OBJ, 3MF, STEP and DXF
 
+## Help improve it
+
+You do not need to write code to help.
+
+- **Found a bug?** Open an issue:
+  https://github.com/MaxSikorski/jumpstart-3d/issues/new/choose and pick
+  "Bug report". Say which browser you use and what you clicked, and attach a
+  saved project file if you can.
+- **Want a feature?** Same page, pick "Feature request". Describe the
+  problem you are trying to solve; that helps more than a specific design.
+- **Know the answer to someone else's issue?** Reply to it. Helping other
+  users counts.
+- **Want to change the code?** Read on, and see
+  [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
 ## I want to change it or contribute
 
 The app is one big minified JavaScript bundle. Its lines are over a megabyte
