@@ -1,0 +1,35 @@
+{
+  "name": "flatqueue",
+  "version": "3.1.0",
+  "description": "The smallest and simplest JavaScript priority queue",
+  "author": "Vladimir Agafonkin",
+  "license": "ISC",
+  "type": "module",
+  "module": "index.js",
+  "sideEffects": false,
+  "exports": "./index.js",
+  "types": "./index.d.ts",
+  "devDependencies": {
+    "eslint": "^10.4.1",
+    "eslint-config-mourner": "^5.0.1",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "pretest": "eslint index.js test.js",
+    "test": "tsc && node test.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mourner/flatqueue.git"
+  },
+  "keywords": [
+    "algorithms",
+    "data structures",
+    "priority queue",
+    "binary heap"
+  ]
+}
