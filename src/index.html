@@ -1,6 +1,23 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>JumpStart 3D</title>
+<meta name="description" content="Free 3D CAD in your browser. No install, no account, no server. Drag shapes together in Beginner mode, or sketch, extrude, fillet and shell in Advanced mode.">
+<meta name="theme-color" content="#1b232d">
+<!-- Link previews (Discord, iMessage, Reddit, Slack, X). URLs must be absolute; the image is served from the site. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="JumpStart 3D">
+<meta property="og:title" content="JumpStart 3D: free 3D CAD in your browser">
+<meta property="og:description" content="No install, no account, no server. Drag shapes together, or sketch, extrude, fillet and shell with a real CAD kernel.">
+<meta property="og:url" content="https://maxsikorski.github.io/jumpstart-3d/">
+<meta property="og:image" content="https://maxsikorski.github.io/jumpstart-3d/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="JumpStart 3D: a blue CAD bracket on drafting paper with the words 3D CAD in your browser">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="JumpStart 3D: free 3D CAD in your browser">
+<meta name="twitter:description" content="No install, no account, no server. Drag shapes together, or sketch, extrude, fillet and shell with a real CAD kernel.">
+<meta name="twitter:image" content="https://maxsikorski.github.io/jumpstart-3d/og-image.png">
+</head><body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -134,6 +151,12 @@ button { cursor: pointer; }
 .menu .exopt[aria-checked="true"]::after { content: none; }
 .menu .exopt:disabled { opacity: .45; cursor: default; background: none; }
 .menu hr { border: 0; border-top: 1px solid var(--line-2); margin: 4px 2px; }
+.menu .menu-custom { display: grid; gap: 6px; padding: 4px 10px 6px; }
+.menu .mc-row { display: grid; grid-template-columns: 58px 1fr 54px; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.menu .mc-row b { font-size: 12px; text-align: right; color: var(--ink); }
+.menu .mc-row small { margin: 0; text-align: right; }
+.menu .mc-row input[type=number] { width: 100%; min-width: 0; font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.menu .mc-row input[type=number]:disabled { opacity: .5; }
 
 /* ---------------------------------------------------------------- ribbon */
 .ribbon { display: flex; align-items: stretch; gap: 0; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 58px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
@@ -711,7 +734,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
     <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
     <button class="tb-btn" id="btn-redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
     <div class="menu-wrap">
-      <button class="tb-btn" id="btn-theme" aria-haspopup="true" title="Theme and performance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
+      <button class="tb-btn" id="btn-theme" aria-haspopup="true" title="Theme, performance and mesh detail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
       <div class="menu" id="menu-theme" role="menu" hidden>
         <button data-theme="system" role="menuitemradio">Match my device</button>
         <button data-theme="light" role="menuitemradio">Light</button>
@@ -724,6 +747,16 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
         <button data-perf="high" role="menuitemradio" title="Fewer pixels while you move the view; lighter shadows">High <small>most laptops, Chromebooks</small></button>
         <button data-perf="ultra" role="menuitemradio" title="The sharpest picture and softest shadows, for powerful computers">Ultra <small>powerful computers</small></button>
         <div class="menu-note">Every tool works the same in every mode; only how the view is drawn changes.</div>
+        <hr>
+        <div class="menu-head">Mesh detail</div>
+        <button data-detail="normal" role="menuitemradio" title="The quickest to build">Normal <small>1× · quickest</small></button>
+        <button data-detail="fine" role="menuitemradio" title="Smoother curves in the view and in STL, OBJ and 3MF exports">Fine <small>2× · smoother curves</small></button>
+        <button data-detail="extra" role="menuitemradio" title="The smoothest preset; big or detailed designs take longer to build">Extra fine <small>4× · slower to build</small></button>
+        <div class="menu-custom">
+          <label class="mc-row" title="Drag for finer triangles; let go to build"><span>Custom</span><input type="range" id="detail-range" min="1" max="32" step="0.5" value="1"><b id="detail-level">1×</b></label>
+          <label class="mc-row" title="Type the triangle count you want for the whole design and press Enter"><span>Triangles</span><input type="number" id="detail-tris" min="1" step="1" inputmode="numeric"><small id="detail-est"></small></label>
+        </div>
+        <div class="menu-note">Applies to the view and to STL, OBJ and 3MF exports. STEP is exact at every level. Above 500,000 triangles you are asked first; very fine levels can take many minutes to build.</div>
       </div>
     </div>
     <button class="tb-btn about-btn" id="btn-about" title="About JumpStart 3D: features and help">About</button>

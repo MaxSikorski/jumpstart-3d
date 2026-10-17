@@ -53,6 +53,7 @@ writeFileSync(join(docs, "app.js"), assembleApp({ inline: false }));
 cpSync(join(src, "worker.js"), join(docs, "worker.js"));
 cpSync(join(src, "occt-gz.wasm"), join(docs, "occt-gz.wasm"));
 cpSync(join(src, "vendor"), join(docs, "vendor"), { recursive: true });
+cpSync(join(src, "og-image.png"), join(docs, "og-image.png")); // link-preview card; the meta tags in index.html point here
 writeFileSync(join(docs, ".nojekyll"), "");
 
 // ---------- single file ----------

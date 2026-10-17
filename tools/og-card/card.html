@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>JumpStart 3D social card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Palette and fonts copied from src/index.html :root */
+  :root {
+    --paper: #eef1f4; --ink: #18202a; --ink-2: #485361; --line: #d8dde3;
+    --block: #1b232d; --block-2: #2a3542; --block-ink: #e9eef4;
+    --accent: #1f4fa8; --accent-2: #2d63c8; --amber: #e8a317;
+    --f-ui: "IBM Plex Sans", system-ui, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --f-label: "Barlow Condensed", "Arial Narrow", sans-serif;
+  }
+  html, body { margin: 0; background: var(--paper); }
+  .card { position: relative; width: 1200px; height: 630px; overflow: hidden; background: var(--paper); font-family: var(--f-ui); color: var(--ink); }
+  /* Art is 1536x1024; keep its full height and push it right so the left 600px stay clear for the copy */
+  .art { position: absolute; top: 0; right: -40px; height: 630px; width: auto; object-fit: contain; }
+  /* Soft fade so the title sits on calm paper even if the art is busy */
+  .fade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(238,241,244,1) 0%, rgba(238,241,244,.96) 44%, rgba(238,241,244,0) 62%); }
+  .bar { position: absolute; left: 0; right: 0; top: 0; height: 72px; background: var(--block); color: var(--block-ink); display: flex; align-items: center; padding: 0 48px; box-sizing: border-box; border-bottom: 4px solid var(--block-2); }
+  .bar .logo { width: 30px; height: 30px; margin-right: 14px; }
+  .bar .name { font-family: var(--f-label); font-weight: 700; font-size: 34px; letter-spacing: .04em; text-transform: uppercase; }
+  .bar .tag { margin-left: auto; font-family: var(--f-mono); font-size: 20px; color: #b8c3d0; }
+  .copy { position: absolute; left: 48px; top: 150px; width: 560px; }
+  .copy h1 { margin: 0 0 18px; font-family: var(--f-label); font-weight: 700; font-size: 84px; line-height: .98; letter-spacing: .005em; color: var(--ink); text-transform: uppercase; }
+  .copy h1 em { font-style: normal; color: var(--accent); }
+  .copy p { margin: 0; font-size: 27px; line-height: 1.35; color: var(--ink-2); font-weight: 500; }
+  .chips { position: absolute; left: 48px; bottom: 96px; display: flex; gap: 10px; }
+  .chip { font-family: var(--f-mono); font-size: 18px; padding: 8px 14px; border: 2px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink-2); }
+  .chip.on { border-color: var(--accent); color: var(--accent); }
+  .foot { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: var(--block); color: var(--block-ink); display: flex; align-items: center; padding: 0 48px; box-sizing: border-box; font-family: var(--f-mono); font-size: 20px; }
+  .foot .url { color: #fff; }
+  .foot .amber { margin-left: auto; color: var(--amber); font-family: var(--f-ui); font-weight: 600; font-size: 19px; }
+</style></head>
+<body>
+<div class="card">
+  <img class="art" src="art/og-art.png" alt="">
+  <div class="fade"></div>
+  <div class="bar">
+    <svg class="logo" viewBox="0 0 32 32" fill="none" stroke="#e9eef4" stroke-width="2" stroke-linejoin="round"><path d="M16 3 29 10v12L16 29 3 22V10z"/><path d="M3 10l13 7 13-7M16 17v12"/></svg>
+    <span class="name">JumpStart 3D</span>
+    <span class="tag">free · browser CAD</span>
+  </div>
+  <div class="copy">
+    <h1>3D CAD in<br>your <em>browser</em></h1>
+    <p>No install, no account, no server. Drag shapes together, or sketch, extrude, fillet and shell with a real CAD kernel.</p>
+  </div>
+  <div class="chips"><span class="chip on">Beginner</span><span class="chip on">Advanced</span><span class="chip on">Chisel</span><span class="chip">STL · STEP · 3MF · OBJ</span></div>
+  <div class="foot"><span class="url">maxsikorski.github.io/jumpstart-3d</span><span class="amber">Open source · community maintained</span></div>
+</div>
+</body></html>
