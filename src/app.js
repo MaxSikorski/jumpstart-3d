@@ -595,7 +595,9 @@ app.showAbout = function () {
         ["Help:", "press ? for every keyboard shortcut; right-click a shape for copy, paste, duplicate and delete."]]),
       // the author's credit from v1.93.8 stays in this community build (see NOTICE.md)
       el("p", { class: "ab-credit" }, "Created by J.Siwek"),
-      el("p", { class: "ab-credit" }, "Created with Vibe Coding Assistance"),
+      el("p", { class: "ab-credit-sub" }, "Created with Vibe Coding Assistance"),
+      el("p", { class: "ab-credit-sub" }, "Community build maintained by Max Sikorski · ",
+        el("a", { href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "github.com/MaxSikorski/jumpstart-3d")),
       // the open-source libraries and fonts inside the app, with their licenses (they ask for this notice)
       el("section", { class: "ab-oss", id: "ab-oss" },
         el("h3", {}, "Open-source credits"),
@@ -608,7 +610,8 @@ app.showAbout = function () {
           el("summary", {}, "Full license texts"),
           ...[["MIT License: three.js", "mit-three"], ["MIT License: replicad", "mit-replicad"], ["MIT License: opentype.js", "mit-opentype"], ["ISC License: Flatbush", "isc"], ["GNU Lesser General Public License 2.1: Open CASCADE Technology / opencascade.js / replicad-opencascadejs", "lgpl"], ["SIL Open Font License 1.1: Poppins, Liberation, IBM Plex, Barlow", "ofl"]]
             .map(([t, k]) => el("div", { class: "ab-lic" }, el("b", {}, t), el("pre", {}, LICENSE_TEXTS[k]))))),
-      el("div", { class: "ab-update" }, el("span", { class: "ab-ver" }, "Version 1.94"))));
+      el("div", { class: "ab-update" }, el("span", { class: "ab-ver" }, "Version 1.94 · community build"),
+        el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/issues", target: "_blank", rel: "noopener" }, "Report a bug or idea"))));
   back.append(modal);
   document.body.append(back);
   back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
