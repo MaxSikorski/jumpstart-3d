@@ -1,75 +1,79 @@
-// Builds JumpStart 3D from src/ into:
-//   docs/                 the GitHub Pages site (split files, fast to load)
+// Builds JumpStart 3D from the readable source in src/ into:
+//   docs/                  the GitHub Pages site (app, worker and kernel as separate files)
 //   dist/jumpstart-3d.html one self-contained file, works offline from disk
 //
+//   npm install   (once; installs the pinned esbuild)
 //   node build.mjs
 //
-// src/app.js holds the app bundle with three placeholders where the helper
-// pages (src/tools/*.html) get embedded as template literals. The site keeps
-// the helper pages' three.js as shared vendor files; the single-file build
-// inlines them back.
+// This is the author's app/dist.sh + app/standalone.py from the v1.94 source
+// release, written in Node. The helper pages (src/flexigen.html,
+// src/meshstep.html, src/chisel.html) are committed already built; see
+// tools/helpers/README.md to regenerate them.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { build } from "esbuild";
 
 const root = new URL(".", import.meta.url).pathname;
 const src = join(root, "src");
+const tp = join(root, "third_party");
 const docs = join(root, "docs");
 const dist = join(root, "dist");
-const read = (p) => readFileSync(join(src, p), "utf8");
+const out = join(root, "build");
 
-// Escape text for use inside a JS template literal that also lives inside an
-// HTML <script> element.
-const toLiteral = (text) =>
-  text
-    .replace(/\\/g, "\\\\")
-    .replace(/`/g, "\\`")
-    .replace(/\$\{/g, "\\${")
-    .replace(/<\/script/gi, "<\\/script");
+const alias = {
+  replicad: join(tp, "replicad/src/index.ts"),
+  "replicad/shape-functions": join(tp, "replicad/src/shapeFunctions/index.ts"),
+  "opentype.js": join(tp, "opentype.js/dist/opentype.module.js"),
+  flatbush: join(tp, "flatbush/index.js"),
+  flatqueue: join(tp, "flatqueue/index.js"),
+  "manifold-3d": join(tp, "manifold-3d/index.js"),
+  "replicad-opencascadejs": join(tp, "replicad-opencascadejs/dist/replicad_single.js"),
+  three: join(tp, "three/build/three.module.js"),
+};
+const common = { bundle: true, minify: true, legalComments: "eof", target: "es2020", alias, logLevel: "warning" };
 
-const inlineVendor = (html) =>
-  html.replace(/<script src="(vendor\/[^"]+)"><\/script>/g, (_, p) => "<script>" + read(p) + "</script>");
+const wasm = join(src, "occt-gz.wasm");
+const wasmSize = statSync(wasm).size; // the loading bar's total
 
-function assembleApp({ inline }) {
-  let app = read("app.js");
-  app = app.replace(/__JS3D_EMBED:([\w./-]+)__/g, (_, p) => {
-    let html = read(p);
-    if (inline) html = inlineVendor(html);
-    return toLiteral(html);
-  });
-  if (/__JS3D_EMBED:/.test(app)) throw new Error("unresolved embed placeholder");
-  return app;
-}
+rmSync(out, { recursive: true, force: true });
+await build({ ...common, entryPoints: [join(src, "app.js")], format: "esm", outfile: join(out, "app.js"),
+  loader: { ".html": "text" }, define: { __WASM_PARTS__: JSON.stringify([{ url: "occt-gz.wasm", gz: true, size: wasmSize }]) } });
+await build({ ...common, entryPoints: [join(src, "worker.js")], format: "esm", outfile: join(out, "worker.js"), external: ["node:*"] });
+await build({ ...common, entryPoints: [join(src, "worker.js")], format: "iife", outfile: join(out, "worker.iife.js"), external: ["node:*"],
+  logOverride: { "empty-import-meta": "silent" } }); // the loader's import.meta.url is never used in the single file
 
-const shell = read("index.html");
+const read = (p) => readFileSync(p, "utf8");
+const shell = read(join(src, "index.html"));
 const appTag = '<script type="module" src="app.js"></script>\n';
-if (!shell.includes(appTag)) throw new Error("index.html is missing the app.js script tag");
+if (!shell.includes(appTag)) throw new Error("src/index.html is missing the app.js script tag");
+const app = read(join(out, "app.js"));
+const worker = read(join(out, "worker.iife.js"));
+for (const s of [app, worker]) if (/<\/script/i.test(s)) throw new Error("a bundle contains </script>, which would end the inline block");
 
 // ---------- site ----------
 rmSync(docs, { recursive: true, force: true });
-mkdirSync(join(docs, "vendor"), { recursive: true });
+mkdirSync(docs, { recursive: true });
 writeFileSync(join(docs, "index.html"), shell);
-writeFileSync(join(docs, "app.js"), assembleApp({ inline: false }));
-cpSync(join(src, "worker.js"), join(docs, "worker.js"));
-cpSync(join(src, "occt-gz.wasm"), join(docs, "occt-gz.wasm"));
-cpSync(join(src, "vendor"), join(docs, "vendor"), { recursive: true });
+writeFileSync(join(docs, "app.js"), app);
+cpSync(join(out, "worker.js"), join(docs, "worker.js"));
+cpSync(wasm, join(docs, "occt-gz.wasm"));
 cpSync(join(src, "og-image.png"), join(docs, "og-image.png")); // link-preview card; the meta tags in index.html point here
 writeFileSync(join(docs, ".nojekyll"), "");
 
 // ---------- single file ----------
 mkdirSync(dist, { recursive: true });
-const wasmB64 = readFileSync(join(src, "occt-gz.wasm")).toString("base64");
-// Note: replacement callbacks everywhere, since a replacement *string* would
-// interpret "$'" and "$$" inside the code being inserted.
+const wasmB64 = readFileSync(wasm).toString("base64");
+// Replacement callbacks everywhere: a replacement *string* would interpret "$'" and "$$" inside the code.
 const single = shell.replace(
   appTag,
   () =>
-    '<script type="text/plain" id="wp-worker-src">' + read("worker.js") + "</script>\n" +
+    '<script type="text/plain" id="wp-worker-src">' + worker + "</script>\n" +
     '<script type="text/plain" id="wp-occt">' + wasmB64 + "</script>\n" +
-    '<script type="module">' + assembleApp({ inline: true }) + "</script>\n"
+    '<script type="module">' + app + "</script>\n"
 );
 writeFileSync(join(dist, "jumpstart-3d.html"), single);
 
 const mb = (n) => (n / 1048576).toFixed(2) + " MB";
-console.log("docs/index.html + app.js:", mb(shell.length + assembleApp({ inline: false }).length));
+console.log("docs/app.js:", mb(app.length), " docs/worker.js:", mb(statSync(join(docs, "worker.js")).size), " docs/occt-gz.wasm:", mb(wasmSize));
 console.log("dist/jumpstart-3d.html:", mb(Buffer.byteLength(single)));

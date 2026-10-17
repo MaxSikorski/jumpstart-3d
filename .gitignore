@@ -1,3 +1,5 @@
-dist/
+/dist/
+/build/
 node_modules/
 .DS_Store
+/mesh-to-step-helper.html

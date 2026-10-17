@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "target": "es6",
+    "module": "es2015",
+    "strict": true,
+    "lib": ["es2022", "esnext.disposable", "dom"],
+    "preserveSymlinks": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src"],
+  "typedocOptions": {
+    "watch": true,
+    "readme": "none",
+    "useCodeBlocks": true,
+    "categoryOrder": ["Drawing", "Import", "Finders", "Solids", "*"],
+    "kindSortOrder": [
+      "Function",
+      "Reference",
+      "Project",
+      "Module",
+      "Namespace",
+      "Enum",
+      "EnumMember",
+      "Class",
+      "Interface",
+      "TypeAlias",
+      "Constructor",
+      "Property",
+      "Variable",
+      "Accessor",
+      "Method",
+      "ObjectLiteral",
+      "Parameter",
+      "TypeParameter",
+      "TypeLiteral",
+      "CallSignature",
+      "ConstructorSignature",
+      "IndexSignature",
+      "GetSignature",
+      "SetSignature"
+    ],
+    "excludeProtected": true
+  }
+}

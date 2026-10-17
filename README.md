@@ -28,9 +28,12 @@ That is all. You do not need anything else in this repository.
 - Advanced mode: sketches, extrude, revolve, loft, sweep, fillet, chamfer,
   shell, patterns and a feature timeline, driven by a real CAD kernel
   (OpenCascade)
-- Chisel: clay-style sculpting
+- Chisel: clay-style sculpting, with Puppet Animator
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
+- Sixteen step-by-step tutorials with built-in animations
+- Projector window, Media (pictures and video on objects), Picture to 3D
+- Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
 - Export to STL, OBJ, 3MF, STEP and DXF
 - Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
@@ -54,20 +57,21 @@ You do not need to write code to help.
 
 ## I want to change it or contribute
 
-The app is one big minified JavaScript bundle. Its lines are over a megabyte
-long, which is why it cannot be edited on the GitHub website: the web editor
-blanks the file. So the repository keeps the app split into pieces you can
-work with, and one command puts them back together.
+The app is plain JavaScript modules under `src/`, from the author's own
+source release of version 1.94. One command bundles them into the website
+and the single offline file.
 
 You need [Node.js](https://nodejs.org/) (version 18 or newer). Then:
 
 ```
 git clone https://github.com/MaxSikorski/jumpstart-3d.git
 cd jumpstart-3d
+npm install
 node build.mjs
 ```
 
-That writes two things:
+`npm install` fetches one tool, esbuild, pinned to the version the author
+used. The build writes two things:
 
 - `docs/` the website (the same files GitHub Pages serves)
 - `dist/jumpstart-3d.html` the single offline file
@@ -82,25 +86,28 @@ npx serve docs
 ### Where things are
 
 ```
-src/index.html    page shell, CSS and menus (plain HTML, edit freely)
-src/app.js        the app bundle (minified; edit only by script)
-src/worker.js     geometry worker that runs the CAD kernel
-src/occt-gz.wasm  OpenCascade kernel, gzipped
-src/tools/        the helper pages: FlexiGen, Mesh to STEP, Chisel
-src/vendor/       three.js builds shared by the helper pages
-build.mjs         the build
-tools/            extract.mjs turns a new upstream file into src/;
-                  add-obj-export.mjs re-applies our OBJ export;
-                  add-mesh-detail.mjs re-applies the Mesh detail setting;
-                  og-card/ renders the link-preview image (src/og-image.png)
-docs/             built website, committed so GitHub Pages can serve it
-jumpstart_3d_v1.93.8.htm   the untouched upstream file this version came from
+src/index.html      page shell, CSS and menus
+src/app.js          the app's entry point; the other src/*.js files are its modules
+                    (beginner.js, advanced.js, sketcher.js, kernel.js, projects.js, ...)
+src/worker.js       geometry worker that runs the CAD kernel (kernel.js) via replicad
+src/occt-gz.wasm    OpenCascade kernel, gzipped
+src/flexigen.html, src/meshstep.html, src/chisel.html
+                    the helper pages, built; their source is in tools/
+src/meshdetail.js   our Mesh detail setting
+third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
+                    Flatbush, Flatqueue, the OpenCascade loader
+LICENSES/, THIRD-PARTY-NOTICES.md
+                    licenses of everything in third_party/ and of the fonts
+build.mjs           the build (the author's dist.sh and standalone.py, in Node)
+tools/              helper page sources and the scripts that rebuild them
+                    (see tools/README-helpers.md); og-card/ renders the link-preview image
+docs/               built website, committed so GitHub Pages can serve it
+jumpstart_3d_v1.94.htm     the untouched upstream file this version came from
+UPSTREAM-README.md         the author's README from the source release
 ```
 
 ### Rules of thumb
 
-- Edit `src/index.html` directly. Patch `src/app.js` with a script that
-  checks its anchor text matches exactly once; never open it in a web editor.
 - After any change run `node build.mjs`, then test both outputs: the site in
   a browser and `dist/jumpstart-3d.html` opened from disk.
 - Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
@@ -119,6 +126,6 @@ jumpstart_3d_v1.93.8.htm   the untouched upstream file this version came from
   controls how finely curved surfaces are divided into triangles, for the view
   and for STL, OBJ and 3MF exports, and asks before building more than
   500,000 triangles. The original always used the Normal level.
-- A split website build: the 7 MB kernel loads as a separate file, so the
-  first page load is about 2 MB instead of 14 MB
-- A reproducible way to take a new upstream file and rebuild everything
+- The website build keeps the 7 MB kernel as a separate file, so the page
+  itself is about 5 MB instead of 14 MB
+- A reproducible build from readable source, with the libraries pinned
