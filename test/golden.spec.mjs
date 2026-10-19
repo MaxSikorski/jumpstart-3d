@@ -1,5 +1,5 @@
-// Golden exports: every design in test/projects/ is loaded, exported as STL, OBJ and STEP
-// through the real menu, and the bytes are hashed. A hash that moves means the geometry
+// Golden exports: every design in test/projects/ is loaded, exported as STL, OBJ, 3MF and STEP
+// (and DXF when it has sketches) through the real menu, and the bytes are hashed. A hash that moves means the geometry
 // or the exporter changed. After an intended change: npm run test:update
 import { test, expect } from "@playwright/test";
 import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -33,7 +33,9 @@ for (const file of files) {
     got.stlTriangles = stlTriangles(stl.bytes);
     got.stl = sha256(stl.bytes);
     got.obj = sha256((await exportBytes(page, "obj")).bytes);
+    got["3mf"] = sha256((await exportBytes(page, "3mf")).bytes); // a zip; the app's writer stamps no dates
     got.step = sha256(normalizeStep((await exportBytes(page, "step")).bytes));
+    if ((json.sketches || []).length) got.dxf = sha256((await exportBytes(page, "dxf")).bytes); // without sketches the menu only shows a toast
     expect(errors, "console errors").toEqual([]);
     const golden = readGolden();
     if (UPDATE) {
