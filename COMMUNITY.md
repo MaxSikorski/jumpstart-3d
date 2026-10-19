@@ -8,6 +8,13 @@ to your work; we do not copy it.
 
 Newest first. Everything here is by the people named, not by this project.
 
+## Where people talk about it
+
+- [r/Jumpstart3D](https://www.reddit.com/r/Jumpstart3D/), a subreddit started by
+  a community member in October 2026. Questions, prints, ideas.
+- [GitHub Discussions](https://github.com/MaxSikorski/jumpstart-3d/discussions):
+  announcements, polls, Q&A and Show and tell.
+
 ## Videos
 
 ### 4 New 3D CAD/Modeling Programs! · Making Layers
