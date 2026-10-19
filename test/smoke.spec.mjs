@@ -171,6 +171,28 @@ test("Chisel opens, adds a sphere and hands it back as a body", async () => {
   expect(b.volume).toBeGreaterThan(0);
 });
 
+test("an imported SVG cannot run code (CodeQL alert #2)", async () => {
+  // a 20 mm square plus every way an SVG file could carry code: the import must keep the square and run none of it
+  const trap = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 20 20" width="20mm" height="20mm" onload="window.__pwned=1">
+  <rect x="0" y="0" width="20" height="20"/>
+  <image onerror="window.__pwned=2"/>
+  <foreignObject width="1" height="1"><body xmlns="http://www.w3.org/1999/xhtml"><img src="x" onerror="window.__pwned=3"/><script>window.__pwned=4</script></body></foreignObject>
+  <a xlink:href="javascript:window.__pwned=5"><path d="M0 0 L5 5"/></a>
+  <animate attributeName="x" onbegin="window.__pwned=6" dur="1s"/>
+</svg>`;
+  await loadDoc(page, newDoc("Trap", "beginner"));
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.evaluate(() => { window.__app.insertFile("svg"); })]); // no return value: the call only resolves once a file is picked
+  await chooser.setFiles({ name: "trap.svg", mimeType: "image/svg+xml", buffer: Buffer.from(trap) });
+  await expect(page.locator("#cmd")).toContainText("Insert SVG");
+  await expect(page.locator("#cmd")).toContainText("5 curves"); // the square's four sides and the path inside the link
+  await page.click("#cmd-ok");
+  await expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+  await page.waitForTimeout(500); // give any handler that slipped through time to fire
+  expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+  expect(await page.evaluate(() => window.__store.doc.sketches[0].ents.length)).toBe(5);
+  await page.evaluate(() => window.__app.exitSketch());
+});
+
 test("a saved design comes back after a reload", async ({}, info) => {
   await loadDoc(page, newDoc("Restore me", "beginner", { bodies: [body("b1", "Keeper", prim("box", { w: 10, d: 10, h: 10, r: 0, c: 0 }))] }));
   await page.evaluate(() => window.__app.projects.saveNow());

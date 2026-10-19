@@ -153,3 +153,8 @@ UPSTREAM-README.md         the author's README from the source release
 - The website build keeps the 7 MB kernel as a separate file, so the page
   itself is about 5 MB instead of 14 MB
 - A reproducible build from readable source, with the libraries pinned
+- Imported SVG drawings are stripped of scripts, embedded HTML and event
+  handlers before the app reads their geometry, so a booby-trapped file cannot
+  run code in the page
+- A regression test suite (`npm test`) that drives the real app in a headless
+  browser on both builds, and runs on every pull request
