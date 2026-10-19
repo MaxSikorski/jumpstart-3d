@@ -23,7 +23,7 @@ suite runs on GitHub Actions for every pull request (`.github/workflows/test.yml
   FlexiGen, Mesh to STEP and Chisel open and render, and Mesh to STEP's
   pop-out tab boots on its own; a saved design is back after a reload.
 - `golden.spec.mjs`: every design in `projects/` is loaded, exported as STL,
-  OBJ and STEP through the real menu, and the bytes are hashed against
+  OBJ, 3MF and STEP (and DXF when it has sketches) through the real menu, and the bytes are hashed against
   `golden.json` (the STEP timestamp and OpenCascade's export counter are
   blanked first). The entry also keeps
   each body's volume and the STL triangle count, so a mismatch says whether
