@@ -1,0 +1,205 @@
+{
+  "advanced-bool-cut.json": {
+    "volumes": {
+      "b1 Box": 29738.1
+    },
+    "stlTriangles": 268,
+    "stl": "15ea7a2c53b7c04d37152c7723a4e17fe3d0d17c7a46647ee980e1ab0cbd9f14",
+    "obj": "8728c07d3ef8851b059fc3a85e734c5df1eaa2097ed34fe3cda257178476f523",
+    "step": "b8cf4782a205fc8d4863819554c3bd21bdfbd96e3f52f2f7fcd4a7acc1b9120e"
+  },
+  "advanced-coil.json": {
+    "volumes": {
+      "b1 b1": 988.6
+    },
+    "stlTriangles": 68250,
+    "stl": "7e8ddf57dd19d231690cdeb59d175c7b47cdcb6e3b5a0e1668cf799885c9463d",
+    "obj": "b9b5ed83f955feca1142f523c774f45a5f3d1eee6183ed515b879c9d86ef4b45",
+    "step": "88a49b1f300709c728c0e78bf4cfd2a37768077b680c7a7dc2cb71de600c88c7"
+  },
+  "advanced-emboss.json": {
+    "volumes": {
+      "b1 b1": 24033.1
+    },
+    "stlTriangles": 56,
+    "stl": "72339ae24d6c0bb271ecc25b7cecb46aa4e210f4f1650258d2eed3e70cc47c0d",
+    "obj": "c9a54ada9cf30ea2be49a1ad90e75b9092e09a1c2b2a6c5bc72eca1013e0bf2d",
+    "step": "a471383bbc79c22b21fdb3fd514be9d42fcf4d3d9b455dae97052f9d6c6d4226"
+  },
+  "advanced-hole.json": {
+    "volumes": {
+      "b1 b1": 23434.5
+    },
+    "stlTriangles": 268,
+    "stl": "83454e3cae874c1982fe72231e3ab32f10c3268f1cc356cd729ed11dee0d87c8",
+    "obj": "f51947f1104df51a948692a90e31a7ad6d1cb68028e60c05eeb8d4ed16b09778",
+    "step": "985d06eac31b24cc8f112b0cb66ae0c740559173c6a62aae8459b7adb0e350be"
+  },
+  "advanced-loft.json": {
+    "volumes": {
+      "b1 b1": 28000
+    },
+    "stlTriangles": 996,
+    "stl": "a3791e2b3cc6c0a9fbf7a6228e2c8343bf7f21f3025d026926b55cf417aa5b22",
+    "obj": "cc92cb22c1d30ca93506fb81efe7c6b5ac25247e5b31f286aa3d567ccb32cb09",
+    "step": "ab015cd7812ae1f2188d4ec7634d431168cf969b9d9a533be15a3d486226c40c"
+  },
+  "advanced-mirror.json": {
+    "volumes": {
+      "b1 b1": 24000,
+      "b2 b2": 24000
+    },
+    "stlTriangles": 24,
+    "stl": "5a3a8b9b28d2cbdf55b04efdae0a2264b326db2cda9bcb124ffb7438f70baab0",
+    "obj": "7e0a131b0b4b7d5af5afd08313146feb041eac302309f2dbb8a4db5457a57d4e",
+    "step": "5c6646fb43015b3e370845f994281f199764ace07e9dd42bf9a611996d7231b4"
+  },
+  "advanced-pattern.json": {
+    "volumes": {
+      "b1 b1": 4000,
+      "b2 b2": 4000,
+      "b3 b3": 4000
+    },
+    "stlTriangles": 36,
+    "stl": "8a56367a948cec605ed3f6be31f54ede7278994b715dac21aa4d2213ef9fc885",
+    "obj": "440b6b467680f7cfee65868253296f4cd7d45098eb2254f7c19a794af43e47f3",
+    "step": "5e11389bda8476950fcc6bd1a6c604beda629f907c84273b48b46cbd7166f6fa"
+  },
+  "advanced-pipe.json": {
+    "volumes": {
+      "b1 b1": 1413.7
+    },
+    "stlTriangles": 404,
+    "stl": "4ffd5db731192c315893f6558e3df7039055f1b48d166a4645d861b4ffcc28e7",
+    "obj": "f829aace40bb8fd6c79db4056cfda15fa63800310308b9aa192a074c74a35028",
+    "step": "6cf938511baefcee75568394cd4d823112684320bc30028b88b8e40dc8669779"
+  },
+  "advanced-revolve.json": {
+    "volumes": {
+      "b1 b1": 12566.4
+    },
+    "stlTriangles": 544,
+    "stl": "41285e197f8362f7b183d42ee433b301c0184f5d4af2ac8695ee4a822dd6b770",
+    "obj": "678bc21bb63176e105ec6a41dc668b2ea3ba2e03549d6959eccd0397c25bfc56",
+    "step": "5fdf91c49c82a84fee3fcc3ae246ab7b4ed3d37e04753d93855ab21863672d08"
+  },
+  "advanced-scale.json": {
+    "volumes": {
+      "b1 b1": 48000
+    },
+    "stlTriangles": 12,
+    "stl": "d75de32369f033bf5f55b604551943609668f6d7d639c41d156e49ee404a75f0",
+    "obj": "c54a0ef021508f828dd2a5f4ff8a2f452f38e4588d9e17404a92a65f62f8c463",
+    "step": "cb46a11484d4e717de450e7ae480beb441e68f483e02e7225c5bad92e20ea785"
+  },
+  "advanced-shell.json": {
+    "volumes": {
+      "b1 b1": 7152
+    },
+    "stlTriangles": 28,
+    "stl": "5625b2bd058a301db57847af9a6e220289261cc04f91dd58543f9f3a4bd9483d",
+    "obj": "b8d305d9cd9946b5b1466ff736ef69e22fb134ff26749cd870cd4990b89007d7",
+    "step": "e42719b78d8be2e6da625f36406c03d6736355c05e0f9818a93ce62cb9669c3f"
+  },
+  "advanced-sketch-extrude.json": {
+    "volumes": {
+      "b1 Plate": 9000
+    },
+    "stlTriangles": 12,
+    "stl": "6f00297e6ae4d67004a6517403abedceecadd0472b6fcf7d5d583a2e8972e0e6",
+    "obj": "e6b854f3dd1e3ebcf4c109483b7418c8a2c7d54aa4c784db567a10b70fc4af78",
+    "step": "8f151da80e2b4cf99ad9009891804db26811993ec0242f4acca99533d544fb2a"
+  },
+  "advanced-sweep.json": {
+    "volumes": {
+      "b1 b1": 3927
+    },
+    "stlTriangles": 408,
+    "stl": "ca823a1cb63df564a49e9dfde403fdf90c7bcbfc2669a07721335b3189b18e3e",
+    "obj": "49804ae0368fd9c77a4b72983f055878313225ab7ddef9cd3bd0391a835f89b5",
+    "step": "915f77627a93989a0b62dd3983bcde271c522905e64b734fa2beebd34e93d746"
+  },
+  "advanced-text.json": {
+    "volumes": {
+      "b1 b1": 404.6
+    },
+    "stlTriangles": 1160,
+    "stl": "39a075097bc5320adf71cf15cb5bec655712c0b7c35f6004b53762fa45be4b00",
+    "obj": "85b6824dced7182dd30b2b585872a3e6e295d14d8792bc6bc00bc6f5588170da",
+    "step": "fdb76b3ba65eb15f27d02d1be9ea9a07c5b4f25318c1875e729429c39d898efe"
+  },
+  "advanced-thread.json": {
+    "volumes": {
+      "b1 b1": 1378.6
+    },
+    "stlTriangles": 9910,
+    "stl": "21765a1c4a3962098c8b8dcf76a5f2f72d5920042981c35135c7aa51e42ea580",
+    "obj": "561d818168c2d5e44ef349467f464726c3591afd456e227a99f7ecb041b4e042",
+    "step": "89047bed65c69cf849c15614d2d18ce63c4076953021bb15001e95c4eb4df1b8"
+  },
+  "advanced-wall-bracket.json": {
+    "volumes": {
+      "b1 Bracket": 10027.9
+    },
+    "stlTriangles": 1104,
+    "stl": "889beafe08146227bb58639648e32313c352a449d0440a447ebcdfb74b45391c",
+    "obj": "f45c51d144d90662621c33e1922360a7801482c1f0563d560b2ba4cabad07dc8",
+    "step": "d7d099279392a335e8b7dc6c45a81c72aa95effdb731d1ef717b47976c918e3f"
+  },
+  "beginner-box.json": {
+    "volumes": {
+      "b1 Box": 8000
+    },
+    "stlTriangles": 12,
+    "stl": "704741e88a33c5ad29870a99645d88b70b5eb5a6690b97c18737bc34614d0deb",
+    "obj": "b87e196903ff6cd2bf044c4fc29a5943e6d394219a630b16d7c47601e4fe190b",
+    "step": "dbbfa1389e1093e0a90cb36ebe046665aee8d0f36d4933442921c254c24bf9d0"
+  },
+  "beginner-peg-block.json": {
+    "volumes": {
+      "b1 Peg block": 7076.4,
+      "b2 Cone 1": 1583.4,
+      "b3 Sphere 1": 1436.8
+    },
+    "stlTriangles": 8756,
+    "stl": "2ea1d6b55aa8fbfbfa75e6e7a4bb07fdbb020d5a4936aa54b561f9996fa62d3c",
+    "obj": "e644bf7c00437a25bbcac51b56bf48b6f329efe55f9c3db50618be7153dae26f",
+    "step": "7d71d7f88e0c2ce147928c92bf33a5dbd3acfc465f82a0a8eade541f006e4ea8"
+  },
+  "import-step.json": {
+    "volumes": {
+      "b1 b1": 1000
+    },
+    "stlTriangles": 12,
+    "stl": "d8faba2f6e88fef601905298f479eff9fb8d2eb0cf3453a9fa8e4cd99abc1bbb",
+    "obj": "69135711d01a13019c67a040687b7b96b54af80a277d179d727c17b3167623ca",
+    "step": "feb960eba68d7b532323d778bc3b63e79c00656e69c62dc0db1e509c03920815"
+  },
+  "import-stl-mesh.json": {
+    "volumes": {
+      "b1 b1": 1000
+    },
+    "stlTriangles": 12,
+    "stl": "a3ccfcf7e6c7dbee0bf18d7086d4a66f45b0e65cb8e17364e3496a7b52ba5ee6",
+    "obj": "9c6d7c5c9459f97804bcaeef62953da0a850e894839a8f9ebc171decb7fe9248",
+    "step": "782f988cbf28c2ba519f2111790055259d6c548dc27b5399de387ccb11e53ec2"
+  },
+  "advanced-fillet-chamfer.json": {
+    "volumes": {
+      "b1 Box": 7921.4
+    },
+    "stlTriangles": 80,
+    "stl": "b0d09a639c6a91648a7b62b0e22c556e3bcdb41b16edad3931b3d0e9f78a042d",
+    "obj": "d2e141a58840452c267c113889a2afd66c6eb2a598c44b0d627382e64b59001b",
+    "step": "63a0099eca92f8f11aece6123135908679272ff367a17f65aafbb9c86f95536f"
+  },
+  "advanced-tapped-hole.json": {
+    "volumes": {
+      "b1 b1": 23366.9
+    },
+    "stlTriangles": 8544,
+    "stl": "cee50fdbedb3934cf07c17ce7b1e4200fd475c515106b8ec488c52c541fbd3a1",
+    "obj": "6e2ac6670a655bbebfc348a5bd687d12e7393fd7ad2c107b7d91360105abf6e7",
+    "step": "c500aadbd9747f62551e60d71c278111b379113048d14dcfbca2ede5c727d773"
+  }
+}

@@ -1,0 +1,189 @@
+{
+ "v": 1,
+ "id": "g_peg_block",
+ "name": "Peg block",
+ "mode": "beginner",
+ "created": 1,
+ "seq": 9,
+ "grid": 1,
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Peg block",
+   "seq": 1,
+   "color": "#e4572e",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    -15,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "group",
+    "children": [
+     {
+      "node": {
+       "t": "prim",
+       "kind": "box",
+       "p": {
+        "w": 24,
+        "d": 24,
+        "h": 14,
+        "r": 2,
+        "c": 0
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "hole": false,
+      "name": "Box 1",
+      "color": "#e4572e"
+     },
+     {
+      "node": {
+       "t": "prim",
+       "kind": "cylinder",
+       "p": {
+        "w": 10,
+        "d": 10,
+        "h": 20,
+        "r": 0,
+        "c": 0
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       4,
+       1
+      ],
+      "hole": true,
+      "name": "Cylinder hole 1",
+      "color": "#c9cfd6"
+     }
+    ],
+    "mods": []
+   }
+  },
+  {
+   "id": "b2",
+   "name": "Cone 1",
+   "seq": 2,
+   "color": "#29a35a",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    20,
+    10,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "cone",
+    "p": {
+     "w": 16,
+     "d": 16,
+     "h": 18,
+     "top": 0.25
+    },
+    "mods": []
+   }
+  },
+  {
+   "id": "b3",
+   "name": "Sphere 1",
+   "seq": 3,
+   "color": "#2b7bb9",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    20,
+    -18,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "sphere",
+    "p": {
+     "w": 14,
+     "d": 14,
+     "h": 14
+    },
+    "mods": []
+   }
+  }
+ ],
+ "sketches": [],
+ "planes": [],
+ "joints": []
+}

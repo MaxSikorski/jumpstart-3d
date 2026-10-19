@@ -1,0 +1,51 @@
+{
+ "v": 1,
+ "id": "g_advanced_text",
+ "name": "Text",
+ "mode": "beginner",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "text",
+    "p": {
+     "text": "Hi",
+     "size": 10,
+     "h": 5,
+     "font": "sans"
+    },
+    "mods": []
+   }
+  }
+ ]
+}

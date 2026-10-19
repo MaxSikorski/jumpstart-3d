@@ -93,6 +93,19 @@ server, for example:
 npx serve docs
 ```
 
+### Running the tests
+
+The tests drive the real app in a headless browser: both builds, Beginner and
+Advanced, the kernel, the helpers and the exports. Once, after `npm install`,
+fetch the browser with `npx playwright install chromium`. Then, after a build:
+
+```
+npm test
+```
+
+`test/README.md` explains what runs and how to re-record the golden export
+hashes after an intended geometry change.
+
 ### Where things are
 
 ```
@@ -118,8 +131,9 @@ UPSTREAM-README.md         the author's README from the source release
 
 ### Rules of thumb
 
-- After any change run `node build.mjs`, then test both outputs: the site in
-  a browser and `dist/jumpstart-3d.html` opened from disk.
+- After any change run `node build.mjs`, then `npm test`, then try both
+  outputs yourself: the site in a browser and `dist/jumpstart-3d.html` opened
+  from disk.
 - Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
   single file is attached to releases instead.
 - Keep "Created by J.Siwek" in the About dialog. Our additions are listed

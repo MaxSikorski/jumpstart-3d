@@ -893,3 +893,7 @@ function onKey(e) {
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
 else boot();
+
+// Our addition: the app and its document store on window, as the author's app/test/dbg.js
+// exposed them for his Playwright scripts. The regression tests in test/ drive both builds through these.
+window.__app = app; window.__store = store; window.__findBody = findBody;
