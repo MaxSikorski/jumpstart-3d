@@ -32,8 +32,9 @@ suite runs on GitHub Actions for every pull request (`.github/workflows/test.yml
   takes an expression.
 - `golden.spec.mjs`: every design in `projects/` is loaded, exported as STL,
   OBJ, 3MF and STEP (and DXF when it has sketches) through the real menu, and the bytes are hashed against
-  `golden.json` (the STEP timestamp and OpenCascade's export counter are
-  blanked first). The entry also keeps
+  `golden.json` (the STEP file is cleaned first: the time it was written and the
+  running numbers OpenCascade puts in product names and in the links between
+  bodies, which depend on how many STEP exports the page did before, are blanked). The entry also keeps
   each body's volume and the STL triangle count, so a mismatch says whether
   the shape changed or only its tessellation.
 
@@ -53,7 +54,6 @@ Drop a project file in `projects/` (Export > Save Project File, or a
 hand-written document like the existing ones) and re-record. Keep designs
 small: each one is built, exported three times and hashed on every run.
 A design can carry `params` (`[{ id, name, expr, value }]`, plus `unit: "in"` when typed in inches) and sketch dimensions with an `expr`, as `parametric-plate.json` does.
-The STEP counters in multi-body designs depend on how many STEP exports ran before, so a new design file must sort after the existing ones (names are read in alphabetical order), or the hashes of the multi-body designs after it move.
 
 ## How the tests reach the app
 
