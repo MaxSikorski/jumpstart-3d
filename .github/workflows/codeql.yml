@@ -1,0 +1,44 @@
+# CodeQL code scanning, scoped to the code this repository maintains: the app source in src/
+# (the author's modules plus our additions), the build script and the tests. docs/ holds
+# built bundles and third_party/ holds pinned libraries, so both are left out; the helper
+# pages in src/*.html embed a minified three.js each and are left out for the same reason.
+# Results appear under Security > Code scanning. Public repository: free.
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC, so newly published queries run against unchanged code too
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          config: |
+            paths:
+              - src
+              - test
+              - build.mjs
+              - playwright.config.mjs
+            paths-ignore:
+              - src/*.html
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
