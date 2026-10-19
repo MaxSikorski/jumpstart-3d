@@ -45,7 +45,7 @@ are unlikely to fit.
 ### How the code is laid out
 
 The app is plain JavaScript modules under `src/`, from the author's source
-release of version 1.94, and one command bundles them. The README's "I want
+release of version 2.0, and one command bundles them. The README's "I want
 to change it or contribute" section explains the folders and the build. Read
 that first.
 

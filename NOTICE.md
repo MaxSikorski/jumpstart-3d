@@ -1,27 +1,35 @@
 # Notice
 
-JumpStart 3D was created by **J.Siwek** (credited in the app's About dialog
-up to version 1.93.8; this community build keeps that line). The original
-download link went offline, and this repository re-hosts versions 1.898, 1.91,
-1.93.8 and 1.94 (the untouched files are on the `upstream-originals` release)
-so people can keep using them, and carries community improvements on top.
+JumpStart 3D was created by **J.Siwek**. His own versions up to 1.93.8 said so
+in the About dialog; this community build keeps that line.
 
-Version 1.94 is built from the author's own source release
-(`JumpStart-3D-v1.94-full-source.zip`, attached to the `upstream-originals`
-release). The author's README in it says that no open-source license has been
-chosen for the app's own code yet, so the copyright on the application code
-remains with its author. This repository does not claim ownership of that
-code. If you are the author, or can put us in touch, please open an issue: we
-would like to link to the official home, give proper credit, and hand this
-work back.
+## License
 
-The `LICENSE` file in this repository covers only the build tooling and other
-files written for this repository, not the original application code.
+Since version 2.0 (October 2026) the author publishes the full source code
+under the MIT License. The official JumpStart 3D site
+(https://sites.google.com/view/jumpstart-3d-creator/home) says: "The full
+source code is available and open source under the MIT License, so you're
+free to use it, study it, change it and share it."
 
-## Bundled third-party software
+This repository is a community fork. It tracks his releases and adds its own
+work (listed in [README.md](README.md)) under the same license. The
+[LICENSE](LICENSE) file carries the upstream copyright line ("JumpStart 3D
+contributors") and one for this repository's additions. The single-file build
+has no LICENSE file beside it, so `src/index.html` starts with a short license
+comment that travels with it.
 
-Listed in full in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), with
-license texts under `LICENSES/`:
+## History
+
+Before 2.0 the author had not chosen any license. This fork began with
+versions 1.898 to 1.94, after the original download link went offline, and
+rested on goodwill: the code stayed the author's and we claimed none of it.
+That is now history. The untouched upstream files, including the 1.94 and 2.0
+source zips, are on the `upstream-originals` GitHub release.
+
+## Third-party software
+
+The bundled libraries and fonts keep their own licenses, listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), full texts under `LICENSES/`:
 
 - three.js r169 (MIT)
 - replicad 1.1.0 and replicad-opencascadejs 1.1.0 (MIT; the OpenCascade

@@ -7,8 +7,10 @@ no server. Somewhere between Tinkercad and a real CAD program: drag shapes
 together in Beginner mode, or sketch, extrude, fillet and shell in Advanced
 mode.
 
-Created by **J.Siwek**. This is a community-maintained copy; see
-[NOTICE.md](NOTICE.md) for credit and licensing.
+Created by **J.Siwek**. Official home: https://sites.google.com/view/jumpstart-3d-creator/home
+(the official JumpStart 3D site, with the original downloads). This repository is the community fork:
+it tracks his releases and adds its own work. See [NOTICE.md](NOTICE.md) for
+credit and licensing.
 
 ## I just want to use it
 
@@ -24,14 +26,19 @@ That is all. You do not need anything else in this repository.
 
 ## What it does
 
-- Beginner mode: drag shapes, group them, cut holes
+- Beginner mode: drag shapes, group them, cut holes, on a 256 × 256 mm
+  build plate
 - Advanced mode: sketches, extrude, revolve, loft, sweep, fillet, chamfer,
-  shell, patterns and a feature timeline, driven by a real CAD kernel
+  shell, patterns (including along a path, and of whole features such as
+  holes and cuts) and a feature timeline, driven by a real CAD kernel
   (OpenCascade)
+- 3D Sketch: draw tubes and pipes freely in space
+- Lathe: turn a body or a blank into a round part
+- Jump Brick Builder (Advanced, Simulate): build with bricks
 - Chisel: clay-style sculpting, with Puppet Animator
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Sixteen step-by-step tutorials with built-in animations
+- Eighteen step-by-step tutorials with built-in animations
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
@@ -71,7 +78,8 @@ You do not need to write code to help.
 ## I want to change it or contribute
 
 The app is plain JavaScript modules under `src/`, from the author's own
-source release of version 1.94. One command bundles them into the website
+source release of version 2.0 (the untouched 2.0 files are on the
+`upstream-originals` release). One command bundles them into the website
 and the single offline file.
 
 You need [Node.js](https://nodejs.org/) (version 18 or newer). Then:
@@ -129,7 +137,7 @@ build.mjs           the build (the author's dist.sh and standalone.py, in Node)
 tools/              helper page sources and the scripts that rebuild them
                     (see tools/README-helpers.md); og-card/ renders the link-preview image
 docs/               built website, committed so GitHub Pages can serve it
-jumpstart_3d_v1.94.htm     the untouched upstream file this version came from
+jumpstart_3d_v2.0.htm      the untouched upstream file this version came from
 UPSTREAM-README.md         the author's README from the source release
 ```
 
@@ -169,3 +177,11 @@ UPSTREAM-README.md         the author's README from the source release
   next (`IMPROVEMENT_PLAN.md`, Phase P)
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
+
+## License
+
+MIT. The author released the source of version 2.0 under the MIT License
+(see the official site: https://sites.google.com/view/jumpstart-3d-creator/home), and
+this repository's additions use the same license. The full text is in
+[LICENSE](LICENSE); credit, history and third-party licenses are in
+[NOTICE.md](NOTICE.md).

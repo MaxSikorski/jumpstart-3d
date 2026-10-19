@@ -82,15 +82,22 @@ export class KernelClient {
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
     // send small batches so the screen updates progressively
+    // heavy parts (imported meshes, 3D Sketch tubes along free curves) go one at a time, each with
+    // its own time limit, so a few of them never add up past the limit together
+    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
     const batch = [];
-    for (const [k, it] of this.queue) { batch.push(it); this.queue.delete(k); if (batch.length >= 4) break; }
+    for (const [k, it] of this.queue) {
+      if (batch.length && (heavy(it) || heavy(batch[0]))) break;
+      batch.push(it); this.queue.delete(k);
+      if (batch.length >= 4 || heavy(it)) break;
+    }
     this.inflight = batch;
     const req = ++this.req;
     this.worker.postMessage({ type: "build", req, quality: this.quality || 1, bodies: batch.map((b) => ({ id: b.id, rev: b.key, node: b.node })) });
     // map results back by rev = key
     clearTimeout(this.watchdog);
     // imported meshes take longer to turn into solids: give them more time
-    const slow = batch.some((b) => JSON.stringify(b.node).includes('"asset"'));
+    const slow = batch.some(heavy);
     this.watchdog = setTimeout(() => this.stalled(batch), (slow ? 120000 : 25000) * (this.quality || 1));
     this.onBusy && this.onBusy(true);
   }

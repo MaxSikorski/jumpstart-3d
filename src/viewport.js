@@ -67,7 +67,7 @@ export class Viewport {
     this.ortho.up.set(0, 0, 1);
     this.useOrtho = false;
     // roll: turn of the picture around the line of sight (the view cube's curved arrows)
-    this.view = { target: new THREE.Vector3(0, 0, 0), az: (-55 * Math.PI) / 180, el: (28 * Math.PI) / 180, dist: 260, roll: 0 };
+    this.view = { target: new THREE.Vector3(0, 0, 0), az: (-55 * Math.PI) / 180, el: (28 * Math.PI) / 180, dist: 330, roll: 0 };
 
     const hemi = (this.hemi = new THREE.HemisphereLight(0xffffff, 0x8a929c, 1.6));
     hemi.position.set(0, 0, 1);
@@ -177,8 +177,8 @@ export class Viewport {
       u.cMinor.value.setStyle(T.wp.minor, THREE.LinearSRGBColorSpace);
       u.cMajor.value.setStyle(T.wp.major, THREE.LinearSRGBColorSpace);
       u.bgAlpha.value = 0.96;
-      u.halfSize.value = 100;
-      this.grid.scale.set(200, 200, 1);
+      u.halfSize.value = 128; // a 256 × 256 mm workplane (a typical 3D printer bed)
+      this.grid.scale.set(256, 256, 1);
       u.showAxes.value = 0;
       this.bg.set(T.wpBg);
     } else {
@@ -596,7 +596,7 @@ export class Viewport {
     this.animateTo({ az, el: Math.max(-Math.PI / 2 + 1e-4, Math.min(Math.PI / 2 - 1e-4, el)), target: center, dist, roll: 0 });
   }
   fitParams(box) {
-    if (!box || box.isEmpty()) return { target: new THREE.Vector3(0, 0, 0), dist: 260 };
+    if (!box || box.isEmpty()) return { target: new THREE.Vector3(0, 0, 0), dist: 330 };
     const s = box.getBoundingSphere(new THREE.Sphere());
     const r = Math.max(s.radius, 5);
     const fov = (this.persp.fov * Math.PI) / 180;

@@ -67,6 +67,15 @@ export function initTutorials(app) {
     feat: (t) => T.bodies().filter((b) => b.node.t === t),
     // a sketch extruded into a body that was already there (join or cut)
     extrudeMod(op) { let ok = false; for (const b of T.bodies()) walk(b.node, (node) => { for (const m of node.mods || []) if (m.t === "bool" && m.tool && m.tool.t === "extrude" && (m.op || "join") === op) ok = true; }); return ok; },
+    // the Lathe: what's on it, how fast it's turning, and the turned parts it has made
+    lathe: () => (app.lathe && app.lathe.active ? app.lathe._ui() : null),
+    turned: () => T.bodies().filter((b) => b.turned),
+    latheOpen: () => !!T.lathe() || T.turned().length > 0,
+    latheWork(fn) { const u = T.lathe(); if (!u || !u.work) return T.turned().length > 0; try { return !!fn(u.work, u.st); } catch (e) { return false; } },
+    latheSpinning: () => { const u = T.lathe(); return u ? u.rpmNow > 300 : T.turned().length > 0; },
+    // the work's radius at a fraction of its length (0 = headstock end, 1 = tailstock end)
+    rAt: (w, f) => w.rowMax[Math.max(0, Math.min(w.N - 1, Math.round(f * (w.N - 1))))],
+    roundness(w) { let n = 0; for (let i = 0; i < w.N; i++) { let lo = Infinity, hi = 0; for (let j = 0; j < 96; j++) { const r = w.r[i * 96 + j]; lo = Math.min(lo, r); hi = Math.max(hi, r); } if (hi - lo < 0.3) n++; } return n / w.N; },
     saved: () => !!cur && app.projects.version() > cur.startVer,
     exported: (ext) => !!cur && cur.exported.has(ext),
   };
