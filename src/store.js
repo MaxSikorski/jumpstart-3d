@@ -2,6 +2,7 @@
 import { clone, uid } from "./util.js";
 import { resolveSketch, findRegions, resolveRegionRef, regionContains, polyArea } from "./regions.js";
 import { textShapes, textBounds } from "./textgeo.js";
+import { applyParams } from "./params.js"; // jumpstart-3d: parameters
 
 // text entities resolved to a spec the kernel and the outline code understand
 export function sketchTexts(sk) {
@@ -19,7 +20,7 @@ export function sketchTexts(sk) {
 export const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 export function newDoc(name = "Untitled", mode = "beginner") {
-  return { v: 1, id: uid("d"), name, mode, created: Date.now(), seq: 0, grid: 1, bodies: [], sketches: [], planes: [], joints: [] };
+  return { v: 1, id: uid("d"), name, mode, created: Date.now(), seq: 0, grid: 1, bodies: [], sketches: [], planes: [], joints: [], params: [] };
 }
 // older designs have no mode: anything with sketches or features is Advanced
 export function docMode(doc) {
@@ -40,6 +41,7 @@ export const store = {
   emit(kind) { for (const f of listeners) f(kind); },
   load(doc) {
     this.doc = migrate(doc);
+    applyParams(this.doc); // jumpstart-3d: parameters
     this.preview = null;
     this.undoStack = [];
     this.redoStack = [];
@@ -50,6 +52,7 @@ export const store = {
     const next = clone(this.doc);
     const r = fn(next);
     if (r === false) return;
+    applyParams(next); // jumpstart-3d: parameters
     this.undoStack.push({ doc: this.doc, label });
     if (this.undoStack.length > 120) this.undoStack.shift();
     this.redoStack = [];
@@ -102,6 +105,7 @@ function migrate(doc) {
   d.sketches = d.sketches || [];
   d.planes = d.planes || [];
   d.joints = d.joints || [];
+  d.params = d.params || [];
   d.mode = docMode(doc);
   return d;
 }

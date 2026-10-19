@@ -187,5 +187,6 @@ export function dimGraphics(sk, c, px, fmtLen) {
     at = add(V, [R * Math.cos(tm), R * Math.sin(tm)]);
     text = (+c.v.toFixed(2)) + "°";
   } else return null;
+  if (c.expr) text = `${c.expr} = ${text}`; // jumpstart-3d: parameters
   return { segs, at, text };
 }

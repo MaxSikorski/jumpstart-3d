@@ -9,8 +9,9 @@ import {
 } from "./regions.js";
 import { uid, parseLength, fmt, round, el } from "./util.js";
 import { getUnit } from "./units.js";
-import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
+import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
 import { buildDim, dimGraphics, measureDim } from "./dims.js";
+import { evalExpr } from "./params.js"; // jumpstart-3d: parameters
 
 const DEG = Math.PI / 180;
 import { theme } from "./theme.js";
@@ -44,18 +45,7 @@ export const SKETCH_TOOLS = {
 };
 
 // ---------------------------------------------------------------- doc ops
-export function normalizeSketch(sk) {
-  const P = new Map(sk.pts.map((p) => [p.id, p]));
-  for (const e of sk.ents) {
-    if (e.t !== "arc") continue;
-    const c = P.get(e.c), a = P.get(e.a), b = P.get(e.b);
-    if (!c || !a || !b) continue;
-    const r = Math.hypot(a.x - c.x, a.y - c.y);
-    const ang = Math.atan2(b.y - c.y, b.x - c.x);
-    b.x = c.x + r * Math.cos(ang);
-    b.y = c.y + r * Math.sin(ang);
-  }
-}
+export { normalizeSketch }; // jumpstart-3d: moved to constraints.js so params.js can use it
 // every sketch point an entity uses (splines use a list of fit points)
 export function entPts(e) {
   return [e.a, e.b, e.c, e.p, ...(e.pts || [])].filter(Boolean);
@@ -890,10 +880,12 @@ export class Sketcher {
       label: d.k === "dia" ? `Diameter (${getUnit()})` : d.k === "rad" ? `Radius (${getUnit()})` : `Length (${getUnit()})`,
       value: skDisp(d.v, 3),
       unit: getUnit(),
-      onOk: (v) => {
+      resolve: (t) => evalExpr(t, store.view.params, { unit: getUnit() }), // jumpstart-3d: parameters
+      onOk: (v, text) => {
         if (!(v > 0)) { this.app.toast && this.app.toast("Use a size above 0."); return; }
         const did = "dm" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        this.edit("Dimension", (s2) => { s2.cons = s2.cons || []; s2.cons.push({ id: did, ...d, v }); });
+        const expr = isFinite(parseLength(text, getUnit())) ? {} : { expr: text.trim(), ...(getUnit() !== "mm" && { unit: getUnit() }) }; // jumpstart-3d: parameters
+        this.edit("Dimension", (s2) => { s2.cons = s2.cons || []; s2.cons.push({ id: did, ...d, v, ...expr }); });
         this.redraw();
         const now = this.sketch && (this.sketch.cons || []).find((x) => x.id === did);
         if (now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that size: other dimensions or constraints are holding it.");
@@ -1084,15 +1076,19 @@ export class Sketcher {
     const isAng = c.k === "ang";
     const lab = this.dimEls && this.dimEls.find((d) => d._id === id);
     const at = lab ? this.vp.project(new THREE.Vector3(lab._at[0], lab._at[1], 0).applyMatrix4(this.mat)) : this.cursorPx || [100, 100];
-    const shown = isAng ? fmt(c.v, 3) : skDisp(c.v, 3);
+    const unit = isAng ? "mm" : getUnit();
+    const shown = c.expr || (isAng ? fmt(c.v, 3) : skDisp(c.v, 3)); // jumpstart-3d: parameters
     this.app.promptValue({
       at: [at[0] - 20, at[1] - 30],
       label: isAng ? "Angle (°)" : c.k === "dia" ? `Diameter (${getUnit()})` : c.k === "rad" ? `Radius (${getUnit()})` : `Distance (${getUnit()})`,
       value: shown,
-      unit: isAng ? "mm" : getUnit(),
-      onOk: (v) => {
+      unit,
+      // jumpstart-3d: parameters. A number is a plain value; anything else is an expression of parameter names, read in the unit typed
+      resolve: (t) => evalExpr(t, store.view.params, { unit: getUnit(), angle: isAng }),
+      onOk: (v, text) => {
         if (!(v > 0) || (isAng && v >= 180)) { this.app.toast && this.app.toast(isAng ? "Use an angle between 0° and 180°." : "Use a size above 0."); return; }
-        this.edit("Edit dimension", (s2) => { const k = (s2.cons || []).find((x) => x.id === id); if (k) k.v = v; });
+        const plain = isFinite(parseLength(text, unit));
+        this.edit("Edit dimension", (s2) => { const k = (s2.cons || []).find((x) => x.id === id); if (k) { k.v = v; delete k.unit; if (plain) delete k.expr; else { k.expr = text.trim(); if (unit !== "mm") k.unit = unit; } } });
         this.redraw();
         const now = this.sketch && (this.sketch.cons || []).find((x) => x.id === id);
         if (now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that value: other dimensions or constraints are holding it.");

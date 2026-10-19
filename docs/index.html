@@ -375,6 +375,13 @@ button { cursor: pointer; }
 .props dt { color: var(--ink-3); }
 .props dd { margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; }
 .empty { color: var(--ink-3); font-size: 12px; padding: 6px 8px; }
+/* jumpstart-3d: parameters panel */
+.tree .folder .param-add { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 12px/1 var(--f-ui); letter-spacing: 0; padding: 3px 8px; cursor: pointer; }
+.tree .folder .param-add:hover { color: var(--accent); border-color: var(--hover-line); }
+.tree .param { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto 18px; align-items: center; gap: 4px; padding: 2px 6px; }
+.tree .param .num { padding: 3px 5px; font-size: 12px; }
+.tree .param .pv { font: 11px/1 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+.tree .param .pv.bad { color: var(--danger); }
 
 /* ---------------------------------------------------------------- floating panels */
 .float { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px var(--shadow); z-index: 5; }

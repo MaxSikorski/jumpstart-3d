@@ -22,6 +22,14 @@ suite runs on GitHub Actions for every pull request (`.github/workflows/test.yml
   changes the triangle count; STL, OBJ, STEP and the project file download;
   FlexiGen, Mesh to STEP and Chisel open and render, and Mesh to STEP's
   pop-out tab boots on its own; a saved design is back after a reload.
+  Six parameter tests load `projects/parametric-plate.json` (named parameters
+  driving sketch dimensions): changing `w` changes the volume and the STL hash
+  and undo restores both, a bad expression keeps the last good shape, the
+  sidebar adds a parameter, opening in inches does not rescale a design typed
+  in mm (a bare number next to a name is plain, a lone number typed in inches is
+  read as inches), renaming a parameter
+  follows it into other parameters and dimensions, and a dimension's value box
+  takes an expression.
 - `golden.spec.mjs`: every design in `projects/` is loaded, exported as STL,
   OBJ, 3MF and STEP (and DXF when it has sketches) through the real menu, and the bytes are hashed against
   `golden.json` (the STEP timestamp and OpenCascade's export counter are
@@ -44,6 +52,8 @@ sets `UPDATE_GOLDEN=1` and records from the site build; in PowerShell run
 Drop a project file in `projects/` (Export > Save Project File, or a
 hand-written document like the existing ones) and re-record. Keep designs
 small: each one is built, exported three times and hashed on every run.
+A design can carry `params` (`[{ id, name, expr, value }]`, plus `unit: "in"` when typed in inches) and sketch dimensions with an `expr`, as `parametric-plate.json` does.
+The STEP counters in multi-body designs depend on how many STEP exports ran before, so a new design file must sort after the existing ones (names are read in alphabetical order), or the hashes of the multi-body designs after it move.
 
 ## How the tests reach the app
 

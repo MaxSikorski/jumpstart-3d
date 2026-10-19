@@ -36,6 +36,9 @@ That is all. You do not need anything else in this repository.
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
 - Export to STL, OBJ, 3MF, STEP and DXF
+- Named parameters in Advanced mode: a Parameters list in the sidebar,
+  and sketch dimensions that take a name or an expression (`w`, `w/2`) and
+  follow it when the value changes
 - Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
   with a live triangle count) for smoother curves in the view and in mesh
   exports
@@ -117,6 +120,7 @@ src/occt-gz.wasm    OpenCascade kernel, gzipped
 src/flexigen.html, src/meshstep.html, src/chisel.html
                     the helper pages, built; their source is in tools/
 src/meshdetail.js   our Mesh detail setting
+src/params.js       our named parameters (evaluator and the sketch dimension hook)
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
 LICENSES/, THIRD-PARTY-NOTICES.md
@@ -156,5 +160,12 @@ UPSTREAM-README.md         the author's README from the source release
 - Imported SVG drawings are stripped of scripts, embedded HTML and event
   handlers before the app reads their geometry, so a booby-trapped file cannot
   run code in the page
+- Named parameters: a Parameters section at the top of the Advanced browser
+  (add, rename, edit, delete, undo). Give a parameter a name and a value or
+  expression (`40`, `w/2`, `1in`), then type the name or an expression in any
+  sketch dimension; the sketch and everything built on it follow when the
+  parameter changes. Parameters are saved in the project file; older files
+  open unchanged. Feature values, Beginner shapes and an editable Pattern are
+  next (`IMPROVEMENT_PLAN.md`, Phase P)
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
