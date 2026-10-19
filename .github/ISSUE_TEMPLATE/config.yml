@@ -1,5 +1,11 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Question or something else
-    url: https://github.com/MaxSikorski/jumpstart-3d/issues/new
-    about: Not a bug or a feature? Open a plain issue and just ask.
+  - name: Question or how do I...
+    url: https://github.com/MaxSikorski/jumpstart-3d/discussions/categories/q-a
+    about: Ask in Q&A. Answers there are easy for the next person to find.
+  - name: Show what you made
+    url: https://github.com/MaxSikorski/jumpstart-3d/discussions/categories/show-and-tell
+    about: Pictures of prints and designs go in Show and tell.
+  - name: Something else
+    url: https://github.com/MaxSikorski/jumpstart-3d/discussions/categories/general
+    about: Not a bug or a feature? Start a discussion in General.

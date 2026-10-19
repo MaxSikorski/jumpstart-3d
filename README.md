@@ -57,8 +57,11 @@ You do not need to write code to help.
   saved project file if you can.
 - **Want a feature?** Same page, pick "Feature request". Describe the
   problem you are trying to solve; that helps more than a specific design.
-- **Know the answer to someone else's issue?** Reply to it. Helping other
-  users counts.
+- **Have a question, or want to show what you made?** Use
+  [Discussions](https://github.com/MaxSikorski/jumpstart-3d/discussions):
+  Q&A for "how do I", Show and tell for pictures of your prints.
+- **Know the answer to someone else's issue or question?** Reply to it.
+  Helping other users counts.
 - **Want to change the code?** Read on, and see
   [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 

@@ -2,7 +2,10 @@
 
 Thanks for helping. This page covers three things: reporting a bug, asking
 for a feature, and changing the code. If you only want to use the app, you
-do not need any of this; see the [README](README.md).
+do not need any of this; see the [README](README.md). Questions and
+pictures of what you made go in
+[Discussions](https://github.com/MaxSikorski/jumpstart-3d/discussions),
+not here.
 
 ## Reporting a bug
 
