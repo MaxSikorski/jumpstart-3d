@@ -61,7 +61,7 @@ export function initChisel(app) {
   function setLevel(l) {
     level = l === "pro" ? "pro" : "easy";
     try { localStorage.setItem("jumpstart.chisel.level", level); } catch (e) {}
-    if (levelBar) levelBar.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.level === level));
+    if (levelBar) levelBar.querySelectorAll("button[data-level]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.level === level));
     const w = win(); if (w && w.setLevel) w.setLevel(level);
   }
   // the switch hangs under the Chisel button
@@ -77,8 +77,12 @@ export function initChisel(app) {
       levelBar = document.createElement("div");
       levelBar.className = "chisel-level"; levelBar.id = "chisel-level";
       levelBar.setAttribute("role", "group"); levelBar.setAttribute("aria-label", "Chisel level");
-      levelBar.innerHTML = '<button data-level="easy" title="Easy: a few big, simple tools (great for kids and first-timers)">Easy</button><button data-level="pro" title="Pro: every brush, cut and setting">Pro</button>';
-      levelBar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setLevel(b.dataset.level); });
+      levelBar.innerHTML = '<button data-level="easy" title="Easy: a few big, simple tools (great for kids and first-timers)">Easy</button><button data-level="pro" title="Pro: every brush, cut and setting">Pro</button><button data-lathe="1" id="chisel-lathe" class="chisel-lathe-btn" title="Turn a body or a wood blank on a virtual lathe">Lathe</button>';
+      levelBar.addEventListener("click", async (e) => {
+        const b = e.target.closest("button"); if (!b) return;
+        if (b.dataset.lathe) { await sync(); app.lathe.open(); return; } // your sculpting is saved first
+        setLevel(b.dataset.level);
+      });
       document.body.append(levelBar);
       addEventListener("resize", placeLevel);
       setLevel(level);

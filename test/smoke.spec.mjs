@@ -26,11 +26,11 @@ test("boots with the kernel ready and no errors", async () => {
   await expect(page).toHaveTitle(/JumpStart 3D/); // boot() already waited for the kernel and the loading screen; afterEach checks the errors
 });
 
-test("About keeps the author's credit and says 1.94", async () => {
+test("About keeps the author's credit and says 2.0", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
   await expect(about).toBeVisible();
-  await expect(about).toContainText("Version 1.94");
+  await expect(about).toContainText("Version 2.0");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
 });

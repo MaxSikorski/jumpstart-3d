@@ -3,6 +3,10 @@ import { initProjector } from "./projector.js";
 import { initMedia } from "./media.js";
 import { inflate } from "./inflate.js";
 import { CREDITS, LICENSE_TEXTS } from "./licenses.js";
+import { initSketch3D } from "./sketch3d.js";
+import { initLathe } from "./lathe.js";
+import { VERSION } from "./version.js";
+import { initBricks } from "./bricks.js";
 import { initTutorials } from "./tutorials.js";
 import * as THREE from "three";
 import { Viewport, ViewCube } from "./viewport.js";
@@ -126,6 +130,10 @@ function boot() {
   app.projector = initProjector(app);
   app.projects = initProjects(app);
   app.tutorials = initTutorials(app);
+  app.sketch3d = initSketch3D(app);
+app.lathe = initLathe(app);
+{ const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + VERSION; }
+app.bricks = initBricks(app);
   // Save makes a new version (v1, v2...); the number shows next to the name
   app.onVersion = () => app.refreshUI && app.refreshUI("version");
   $("btn-save").onclick = () => app.projects.saveVersion();
@@ -548,7 +556,13 @@ app.showAbout = function () {
   const modal = el("div", { class: "modal about", role: "dialog", "aria-label": "About JumpStart 3D" },
     el("header", {}, el("h2", {}, "About"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
     el("div", { class: "mbody", id: "about-body" },
-      el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D"), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
+      el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D ", el("span", { class: "ab-hver" }, "Version " + VERSION)), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
+      sec("New in version 2.0", [
+        ["3D Sketch:", "draw lines in 3D on a body, a virtual sphere, egg or cube, or in the air, with a split screen: turn the camera with one hand while you draw with the other (touch, pen, mouse or trackpad). Freehand or nodes, undo and redo; every line becomes a solid tube."],
+        ["Lathe:", "turn a body (or a copy of it) or a square or round blank on a virtual wood lathe: pick the speed, a foot pedal (Space) that you hold or that stays on, seven chisels you can twist, flying chips, then hollow it out and add it to the design or export STL, 3MF or OBJ. In Beginner, Advanced and Chisel."],
+        ["Jump Brick Builder:", "in Advanced → Simulate, rebuild objects out of printable stud-and-tube building bricks (classic 8 mm or jumbo 16 mm) with a parts list and layer-by-layer building steps, built in place or laid out on print beds."],
+        ["Also:", "a 256 × 256 mm Beginner workplane, path patterns in Advanced, imperial threads, and two new Lathe tutorials."],
+      ]),
       sec("Three modes", [
         ["Beginner:", "drag-and-drop shapes, solids and holes, grouping, align, mirror, pattern and drop to workplane, like Tinkercad."],
         ["Advanced:", "sketch-based, parametric modeling with a feature timeline, like Fusion 360."],
@@ -610,7 +624,7 @@ app.showAbout = function () {
           el("summary", {}, "Full license texts"),
           ...[["MIT License: three.js", "mit-three"], ["MIT License: replicad", "mit-replicad"], ["MIT License: opentype.js", "mit-opentype"], ["ISC License: Flatbush", "isc"], ["GNU Lesser General Public License 2.1: Open CASCADE Technology / opencascade.js / replicad-opencascadejs", "lgpl"], ["SIL Open Font License 1.1: Poppins, Liberation, IBM Plex, Barlow", "ofl"]]
             .map(([t, k]) => el("div", { class: "ab-lic" }, el("b", {}, t), el("pre", {}, LICENSE_TEXTS[k]))))),
-      el("div", { class: "ab-update" }, el("span", { class: "ab-ver" }, "Version 1.94 · community build"),
+      el("div", { class: "ab-update" }, el("span", { class: "ab-ver", id: "ab-ver" }, "Version " + VERSION + " · community build"),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/releases", target: "_blank", rel: "noopener" }, "What's new"),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/issues", target: "_blank", rel: "noopener" }, "Report a bug or idea"))));
   back.append(modal);

@@ -240,5 +240,63 @@
     "3mf": "94c49da1d4a26886771b0719cc8baaacb08a8cb0c547c7f0fb3d941d0fad56bb",
     "step": "773c867de15772c8b34ad3e1772f7eb01054a423ed8c16d74e0dc98fee62508d",
     "dxf": "f5a3b603c5149eb2c2b0b881504efbfdafd6babc23799b732fdda0e249398d73"
+  },
+  "advanced-3d-sketch-tube.json": {
+    "volumes": {
+      "b1 3D sketch": 1893.1
+    },
+    "stlTriangles": 16318,
+    "stl": "bb1d41732a26cb82b973053bcb795bc833e7c99db265a3553b71d4a9f7215075",
+    "obj": "fccb4ce6e7b8475ae282d22c173a0728b002b7439837c755935e20250a7b8bec",
+    "3mf": "e712cfbf63de1c41f248441212353b3349dd3129ca1589f946db27572dcd5a2d",
+    "step": "978fb556abf43f058e5b26fd7bc926d7d3a47fb7e319744cac448b451106392f"
+  },
+  "advanced-bricks.json": {
+    "volumes": {
+      "b1 Brick 2x2 · layer 1": 1102.8,
+      "b2 Brick 1x2 · layer 2": 681.5
+    },
+    "stlTriangles": 2324,
+    "stl": "13083d41a4c336f4cc84b53aff828926b09a02b03351f4b07d57bb2a36639aec",
+    "obj": "45b373f2dcd35b205d48c1e8f1f98d05704b04ea143446e4d139dec5e995b836",
+    "3mf": "b8aee2150104c664f04152b6a7785730c8e8d44ebc7af2afb961932d214397e7",
+    "step": "e3b503eaca9fad732387e0f4ef5da03580054bdb1a2cb9999c72138d048f7dbb"
+  },
+  "advanced-overlap-extrude.json": {
+    "volumes": {
+      "b1 Union plate": 6056.6
+    },
+    "stlTriangles": 136,
+    "stl": "cdf5cbba6c81b7f9c2bc95d8e8aeeee2b98b9abf39e4700c2814aad325313788",
+    "obj": "f65c43dd71b888c62d94890b5eb93cf9b979b6e703f876257cbe6f19387cec7d",
+    "3mf": "edd8c97c6969a234ebc6c5143f9515bba5316083709729677d875288bfb72827",
+    "step": "03975a9545e61240f91721e1fc64d24c3917bdd0d701ad3ead4227d765e30c7e",
+    "dxf": "068addd2c013ced0fec987d169219b099e86f053f32ee49fe35e0aac5d55bb91"
+  },
+  "advanced-pattern-feature.json": {
+    "volumes": {
+      "b1 Bar": 22638.6
+    },
+    "stlTriangles": 1100,
+    "stl": "fc55332c4cd7c96b0520f2ad52c6e679f3e4c502318c16bff992535aa4952772",
+    "obj": "cf237c0e673b883c34182c8662070421ae4e317935dd78bcdccb16d3265c0d19",
+    "3mf": "5d32255de56128886367d3f0fb5d5393ed5e8f111b7b7cc69aa13193eabf89a9",
+    "step": "b45158ffc2c2f0d7a5621262a90bdf7c7834662885350d48b16e85de7cc23aca",
+    "dxf": "c6a1e4b14fa21d431e538bc37917b9fe732372bb592df4646639b5f8336af3a0"
+  },
+  "advanced-pattern-path.json": {
+    "volumes": {
+      "b1 Box": 240,
+      "b2 Box 2": 240,
+      "b3 Box 3": 240,
+      "b4 Box 4": 240,
+      "b5 Box 5": 240
+    },
+    "stlTriangles": 60,
+    "stl": "a04b5b5ab1ade07b48442949ef0b74435b74c94a14415bc8ed546d1b7d9d2402",
+    "obj": "3844856b33ccdba2167ef10ac47671660f5fbac379c77b34ee662c2dd414736e",
+    "3mf": "ba2b353f078e47dca1bf5f834a0c83c391720cc32f7df6adb09ec142e2d733d1",
+    "step": "3fa1d6418420ec2e37ffad48464d62417ad9ed6aff3d5384966bef5d632bbd15",
+    "dxf": "be99f22067dece7c20e85a786ef9b651f1cc954d3afcfec86f5f9c08c8a7598a"
   }
 }

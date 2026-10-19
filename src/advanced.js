@@ -4589,12 +4589,104 @@ export function initAdvanced(app) {
       ids: app.sel.slice(), type: "rect",
       ax1: "x", n1: 3, s1: 20, ax2: "y", n2: 1, s2: 20, sym: false,
       cax: "z", cn: 6, angle: 360, about: "origin", join: false,
+      // pattern along a path (a chain of sketch curves): count, spread over the whole path or a
+      // fixed spacing, keep the copies' direction or turn them with the path
+      path: null, pickPath: false, pn: 6, pdist: "fit", pspace: 20, orient: "same", flip: false,
+      // what is copied: whole bodies, or features (cuts, bosses, holes, text) on one body
+      what: "bodies", fbody: null, feats: [],
       center: new THREE.Vector3(), idmap: {},
     };
     const AXV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+
+    // ---------------- features that can be copied, and where each one sits (world)
+    const featLabel = (m) => m.t === "hole" ? (m.tapped ? "Tapped hole" : m.kind === "csink" ? "Countersunk hole" : m.kind === "cbore" ? "Counterbored hole" : "Hole") + ((m.at || []).length > 1 ? ` ×${m.at.length}` : "")
+      : m.t === "emboss" ? (m.mode === "deboss" ? "Deboss" : "Emboss") + ` "${String(m.str || "").slice(0, 12)}"`
+      : ({ extrude: "Extrude ", revolve: "Revolve ", sweep: "Sweep " }[m.tool && m.tool.t] || "") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join");
+    const featOK = (m) => m.t === "hole" || (m.t === "emboss" && m.kind !== "other") || (m.t === "bool" && m.src !== "combine" && m.tool && ["extrude", "revolve", "sweep"].includes(m.tool.t) && m.tool.sketch);
+    const featsOf = (b) => (b && b.node.mods ? b.node.mods.filter(featOK) : []);
+    function featRef(b, m) {
+      const B = M4(b.m), loc = (p) => new THREE.Vector3(...p).applyMatrix4(B);
+      if (m.t === "hole") { const a = (m.at && m.at.length ? m.at : [{ p: m.p }]); const c = new THREE.Vector3(); a.forEach((x) => c.add(loc(x.p))); return c.divideScalar(a.length); }
+      if (m.t === "emboss") return loc(m.p);
+      const sk = findSketch(store.doc, m.tool.sketch);
+      if (!sk) return null;
+      const P = planeMatrix(sk.plane), c = new THREE.Vector3(); let n = 0;
+      for (const pr of m.tool.profiles || []) if (pr.pt) { c.add(new THREE.Vector3(pr.pt[0], pr.pt[1], 0).applyMatrix4(P)); n++; }
+      if (!n) return null;
+      // the tool sits in the body through m (body coordinates when it was made)
+      return c.divideScalar(n).applyMatrix4(new THREE.Matrix4().fromArray(m.m || IDENTITY)).applyMatrix4(B);
+    }
+    const chosenFeats = () => { const b = findBody(store.doc, st.fbody); return b ? featsOf(b).filter((m) => st.feats.includes(m.id)) : []; };
+
+    // ---------------- the path: sampled into a world polyline with arc-length
+    function pathData() {
+      if (!st.path) return null;
+      const sk = findSketch(store.view, st.path.sketch) || findSketch(store.doc, st.path.sketch);
+      if (!sk) return null;
+      const segs = orderPath(resolveSketch(sk), st.path.ents);
+      if (!segs.length) return null;
+      const P2 = [];
+      const push = (q) => { const l = P2[P2.length - 1]; if (!l || Math.hypot(l[0] - q[0], l[1] - q[1]) > 1e-9) P2.push(q); };
+      for (const g of segs) {
+        if (g.t === "line") { push(g.a); push(g.b); }
+        else if (g.t === "circle") { for (let k = 0; k <= 96; k++) { const t = (k / 96) * Math.PI * 2; push([g.c[0] + g.r * Math.cos(t), g.c[1] + g.r * Math.sin(t)]); } }
+        else if (g.t === "arc") {
+          // circle through a, m, b; walk from a through m to b
+          const [ax, ay] = g.a, [mx, my] = g.m, [bx, by] = g.b;
+          const d = 2 * (ax * (my - by) + mx * (by - ay) + bx * (ay - my));
+          if (Math.abs(d) < 1e-12) { push(g.a); push(g.b); continue; }
+          const ux = ((ax * ax + ay * ay) * (my - by) + (mx * mx + my * my) * (by - ay) + (bx * bx + by * by) * (ay - my)) / d;
+          const uy = ((ax * ax + ay * ay) * (bx - mx) + (mx * mx + my * my) * (ax - bx) + (bx * bx + by * by) * (mx - ax)) / d;
+          const r = Math.hypot(ax - ux, ay - uy), ang = (x, y) => Math.atan2(y - uy, x - ux);
+          const a0 = ang(ax, ay), am = ang(mx, my), a1 = ang(bx, by), TAU = Math.PI * 2;
+          const norm = (v) => ((v % TAU) + TAU) % TAU;
+          let sw = norm(a1 - a0); if (norm(am - a0) > sw) sw -= TAU; // go the way that passes m
+          const n = Math.max(8, Math.ceil(Math.abs(sw) / (Math.PI / 32)));
+          for (let k = 0; k <= n; k++) { const t = a0 + (sw * k) / n; push([ux + r * Math.cos(t), uy + r * Math.sin(t)]); }
+        } else if (g.t === "bez") {
+          for (const sp of g.spans || []) for (let k = 0; k <= 24; k++) {
+            const t = k / 24, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+            push([0, 1].map((i) => w[0] * sp[0][i] + w[1] * sp[1][i] + w[2] * sp[2][i] + w[3] * sp[3][i]));
+          }
+        }
+      }
+      const M = planeMatrix(sk.plane);
+      const pts = P2.map((q) => new THREE.Vector3(q[0], q[1], 0).applyMatrix4(M));
+      if (pts.length < 2) return null;
+      const closed = pts[0].distanceTo(pts[pts.length - 1]) < 1e-6;
+      const cum = [0];
+      for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + pts[k].distanceTo(pts[k - 1]));
+      const L = cum[cum.length - 1];
+      // side: at a corner, which segment gives the direction (+1 the one after it, -1 the one before)
+      const at = (s, side = 1) => {
+        s = closed ? ((s % L) + L) % L : Math.max(0, Math.min(L, s));
+        if (closed && side < 0 && s < 1e-9) s = L; // going backwards from the start: the last segment
+        const q = Math.max(0, Math.min(L, s + side * 1e-6 * Math.max(1, L)));
+        let k = 1;
+        if (side > 0) { while (k < cum.length - 1 && cum[k] <= q) k++; } else { while (k < cum.length - 1 && cum[k] < q) k++; }
+        const f = (s - cum[k - 1]) / Math.max(1e-12, cum[k] - cum[k - 1]);
+        const tan = pts[k].clone().sub(pts[k - 1]).normalize();
+        return { p: pts[k - 1].clone().lerp(pts[k], f), t: tan };
+      };
+      // the arc length of the point on the path nearest to q
+      const nearest = (q) => {
+        let best = 0, bd = Infinity;
+        for (let k = 1; k < pts.length; k++) {
+          const a = pts[k - 1], d = pts[k].clone().sub(a), len2 = d.lengthSq() || 1e-12;
+          const f = Math.max(0, Math.min(1, q.clone().sub(a).dot(d) / len2)), c = a.clone().addScaledVector(d, f), e = c.distanceTo(q);
+          if (e < bd) { bd = e; best = cum[k - 1] + f * Math.sqrt(len2); }
+        }
+        return best;
+      };
+      return { pts, closed, L, at, nearest, n: new THREE.Vector3(...sk.plane.n).normalize(), segCount: segs.length };
+    }
+
     const recenter = () => {
       const box = new THREE.Box3();
-      for (const id of st.ids) { const b = findBody(store.doc, id); const bb = b && scene.boxWithMatrix(id, M4(b.m)); if (bb) box.union(bb); }
+      if (st.what === "features") {
+        const b = findBody(store.doc, st.fbody);
+        for (const m of chosenFeats()) { const r = b && featRef(b, m); if (r) box.expandByPoint(r); }
+      } else for (const id of st.ids) { const b = findBody(store.doc, id); const bb = b && scene.boxWithMatrix(id, M4(b.m)); if (bb) box.union(bb); }
       st.center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
     };
     // the transform of every copy (the original is not included)
@@ -4609,7 +4701,7 @@ export function initAdvanced(app) {
           const v = AXV[st.ax1].clone().multiplyScalar(i * st.s1).add(AXV[st.ax2].clone().multiplyScalar(j * st.s2));
           out.push({ key: i + "," + j, m: new THREE.Matrix4().makeTranslation(v.x, v.y, v.z) });
         }
-      } else {
+      } else if (st.type === "circ") {
         const n = Math.max(2, Math.round(st.cn));
         const full = st.angle >= 359.999;
         const step = full ? 360 / n : st.angle / (n - 1);
@@ -4620,16 +4712,69 @@ export function initAdvanced(app) {
             .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
           out.push({ key: "c" + i, m: R });
         }
+      } else {
+        const pd = pathData();
+        if (!pd) return out;
+        const n = Math.max(2, Math.round(st.pn)), dir = st.flip ? -1 : 1;
+        const s0 = pd.nearest(st.center);
+        // spacing: the whole path shared out (a closed path: n equal steps all the way round;
+        // an open one: from the object to the end of the path), or a typed distance
+        let step = st.pspace;
+        if (st.pdist === "fit") step = pd.closed ? pd.L / n : (dir > 0 ? pd.L - s0 : s0) / (n - 1);
+        const A = pd.at(s0, dir);
+        for (let i = 1; i < n; i++) {
+          const s = s0 + dir * i * step;
+          if (!pd.closed && (s < -1e-6 || s > pd.L + 1e-6)) break; // past the end of an open path
+          const B = pd.at(s, dir);
+          let m = new THREE.Matrix4().makeTranslation(B.p.x - A.p.x, B.p.y - A.p.y, B.p.z - A.p.z);
+          if (st.orient === "follow") {
+            // turn by the change in the path's direction, around the path's plane normal
+            const t0 = A.t.clone().projectOnPlane(pd.n).normalize(), t1 = B.t.clone().projectOnPlane(pd.n).normalize();
+            const ang = Math.atan2(t0.clone().cross(t1).dot(pd.n), t0.dot(t1));
+            m = new THREE.Matrix4().makeTranslation(B.p.x, B.p.y, B.p.z)
+              .multiply(new THREE.Matrix4().makeRotationAxis(pd.n, ang))
+              .multiply(new THREE.Matrix4().makeTranslation(-A.p.x, -A.p.y, -A.p.z));
+          }
+          out.push({ key: "p" + i, m });
+        }
       }
       return out;
+    }
+    // a feature copied by a world transform W, in its body's own coordinates
+    function movedFeature(b, m, W, key, doc) {
+      const B = M4(b.m), L = B.clone().invert().multiply(W).multiply(B);
+      const P = (p) => new THREE.Vector3(...p).applyMatrix4(L).toArray().map((v) => +v.toFixed(9));
+      const D = (v) => new THREE.Vector3(...v).transformDirection(L).toArray().map((x) => +x.toFixed(9));
+      const c = clone(m);
+      c.id = st.idmap[m.id + key] || (st.idmap[m.id + key] = uid("f"));
+      c.seq = nextSeq(doc);
+      if (m.t === "hole") {
+        if (c.at) c.at = c.at.map((x) => ({ ...x, p: P(x.p), n: D(x.n) }));
+        if (c.p) c.p = P(c.p);
+        if (c.n) c.n = D(c.n);
+      } else if (m.t === "emboss") {
+        for (const k of ["p", "o", "c"]) if (c[k]) c[k] = P(c[k]);
+        for (const k of ["n", "x", "ax", "up"]) if (c[k]) c[k] = D(c[k]);
+      } else {
+        c.m = arr(L.clone().multiply(new THREE.Matrix4().fromArray(m.m || IDENTITY)));
+      }
+      return c;
     }
     const def = {
       title: "Pattern",
       keepSelection: true,
-      valid: () => st.ids.length > 0 && transforms().length > 0,
+      valid: () => (st.what === "features" ? chosenFeats().length > 0 : st.ids.length > 0) && transforms().length > 0,
       canOk: () => def.valid(),
       apply(doc) {
         const T = transforms();
+        if (st.what === "features") {
+          const b = findBody(doc, st.fbody);
+          if (!b) return;
+          const src = featsOf(b).filter((m) => st.feats.includes(m.id));
+          // copies go right after their originals' place in the list, original order kept
+          for (const t of T) for (const m of src) b.node.mods.push(movedFeature(b, m, t.m, t.key, doc));
+          return;
+        }
         const made = [];
         for (const id of st.ids) {
           const b = findBody(doc, id);
@@ -4664,10 +4809,27 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, "Pattern"); },
-      hint: () => st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
+      hint: () => st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path. Connected curves are picked together."
+        : st.what === "features" ? (st.fbody ? "Tick the features to copy. Click another body to list its features." : "Click the body that has the features (cuts, bosses, holes, text).")
+        : st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
       build(body) {
-        body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null));
-        body.append(row("Type", seg([["rect", "Rectangular"], ["circ", "Circular"]], st.type, (v) => { st.type = v; changed(); }, "pt-type")));
+        body.append(row("Objects", seg([["bodies", "Bodies"], ["features", "Features"]], st.what, (v) => {
+          st.what = v;
+          if (v === "features" && !st.fbody) { const b = st.ids.map((id) => findBody(store.doc, id)).find((x) => featsOf(x).length) || store.doc.bodies.find((x) => featsOf(x).length); st.fbody = b ? b.id : null; }
+          changed();
+        }, "pt-what")));
+        if (st.what === "bodies") {
+          body.append(pickbox(!st.pickPath, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null, () => { st.pickPath = false; def.render(); }));
+        } else {
+          const b = findBody(store.doc, st.fbody), list = featsOf(b);
+          body.append(pickbox(!st.pickPath, b ? el("span", {}, el("b", {}, b.name), ` · ${st.feats.length} of ${list.length} feature${list.length === 1 ? "" : "s"}`) : "Click a body", null, () => { st.pickPath = false; def.render(); }));
+          if (b && !list.length) body.append(el("div", { class: "hint", style: { padding: 0 } }, "This body has no features that can be copied. Cuts and bosses made by extruding a sketch, holes and embossed text can be patterned."));
+          if (list.length) body.append(el("div", { class: "pt-feats", id: "pt-feats" }, ...list.map((m) => el("label", { class: "check" },
+            el("input", { type: "checkbox", "data-mod": m.id, checked: st.feats.includes(m.id), onchange: (e) => { st.feats = e.target.checked ? [...st.feats, m.id] : st.feats.filter((x) => x !== m.id); changed(); } }), featLabel(m)))));
+        }
+        const types = seg([["rect", "Rectangular"], ["circ", "Circular"], ["path", "Path"]], st.type, (v) => { st.type = v; if (v === "path" && !st.path) st.pickPath = true; changed(); }, "pt-type");
+        types.classList.add("seg-wide");
+        body.append(el("div", { class: "subhead" }, "Type"), types);
         const num = (label, key, opts) => row(label, app.numField({ value: st[key], id: "pt-" + key, live: true, ...opts, onCommit: (v) => { st[key] = v; changed(false); } }), "pt-" + key);
         const axes = (key) => seg([["x", "X"], ["y", "Y"], ["z", "Z"]], st[key], (v) => { st[key] = v; changed(); }, "pt-" + key);
         if (st.type === "rect") {
@@ -4680,24 +4842,48 @@ export function initAdvanced(app) {
           body.append(num("Count", "n2", { min: 1, max: 200, step: 1 }));
           body.append(num("Spacing", "s2", { step: 1 }));
           body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-sym", checked: st.sym, onchange: (e) => { st.sym = e.target.checked; changed(false); } }), "Both sides of the original (count per side)"));
-        } else {
+        } else if (st.type === "circ") {
           body.append(row("Around", axes("cax")));
-          body.append(row("Through", seg([["origin", "Origin"], ["center", "Shape center"]], st.about, (v) => { st.about = v; changed(); }, "pt-about")));
+          body.append(row("Through", seg([["origin", "Origin"], ["center", st.what === "features" ? "Feature center" : "Shape center"]], st.about, (v) => { st.about = v; changed(); }, "pt-about")));
           body.append(num("Count", "cn", { min: 2, max: 360, step: 1 }));
           body.append(num("Total angle", "angle", { min: 1, max: 360, step: 15 }));
           body.append(el("div", { class: "hint", style: { padding: 0 } }, "360° spaces the copies evenly around the full circle."));
+        } else {
+          const pd = pathData();
+          body.append(row("Path", pickbox(st.pickPath, pd ? el("span", {}, el("b", {}, pd.segCount), ` curve${pd.segCount > 1 ? "s" : ""} · ${pd.closed ? "closed" : "open"} · ${withUnit(pd.L, 1)}`) : "Click a sketch path", pd ? () => { st.path = null; st.pickPath = true; changed(); } : null, () => { st.pickPath = true; def.render(); }), "pt-path"));
+          body.append(num("Count", "pn", { min: 2, max: 500, step: 1 }));
+          body.append(row("Spread", seg([["fit", pd && !pd.closed ? "To the end" : "Whole path"], ["space", "Spacing"]], st.pdist, (v) => { st.pdist = v; changed(); }, "pt-pdist")));
+          if (st.pdist === "space") body.append(num("Spacing", "pspace", { min: 0.01, step: 1 }));
+          body.append(row("Copies", seg([["same", "Same direction"], ["follow", "Follow path"]], st.orient, (v) => { st.orient = v; changed(); }, "pt-orient")));
+          body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-flip", checked: st.flip, onchange: (e) => { st.flip = e.target.checked; changed(false); } }), "Go the other way along the path"));
+          body.append(el("div", { class: "hint", style: { padding: 0 } }, "Copies start where the " + (st.what === "features" ? "features sit" : "object sits") + " (the nearest point on the path) and step along it. Follow path turns each copy with the path, like beads on a string."));
         }
         const total = transforms().length + 1;
         body.append(el("div", { class: "hint", id: "pt-total", style: { padding: 0 } }, `${total} instance${total === 1 ? "" : "s"} in total.`));
-        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(false); } }), "Join copies into one body"));
+        if (st.what === "bodies") body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(false); } }), "Join copies into one body"));
       },
-      start() { recenter(); scene.setSelected(st.ids); schedulePreview(def); },
-      cleanup() { scene.setSelected([]); },
+      start() { recenter(); scene.setSelected(st.ids); draw(); schedulePreview(def); },
+      cleanup() { scene.setSelected([]); clearOv(); },
       handler: {
-        hover(e) { const f = scene.pickFace(e); scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default"; },
+        hover(e) {
+          if (st.type === "path" && st.pickPath) { const h = pickSketchCurve(e); vp.canvas.style.cursor = h ? "pointer" : "default"; scene.setHovered(null); return; }
+          const f = scene.pickFace(e); scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default";
+        },
         down(e) {
+          // the path: a sketch curve and the curves joined to it
+          if (st.type === "path" && (st.pickPath || !scene.pickFace(e))) {
+            const h = pickSketchCurve(e);
+            if (h) {
+              const sk = findSk(store.view, h.sketch);
+              st.path = { sketch: h.sketch, ents: pathChain(resolveSketch(sk), h.curve.id) };
+              st.pickPath = false; changed();
+              return true;
+            }
+            if (st.pickPath) return true;
+          }
           const f = scene.pickFace(e);
           if (!f || !findBody(store.doc, f.body)) return true; // copies in the preview aren't pickable
+          if (st.what === "features") { if (st.fbody !== f.body) { st.fbody = f.body; st.feats = []; changed(); } return true; }
           const i = st.ids.indexOf(f.body);
           if (i >= 0) st.ids.splice(i, 1); else st.ids.push(f.body);
           changed();
@@ -4705,12 +4891,29 @@ export function initAdvanced(app) {
         },
       },
     };
+    // the picked path, drawn bold, with a dot where each copy goes
+    function draw() {
+      clearOv();
+      if (st.type !== "path") return;
+      const pd = pathData();
+      if (!pd) return;
+      const seg = [];
+      for (let k = 1; k < pd.pts.length; k++) { const a = pd.pts[k - 1], b = pd.pts[k]; seg.push(a.x, a.y, a.z, b.x, b.y, b.z); }
+      const o = thickLines(seg, 0xe8a317, 4, false); o.renderOrder = 15; ov.add(o);
+      const s0 = pd.nearest(st.center), A = pd.at(s0), mk = [];
+      for (const t of [{ m: new THREE.Matrix4() }, ...transforms()]) {
+        const q = A.p.clone().applyMatrix4(t.m), r = vp.pixelSize(q) * 5;
+        mk.push(q.x - r, q.y, q.z, q.x + r, q.y, q.z, q.x, q.y - r, q.z, q.x, q.y + r, q.z);
+      }
+      const d = thickLines(mk, 0x2f66c8, 5, false); d.renderOrder = 16; ov.add(d);
+    }
     function changed(rerender = true) {
       recenter();
       if (rerender) def.render();
       const t = document.getElementById("pt-total");
       if (t) { const n = transforms().length + 1; t.textContent = `${n} instance${n === 1 ? "" : "s"} in total.`; }
-      scene.setSelected(st.ids);
+      scene.setSelected(st.what === "features" ? (st.fbody ? [st.fbody] : []) : st.ids);
+      draw();
       schedulePreview(def);
       def.refreshOk();
     }
@@ -4949,6 +5152,9 @@ export function initAdvanced(app) {
       group("Convert", "", [
         { id: "sim-meshstep", label: "Mesh to STEP", title: "Mesh to STEP Helper: turn an STL or 3MF mesh into an editable STEP solid, then open it here", icon: "import", fn: () => app.meshstep.open() },
       ]);
+      group("Bricks", "", [
+        { id: "sim-bricks", label: "Jump Brick Builder", title: "Rebuild the selected objects (or all) out of stud-and-tube building bricks you can print, press together and take apart", icon: "bricks", fn: () => app.bricks.open() },
+      ]);
       group("Flexi", "", [
         { id: "sim-flexigen", label: "FlexiGen", title: "Turn one object into a print-in-place articulated flexi model (your design is not changed)", icon: "flexigen", fn: () => flexiGenCmd() },
       ]);
@@ -4962,6 +5168,8 @@ export function initAdvanced(app) {
     group("Create", "", [
       { id: "ad-sketch", label: "Sketch", title: "Create sketch (S)", icon: "sketch", fn: () => createSketchCmd() },
       { id: "ad-extrude", label: "Extrude", title: "Extrude (E)", icon: "extrude", fn: () => extrudeCmd("extrude") },
+      { id: "ad-sketch3d", label: "3D Sketch", title: "Draw lines in 3D on a body, a virtual sphere or cube, or in the air, with a split camera view. Works with touch, pen, mouse and trackpad.", icon: "spline", fn: () => app.sketch3d.open() },
+      { id: "ad-lathe", label: "Lathe", title: "Turn a body or a wood blank on a virtual lathe with chisels (Space is the pedal), then hollow it out. The result is a mesh body.", icon: "lathe", fn: () => app.lathe.open() },
       { id: "ad-hole", label: "Hole", title: "Hole (H): simple, counterbore, countersink or tapped, with standard screw sizes", icon: "hole", fn: () => holeCmd() },
       { id: "ad-features", label: "Advanced Create", title: "Revolve, sweep, pipe, coil, loft, mirror, hole and thread", icon: "features", dropdown: [
         { id: "ad-revolve", label: "Revolve", title: "Revolve (Shift+R)", icon: "revolve", fn: () => extrudeCmd("revolve") },
@@ -5436,6 +5644,7 @@ export function initAdvanced(app) {
     if (r.bottom > innerHeight - 4) menu.style.top = Math.max(4, e.clientY - r.height) + "px";
   }
   return {
+    cancel: () => { if (app.command) closeCmd(false); },
     sim,
     printSim: psim,
     openPrintSim,
