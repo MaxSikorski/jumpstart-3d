@@ -2,9 +2,9 @@
 
 JumpStart 3D was created by **J.Siwek** (credited in the app's About dialog
 up to version 1.93.8; this community build keeps that line). The original
-download link went offline, and this repository re-hosts versions 1.91, 1.93.8
-and 1.94 so people can keep using them, and carries community improvements on
-top.
+download link went offline, and this repository re-hosts versions 1.898, 1.91,
+1.93.8 and 1.94 (the untouched files are on the `upstream-originals` release)
+so people can keep using them, and carries community improvements on top.
 
 Version 1.94 is built from the author's own source release
 (`JumpStart-3D-v1.94-full-source.zip`, attached to the `upstream-originals`
