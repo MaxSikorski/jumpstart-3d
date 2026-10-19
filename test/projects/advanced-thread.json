@@ -1,0 +1,71 @@
+{
+ "v": 1,
+ "id": "g_advanced_thread",
+ "name": "Thread",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "cylinder",
+    "p": {
+     "w": 10,
+     "d": 10,
+     "h": 20,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 2,
+      "t": "thread",
+      "face": {
+       "c": [
+        0,
+        0,
+        10
+       ],
+       "t": "CYLINDRE"
+      },
+      "pitch": 1.5,
+      "length": 0,
+      "flip": false,
+      "left": false,
+      "clear": 0
+     }
+    ]
+   }
+  }
+ ]
+}

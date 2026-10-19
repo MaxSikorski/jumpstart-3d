@@ -1,0 +1,128 @@
+{
+ "v": 1,
+ "id": "g_advanced_revolve",
+ "name": "Revolve",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "revolve",
+    "sketch": "s1",
+    "profiles": [
+     {
+      "key": "ae1,ae2,ae3,ae4",
+      "pt": [
+       10,
+       10
+      ]
+     }
+    ],
+    "axis": "Z",
+    "angle": 360,
+    "mods": []
+   }
+  }
+ ],
+ "sketches": [
+  {
+   "id": "s1",
+   "name": "s1",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     -1,
+     0
+    ]
+   },
+   "pts": [
+    {
+     "id": "ap1",
+     "x": 5,
+     "y": 0
+    },
+    {
+     "id": "ap2",
+     "x": 15,
+     "y": 0
+    },
+    {
+     "id": "ap3",
+     "x": 15,
+     "y": 20
+    },
+    {
+     "id": "ap4",
+     "x": 5,
+     "y": 20
+    }
+   ],
+   "ents": [
+    {
+     "id": "ae1",
+     "t": "line",
+     "a": "ap1",
+     "b": "ap2"
+    },
+    {
+     "id": "ae2",
+     "t": "line",
+     "a": "ap2",
+     "b": "ap3"
+    },
+    {
+     "id": "ae3",
+     "t": "line",
+     "a": "ap3",
+     "b": "ap4"
+    },
+    {
+     "id": "ae4",
+     "t": "line",
+     "a": "ap4",
+     "b": "ap1"
+    }
+   ],
+   "hidden": true
+  }
+ ]
+}

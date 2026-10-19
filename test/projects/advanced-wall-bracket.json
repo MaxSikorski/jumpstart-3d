@@ -1,0 +1,237 @@
+{
+ "v": 1,
+ "id": "g_wall_bracket",
+ "name": "Wall bracket",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 9,
+ "grid": 1,
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Bracket",
+   "seq": 2,
+   "color": "#9fb1c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "extrude",
+    "sketch": "s1",
+    "profiles": [
+     {
+      "key": "e0,e1,e2,e3,e4,e5",
+      "pt": [
+       2.5,
+       20
+      ]
+     }
+    ],
+    "dist": 24,
+    "mode": "sym",
+    "dist2": 0,
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 3,
+      "t": "fillet",
+      "r": 4,
+      "edges": [
+       {
+        "a": [
+         5,
+         -12,
+         5
+        ],
+        "b": [
+         5,
+         12,
+         5
+        ],
+        "m": [
+         5,
+         0,
+         5
+        ],
+        "n": [
+         0.1,
+         0.5,
+         0.125
+        ],
+        "t": "LINE"
+       }
+      ]
+     },
+     {
+      "id": "f2",
+      "seq": 4,
+      "t": "hole",
+      "kind": "csink",
+      "dia": 4.5,
+      "through": true,
+      "depth": 10,
+      "cbDia": 9,
+      "cbDepth": 3,
+      "csDia": 9,
+      "csAngle": 90,
+      "at": [
+       {
+        "p": [
+         36,
+         0,
+         5
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f3",
+      "seq": 5,
+      "t": "hole",
+      "kind": "csink",
+      "dia": 4.5,
+      "through": true,
+      "depth": 10,
+      "cbDia": 9,
+      "cbDepth": 3,
+      "csDia": 9,
+      "csAngle": 90,
+      "at": [
+       {
+        "p": [
+         5,
+         0,
+         28
+        ],
+        "n": [
+         1,
+         0,
+         0
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "sketches": [
+  {
+   "id": "s1",
+   "name": "Sketch 1",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     -1,
+     0
+    ]
+   },
+   "pts": [
+    {
+     "id": "p0",
+     "x": 0,
+     "y": 0
+    },
+    {
+     "id": "p1",
+     "x": 50,
+     "y": 0
+    },
+    {
+     "id": "p2",
+     "x": 50,
+     "y": 5
+    },
+    {
+     "id": "p3",
+     "x": 5,
+     "y": 5
+    },
+    {
+     "id": "p4",
+     "x": 5,
+     "y": 40
+    },
+    {
+     "id": "p5",
+     "x": 0,
+     "y": 40
+    }
+   ],
+   "ents": [
+    {
+     "id": "e0",
+     "t": "line",
+     "a": "p0",
+     "b": "p1"
+    },
+    {
+     "id": "e1",
+     "t": "line",
+     "a": "p1",
+     "b": "p2"
+    },
+    {
+     "id": "e2",
+     "t": "line",
+     "a": "p2",
+     "b": "p3"
+    },
+    {
+     "id": "e3",
+     "t": "line",
+     "a": "p3",
+     "b": "p4"
+    },
+    {
+     "id": "e4",
+     "t": "line",
+     "a": "p4",
+     "b": "p5"
+    },
+    {
+     "id": "e5",
+     "t": "line",
+     "a": "p5",
+     "b": "p0"
+    }
+   ],
+   "hidden": true
+  }
+ ],
+ "planes": [],
+ "joints": []
+}

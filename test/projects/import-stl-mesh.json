@@ -1,0 +1,53 @@
+{
+ "v": 1,
+ "id": "g_import_stl_mesh",
+ "name": "Imported STL",
+ "mode": "beginner",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "mesh",
+    "asset": "acube10",
+    "k": 1,
+    "mods": []
+   }
+  }
+ ],
+ "assets": {
+  "acube10": {
+   "kind": "mesh",
+   "name": "cube10",
+   "data": "CAAAAAwAAAAAAAAAAAAAAAAAAAAAACBBAAAAAAAAAAAAACBBAAAgQQAAAAAAAAAAAAAgQQAAAAAAAAAAAAAAAAAAIEEAACBBAAAAAAAAIEEAACBBAAAgQQAAIEEAAAAAAAAgQQAAIEEAAAAAAgAAAAEAAAAAAAAAAwAAAAIAAAAEAAAABQAAAAYAAAAEAAAABgAAAAcAAAAAAAAAAQAAAAUAAAAAAAAABQAAAAQAAAABAAAAAgAAAAYAAAABAAAABgAAAAUAAAACAAAAAwAAAAcAAAACAAAABwAAAAYAAAADAAAAAAAAAAQAAAADAAAABAAAAAcAAAA="
+  }
+ }
+}

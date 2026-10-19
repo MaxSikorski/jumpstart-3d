@@ -3,9 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "pretest": "node build.mjs",
+    "test": "playwright test",
+    "test:site": "playwright test --project=site",
+    "test:single": "playwright test --project=single",
+    "test:update": "UPDATE_GOLDEN=1 playwright test --project=site"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "esbuild": "0.28.2"
   }
 }

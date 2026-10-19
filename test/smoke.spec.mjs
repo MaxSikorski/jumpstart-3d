@@ -1,0 +1,181 @@
+// Smoke tests: the app boots clean, each mode and helper works, the kernel builds real geometry,
+// exports produce files, and a saved design comes back after a reload.
+import { test, expect } from "@playwright/test";
+import { boot, watchErrors, loadDoc, waitIdle, bodies, exportBytes, newDoc, body, prim, stlTriangles } from "./helpers.mjs";
+
+const box20 = () => newDoc("Box", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
+// top front edge and one vertical edge of that box, in the kernel's edge signature form
+const TOP_FRONT = { a: [-10, -10, 20], b: [10, -10, 20], m: [0, -10, 20], n: [0.5, 0, 1], t: "LINE" };
+const FRONT_RIGHT = { a: [10, -10, 0], b: [10, -10, 20], m: [10, -10, 10], n: [1, 0, 0.5], t: "LINE" };
+// what a 3 mm round on one 20 mm edge removes: (1 - pi/4) r² L
+const filletLoss = (r, L) => (1 - Math.PI / 4) * r * r * L;
+
+// one page for the whole file: the kernel loads once; every test loads its own design first
+let page, errors;
+test.beforeAll(async ({ browser }, info) => {
+  page = await browser.newPage();
+  errors = watchErrors(page);
+  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} }); // skip Chisel's first-visit notice
+  await boot(page, info);
+});
+test.afterAll(async () => { await page.close(); });
+test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
+
+test("boots with the kernel ready and no errors", async () => {
+  await expect(page).toHaveTitle(/JumpStart 3D/); // boot() already waited for the kernel and the loading screen; afterEach checks the errors
+});
+
+test("About keeps the author's credit and says 1.94", async () => {
+  await page.click("#btn-about");
+  const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
+  await expect(about).toBeVisible();
+  await expect(about).toContainText("Version 1.94");
+  await page.keyboard.press("Escape");
+  await expect(about).toBeHidden();
+});
+
+test("Beginner: dragging a shape tile onto the workplane makes a body", async () => {
+  await loadDoc(page, newDoc("Drag", "beginner"));
+  const tile = page.locator('#shapes .tile[data-kind="box"]');
+  await tile.scrollIntoViewIfNeeded();
+  const t = await tile.boundingBox();
+  const vp = await page.locator("#viewport").boundingBox();
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2);
+  await page.mouse.down();
+  const [x0, y0] = [t.x + t.width / 2, t.y + t.height / 2];
+  const [tx, ty] = [vp.x + vp.width / 2, vp.y + vp.height / 2];
+  await page.mouse.move(x0, y0 - 20); // straight up first: a sideways start slides the strip instead
+  for (let i = 1; i <= 12; i++) await page.mouse.move(x0 + ((tx - x0) * i) / 12, y0 - 20 + ((ty - y0 + 20) * i) / 12);
+  await page.mouse.up();
+  await waitIdle(page);
+  const list = await bodies(page);
+  expect(list).toHaveLength(1);
+  expect(list[0].error).toBeNull();
+  const node = await page.evaluate(() => window.__store.doc.bodies[0].node);
+  expect(node.kind).toBe("box");
+  expect(list[0].volume).toBeCloseTo(node.p.w * node.p.d * node.p.h, 0); // the dropped box has its default size
+});
+
+test("Advanced: a fillet in the document rounds the edge (the kernel works)", async () => {
+  const doc = box20();
+  doc.bodies[0].node.mods.push({ id: "f1", seq: 2, t: "fillet", r: 3, edges: [TOP_FRONT] });
+  await loadDoc(page, doc);
+  const [b] = await bodies(page);
+  expect(b.error).toBeNull();
+  expect(b.volume).toBeCloseTo(8000 - filletLoss(3, 20), 0);
+  // remove the fillet with an edit, then undo brings it back
+  await page.evaluate(() => window.__store.update((d) => { d.bodies[0].node.mods = []; }, "test"));
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000, 0);
+  await page.evaluate(() => window.__app.undo());
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000 - filletLoss(3, 20), 0);
+});
+
+test("Advanced: the Fillet tool picks an edge on screen and applies it", async () => {
+  await loadDoc(page, box20());
+  await page.evaluate(() => { const v = window.__app.vp; const V = v.camera.position.constructor; v.animateTo({ az: -Math.PI / 2 + 0.5, el: 0.5, dist: 110, target: new V(0, 0, 10) }, 10); });
+  await page.waitForFunction(() => !window.__app.vp.anim); // the camera move has finished
+  const at = async (x, y, z) => {
+    const r = await page.evaluate(([x, y, z]) => { const v = window.__app.vp; const V = v.camera.position.constructor; const q = v.project(new V(x, y, z)); const b = v.canvas.getBoundingClientRect(); return [b.left + q[0], b.top + q[1]]; }, [x, y, z]);
+    await page.mouse.click(r[0], r[1]);
+  };
+  await page.keyboard.press("f");
+  await expect(page.locator("#cmd")).toContainText(/Fillet/);
+  await at(0, -10, 20); // the top front edge
+  await expect(page.locator("#cmd-ok")).toBeEnabled();
+  await page.fill("#ed-val", "3");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+  const mods = await page.evaluate(() => window.__store.doc.bodies[0].node.mods.map((m) => ({ t: m.t, r: m.r, edges: m.edges.length })));
+  expect(mods).toEqual([{ t: "fillet", r: 3, edges: 1 }]);
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000 - filletLoss(3, 20), 0);
+});
+
+test("Advanced: a chamfer in the document bevels the edge", async () => {
+  const doc = box20();
+  doc.bodies[0].node.mods.push({ id: "c1", seq: 2, t: "chamfer", d: 2, edges: [FRONT_RIGHT] });
+  await loadDoc(page, doc);
+  const [b] = await bodies(page);
+  expect(b.error).toBeNull();
+  expect(b.volume).toBeCloseTo(8000 - 0.5 * 2 * 2 * 20, 0);
+});
+
+test("Mesh detail: Fine builds more triangles than Normal", async () => {
+  await loadDoc(page, newDoc("Cyl", "beginner", { bodies: [body("b1", "Cylinder", prim("cylinder", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] }));
+  const tris = () => page.evaluate(() => window.__app.scene.views.get("b1").data.triangles.length / 3);
+  const normal = await tris();
+  await page.evaluate(() => window.__app.setMeshDetail("fine", true));
+  await waitIdle(page);
+  expect(await tris()).toBeGreaterThan(normal);
+  await page.evaluate(() => window.__app.setMeshDetail("normal", true));
+  await waitIdle(page);
+  expect(await tris()).toBe(normal);
+});
+
+test("exports STL, OBJ, STEP and the project file", async () => {
+  await loadDoc(page, box20());
+  const stl = await exportBytes(page, "stl");
+  expect(stl.name).toMatch(/\.stl$/);
+  expect(stlTriangles(stl.bytes)).toBe(12);
+  expect(stl.bytes.length).toBe(84 + 12 * 50);
+  const obj = await exportBytes(page, "obj");
+  expect(obj.bytes.toString("utf8")).toMatch(/^# JumpStart 3D export/);
+  expect(obj.bytes.toString("utf8").match(/^f /gm)).toHaveLength(12);
+  const step = await exportBytes(page, "step");
+  expect(step.bytes.toString("latin1")).toMatch(/^ISO-10303-21/);
+  expect(step.bytes.toString("latin1")).toContain("MANIFOLD_SOLID_BREP");
+  const json = await exportBytes(page, "json");
+  const parsed = JSON.parse(json.bytes.toString("utf8"));
+  expect(parsed.app).toBe("jumpstart-3d");
+  expect(parsed.doc.bodies.map((b) => b.name)).toEqual(["Box"]);
+});
+
+test("FlexiGen opens on a body and renders", async () => {
+  await loadDoc(page, box20());
+  await page.evaluate(() => window.__app.flexigen.open("b1"));
+  const frame = page.frameLocator("#flexigen iframe");
+  await expect(frame.locator("canvas").first()).toBeVisible();
+  const helper = page.frames().find((f) => f.parentFrame() === page.mainFrame());
+  await helper.waitForFunction(() => !!window.__flexi);
+  await page.evaluate(() => window.__app.flexigen.close());
+  await expect(page.locator("#flexigen")).toHaveCount(0);
+});
+
+test("Mesh to STEP helper opens, renders, and pops out into its own tab", async () => {
+  await page.evaluate(() => window.__app.meshstep.open());
+  const frame = page.frameLocator(".meshstep iframe");
+  await expect(frame.locator("canvas").first()).toBeVisible();
+  await page.frames().find((f) => f.parentFrame() === page.mainFrame()).waitForFunction(() => !!window.__meshstep);
+  // "Open in a new tab" hands the helper's HTML to a new tab as a blob; it must boot on its own there
+  const [popup] = await Promise.all([page.context().waitForEvent("page"), page.click(".meshstep-pop")]);
+  await popup.waitForFunction(() => !!window.__meshstep, null, { timeout: 30_000 });
+  await expect(popup.locator("canvas").first()).toBeVisible();
+  await popup.close();
+  await expect(page.locator(".meshstep")).toHaveCount(0); // the pop-out closes the in-page copy
+});
+
+test("Chisel opens, adds a sphere and hands it back as a body", async () => {
+  await loadDoc(page, newDoc("Sculpt", "beginner"));
+  await page.click("#mode-chisel");
+  const frame = page.frameLocator("#chisel-host iframe");
+  await expect(frame.locator('#shapes .chip[data-shape="sphere"]')).toBeVisible({ timeout: 30_000 });
+  await frame.locator('#shapes .chip[data-shape="sphere"]').click();
+  await expect(frame.locator("#objList")).not.toHaveText("", { timeout: 30_000 });
+  await frame.locator("#js3dSave").click();
+  await expect.poll(() => page.evaluate(() => window.__store.doc.bodies.filter((b) => b.sculpt).length), { timeout: 60_000 }).toBe(1);
+  await page.click("#mode-beginner");
+  await waitIdle(page);
+  const [b] = await bodies(page);
+  expect(b.volume).toBeGreaterThan(0);
+});
+
+test("a saved design comes back after a reload", async ({}, info) => {
+  await loadDoc(page, newDoc("Restore me", "beginner", { bodies: [body("b1", "Keeper", prim("box", { w: 10, d: 10, h: 10, r: 0, c: 0 }))] }));
+  await page.evaluate(() => window.__app.projects.saveNow());
+  await boot(page, info);
+  await waitIdle(page);
+  expect(await page.evaluate(() => window.__store.doc.name)).toBe("Restore me");
+  expect((await bodies(page)).map((b) => b.name)).toEqual(["Keeper"]);
+});
