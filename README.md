@@ -57,6 +57,14 @@ Mike at Making Layers walks through Beginner, Advanced and Chisel in
 (from 5:08). More videos, posts and things people made are collected in
 [COMMUNITY.md](COMMUNITY.md); add yours there.
 
+## Where to find us
+
+- The official JumpStart 3D site, with the author's own downloads:
+  https://sites.google.com/view/jumpstart-3d-creator/home
+- Reddit: https://www.reddit.com/r/Jumpstart3D/ for questions, prints and ideas
+- GitHub Discussions, for announcements, polls and Q&A:
+  https://github.com/MaxSikorski/jumpstart-3d/discussions
+
 ## Help improve it
 
 You do not need to write code to help.
