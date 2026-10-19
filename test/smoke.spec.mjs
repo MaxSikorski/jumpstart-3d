@@ -1,7 +1,8 @@
 // Smoke tests: the app boots clean, each mode and helper works, the kernel builds real geometry,
 // exports produce files, and a saved design comes back after a reload.
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors, loadDoc, waitIdle, bodies, exportBytes, newDoc, body, prim, stlTriangles } from "./helpers.mjs";
+import { readFileSync } from "node:fs";
+import { boot, watchErrors, loadDoc, waitIdle, bodies, exportBytes, newDoc, body, prim, stlTriangles, sha256 } from "./helpers.mjs";
 
 const box20 = () => newDoc("Box", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
 // top front edge and one vertical edge of that box, in the kernel's edge signature form
@@ -200,4 +201,131 @@ test("a saved design comes back after a reload", async ({}, info) => {
   await waitIdle(page);
   expect(await page.evaluate(() => window.__store.doc.name)).toBe("Restore me");
   expect((await bodies(page)).map((b) => b.name)).toEqual(["Keeper"]);
+});
+
+// ---- named parameters driving sketch dimensions (Phase P step 1) ----
+const parametric = () => JSON.parse(readFileSync(new URL("./projects/parametric-plate.json", import.meta.url), "utf8"));
+const setParam = (name, expr) => page.evaluate(([name, expr]) => window.__store.update((d) => { d.params.find((p) => p.name === name).expr = expr; }, "Edit parameter"), [name, expr]);
+const paramState = () => page.evaluate(() => {
+  const d = window.__store.doc, sk = d.sketches[0], pt = (id) => sk.pts.find((p) => p.id === id);
+  return { params: d.params.map((p) => ({ name: p.name, value: p.value })), dims: sk.cons.filter((c) => c.t === "dim").map((c) => c.v), p1x: pt("p1").x, p2y: pt("p2").y };
+});
+const stlHash = async () => { const stl = await exportBytes(page, "stl"); return { hash: sha256(stl.bytes), tris: stlTriangles(stl.bytes) }; };
+const paramValue = (name) => page.locator("#browser .param", { has: page.locator(`input.param-name[value="${name}"]`) }).locator(".pv"); // re-queried each time: the panel is rebuilt on every store event
+
+test("Parameters: changing w changes the volume and the STL, undo brings both back", async () => {
+  await loadDoc(page, parametric());
+  let list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(12000, 0);
+  const a = await stlHash();
+  expect(a.tris).toBe(12);
+
+  await setParam("w", "60");
+  await waitIdle(page);
+  list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(27000, 0); // 60 x 30 x 15: h = w/2 follows
+  const s = await paramState();
+  expect(s.params.map((p) => p.value)).toEqual([60, 30]);
+  expect(s.dims).toEqual([60, 30]);
+  expect(s.p1x).toBeCloseTo(60, 6);
+  expect(s.p2y).toBeCloseTo(30, 6);
+  const b = await stlHash();
+  expect(b.tris).toBe(12);
+  expect(b.hash).not.toBe(a.hash);
+
+  await page.evaluate(() => window.__app.undo()); // one step: parameter, dimensions and points together
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(12000, 0);
+  const u = await paramState();
+  expect(u.params.map((p) => p.value)).toEqual([40, 20]);
+  expect(u.dims).toEqual([40, 20]);
+  expect((await stlHash()).hash).toBe(a.hash);
+});
+
+test("Parameters: a bad expression keeps the last good shape and shows 'error'", async () => {
+  await loadDoc(page, parametric());
+  await setParam("w", "nope*2");
+  await waitIdle(page);
+  const list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(12000, 0);
+  expect((await paramState()).dims).toEqual([40, 20]);
+  await expect(page.locator("#browser")).toBeVisible();
+  await expect(paramValue("w")).toContainText("error");
+  await setParam("w", "50");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(50 * 25 * 15, 0);
+  await expect(paramValue("w")).not.toContainText("error");
+});
+
+test("Parameters: the sidebar adds a parameter and evaluates what is typed", async () => {
+  await loadDoc(page, parametric());
+  const rows = page.locator("#browser .param");
+  await expect(rows).toHaveCount(2);
+  await page.click("#param-add");
+  await expect(rows).toHaveCount(3);
+  expect(await page.evaluate(() => window.__store.doc.params.length)).toBe(3);
+  await rows.nth(2).locator("input.param-expr").fill("w+5");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => window.__store.doc.params[2].value)).toBeCloseTo(45, 6);
+});
+
+test("Parameters: opening in inches does not rescale a design typed in mm", async () => {
+  await loadDoc(page, parametric());
+  await page.click("#unit-toggle"); // the status-bar mm / in switch
+  try {
+    await expect(page.locator("#unit-toggle")).toContainText("in");
+    await page.evaluate(() => window.__store.update((d) => { d.bodies[0].name = "Plate 2"; }, "Rename")); // any unrelated edit re-evaluates
+    await waitIdle(page);
+    expect((await bodies(page))[0].volume).toBeCloseTo(12000, 0);
+    expect((await paramState()).params.map((p) => p.value)).toEqual([40, 20]);
+    // with a name in it, a bare number is a plain number even in inches: w/4 is a quarter of w
+    await page.locator("#browser .param").nth(1).locator("input.param-expr").fill("w/4");
+    await page.keyboard.press("Enter");
+    await expect.poll(() => page.evaluate(() => window.__store.doc.params[1].value)).toBeCloseTo(10, 6);
+    await waitIdle(page);
+    expect((await bodies(page))[0].volume).toBeCloseTo(40 * 10 * 15, 0);
+    // with no name, a number typed in inches is read as inches, and the unit is kept with it
+    await page.locator("#browser .param").nth(0).locator("input.param-expr").fill("2");
+    await page.keyboard.press("Enter");
+    await expect.poll(() => page.evaluate(() => window.__store.doc.params[0].value)).toBeCloseTo(50.8, 6);
+    expect(await page.evaluate(() => window.__store.doc.params[0].unit)).toBe("in");
+    await waitIdle(page);
+    expect((await bodies(page))[0].volume).toBeCloseTo(50.8 * 12.7 * 15, 0);
+  } finally {
+    if ((await page.locator("#unit-toggle").textContent()).includes("in")) await page.click("#unit-toggle");
+  }
+});
+
+test("Parameters: renaming a parameter follows it into other parameters and dimensions", async () => {
+  await loadDoc(page, parametric());
+  const name = page.locator("#browser .param").nth(0).locator("input.param-name");
+  await name.fill("width");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => window.__store.doc.params[0].name)).toBe("width");
+  const d = await page.evaluate(() => ({ h: window.__store.doc.params[1].expr, dims: window.__store.doc.sketches[0].cons.filter((c) => c.t === "dim").map((c) => c.expr) }));
+  expect(d.h).toBe("width/2");
+  expect(d.dims).toEqual(["width", "h"]);
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(12000, 0);
+});
+
+test("Parameters: typing an expression into a dimension's value box binds it", async () => {
+  await loadDoc(page, parametric());
+  await page.evaluate(() => window.__app.enterSketch("s1"));
+  try {
+    await page.evaluate(() => window.__app.sketcher.editDim("d1"));
+    await page.fill("#prompt-value", "w/4");
+    await page.press("#prompt-value", "Enter");
+    await waitIdle(page);
+    const d1 = await page.evaluate(() => window.__store.doc.sketches[0].cons.find((c) => c.id === "d1"));
+    expect(d1.expr).toBe("w/4");
+    expect(d1.v).toBeCloseTo(10, 6);
+    await expect(page.locator(".dimlabel", { hasText: "w/4 = 10" })).toBeVisible();
+    expect((await bodies(page))[0].volume).toBeCloseTo(10 * 20 * 15, 0);
+  } finally {
+    await page.evaluate(() => window.__app.exitSketch());
+  }
 });

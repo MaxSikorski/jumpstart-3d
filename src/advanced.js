@@ -9,6 +9,7 @@ import { planeMatrix } from "./scene.js";
 import { thickLines } from "./thickline.js";
 import { SKETCH_TOOLS, normalizeSketch, arcFrom3, addImportedCurves } from "./sketcher.js";
 import { parseSVG, parseDXF, curvesBounds } from "./importers.js";
+import { paramNameOk, renameParam, newParam, removeParam, applyParams, PARAM_ERROR } from "./params.js";
 import { traceImage, curvesFor } from "./trace.js";
 import { subjectMask, inflate, maskBox } from "./puffy.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
@@ -5127,6 +5128,35 @@ export function initAdvanced(app) {
       n.onclick = () => { selSketch = s.id; app.select([]); renderBrowser(); };
       n.ondblclick = () => app.enterSketch(s.id);
       tree.append(n);
+    }
+    // jumpstart-3d: parameters
+    const params = doc.params || [];
+    // re-running applyParams on the new doc changes nothing; it only reports dimensions that could not take the value
+    const editParams = (fn, label) => {
+      const next = store.update(fn, label), n = next ? applyParams(next) : 0;
+      if (n) app.toast(`${n} dimension(s) can't take that value`);
+    };
+    tree.append(el("div", { class: "folder" }, `Parameters (${params.length})`,
+      el("button", { class: "param-add", id: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+")));
+    if (!params.length) tree.append(el("div", { class: "empty" }, "Add a parameter, then type its name in a dimension."));
+    for (const p of params) {
+      const nm = el("input", { class: "num param-name", value: p.name, title: "Name", "aria-label": "Parameter name" });
+      const ex = el("input", { class: "num param-expr", value: p.expr, title: "Value or expression", "aria-label": `Value of ${p.name}` });
+      for (const inp of [nm, ex]) inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") inp.blur(); if (e.key === "Escape") { inp.value = inp === nm ? p.name : p.expr; inp.blur(); } };
+      nm.onchange = () => {
+        const name = nm.value.trim(), err = paramNameOk(name, params, p.id);
+        if (err) { app.toast(err); nm.value = p.name; return; }
+        if (name !== p.name) editParams((d) => { renameParam(d, p.id, name); }, "Rename parameter");
+      };
+      ex.onchange = () => editParams((d) => {
+        const q = d.params.find((x) => x.id === p.id);
+        q.expr = ex.value.trim();
+        if (getUnit() !== "mm") q.unit = getUnit(); else delete q.unit;
+      }, "Edit parameter");
+      const ok = isFinite(p.value);
+      tree.append(el("div", { class: "param" }, nm, ex,
+        el("span", { class: "pv" + (ok ? "" : " bad"), title: ok ? "" : PARAM_ERROR }, ok ? `${showLen(p.value, 3)} ${getUnit()}` : "error"),
+        el("button", { class: "eye", title: "Delete parameter", "aria-label": "Delete " + p.name, html: ICON.del, onclick: () => { let n = 0; store.update((d) => { n = removeParam(d, p.id); }, "Delete parameter"); if (n) app.toast(`${p.name} removed; ${n} dimension(s) keep their value`); } })));
     }
     const planes = doc.planes || [];
     if (planes.length) {

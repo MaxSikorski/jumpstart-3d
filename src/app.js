@@ -819,7 +819,8 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
   return inp;
 };
 
-app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit() }) {
+// jumpstart-3d: parameters. resolve(text) can replace the length parser; onOk also gets the typed text
+app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit(), resolve }) {
   const vpEl = $("viewport");
   vpEl.querySelector(".prompt")?.remove();
   const inp = el("input", { class: "num", value, type: "text", inputmode: "decimal", id: "prompt-value" });
@@ -831,7 +832,7 @@ app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit()
   const close = (ok) => { if (done) return; done = true; box.remove(); app.vp.canvas.focus(); if (!ok && onCancel) onCancel(); };
   inp.addEventListener("keydown", (e) => {
     e.stopPropagation();
-    if (e.key === "Enter") { const v = parseLength(inp.value, unit); if (isFinite(v)) { close(true); onOk(v); } else inp.classList.add("bad"); }
+    if (e.key === "Enter") { const v = resolve ? resolve(inp.value) : parseLength(inp.value, unit); if (isFinite(v)) { close(true); onOk(v, inp.value); } else inp.classList.add("bad"); }
     if (e.key === "Escape") close(false);
   });
   inp.addEventListener("blur", () => setTimeout(() => box.isConnected && close(false), 150));

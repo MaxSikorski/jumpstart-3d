@@ -171,6 +171,20 @@ export function pruneConstraints(sk) {
   sk.cons = sk.cons.filter((c) => (!c.e1 || E.has(c.e1)) && (!c.e2 || E.has(c.e2)) && (!c.e || E.has(c.e)) && (!c.p || Pt.has(c.p)) && (!c.p1 || Pt.has(c.p1)) && (!c.p2 || Pt.has(c.p2)));
 }
 
+// pull an arc's end point back onto its circle after the solver has moved things
+export function normalizeSketch(sk) {
+  const P = new Map(sk.pts.map((p) => [p.id, p]));
+  for (const e of sk.ents) {
+    if (e.t !== "arc") continue;
+    const c = P.get(e.c), a = P.get(e.a), b = P.get(e.b);
+    if (!c || !a || !b) continue;
+    const r = Math.hypot(a.x - c.x, a.y - c.y);
+    const ang = Math.atan2(b.y - c.y, b.x - c.x);
+    b.x = c.x + r * Math.cos(ang);
+    b.y = c.y + r * Math.sin(ang);
+  }
+}
+
 // ------------------------------------------------------------ the solver
 // keep: point ids that must not move (being dragged); projected points never move
 export function solveSketch(sk, keep = new Set()) {
