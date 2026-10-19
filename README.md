@@ -40,6 +40,13 @@ That is all. You do not need anything else in this repository.
   with a live triangle count) for smoother curves in the view and in mesh
   exports
 
+## See it in action
+
+Mike at Making Layers walks through Beginner, Advanced and Chisel in
+[4 New 3D CAD/Modeling Programs!](https://youtu.be/KGi11k9tQhA?t=308)
+(from 5:08). More videos, posts and things people made are collected in
+[COMMUNITY.md](COMMUNITY.md); add yours there.
+
 ## Help improve it
 
 You do not need to write code to help.

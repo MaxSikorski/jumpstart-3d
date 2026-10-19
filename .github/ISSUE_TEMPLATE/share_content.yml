@@ -1,0 +1,29 @@
+name: Share your content
+description: A video, post or project that shows JumpStart 3D, for COMMUNITY.md
+labels: ["community"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for showing the app. We will add a link and a one-line description to [COMMUNITY.md](https://github.com/MaxSikorski/jumpstart-3d/blob/main/COMMUNITY.md). We only link to your work, we do not copy it.
+  - type: input
+    id: link
+    attributes:
+      label: Link
+      description: The video, post, article or model page. For a video, a link with the time where the JumpStart 3D part starts is ideal.
+    validations:
+      required: true
+  - type: input
+    id: who
+    attributes:
+      label: Who made it, as you want to be credited
+      placeholder: Channel name, username or real name
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What does it show?
+      description: One or two sentences. Which parts of the app, and what you made with it.
+    validations:
+      required: true
