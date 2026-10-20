@@ -15,7 +15,29 @@ Newest first. Everything here is by the people named, not by this project.
 - [GitHub Discussions](https://github.com/MaxSikorski/jumpstart-3d/discussions):
   announcements, polls, Q&A and Show and tell.
 
+## The author's own places
+
+- The [official site](https://sites.google.com/view/jumpstart-3d-creator/home)
+- His [GitHub repository](https://github.com/classyapps2026/jumpstart3d)
+- His [YouTube channel](https://www.youtube.com/@MakeandRemake-z5c)
+
 ## Videos
+
+### JumpStart 3D Design is BACK! Version 2.0 · Make and Remake
+
+[![JumpStart 3D Design is BACK! Version 2.0](https://img.youtube.com/vi/OmoVmYzoIsk/hqdefault.jpg)](https://youtu.be/OmoVmYzoIsk)
+
+The author, at [Make and Remake](https://www.youtube.com/@MakeandRemake-z5c),
+October 2026, 12:34. His own tour of version 2.0: why he made it (a
+teacher, a free tool for students, a hobby project), the Beginner, Advanced
+and Chisel modes, Chromebook and iPad touch, tutorials, performance mode,
+colored planes and bold lines, offset planes, inch units, the new Pattern
+with a path mode, DXF export of sketches, 3D Sketch, the virtual Lathe,
+section analysis, the 3D print simulator with support warnings, Mesh to
+STEP, FlexiGen, Jump Brick Builder, Chisel's characters and Puppet Animator,
+projection mapping with a projector window, picture trace and STL, 3MF and
+STEP import. He confirms the source is open under the MIT License and asks
+one favour: if you modify it, share it with others.
 
 ### 4 New 3D CAD/Modeling Programs! · Making Layers
 

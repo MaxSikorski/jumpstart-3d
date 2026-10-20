@@ -1,6 +1,7 @@
 MIT License
 
 Copyright (c) JumpStart 3D contributors
+Copyright (c) 2026 classyapps2026
 Copyright (c) 2026 Max Sikorski and the jumpstart-3d community contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,8 +22,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The first copyright line is the one in the author's own LICENSE and covers
-the author's code in src/. The second line covers this
-repository's additions and tooling. The open-source libraries and fonts in
-third_party/ keep their own licenses: see THIRD-PARTY-NOTICES.md and the
-LICENSES/ folder.
+The first two copyright lines are the author's and cover his code in src/:
+the first is from the LICENSE in his 2.0 source zip, the second from the
+LICENSE in his GitHub repository, https://github.com/classyapps2026/jumpstart3d.
+The third line covers this repository's additions in src/ (listed in
+README.md) and its tooling, by Max Sikorski and the community. The
+open-source libraries and fonts in third_party/ keep their own licenses: see
+THIRD-PARTY-NOTICES.md and the LICENSES/ folder.
