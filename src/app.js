@@ -31,6 +31,7 @@ import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
+import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -936,3 +937,4 @@ window.__app = app; window.__store = store; window.__findBody = findBody;
 // jumpstart-3d: scripting bridge. window.JS3D, documented in BRIDGE.md; does nothing until a script calls it.
 initBridge(app);
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
+initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked

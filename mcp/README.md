@@ -9,6 +9,8 @@
 - **Headless.** The server starts its own invisible Chromium on the built site and works there. Nothing needs to be open.
   Good for "make me a bracket and save the STL".
 
+Prefer to stay in the browser? The app also has a chat panel (the **AI** button) that offers a model the same tools; see "Chat inside the app" in the [main README](../README.md). This server is for agents that run outside the browser.
+
 By default (`JS3D_MODE=auto`) it uses your tab when one is connected, and starts the headless browser on the first tool
 call that needs a page when none is. The `status` tool tells you which one you are talking to.
 

@@ -1040,6 +1040,39 @@ button, .btn, .tb-btn, .ibtn, .rbtn, .tile, a, label, select, summary { touch-ac
 html.ios input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), html.ios select, html.ios textarea { font-size: 16px; }
 /* the notch and the home bar */
 html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+/* jumpstart-3d: chat panel. the AI button opens it; hidden and idle until then */
+#btn-chat[aria-pressed="true"] { background: var(--block-2); box-shadow: inset 0 0 0 1px var(--accent-2); }
+#chat { position: fixed; top: 52px; right: 8px; z-index: 48; width: min(380px, calc(100vw - 16px)); height: calc(100vh - 70px); height: calc(100dvh - 70px); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.25); font-size: 13px; overflow: hidden; }
+#chat textarea { font: inherit; color: inherit; }
+.chat-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.chat-title { flex: 1; font-weight: 600; }
+.chat-head .btn { padding: 3px 10px; font-size: 12px; }
+#chat-settings { border-bottom: 1px solid var(--line); }
+#chat-settings summary { padding: 7px 12px; cursor: pointer; color: var(--ink-2); font-size: 12px; }
+.chat-form { display: flex; flex-direction: column; gap: 7px; padding: 2px 12px 10px; max-height: 46vh; overflow: auto; }
+.chat-form label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-3); }
+.chat-form label.chat-check { flex-direction: row; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.chat-form label.chat-check input { margin: 2px 0 0; flex: none; }
+.chat-form .chat-modelrow { display: flex; gap: 6px; }
+.chat-form .chat-modelrow .num { flex: 1; }
+.chat-form .btn { padding: 4px 10px; font-size: 12px; }
+.chat-form .menu-note { padding: 0; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); }
+#chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { border-radius: 8px; padding: 7px 10px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.chat-msg.user { align-self: flex-end; max-width: 88%; background: var(--accent-soft); border: 1px solid var(--accent-2); }
+.chat-msg.assistant { align-self: flex-start; max-width: 96%; background: var(--panel-2); border: 1px solid var(--line); }
+.chat-msg pre { margin: 6px 0 0; padding: 6px 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 5px; font: 11.5px/1.35 var(--f-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
+.chat-msg.tool { padding: 3px 8px; font: 11.5px/1.4 var(--f-mono); color: var(--ink-2); border: 1px solid var(--line-2); background: transparent; white-space: normal; }
+.chat-msg.tool summary { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-msg.tool img { display: block; max-width: 100%; margin-top: 6px; border-radius: 5px; border: 1px solid var(--line); }
+.chat-msg.error { color: var(--danger); background: var(--err-bg); border: 1px solid var(--err-line); }
+.chat-msg.hint { color: var(--ink-2); background: var(--panel-2); border: 1px dashed var(--line); font-size: 12px; }
+.chat-foot { border-top: 1px solid var(--line); padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+#chat-input { width: 100%; box-sizing: border-box; min-height: 54px; max-height: 140px; resize: vertical; border: 1px solid var(--line); border-radius: 4px; padding: 6px; background: var(--panel); }
+#chat-input:focus { border-color: var(--accent-2); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+.chat-btns { display: flex; align-items: center; gap: 6px; }
+#chat-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--ink-3); }
+:root[data-ui="contrast"] #chat { border-width: 2px; }
 </style>
 
 <div id="app" data-mode="beginner">
@@ -1093,6 +1126,8 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <div class="menu-note">Lets a program on this computer edit this design (see mcp/README.md). Off unless you turn it on. Setup for any agent: see mcp/AGENT-SETUP.md in the repository.</div>
       </div>
     </div>
+    <!-- jumpstart-3d: chat -->
+    <button class="tb-btn save-btn" id="btn-chat" aria-pressed="false" title="Chat with an AI model that edits this design"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span class="lbl">AI</span></button>
     <button class="tb-btn tut-btn" id="btn-tutorials" title="Tutorials: step-by-step projects for Beginner and Advanced"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/><path d="M22 9v6"/></svg><span class="lbl">Tutorials</span></button>
     <button class="tb-btn about-btn" id="btn-about" title="About JumpStart 3D: features and help">About</button>
     <button class="tb-btn" id="btn-keys" title="Keyboard shortcuts (?)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
@@ -1165,5 +1200,41 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
   </div>
 </div>
 <input type="file" id="file-import" accept=".json,application/json" hidden>
+<!-- jumpstart-3d: chat -->
+<aside id="chat" hidden aria-label="AI chat">
+  <div class="chat-head">
+    <span class="chat-title">AI assistant</span>
+    <button class="btn" id="chat-new" title="Forget this conversation">New chat</button>
+    <button class="tut-icon" id="chat-close" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <details id="chat-settings">
+    <summary>Settings</summary>
+    <div class="chat-form">
+      <label>Provider <select class="num" id="chat-provider"></select></label>
+      <label>Address <input class="num" id="chat-url" type="text" spellcheck="false" autocomplete="off"></label>
+      <label>Model
+        <span class="chat-modelrow">
+          <input class="num" id="chat-model" type="text" list="chat-models" spellcheck="false" autocomplete="off">
+          <button class="btn" id="chat-list" type="button">List models</button>
+        </span>
+        <datalist id="chat-models"></datalist>
+      </label>
+      <label>API key <input class="num" id="chat-key" type="password" autocomplete="off"></label>
+      <label class="chat-check"><input type="checkbox" id="chat-remember"><span>Remember key in this browser</span></label>
+      <label class="chat-check"><input type="checkbox" id="chat-vision"><span>Model can see images</span></label>
+      <label class="chat-check"><input type="checkbox" id="chat-scripts"><span>Allow scripts (run_script): the model can run any JavaScript in this page, the same trust as Run script…</span></label>
+      <div class="menu-note">Keys stay in this browser. The model only acts through the tools listed in README; nothing is sent until you press Send.</div>
+    </div>
+  </details>
+  <div id="chat-messages" aria-live="polite"></div>
+  <div class="chat-foot">
+    <textarea id="chat-input" rows="2" placeholder="Describe what to make or change…"></textarea>
+    <div class="chat-btns">
+      <span id="chat-status"></span>
+      <button class="btn" id="chat-stop" disabled>Stop</button>
+      <button class="btn primary" id="chat-send">Send</button>
+    </div>
+  </div>
+</aside>
 <script type="module" src="app.js"></script>
 </body></html>
