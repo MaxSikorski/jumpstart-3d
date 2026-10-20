@@ -1,4 +1,4 @@
-import { inspectTriangleMesh, sectionTriangleMesh, sampleSolidIntervals } from "./mcp-geometry.js";
+import { inspectTriangleMesh, sectionTriangleMesh, sampleSolidIntervals } from "../shared/geometry.js";
 
 // Parallel flat-bottom channels only. Results are inferred from tessellation sections,
 // never from primitive parameters or the expected values supplied by the agent.

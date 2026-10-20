@@ -1,4 +1,4 @@
-import { clone } from "./util.js";
+import { clone } from "../../src/util.js";
 
 export const MCP_PLAN_LIMITS = {
   sketches: 12,

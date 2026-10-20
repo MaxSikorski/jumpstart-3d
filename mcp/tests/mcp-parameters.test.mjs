@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveParametricPlan, evaluateParameterExpression } from '../src/mcp-parameters.js';
+import { resolveParametricPlan, evaluateParameterExpression } from '../shared/parameters.js';
 const template = () => ({
   parameters: {
     diameter: { value: 100, unit: 'mm', min: 10, max: 200 },

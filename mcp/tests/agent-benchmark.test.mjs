@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AGENT_TASKS, agentTask } from "../benchmarks/agent-tasks.mjs";
-import { evaluateSession, inspectStl } from "../scripts/agent-benchmark.mjs";
+import { evaluateSession, inspectStl } from "../benchmarks/agent-runner.mjs";
+import { evaluateSession as legacyEvaluate } from "../../scripts/agent-benchmark.mjs";
+
+test("the legacy agent runner exports the canonical implementation without running the CLI", () => {
+  assert.equal(legacyEvaluate, evaluateSession);
+});
 
 test("agent tasks contain requests and invariants, never prepared plans", () => {
   assert.equal(AGENT_TASKS.length, 3);

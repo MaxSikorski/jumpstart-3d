@@ -32,7 +32,18 @@ to load the indicator and client connection tracking.
 
 ## Connect your AI agent
 
-Print the MCP client configuration:
+For Codex, register the MCP server with:
+
+```sh
+make codex-install
+```
+
+This uses the installed Codex CLI to add or update the `jumpstart` server in
+your Codex configuration. It requires `codex` and `docker` on PATH and records
+Docker's absolute path. Run `make up` to start the container, then reconnect the
+MCP server in Codex or restart Codex. Registration can be repeated.
+
+For another MCP client, print the configuration:
 
 ```sh
 make mcp-config
@@ -43,14 +54,14 @@ For a client that uses TOML configuration, the entry is:
 ```toml
 [mcp_servers.jumpstart]
 command = "docker"
-args = ["exec", "-i", "jumpstart-3d", "node", "scripts/jumpstart-mcp-stdio-proxy.mjs"]
+args = ["exec", "-i", "jumpstart-3d", "node", "mcp/server/stdio-proxy.mjs"]
 ```
 
 Start the container before connecting or reconnecting the MCP client. The client
 must be able to run `docker`. If several editor tabs are open, have the agent
 list editors and select the intended document.
 
-See [MCP.md](MCP.md) for tool schemas, native startup without Docker, limits, and
+See [mcp/README.md](mcp/README.md) for tool schemas, native startup without Docker, limits, and
 example model plans.
 
 ## Everyday workflow
@@ -98,7 +109,7 @@ clearance still need to be measured and tested.
 Plans support primitives, dimensioned circle and polygon sketches, extrude,
 revolve, loft, transforms, rectangular and circular patterns, boolean joins and
 cuts, and native fillet, shell, hole, thread, emboss, and scale operations.
-Operation details and restrictions are in [MCP.md](MCP.md).
+Operation details and restrictions are in [mcp/README.md](mcp/README.md).
 
 Parameterized plans can persist named values, arithmetic dependencies, bounds,
 and comparison constraints. Previews return parameter and feature diffs, top,
@@ -160,9 +171,9 @@ npm run benchmark:agent -- tasks
 
 An agent supplies the plans and revisions, while the recorder captures tool
 calls, images, independent measurements, exports, and recovery evidence. See
-[MCP.md](MCP.md#agent-design-and-revision-benchmark) for the session commands.
+[mcp/README.md](mcp/README.md#agent-design-and-revision-benchmark) for the session commands.
 The latest recorded observations are in
-[benchmarks/verification-results.json](benchmarks/verification-results.json).
+[mcp/benchmarks/verification-results.json](mcp/benchmarks/verification-results.json).
 
 ## Useful commands
 
@@ -172,6 +183,7 @@ The latest recorded observations are in
 | `make down` | Stop the container. |
 | `make logs` | Follow server logs. |
 | `make mcp-config` | Print the MCP client configuration. |
+| `make codex-install` | Register or update JumpStart MCP in Codex. |
 | `npm run build` | Rebuild the browser app from `src/`. |
 | `npm test` | Run contract and regression tests. |
 | `make benchmark` | Run the tutorial benchmark against a connected blank editor. |
@@ -199,15 +211,15 @@ After changing app source, run `make up` again to rebuild the Docker image.
 
 | Path | Purpose |
 | --- | --- |
-| [MCP.md](MCP.md) | Detailed setup, protocol, examples, and limitations. |
-| [src/mcp-plan.js](src/mcp-plan.js) | Model-plan validation and native operation mapping. |
-| [src/mcp.js](src/mcp.js) | Live editor bridge, previews, transactions, and exports. |
-| [src/mcp-models.js](src/mcp-models.js) | Saved parameter models and guarded regeneration. |
-| [src/mcp-parameters.js](src/mcp-parameters.js) | Bounded arithmetic dependencies and constraints. |
-| [src/mcp-inspection.js](src/mcp-inspection.js) | Independent measurements of generated geometry. |
-| [scripts/](scripts/) | Local server, stdio proxy, and benchmark runner. |
-| [benchmarks/](benchmarks/) | Tutorial tasks, plans, and invariant checks. |
-| [tests/](tests/) | Contract and regression coverage. |
+| [mcp/README.md](mcp/README.md) | Detailed setup, protocol, examples, and limitations. |
+| [mcp/browser/model-plan.js](mcp/browser/model-plan.js) | Model-plan validation and native operation mapping. |
+| [mcp/browser/editor-bridge.js](mcp/browser/editor-bridge.js) | Live editor bridge, previews, transactions, and exports. |
+| [mcp/browser/models.js](mcp/browser/models.js) | Saved parameter models and guarded regeneration. |
+| [mcp/shared/parameters.js](mcp/shared/parameters.js) | Bounded arithmetic dependencies and constraints. |
+| [mcp/browser/inspection.js](mcp/browser/inspection.js) | Independent measurements of generated geometry. |
+| [mcp/server/](mcp/server/) | Local server, stdio proxy, and tool contracts. |
+| [mcp/benchmarks/](mcp/benchmarks/) | Tasks, plans, runners, and invariant checks. |
+| [mcp/tests/](mcp/tests/) | Contract and regression coverage. |
 | [compose.yaml](compose.yaml) | Local container and export-volume configuration. |
 
 JumpStart 3D was created by J.Siwek. This workspace builds on the

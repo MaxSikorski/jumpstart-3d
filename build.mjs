@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
-import { AI_STATUS_CSS } from "./src/ai-status.js";
+import { AI_STATUS_CSS } from "./mcp/browser/ai-status.js";
 
 const root = new URL(".", import.meta.url).pathname;
 const src = join(root, "src");

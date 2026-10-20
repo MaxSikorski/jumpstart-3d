@@ -1,10 +1,10 @@
-import { store, resolveNode, newDoc } from "./store.js";
-import { resizeBodyDocument } from "./mcp-plan.js";
-import { getUnit } from "./units.js";
-import { clone } from "./util.js";
-import { compileMcpModel, reviseMcpParameters } from "./mcp-models.js";
-import { inspectGeometry } from "./mcp-inspection.js";
-import { selectGeometry } from "./mcp-geometry.js";
+import { store, resolveNode, newDoc } from "../../src/store.js";
+import { resizeBodyDocument } from "./model-plan.js";
+import { getUnit } from "../../src/units.js";
+import { clone } from "../../src/util.js";
+import { compileMcpModel, reviseMcpParameters } from "./models.js";
+import { inspectGeometry } from "./inspection.js";
+import { selectGeometry } from "../shared/geometry.js";
 import { initAgentStatus, STATUS_HOLD_MS } from "./ai-status.js";
 
 const BRIDGE = "/__mcp";

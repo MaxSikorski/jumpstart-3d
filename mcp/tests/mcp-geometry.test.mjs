@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectTriangleMesh, sectionTriangleMesh, sampleSolidIntervals, selectGeometry } from '../src/mcp-geometry.js';
+import { inspectTriangleMesh, sectionTriangleMesh, sampleSolidIntervals, selectGeometry } from '../shared/geometry.js';
 const cube={vertices:[0,0,0, 2,0,0, 2,2,0, 0,2,0, 0,0,2, 2,0,2, 2,2,2, 0,2,2],triangles:[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7]};
 test('closed mesh dimensions, winding, components and volume use generated triangles',()=>{
  const r=inspectTriangleMesh(cube);assert.deepEqual(r.bounds.dimensions,[2,2,2]);assert.equal(r.boundaryEdges,0);assert.equal(r.nonManifoldEdges,0);assert.equal(r.inconsistentWindingEdges,0);assert.equal(r.disconnectedComponents,1);assert.ok(Math.abs(r.signedVolume-8)<1e-10);

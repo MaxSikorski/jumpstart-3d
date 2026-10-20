@@ -4,9 +4,9 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { once } from "node:events";
 
-test("stdio MCP discovery, tool schemas, and localhost editor registration work", async () => {
-  const child = spawn(process.execPath, ["scripts/jumpstart-mcp-server.mjs"], {
-    cwd: new URL("..", import.meta.url),
+for (const entry of ["mcp/server/server.mjs", "scripts/jumpstart-mcp-server.mjs"]) test(`stdio MCP discovery and localhost registration work through ${entry}`, async () => {
+  const child = spawn(process.execPath, [entry], {
+    cwd: new URL("../..", import.meta.url),
     env: { ...process.env, JUMPSTART_MCP_PORT: "0" },
     stdio: ["pipe", "pipe", "pipe"],
   });

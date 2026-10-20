@@ -5,9 +5,9 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test",
-    "benchmark:tutorials": "node scripts/tutorial-benchmark.mjs",
-    "benchmark:agent": "node scripts/agent-benchmark.mjs",
-    "mcp:jumpstart": "node scripts/jumpstart-mcp-server.mjs"
+    "benchmark:tutorials": "node mcp/benchmarks/tutorial-runner.mjs",
+    "benchmark:agent": "node mcp/benchmarks/agent-runner.mjs",
+    "mcp:jumpstart": "node mcp/server/server.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

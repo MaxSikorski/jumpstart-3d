@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TUTORIAL_CASES } from "../benchmarks/tutorial-cases.mjs";
-import { buildModelPlan } from "../src/mcp-plan.js";
+import { buildModelPlan } from "../browser/model-plan.js";
 
 const edge = (m, t = "LINE", a = [0, 0, 0], b = [0, 100, 0]) => ({ a, b, m, n: [0.5, 0.5, 0.5], t });
 const face = (c, t = "PLANE", extra = {}) => ({ c, t, n: [0, 0, 1], ...extra });

@@ -1,5 +1,5 @@
-import { buildModelPlan, normalizeModelPlan } from "./mcp-plan.js";
-import { resolveParametricPlan } from "./mcp-parameters.js";
+import { buildModelPlan, normalizeModelPlan } from "./model-plan.js";
+import { resolveParametricPlan } from "../shared/parameters.js";
 
 const copy = (value) => structuredClone(value);
 const generatedId = (prefix) => `${prefix}${globalThis.crypto.randomUUID()}`;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildModelPlan, normalizeModelPlan, resizeBodyDocument } from "../src/mcp-plan.js";
+import { buildModelPlan, normalizeModelPlan, resizeBodyDocument } from "../browser/model-plan.js";
 
 function doc() {
   return { id: "doc-1", name: "Untitled", mode: "beginner", seq: 0, sketches: [], bodies: [], planes: [], joints: [] };

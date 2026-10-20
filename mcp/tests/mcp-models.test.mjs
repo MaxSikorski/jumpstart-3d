@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compileMcpModel, reviseMcpParameters } from "../src/mcp-models.js";
-import { validateToolInput } from "../src/mcp-schema.js";
+import { compileMcpModel, reviseMcpParameters } from "../browser/models.js";
+import { validateToolInput } from "../shared/schema.js";
 
 const doc = () => ({ id: "d1", name: "Untitled", seq: 0, mode: "beginner", bodies: [], sketches: [], planes: [], joints: [] });
 const plan = {

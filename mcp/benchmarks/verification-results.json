@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-20T16:35:53.729Z",
+  "recordedAt": "2026-10-20T17:26:27.771852+00:00",
   "unitTests": {
-    "total": 37,
-    "passed": 37,
+    "total": 42,
+    "passed": 42,
     "failed": 0,
     "command": "npm test"
   },
@@ -202,5 +202,36 @@
     "Sections and channel checks use bounded tessellation sampling; arbitrary channels and minimum thickness everywhere are unsupported.",
     "Mesh edge checks do not establish absence of self-intersections or physical printability.",
     "Fit remains unverified without measured mating geometry, clearance, material and a physical test."
-  ]
+  ],
+  "relocationVerification": {
+    "recordedAt": "2026-10-20T17:26:27.771852+00:00",
+    "unitTestsPassed": 42,
+    "tutorialCasesPassed": 16,
+    "designRevisionRegressions": {
+      "method": "Replay of recorded agent plans to verify relocation; not a fresh reasoning evaluation",
+      "cases": [
+        {
+          "taskId": "coaster-revision",
+          "pass": true,
+          "recordedCalls": 11
+        },
+        {
+          "taskId": "offset-tray",
+          "pass": true,
+          "recordedCalls": 7
+        },
+        {
+          "taskId": "reject-and-correct",
+          "pass": true,
+          "recordedCalls": 6
+        }
+      ]
+    },
+    "previousDocumentRestored": true,
+    "legacyDockerProxyToolCount": 14,
+    "legacyNativeServerContractPassed": true,
+    "legacyAgentRunnerCompatible": true,
+    "buildPassed": true,
+    "containerHealthy": true
+  }
 }

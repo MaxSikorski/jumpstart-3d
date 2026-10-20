@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentStatus } from "../src/ai-status.js";
-import { clientPresence } from "../scripts/mcp-presence.mjs";
+import { agentStatus } from "../browser/ai-status.js";
+import { clientPresence } from "../server/presence.mjs";
 
 test("editor online is waiting, not proof of an AI client connection", () => {
   assert.equal(agentStatus({ online: true }).state, "waiting");
