@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
+import { AI_STATUS_CSS } from "./src/ai-status.js";
 
 const root = new URL(".", import.meta.url).pathname;
 const src = join(root, "src");
@@ -44,7 +45,7 @@ await build({ ...common, entryPoints: [join(src, "worker.js")], format: "iife", 
   logOverride: { "empty-import-meta": "silent" } }); // the loader's import.meta.url is never used in the single file
 
 const read = (p) => readFileSync(p, "utf8");
-const shell = read(join(src, "index.html"));
+const shell = read(join(src, "index.html")).replace("<style>", () => `<style>\n${AI_STATUS_CSS}`);
 const appTag = '<script type="module" src="app.js"></script>\n';
 if (!shell.includes(appTag)) throw new Error("src/index.html is missing the app.js script tag");
 const app = read(join(out, "app.js"));

@@ -940,6 +940,10 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <span id="docver" class="docver" hidden>v1</span>
     <button class="tb-btn save-btn" id="btn-save" title="Save (Ctrl+S): each save is a new version, v1, v2, v3…"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><rect x="8" y="13" width="8" height="6" rx="1"/></svg><span class="lbl">Save</span></button>
     <span id="savestate" class="savestate"></span>
+    <span id="ai-status" class="ai-status" role="status" aria-live="polite" aria-atomic="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 13 4-4M8 16l-2 2a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m4 0 2-2a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"/></svg>
+      <span class="ai-status-full">Checking AI bridge</span><span class="ai-status-short">AI linking</span>
+    </span>
     <button id="btn-autosave" class="autosave-btn" aria-pressed="false" title="Autosave backups: copies of your work every few moments, offered back if the app crashes or closes before saving">Autosave: Off</button>
     <div class="spacer"></div>
     <div class="modeswitch" role="group" aria-label="Mode">

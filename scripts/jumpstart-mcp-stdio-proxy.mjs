@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 
+import { randomUUID } from "node:crypto";
 const endpoint = process.env.JUMPSTART_MCP_HTTP_URL || "http://127.0.0.1:3210/__mcp/rpc";
+const clientEndpoint = new URL("/__mcp/client", endpoint);
+const clientId = randomUUID();
+let stopped = false;
+async function lease(state) {
+  try { await fetch(clientEndpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId, state }), signal: AbortSignal.timeout(2000) }); } catch { /* A disconnected proxy expires at the server. */ }
+}
+await lease("connect");
+let renewing = null;
+const leaseTimer = setInterval(() => { if (!stopped && !renewing) renewing = lease("heartbeat").finally(() => { renewing = null; }); }, 5000);
+async function disconnect() { stopped = true; clearInterval(leaseTimer); await renewing; await lease("disconnect"); }
+for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, () => { void disconnect().finally(() => process.exit(0)); });
 const pending = new Set();
 let inputBuffer = "";
 
@@ -40,4 +52,5 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", async () => {
   if (inputBuffer.trim()) await forward(inputBuffer);
   await Promise.allSettled([...pending]);
+  await disconnect();
 });

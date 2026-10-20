@@ -1,0 +1,7 @@
+{
+  "gap": { "$type": "dimension", "$value": "0.25rem" },
+  "icon": { "$type": "dimension", "$value": "0.875rem" },
+  "font": { "$type": "dimension", "$value": "0.75rem" },
+  "wide": { "$type": "dimension", "$value": "75rem" },
+  "feedback": { "$type": "duration", "$value": "8000ms" }
+}

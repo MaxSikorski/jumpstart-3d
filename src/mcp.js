@@ -1,7 +1,11 @@
-import { store, resolveNode } from "./store.js";
-import { buildModelPlan, normalizeModelPlan, resizeBodyDocument } from "./mcp-plan.js";
+import { store, resolveNode, newDoc } from "./store.js";
+import { resizeBodyDocument } from "./mcp-plan.js";
 import { getUnit } from "./units.js";
 import { clone } from "./util.js";
+import { compileMcpModel, reviseMcpParameters } from "./mcp-models.js";
+import { inspectGeometry } from "./mcp-inspection.js";
+import { selectGeometry } from "./mcp-geometry.js";
+import { initAgentStatus, STATUS_HOLD_MS } from "./ai-status.js";
 
 const BRIDGE = "/__mcp";
 const HEARTBEAT_MS = 5_000;
@@ -66,6 +70,7 @@ function bodyInfo(body, app, includeGeometry = false) {
       edges: edges.slice(0, 512).map((edge, index) => ({ index, ...clone(edge) })),
       faces: faces.slice(0, 512).map((face, index) => ({ index, ...clone(face) })),
       truncated: edges.length > 512 || faces.length > 512,
+      fingerprint: fingerprint({ node: resolveNode(body.node, store.view), matrix: body.m }),
     };
   }
   return result;
@@ -90,6 +95,7 @@ function documentSummary(app, editorId, revision, includeGeometry = false) {
     revision,
     document: { id: doc.id, name: doc.name, mode: doc.mode ?? app.mode },
     units: getUnit(),
+    viewport: { target: app.vp.view.target.toArray(), azimuth: app.vp.view.az, elevation: app.vp.view.el, distance: app.vp.view.dist, roll: app.vp.view.roll || 0, orthographic: app.vp.useOrtho, section: clone(app.section?.info || null) },
     sketches: (doc.sketches || []).map((sketch) => ({
       id: sketch.id,
       name: sketch.name,
@@ -101,6 +107,7 @@ function documentSummary(app, editorId, revision, includeGeometry = false) {
     })),
     planes: (doc.planes || []).map((plane) => ({ id: plane.id, name: plane.name, kind: plane.kind, plane: clone(plane.plane), hidden: !!plane.hidden })),
     bodies: doc.bodies.filter((body) => !body.cutPreview).map((body) => bodyInfo(body, app, includeGeometry)),
+    parametricModels: (doc.mcpModels || []).map(({ bodyState, sketchState, planeState, ...model }) => ({ ...clone(model), sourceState: "saved parameter template; native edits are checked before regeneration" })),
   };
 }
 
@@ -165,18 +172,88 @@ function readyBodies(app, bodyIds) {
   return results;
 }
 
-function imageDataUrl(app) {
+function imageDataUrl(app, box) {
   app.vp.render();
   const source = app.vp.renderer.domElement;
-  const scale = Math.min(1, 720 / source.width, 720 / source.height);
+  if (!source.width || !source.height || app.vp.renderer.getContext().isContextLost()) throw new Error("Viewport is unavailable or its WebGL context is lost");
+  let sx = 0, sy = 0, sw = source.width, sh = source.height;
+  if (box && !box.isEmpty()) {
+    const projected = [];
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) projected.push(app.vp.project(box.min.clone().set(x, y, z)));
+    const ratioX = source.width / app.vp.w, ratioY = source.height / app.vp.h;
+    const minX = Math.min(...projected.map((p) => p[0])) * ratioX, maxX = Math.max(...projected.map((p) => p[0])) * ratioX;
+    const minY = Math.min(...projected.map((p) => p[1])) * ratioY, maxY = Math.max(...projected.map((p) => p[1])) * ratioY;
+    const padding = Math.max(16, (maxX - minX) * 0.06, (maxY - minY) * 0.06);
+    sx = Math.max(0, Math.floor(minX - padding)); sy = Math.max(0, Math.floor(minY - padding));
+    sw = Math.max(1, Math.min(source.width - sx, Math.ceil(maxX + padding) - sx));
+    sh = Math.max(1, Math.min(source.height - sy, Math.ceil(maxY + padding) - sy));
+  }
+  const scale = Math.min(1, 1024 / sw, 1024 / sh);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(source.width * scale));
-  canvas.height = Math.max(1, Math.round(source.height * scale));
-  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  canvas.getContext("2d").drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.78);
 }
 
+function previewImages(app, box, section) {
+  const vp = app.vp;
+  const saved = { view: { ...vp.view, target: vp.view.target.clone() }, ortho: vp.useOrtho, anim: vp.anim, grid: vp.grid.visible, overlay: vp.overlay.visible, section: clone(app.section?.info || null), time: performance.now() };
+  const images = [], imageErrors = [];
+  try {
+    vp.anim = null; vp.useOrtho = true; vp.grid.visible = false; vp.overlay.visible = false;
+    app.section?.clear();
+    // Selection tint hides same-normal channel floors in orthographic previews.
+    for (const body of store.view.bodies) {
+      const view = app.scene.views.get(body.id);
+      if (view?.mesh) { view.applyStyle(body, { ...app.scene.styleFor(body), selected: false, hovered: false, tool: false, edgesStrong: true }); view.setFaceStates(new Map()); }
+    }
+    const views = [ ["top", "top"], ["side", "front"], ["isometric", "home"] ];
+    if (section) views.push(["section", section.axis === "X" ? "right" : section.axis === "Y" ? "front" : "top"]);
+    for (const [name, view] of views) {
+      try {
+        vp.setView(view, box);
+        Object.assign(vp.view, vp.anim.to); vp.anim = null;
+        vp.view.target = vp.view.target.clone();
+        // Native fit caps its portrait aspect correction. Fit projected bounds directly
+        // so narrow editor panels cannot clip corners of rectangular parts.
+        vp.updateCamera();
+        const corners = [];
+        for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(vp.project(box.min.clone().set(x, y, z)));
+        const width = Math.max(...corners.map((p) => p[0])) - Math.min(...corners.map((p) => p[0]));
+        const height = Math.max(...corners.map((p) => p[1])) - Math.min(...corners.map((p) => p[1]));
+        vp.view.dist *= Math.max(width / (vp.w * 0.8), height / (vp.h * 0.8), 0.001);
+        if (name === "section") {
+          if (!app.section) throw new Error("Native section rendering is unavailable");
+          const n = [0, 0, 0]; n[["X", "Y", "Z"].indexOf(section.axis)] = section.axis === "Y" ? -1 : 1;
+          const o = [0, 0, 0]; o[["X", "Y", "Z"].indexOf(section.axis)] = section.offset;
+          app.section.set({ ref: { n, o }, d: 0, flip: section.flip === true, hatch: true });
+        }
+        images.push({ view: name, projection: "orthographic", ...(name === "section" ? { section } : {}), dataUrl: imageDataUrl(app, box) });
+      } catch (error) { imageErrors.push({ view: name, error: error.message }); }
+    }
+  } finally {
+    app.section?.set(saved.section);
+    vp.view = saved.view; vp.useOrtho = saved.ortho; vp.grid.visible = saved.grid; vp.overlay.visible = saved.overlay;
+    vp.anim = saved.anim;
+    if (vp.anim) vp.anim.t0 += performance.now() - saved.time;
+    app.scene.refresh();
+    vp.render(); vp.request();
+  }
+  return { images, imageErrors, cameraRestored: true, sectionRestored: true };
+}
+
 export function initMcp(app) {
+  const drawStatus = initAgentStatus();
+  const status = { checking: true, online: false, connected: false, recent: false };
+  let statusTimer;
+  const showStatus = (changes) => { Object.assign(status, changes); drawStatus(status); };
+  const finishStatus = (outcome, error) => {
+    clearTimeout(statusTimer);
+    showStatus({ action: null, outcome, error });
+    statusTimer = setTimeout(() => showStatus({ outcome: null, error: null }), STATUS_HOLD_MS);
+  };
+  showStatus({});
   let editorId;
   try {
     editorId = sessionStorage.getItem("jumpstart.mcp.editorId") || id();
@@ -212,121 +289,100 @@ export function initMcp(app) {
     if (app.mode === "chisel" || app.simLock) throw new Error("Leave Chisel or Print Simulation before using MCP edits");
   }
 
-  async function previewModel(rawPlan, includeImage = true, replaceBodyIds = []) {
-    assertIdle();
-    const plan = normalizeModelPlan(rawPlan, store.doc.bodies.map((body) => body.id), store.doc.mode ?? app.mode);
-    const baseSnapshot = fingerprint(store.doc);
-    const compiled = buildModelPlan(store.doc, plan, undefined, replaceBodyIds, true);
-    const previewDocument = clone(compiled.document);
-    previewDocument.bodies.forEach((body) => {
-      if (compiled.affectedBodyIds.includes(body.id)) body.cmdPreview = true;
-    });
-    store.setPreview((doc) => {
-      for (const key of Object.keys(doc)) delete doc[key];
-      Object.assign(doc, clone(previewDocument));
-    });
-
-    try {
-      const deadline = Date.now() + BUILD_TIMEOUT_MS;
-      let results;
-      while (Date.now() < deadline) {
-        if (fingerprint(store.doc) !== baseSnapshot) throw new Error("The document changed during preview; read the document again and retry");
-        results = readyBodies(app, compiled.affectedBodyIds);
-        if (results.every((result) => !result.pending)) break;
-        await sleep(50);
-      }
-      results ??= readyBodies(app, compiled.affectedBodyIds);
-      const timedOut = results.some((result) => result.pending);
-      const errors = results.filter((result) => result.error || result.pending).map((result) => ({ id: result.id, error: result.error || "Geometry build timed out" }));
-      const ready = !timedOut && !errors.length;
-      const result = {
-        previewId: id(),
-        valid: ready,
-        errors,
-        revision: currentRevision(),
-        document: { id: store.doc.id, name: plan.name },
-        bodies: results.filter((entry) => entry.view).map(({ id: bodyId, body, view }) => {
-          const info = bodyInfo(body, app, true);
-          return { ...info, id: bodyId, volume: view.data.volume, triangleCount: view.data.triangles.length / 3 };
-        }),
-      };
-      if (ready) {
-        const box = app.scene.allBox((body) => compiled.affectedBodyIds.includes(body.id));
-        if (!box.isEmpty()) app.vp.fit(box);
-        if (includeImage) {
-          try { result.imageDataUrl = imageDataUrl(app); } catch (error) { result.imageError = error.message || "Could not capture viewport"; }
-        }
-        previews.set(result.previewId, { plan, compiled, baseSnapshot, baseDocumentId: store.doc.id, revision: currentRevision() });
-        if (previews.size > 20) previews.delete(previews.keys().next().value);
-      }
-      return result;
-    } finally {
-      if (store.preview) store.setPreview(null);
-    }
+  function checkRevision(expectedRevision) {
+    if (expectedRevision !== undefined && expectedRevision !== currentRevision()) throw new Error("The document changed; read it again before continuing");
   }
 
-  async function previewResizeBody(bodyId, size, anchor = "base", includeImage = true) {
-    assertIdle();
-    const body = store.doc.bodies.find((entry) => entry.id === bodyId);
-    if (!body) throw new Error(`Body ${bodyId} does not exist in the current document`);
-    const view = app.scene.views.get(bodyId);
-    const bounds = view?.data?.kbbox || view?.data?.bbox;
-    const baseSnapshot = fingerprint(store.doc);
-    const edit = resizeBodyDocument(store.doc, bodyId, bounds, size, anchor);
-    const name = `Resize ${body.name}`.slice(0, 80);
-    const compiled = {
-      document: edit.document,
-      createdBodyIds: [bodyId],
-      featureBodyIds: { [bodyId]: bodyId },
-      affectedBodyIds: [bodyId],
-    };
+  async function previewCompiled(compiled, plan, includeImage, section, extra = {}) {
+    const baseSnapshot = currentRevision();
     const previewDocument = clone(compiled.document);
-    previewDocument.bodies.find((entry) => entry.id === bodyId).cmdPreview = true;
+    previewDocument.bodies.forEach((body) => { if (compiled.affectedBodyIds.includes(body.id)) body.cmdPreview = true; });
     store.setPreview((doc) => {
       for (const key of Object.keys(doc)) delete doc[key];
       Object.assign(doc, previewDocument);
     });
-
+    const ownedPreview = store.preview;
+    const assertOwned = () => {
+      checkRevision(baseSnapshot);
+      if (store.preview !== ownedPreview || app.command || app.sketcher.active) throw new Error("Another editor command replaced the MCP preview; finish it and retry");
+    };
     try {
       const deadline = Date.now() + BUILD_TIMEOUT_MS;
       let results;
       while (Date.now() < deadline) {
-        if (fingerprint(store.doc) !== baseSnapshot) throw new Error("The document changed during preview; read the document again and retry");
-        results = readyBodies(app, [bodyId]);
+        assertOwned();
+        results = readyBodies(app, compiled.affectedBodyIds);
         if (results.every((result) => !result.pending)) break;
         await sleep(50);
       }
-      results ??= readyBodies(app, [bodyId]);
-      const errors = results.filter((result) => result.error || result.pending).map((result) => ({ id: result.id, error: result.error || "Geometry build timed out" }));
-      const valid = !errors.length;
+      results = readyBodies(app, compiled.affectedBodyIds);
+      const errors = results.filter((entry) => entry.error || entry.pending).map((entry) => ({ id: entry.id, error: entry.error || "Geometry build timed out" }));
       const result = {
-        previewId: id(),
-        valid,
-        errors,
-        revision: currentRevision(),
-        bodyId,
-        anchor,
-        requestedLocalDimensionsMm: Object.fromEntries(Object.entries(size)),
-        factors: edit.factors,
-        bodies: results.filter((entry) => entry.view).map(({ body: previewBody, view: previewView }) => ({
-          ...bodyInfo(previewBody, app, true),
-          volume: previewView.data.volume,
-          triangleCount: previewView.data.triangles.length / 3,
-        })),
+        previewId: id(), valid: !errors.length, errors, revision: currentRevision(),
+        validation: { schema: "passed", cadConstruction: errors.length ? "failed" : "passed", geometricRequirements: "not_requested", physicalFit: "unverified", manufacturingPerformance: "unverified" },
+        document: { id: store.doc.id, name: plan.name },
+        modelId: compiled.modelId, parameters: compiled.parameters, diff: compiled.diff,
+        bodies: results.filter((entry) => entry.view).map(({ body, view }) => ({ ...bodyInfo(body, app, true), volume: view.data.volume, triangleCount: view.data.triangles.length / 3 })),
+        ...extra,
       };
-      if (valid) {
-        const box = app.scene.allBox((entry) => entry.id === bodyId);
-        if (!box.isEmpty()) app.vp.fit(box);
-        if (includeImage) {
-          try { result.imageDataUrl = imageDataUrl(app); } catch (error) { result.imageError = error.message || "Could not capture viewport"; }
-        }
-        previews.set(result.previewId, { plan: { name }, compiled, baseSnapshot, baseDocumentId: store.doc.id, revision: currentRevision() });
-        if (previews.size > 20) previews.delete(previews.keys().next().value);
+      if (result.valid) {
+        const box = app.scene.allBox((body) => compiled.affectedBodyIds.includes(body.id));
+        if (includeImage && !box.isEmpty()) Object.assign(result, previewImages(app, box, section));
+        const geometries = new Map(results.map(({ body, view }) => [body.id, {
+          mesh: { vertices: view.data.vertices, triangles: view.data.triangles, matrix: Array.from(view.group.matrix.elements) },
+          selectors: bodyInfo(body, app, true).geometrySelectors,
+        }]));
+        const bytes = [...geometries.values()].reduce((sum, { mesh }) => sum + (mesh.vertices.byteLength || mesh.vertices.length * 8) + (mesh.triangles.byteLength || mesh.triangles.length * 8), 0);
+        if (bytes > 32 * 1024 * 1024) throw new Error("Preview geometry exceeds the 32 MiB inspection cache budget");
+        previews.set(result.previewId, { plan, compiled, baseSnapshot, baseDocumentId: store.doc.id, revision: currentRevision(), geometries, bytes });
+        const cacheBytes = () => [...previews.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+        while (previews.size > 20 || cacheBytes() > 64 * 1024 * 1024) previews.delete(previews.keys().next().value);
       }
+      assertOwned();
       return result;
     } finally {
-      if (store.preview) store.setPreview(null);
+      // A human can begin a native preview while the worker is building. Do not
+      // clear a preview now owned by that command when abandoning this request.
+      if (store.preview === ownedPreview) store.setPreview(null);
     }
+  }
+
+  async function previewModel(rawPlan, includeImage = true, replaceBodyIds = [], section, expectedRevision) {
+    assertIdle(); checkRevision(expectedRevision);
+    const compiled = compileMcpModel(store.doc, rawPlan, replaceBodyIds);
+    return previewCompiled(compiled, compiled.plan, includeImage, section);
+  }
+
+  async function previewParameters(p) {
+    assertIdle(); checkRevision(p.expectedRevision);
+    const compiled = reviseMcpParameters(store.doc, p.modelId, p.values);
+    return previewCompiled(compiled, compiled.plan, p.includeImage !== false, p.section);
+  }
+
+  async function previewResizeBody(bodyId, size, anchor = "base", includeImage = true, section, expectedRevision) {
+    assertIdle(); checkRevision(expectedRevision);
+    const body = store.doc.bodies.find((entry) => entry.id === bodyId);
+    if (!body) throw new Error("Body does not exist in the current document");
+    const view = app.scene.views.get(bodyId);
+    const edit = resizeBodyDocument(store.doc, bodyId, view?.data?.kbbox || view?.data?.bbox, size, anchor);
+    // Resizing a generated model directly invalidates its saved template ownership.
+    edit.document.mcpModels = (edit.document.mcpModels || []).filter((model) => !model.bodyIds.includes(bodyId));
+    const compiled = { document: edit.document, createdBodyIds: [bodyId], featureBodyIds: { [bodyId]: bodyId }, affectedBodyIds: [bodyId] };
+    return previewCompiled(compiled, { name: `Resize ${body.name}`.slice(0, 80), mode: store.doc.mode }, includeImage, section, { bodyId, anchor, requestedLocalDimensionsMm: { ...size }, factors: edit.factors });
+  }
+
+  function inspectionSource(p) {
+    assertIdle(); checkRevision(p.expectedRevision);
+    if (p.previewId) {
+      const preview = previews.get(p.previewId);
+      if (!preview || preview.baseDocumentId !== store.doc.id || preview.baseSnapshot !== currentRevision()) throw new Error("Preview expired or stale; preview again before inspecting");
+      const geometry = preview.geometries.get(p.bodyId);
+      if (!geometry) throw new Error("Body is not part of the requested preview");
+      return geometry;
+    }
+    const [status] = readyBodies(app, [p.bodyId]);
+    if (status.error || status.pending) throw new Error(status.error || "Geometry is still building; retry read-only inspection");
+    return { mesh: { vertices: status.view.data.vertices, triangles: status.view.data.triangles, matrix: Array.from(status.view.group.matrix.elements) }, selectors: bodyInfo(status.body, app, true).geometrySelectors };
   }
 
   function applyModel(previewId) {
@@ -338,6 +394,7 @@ export function initMcp(app) {
       previews.delete(previewId);
       throw new Error("The document changed after preview; preview the plan again before applying it");
     }
+    if (preview.failedMesh || [...(preview.checks?.values() || [])].some((pass) => !pass)) throw new Error("Preview has failed requested geometry checks; correct the model or resolve the reported measurement before applying");
     const next = clone(preview.compiled.document);
     store.update((doc) => {
       for (const key of Object.keys(doc)) delete doc[key];
@@ -345,7 +402,7 @@ export function initMcp(app) {
     }, `AI model: ${preview.plan.name}`);
     app.setMode(preview.plan.mode || "advanced");
     app.select(preview.compiled.createdBodyIds.length ? preview.compiled.createdBodyIds : preview.compiled.affectedBodyIds);
-    const result = { applied: true, previewId, revision: currentRevision(), bodyIds: preview.compiled.createdBodyIds, featureBodyIds: preview.compiled.featureBodyIds };
+    const result = { applied: true, previewId, revision: currentRevision(), bodyIds: preview.compiled.createdBodyIds, featureBodyIds: preview.compiled.featureBodyIds, modelId: preview.compiled.modelId, parameters: preview.compiled.parameters };
     previews.delete(previewId);
     applied.set(previewId, result);
     if (applied.size > 100) applied.delete(applied.keys().next().value);
@@ -376,8 +433,41 @@ export function initMcp(app) {
     switch (command.action) {
       case "list_editors": return { editors: [{ editorId, documentId: store.doc.id, documentName: store.doc.name, mode: app.mode, bodyCount: store.doc.bodies.length, focused: document.visibilityState === "visible" && document.hasFocus() }] };
       case "get_document": return documentSummary(app, editorId, currentRevision(), p.includeGeometry === true);
-      case "preview_model": return previewModel(p.plan, p.includeImage !== false, p.replaceBodyIds || []);
-      case "preview_resize_body": return previewResizeBody(p.bodyId, p.size, p.anchor || "base", p.includeImage !== false);
+      case "preview_new_document": {
+        assertIdle(); checkRevision(p.expectedRevision);
+        const document = newDoc(p.name || "Untitled", p.mode || "beginner");
+        return previewCompiled({ document, createdBodyIds: [], affectedBodyIds: [], featureBodyIds: {} }, { name: document.name, mode: document.mode }, false, undefined, { newDocument: { id: document.id, name: document.name, mode: document.mode }, replacesDocument: store.doc.id });
+      }
+      case "preview_model": return previewModel(p.plan, p.includeImage !== false, p.replaceBodyIds || [], p.section, p.expectedRevision);
+      case "preview_resize_body": return previewResizeBody(p.bodyId, p.size, p.anchor || "base", p.includeImage !== false, p.section, p.expectedRevision);
+      case "preview_parameters": return previewParameters(p);
+      case "inspect_geometry": {
+        const result = { ...inspectGeometry(inspectionSource(p).mesh, p), bodyId: p.bodyId, revision: currentRevision() };
+        if (p.previewId) {
+          const preview = previews.get(p.previewId);
+          preview.checks ||= new Map();
+          for (const check of result.checks) preview.checks.set(`${p.bodyId}:${check.id}`, check.pass);
+          if (result.meshValidation) { preview.meshChecks ||= new Map(); preview.meshChecks.set(p.bodyId, result.meshValidation.valid); preview.failedMesh = [...preview.meshChecks.values()].some((pass) => !pass); }
+        }
+        return result;
+      }
+      case "select_geometry": {
+        const { selectors } = inspectionSource(p);
+        const { kind, ...predicate } = p.query;
+        return selectGeometry(selectors, { kind, predicate, expectedFingerprint: p.expectedFingerprint, currentFingerprint: selectors.fingerprint });
+      }
+      case "save_document": {
+        assertIdle(); checkRevision(p.expectedRevision);
+        const result = app.projects.saveLocalMcp();
+        return { ...result, revision: currentRevision() };
+      }
+      case "reopen_document": {
+        assertIdle(); checkRevision(p.expectedRevision);
+        const result = app.projects.reopenLocalMcp(p.documentId);
+        const deadline = Date.now() + BUILD_TIMEOUT_MS;
+        while (readyBodies(app, store.doc.bodies.map((body) => body.id)).some((entry) => entry.pending) && Date.now() < deadline) await sleep(50);
+        return { ...result, revision: currentRevision(), document: documentSummary(app, editorId, currentRevision(), true) };
+      }
       case "apply_model": return applyModel(p.previewId);
       case "undo": {
         assertIdle();
@@ -385,6 +475,7 @@ export function initMcp(app) {
         if (!store.undoStack.length) throw new Error("Nothing to undo");
         const undone = store.undo();
         if (!undone) throw new Error("Nothing to undo");
+        if (app.mode !== store.doc.mode) app.setMode(store.doc.mode || "beginner", true);
         return { undone: true, revision: currentRevision(), document: documentSummary(app, editorId, currentRevision()) };
       }
       case "export_model": return exportModel(p.format, p.name || store.doc.name || "design");
@@ -400,7 +491,7 @@ export function initMcp(app) {
     bodyCount: store.doc.bodies.length,
     revision: currentRevision(),
     focused: document.visibilityState === "visible" && document.hasFocus(),
-  }).catch(() => undefined);
+  }, AbortSignal.timeout(3000)).then((response) => showStatus({ checking: false, online: true, connected: response.agent?.clientConnected === true, recent: response.agent?.recentClientActivity === true })).catch(() => showStatus({ checking: false, online: false, connected: false, recent: false }));
 
   const submitResult = (commandId, ok, data, error) => post("/result", { editorId, commandId, ok, data, error }).catch(() => undefined);
 
@@ -412,10 +503,27 @@ export function initMcp(app) {
     try {
       const { command } = await post("/poll", { editorId }, pollAbort.signal);
       if (command) {
-        try { await submitResult(command.id, true, await execute(command)); }
-        catch (error) { await submitResult(command.id, false, undefined, error instanceof Error ? error.message : String(error)); }
+        const reading = ["get_document", "inspect_geometry", "select_geometry", "list_editors"].includes(command.action);
+        if (!reading) clearTimeout(statusTimer);
+        showStatus({ action: command.action, checking: false, online: true, recent: true, ...(reading ? {} : { error: null, outcome: null }) });
+        const before = currentRevision();
+        try {
+          const result = await execute(command);
+          const failed = result?.valid === false || result?.geometricRequirements === "failed";
+          const changesDocument = ["apply_model", "undo", "reopen_document"].includes(command.action);
+          const outcome = command.action.startsWith("preview_") || ["save_document", "export_model"].includes(command.action) ? command.action : changesDocument ? before !== currentRevision() ? command.action : "no_change" : null;
+          if (reading && !failed) showStatus({ action: null });
+          else finishStatus(failed ? null : outcome, failed ? "The requested geometry checks failed. The saved model was not changed by inspection." : null);
+          await submitResult(command.id, true, result);
+        }
+        catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          finishStatus(null, message);
+          await submitResult(command.id, false, undefined, message);
+        }
       }
     } catch (error) {
+      showStatus({ checking: false, online: false, connected: false, recent: false });
       retry = !stopped && (!(error instanceof DOMException) || error.name !== "AbortError");
     } finally {
       pollAbort = null;
@@ -433,6 +541,7 @@ export function initMcp(app) {
   window.addEventListener("pagehide", () => {
     stopped = true;
     clearInterval(heartbeatTimer);
+    clearTimeout(statusTimer);
     clearTimeout(retryTimer);
     pollAbort?.abort();
   }, { once: true });

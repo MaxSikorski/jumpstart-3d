@@ -561,6 +561,31 @@ export function initProjects(app) {
     },
     changed() { dirty = true; setState("Unsaved changes"); saveSoon(); rec.touch(); },
     saveNow,
+    saveLocalMcp() {
+      const doc = store.doc;
+      const updated = saveLocal(doc, thumbnail());
+      if (!updated) throw new Error("Browser-local project storage failed; no save was confirmed");
+      const saved = readJSON(LS_DOC + doc.id, null);
+      if (!saved) throw new Error("Could not read back the saved project");
+      delete saved._updated;
+      if (JSON.stringify(saved) !== JSON.stringify(doc)) throw new Error("Saved project failed exact serialization readback");
+      dirty = false; setState("Saved in this browser");
+      return { saved: true, documentId: doc.id, storage: "browser-local", serializationVerified: true };
+    },
+    reopenLocalMcp(documentId) {
+      if (documentId !== store.doc.id) throw new Error("MCP reopen is limited to the current project id");
+      const saved = readJSON(LS_DOC + documentId, null);
+      if (!saved || saved.id !== documentId || !Array.isArray(saved.bodies) || !Array.isArray(saved.sketches)) throw new Error("Saved local project is missing or invalid");
+      delete saved._updated;
+      if (JSON.stringify(saved).length > 32 * 1024 * 1024) throw new Error("Saved project exceeds the local reopen budget");
+      const unchanged = JSON.stringify(saved) === JSON.stringify(store.doc);
+      if (!unchanged) store.update((doc) => {
+        for (const key of Object.keys(doc)) delete doc[key];
+        Object.assign(doc, saved);
+      }, "Reopen saved local project");
+      if (app.mode !== store.doc.mode) app.setMode(store.doc.mode || "beginner", true);
+      return { reopened: true, documentId, storage: "browser-local", unchanged, undoPreserved: true, serializationVerified: true };
+    },
     saveVersion,
     versionName,
     version: () => verOf(),

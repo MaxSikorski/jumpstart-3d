@@ -44,11 +44,22 @@ test("stdio MCP discovery, tool schemas, and localhost editor registration work"
       "jumpstart_apply_model",
       "jumpstart_undo",
       "jumpstart_export_model",
+      "jumpstart_preview_new_document",
+      "jumpstart_get_capabilities",
+      "jumpstart_preview_parameters",
+      "jumpstart_inspect_geometry",
+      "jumpstart_select_geometry",
+      "jumpstart_save_document",
+      "jumpstart_reopen_document",
     ]);
     assert.equal(listing.result.tools.find((tool) => tool.name === "jumpstart_preview_model").inputSchema.properties.plan.type, "object");
     assert.equal(listing.result.tools.find((tool) => tool.name === "jumpstart_preview_model").inputSchema.properties.plan.properties.primitives.items.properties.kind.enum.includes("tube"), true);
     assert.equal(listing.result.tools.find((tool) => tool.name === "jumpstart_preview_model").inputSchema.properties.plan.properties.operations.items.oneOf.length, 5);
     assert.equal(listing.result.tools.find((tool) => tool.name === "jumpstart_preview_resize_body").inputSchema.properties.size.additionalProperties, false);
+    const invalid = await send({ jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "jumpstart_preview_parameters", arguments: { modelId: "x", values: { diameter: -1 }, arbitraryCode: "bad" } } });
+    assert.equal(invalid.result.isError, true);
+    const capabilities = await send({ jsonrpc: "2.0", id: 21, method: "tools/call", params: { name: "jumpstart_get_capabilities", arguments: {} } });
+    assert.equal(JSON.parse(capabilities.result.content[0].text).schemaVersion, 1);
 
     const portReady = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error(`Server did not report its port: ${stderr}`)), 5_000);
@@ -60,6 +71,13 @@ test("stdio MCP discovery, tool schemas, and localhost editor registration work"
       check();
     });
     const port = await portReady;
+    const httpInvalid = await fetch(`http://127.0.0.1:${port}/__mcp/rpc`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "jumpstart_get_document", arguments: { unexpected: true } } }),
+    });
+    const rejectedHttp = await httpInvalid.json();
+    assert.equal(rejectedHttp.result.isError, true);
+    assert.match(JSON.parse(rejectedHttp.result.content[0].text).error, /unknown property/);
     const heartbeat = await fetch(`http://127.0.0.1:${port}/__mcp/heartbeat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

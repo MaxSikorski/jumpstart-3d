@@ -51,6 +51,15 @@ Restart the MCP client, open the local app URL printed to the server's stderr, t
 
 ## Agent workflow
 
+The top-bar AI indicator distinguishes the browser bridge from an agent client.
+The Docker stdio proxy maintains a client lease every five seconds; the server
+expires missing leases after fifteen seconds and removes a clean disconnect
+immediately. Browser heartbeats do not count as agent connections. Stateless
+HTTP requests establish only recent activity, labeled accordingly. In-flight
+activity is shown only in the editor executing the command. Completed edits
+remain visible briefly, including through follow-up reads. Editor errors and bridge
+loss are explicit; this passive status does not grant editing permissions.
+
 1. Call `jumpstart_list_editors`; specify `editorId` if more than one editor is open.
 2. Call `jumpstart_get_document({ includeGeometry: true })` to read the current revision, world bounds, body-local dimensions, sketches, feature nodes, and capped edge/face selectors.
 3. Call `jumpstart_preview_model` with a typed plan. Plans support JumpStart primitives, explicit circle/polygon sketches, extrude/revolve/loft features, body transforms, linear/circular patterns, groups, booleans, and native fillet/shell/hole/thread/emboss/scale modifiers. They can add bodies or edit existing bodies by id. For a direct imported-body size change, `jumpstart_preview_resize_body` remains the shortest form.
@@ -70,6 +79,191 @@ A plan contains typed primitive bodies, sketches, CAD features, and operations. 
 For fillet and shell, first preview the base shape or read an existing body with `includeGeometry: true`, then use the returned local edge/face signatures in the modifier. Hole positions/normals, thread face centers, and emboss face frames are also body-local. Preview again after an upstream feature change because edge and face references can change when geometry changes.
 
 The current MCP sketch input uses explicit point coordinates and circle radii. It does not expose a sketch constraint solver, arcs, splines, arbitrary mirror planes, or a 3MF export. Preview validation reports OpenCascade build errors and mesh measurements; it does not prove a physical fit or replace a slicer/manifold check.
+
+## Inspection and parameter revisions
+
+Call `jumpstart_get_capabilities` for exact tool schemas, examples and budgets.
+Tool inputs are validated at runtime, including unknown keys, numeric ranges,
+payload sizes and array limits. Maximum tool arguments are 256 KiB. Inspection
+is bounded to 200,000 triangles and an estimated eight million triangle visits;
+split expensive inspection requests into smaller read-only calls.
+
+### Named parameters
+
+Add `modelId`, `parameters` and optional `constraints` to a model plan. Numeric
+fields accept expression objects:
+
+```json
+{
+  "modelId": "disk",
+  "name": "Editable disk",
+  "parameters": {
+    "diameter": { "value": 100, "unit": "mm", "min": 10, "max": 500 },
+    "radius": { "expression": "diameter / 2", "unit": "mm" },
+    "height": { "value": 6, "unit": "mm", "min": 1 }
+  },
+  "primitives": [
+    { "id": "disk", "kind": "cylinder", "parameters": {
+      "w": { "$expr": "diameter" }, "d": { "$expr": "diameter" },
+      "h": { "$expr": "height" }
+    } }
+  ]
+}
+```
+
+Expressions support numbers, parameter names, `+`, `-`, `*`, `/`, unary signs
+and parentheses. There is no executable code, property access or function
+calling. Cycles, unknown names, invalid bounds, noninteger counts and derived
+parameter overrides fail before preview. Units are `mm`, `deg`, `count`, or
+`scalar`; these are labels, without dimensional algebra. Constraints use
+`{ "id": "floor", "left": "height - depth", "operator": "gte", "right": "2" }`.
+
+After applying, `jumpstart_get_document` returns `parametricModels`. Call
+`jumpstart_preview_parameters` with `modelId`, `values`, and the current
+`expectedRevision`. Preview returns changed parameters and feature ids. Apply
+uses the existing transaction and undo path. Templates, values and native
+features persist in ordinary project JSON. Unrelated bodies remain intact;
+external dependencies and native edits to owned geometry cause a conflict
+instead of being overwritten. Final body identities remain stable. Internal
+feature nodes are regenerated from the saved template, not arbitrarily patched.
+Direct mesh/body resizing invalidates that body's named-parameter record.
+
+### Images, sections and measurements
+
+Preview returns labeled top, side and isometric MCP image blocks. Pass
+`section: { "axis": "X", "offset": 0 }` for an additional native section
+image. Coordinates are world millimetres. Capture uses fitted orthographic
+views and crops to the projected model bounds. Camera, projection, selection
+appearance, grid and existing section state are restored, including on failure.
+Each failed image has an explicit `imageErrors` entry. `get_document.viewport`
+allows comparing camera state before and after preview.
+
+Use `jumpstart_inspect_geometry` with a live `bodyId`, or add `previewId` to
+inspect cached preview geometry without applying it. Optional arguments include:
+
+- `section: { "axis": "X", "offset": 0 }`: generated mesh intersection segments.
+- `samples: [{ "axis": "Z", "point": [0, 0, 0] }]`: actual line intersections
+  and solid intervals, for measuring floors, walls, gaps and clearances along an axis.
+- `checks: [{ "id": "width", "kind": "dimension", "axis": "X", "expected": 110,
+  "tolerance": 0.05 }]`: expected versus measured tessellation dimensions.
+- A `channels` check with `axis: "Y"`, `crossAt: 0`, and
+  `expected: { "count": 9, "width": 4, "depth": 3, "floor": 3,
+  "spacing": 11.75, "symmetric": true, "openEnds": true }`.
+
+Channel checks infer floors and ridges from section triangles and line
+intersections, never submitted primitive dimensions. They support straight,
+axis-aligned, parallel channels with a common flat floor, at most 24 channels.
+Unsupported or ambiguous geometry fails explicitly. Openness is sampled at
+the probe height; this does not establish drainage performance.
+
+Mesh checks report degenerate triangles, boundary and non-manifold edges,
+inconsistent winding and connected components. The default weld tolerance is
+0.0001 mm and is always reported. Results depend on tessellation and tolerance;
+they do not prove absence of self-intersections, overlapping shells, minimum
+wall thickness everywhere or physical printability. STL export reports its own
+mesh checks; exports over the inspection budget are explicitly not checked.
+
+The validation layers remain separate: schema validity, CAD construction,
+requested geometric checks, export mesh checks, and unverified physical fit.
+A failed requested check or mesh inspection on a preview blocks its apply.
+Correct the model or resolve that inspection before applying. CAD-only previews
+remain available when no independent checks are requested.
+
+### Native geometry selection
+
+`get_document(includeGeometry: true)` returns body-local signatures and their
+fingerprint. `jumpstart_select_geometry` requires `bodyId`, `expectedRevision`,
+`expectedFingerprint`, and a structured query. For example:
+
+```json
+{ "kind": "edge", "type": "CIRCLE", "axis": "Z", "extreme": "max" }
+```
+
+Queries can filter by coordinate, nearby point, planar normal, cylinder radius,
+or `external: false` for an inner cylindrical face. They return candidates and
+`selected`, `ambiguous`, `not_found`, or `incomplete`; ambiguous or capped data
+never silently selects an element. Reselect after regeneration. These queries
+do not provide persistent topological naming or infer design intent.
+
+### Local save and reopen
+
+`jumpstart_save_document({ expectedRevision })` writes the exact document to
+the app's browser-local project store and verifies serialization readback.
+It does not bump the version or invoke the remote save API.
+`jumpstart_reopen_document({ documentId, expectedRevision })` reads only the
+current project's saved local JSON and preserves the undo stack. Reopening an
+identical snapshot adds no undo entry. A changed saved snapshot is restored as
+one recoverable edit. Normal browser reload also preserves parameter templates,
+but clears in-memory undo history and preview ids, as ordinary app startup does.
+
+To prepare a fresh document entirely through MCP, call
+`jumpstart_preview_new_document({ expectedRevision, name, mode })`, inspect its
+new-document metadata and apply its `previewId`. This is one recoverable edit:
+undo restores the previous document. Use this before a benchmark, then undo the
+document creation after the benchmark has undone its model edits.
+
+After updating the container, save and reload existing editor tabs to load the
+new browser bridge. A running old tab cannot execute newly added tools.
+
+## Agent design and revision benchmark
+
+The deterministic tutorial benchmark below tests tool execution. The separate
+agent task catalog contains requests and invariants, without prepared plans.
+It covers the coaster revision, an unequal-compartment parts tray, and an
+impossible-depth request followed by a valid correction.
+
+```sh
+npm run benchmark:agent -- tasks
+node scripts/agent-benchmark.mjs begin exports/session.json coaster-revision EDITOR_ID
+node scripts/agent-benchmark.mjs call exports/session.json TOOL_NAME exports/args.json
+node scripts/agent-benchmark.mjs checkpoint exports/session.json candidate
+node scripts/agent-benchmark.mjs checkpoint exports/session.json reopened
+node scripts/agent-benchmark.mjs checkpoint exports/session.json undone
+node scripts/agent-benchmark.mjs finish exports/session.json
+```
+
+Give the task to an actual agent. It must generate every tool argument and use
+the `call` command for actions, inspections, save/reopen, retries and undo.
+The recorder saves tool requests/results and preview images beside the session
+file. `candidate` captures native feature readback and independently reads an
+actual STL export. Record the `reopened` checkpoint after save and reopen, and
+the `undone` checkpoint after undo restores the baseline. `finish` writes
+`session.json.report.json` and exits nonzero for missing or failed evidence.
+
+For the coaster, inspect baseline channel floor thickness before revising it.
+Inspect the candidate's dimensions, channels, symmetry, openings and mesh.
+Exercise duplicate apply and a separate stale preview. The harness checks the
+trace against generated geometry, rather than accepting plan dimensions or
+agent claims. It never chooses or clears an editor automatically.
+
+The harness is repeatable evaluation infrastructure, not a bundled LLM runner.
+Run-to-run model settings, prompts, errors and corrections should be retained
+with each session. Development-agent results are integration evidence, not a
+statistical general-design success rate. No fake CAD engine is used for
+geometry acceptance.
+
+## Implementation files
+
+- `src/mcp.js`: editor commands, multi-view capture, preview inspection gates,
+  transactions, exports and revision checks.
+- `src/mcp-models.js` and `src/mcp-parameters.js`: owned native models, persistent
+  templates, bounded arithmetic and guarded regeneration.
+- `src/mcp-geometry.js` and `src/mcp-inspection.js`: independent tessellation
+  measurements, semantic selection and bounded mesh checks.
+- `src/mcp-schema.js`, `scripts/mcp-tool-contracts.mjs` and
+  `scripts/jumpstart-mcp-server.mjs`: runtime input validation, tool discovery,
+  local dispatch and export checks.
+- `src/projects.js`: native browser-local save and reopen operations.
+- `benchmarks/agent-tasks.mjs`, `scripts/agent-benchmark.mjs` and
+  `benchmarks/verification-results.json`: prompt-only tasks, trace recorder and
+  recorded verification observations. Detailed session evidence stays in the
+  ignored local `exports/` directory.
+- `tests/mcp-parameters.test.mjs`, `tests/mcp-models.test.mjs`,
+  `tests/mcp-geometry.test.mjs`, `tests/mcp-inspection.test.mjs`,
+  `tests/mcp-server.test.mjs` and `tests/agent-benchmark.test.mjs`: contracts,
+  negative cases and regression coverage.
+- `package.json`, `README.md` and generated `docs/app.js`: commands,
+  local workflow documentation and the rebuilt browser bundle.
 
 ## Tutorial benchmark
 

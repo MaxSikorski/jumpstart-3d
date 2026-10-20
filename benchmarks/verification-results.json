@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "recordedAt": "2026-10-20T16:35:53.729Z",
+  "unitTests": {
+    "total": 37,
+    "passed": 37,
+    "failed": 0,
+    "command": "npm test"
+  },
+  "build": {
+    "command": "npm run build",
+    "status": "passed"
+  },
+  "tutorialExecution": {
+    "passed": 16,
+    "total": 16,
+    "cases": [
+      {
+        "id": "b-keychain",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 207284,
+        "triangles": 4144
+      },
+      {
+        "id": "b-coaster",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 438284,
+        "triangles": 8764
+      },
+      {
+        "id": "b-pencil",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 2284,
+        "triangles": 44
+      },
+      {
+        "id": "b-phone",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 3684,
+        "triangles": 72
+      },
+      {
+        "id": "b-fidget",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 92484,
+        "triangles": 1848
+      },
+      {
+        "id": "b-rocket",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 30184,
+        "triangles": 602
+      },
+      {
+        "id": "b-desk",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 244184,
+        "triangles": 4882
+      },
+      {
+        "id": "b-castle",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 40684,
+        "triangles": 812
+      },
+      {
+        "id": "a-coaster",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 278484,
+        "triangles": 5568
+      },
+      {
+        "id": "a-plate",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 65684,
+        "triangles": 1312
+      },
+      {
+        "id": "a-phone",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 7484,
+        "triangles": 148
+      },
+      {
+        "id": "a-pawn",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 369684,
+        "triangles": 7392
+      },
+      {
+        "id": "a-vase",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 807484,
+        "triangles": 16148
+      },
+      {
+        "id": "a-hook",
+        "pass": true,
+        "bodyCount": 1,
+        "stlBytes": 43284,
+        "triangles": 864
+      },
+      {
+        "id": "a-drawer",
+        "pass": true,
+        "bodyCount": 2,
+        "stlBytes": 37684,
+        "triangles": 752
+      },
+      {
+        "id": "a-candy",
+        "pass": true,
+        "bodyCount": 2,
+        "stlBytes": 349684,
+        "triangles": 6992
+      }
+    ],
+    "method": "Deterministic plans against the real browser CAD kernel; does not test agent planning."
+  },
+  "agentDesignAndRevision": {
+    "passed": 3,
+    "total": 3,
+    "cases": [
+      {
+        "taskId": "coaster-revision",
+        "pass": true,
+        "passedChecks": 19,
+        "totalChecks": 19,
+        "recordedCalls": 11,
+        "startedAt": "2026-10-20T16:18:26.161Z",
+        "traceSha256": "e7b211ac3b9669b02d386729045fac0820d0e8ad57bf7e3cfc2b966335c05982",
+        "localReport": "exports/agent-coaster-session.json.report.json",
+        "limitations": "Development agent authored plans while implementing this integration; these are not blinded or statistical LLM evaluation results."
+      },
+      {
+        "taskId": "offset-tray",
+        "pass": true,
+        "passedChecks": 16,
+        "totalChecks": 16,
+        "recordedCalls": 7,
+        "startedAt": "2026-10-20T16:19:30.302Z",
+        "traceSha256": "a2f2303d55dfbcc5d247db97bc93ee749bd1df3ae622e652d516fcaab5d68687",
+        "localReport": "exports/agent-tray-session.json.report.json",
+        "limitations": "Development agent authored plans while implementing this integration; these are not blinded or statistical LLM evaluation results."
+      },
+      {
+        "taskId": "reject-and-correct",
+        "pass": true,
+        "passedChecks": 13,
+        "totalChecks": 13,
+        "recordedCalls": 11,
+        "startedAt": "2026-10-20T16:20:28.163Z",
+        "traceSha256": "3dfe35f2d03f19f5b24678b1db5efe80add4c35e43e7115b2ac333c1dcb24133",
+        "localReport": "exports/agent-correct-session.json.report.json",
+        "limitations": "Development agent authored plans while implementing this integration; these are not blinded or statistical LLM evaluation results."
+      }
+    ]
+  },
+  "runtimeChecks": {
+    "imageViews": 4,
+    "cameraPreserved": true,
+    "documentPreserved": true,
+    "failedGeometryBlocksApply": true,
+    "semanticSelection": "selected",
+    "staleSelectorRejected": true,
+    "ambiguousSelection": "ambiguous",
+    "coldReload": {
+      "parameterValuesSurvived": true,
+      "bodyIdsSurvived": true,
+      "revisionAfterReload": "9168-6a33a002-80678b0c",
+      "parameterRevisionAfterReloadValid": true,
+      "previewPreservedDocument": true
+    },
+    "stlMeshChecksPassed": true,
+    "stepExport": true,
+    "localEvidence": "exports/final-runtime-checks.json",
+    "newDocumentPreviewPreservesSource": true,
+    "newDocumentUndoRestoresPrevious": true,
+    "httpRuntimeValidation": true,
+    "recordedAgentCallsSchemaValidated": 29,
+    "exposedTools": 14,
+    "finalBuildPreviewPassed": true,
+    "finalBuildDocumentPreserved": true
+  },
+  "remainingLimits": [
+    "No general sketch constraint solver, arcs or splines exposed by MCP.",
+    "Parameter units are labels, without dimensional algebra.",
+    "Owned native geometry edited outside the template is rejected during regeneration.",
+    "Sections and channel checks use bounded tessellation sampling; arbitrary channels and minimum thickness everywhere are unsupported.",
+    "Mesh edge checks do not establish absence of self-intersections or physical printability.",
+    "Fit remains unverified without measured mating geometry, clearance, material and a physical test."
+  ]
+}

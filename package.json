@@ -6,6 +6,7 @@
     "build": "node build.mjs",
     "test": "node --test",
     "benchmark:tutorials": "node scripts/tutorial-benchmark.mjs",
+    "benchmark:agent": "node scripts/agent-benchmark.mjs",
     "mcp:jumpstart": "node scripts/jumpstart-mcp-server.mjs"
   },
   "devDependencies": {

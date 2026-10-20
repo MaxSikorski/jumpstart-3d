@@ -6,6 +6,10 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateToolInput } from "../src/mcp-schema.js";
+import { extendMcpTools } from "./mcp-tool-contracts.mjs";
+import { inspectTriangleMesh } from "../src/mcp-geometry.js";
+import { clientPresence } from "./mcp-presence.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const DOCS = join(ROOT, "docs");
@@ -23,7 +27,7 @@ const SUPPORTED_VERSIONS = [PROTOCOL_VERSION, "2025-11-25"];
 
 const axes = ["X", "Y", "Z"];
 const commonEditor = {
-  editorId: { type: "string", description: "Editor id from jumpstart_list_editors. Required when more than one editor is open." },
+  editorId: { type: "string", minLength: 1, maxLength: 120, description: "Editor id from jumpstart_list_editors. Required when more than one editor is open." },
 };
 const point2 = { type: "array", minItems: 2, maxItems: 2, items: { type: "number" } };
 const point3 = { type: "array", minItems: 3, maxItems: 3, items: { type: "number" } };
@@ -124,7 +128,7 @@ const planSchema = {
   },
 };
 
-const tools = [
+const tools = extendMcpTools([
   {
     name: "jumpstart_list_editors",
     title: "List open JumpStart editors",
@@ -201,12 +205,13 @@ const tools = [
       properties: { ...commonEditor, format: { type: "string", enum: ["stl", "step"] }, name: { type: "string", maxLength: 80 } },
     },
   },
-];
+], planSchema);
 
 const editors = new Map();
 const queues = new Map();
 const waiters = new Map();
 const pending = new Map();
+const presence = clientPresence();
 let shuttingDown = false;
 
 function send(message) {
@@ -341,6 +346,14 @@ async function handleBridge(req, res, pathname) {
   catch (error) { return json(res, 400, { error: error.message }); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "Expected a JSON object" });
 
+  if (pathname === "/__mcp/client") {
+    try {
+      validateToolInput(body, { type: "object", additionalProperties: false, required: ["clientId", "state"], properties: { clientId: { type: "string", pattern: "^[a-zA-Z0-9-]{16,80}$", minLength: 16, maxLength: 80 }, state: { type: "string", enum: ["connect", "heartbeat", "disconnect"] } } });
+      presence.lease(body.clientId, body.state);
+      return json(res, 200, { ok: true });
+    } catch (error) { return json(res, 400, { error: error.message }); }
+  }
+
   if (pathname === "/__mcp/heartbeat") {
     if (typeof body.editorId !== "string" || body.editorId.length > 120 || typeof body.documentId !== "string" || typeof body.documentName !== "string") {
       return json(res, 400, { error: "Invalid editor heartbeat" });
@@ -348,7 +361,7 @@ async function handleBridge(req, res, pathname) {
     const editor = { editorId: body.editorId, documentId: body.documentId, documentName: body.documentName.slice(0, 120), mode: String(body.mode || "").slice(0, 30), bodyCount: Number.isFinite(body.bodyCount) ? body.bodyCount : 0, revision: String(body.revision || ""), focused: body.focused === true, lastSeen: Date.now() };
     editors.set(editor.editorId, editor);
     queues.set(editor.editorId, queues.get(editor.editorId) || []);
-    return json(res, 200, { ok: true });
+    return json(res, 200, { ok: true, agent: presence.status() });
   }
 
   if (pathname === "/__mcp/poll") {
@@ -427,7 +440,7 @@ async function handleHttpRpc(req, res) {
     if (typeof params.name !== "string" || !tools.some((tool) => tool.name === params.name)) {
       result = toolError(new Error(`Unknown tool: ${params.name || ""}`));
     } else {
-      try { result = toolResult(await callTool(params.name, params.arguments || {})); }
+      try { result = toolResult(await callTool(params.name, params.arguments === undefined ? {} : params.arguments)); }
       catch (error) { result = toolError(error); }
     }
   } else {
@@ -475,16 +488,36 @@ const server = createServer((req, res) => {
 const host = (args) => typeof args.editorId === "string" ? args.editorId : undefined;
 
 async function callTool(name, args) {
+  const tool = tools.find((entry) => entry.name === name);
+  if (!tool) throw new Error(`Unknown tool: ${name}`);
+  if (Buffer.byteLength(JSON.stringify(args)) > 262144) throw new Error("Tool input exceeds 262144 byte budget");
+  validateToolInput(args, tool.inputSchema);
+  presence.activity();
   const run = async (action, params) => {
     const result = await dispatch(action, params);
     if (!result?.ok) throw new Error(result?.error || `JumpStart ${action} failed`);
     return result.data;
   };
   switch (name) {
+    case "jumpstart_get_capabilities": return {
+      schemaVersion: 1, units: "mm", toolSchemas: tools,
+      limits: { toolInputBytes: 262144, trianglesInspected: 200000, estimatedTriangleVisits: 8000000, meshWeldToleranceMm: 0.0001, namedParameters: 64, parameterModels: 16, images: 4 },
+      operations: ["primitives", "circle/polygon sketches", "extrude", "revolve", "loft", "linear/circular patterns", "transforms", "booleans", "fillet", "shell", "hole", "thread", "planar emboss", "scale"],
+      inspection: ["top/side/isometric/section images", "tessellated plane sections", "line/solid intervals", "dimensions", "axis-aligned parallel flat-bottom channels", "mesh edge incidence", "semantic native signature queries"],
+      unsupported: ["general sketch constraint solver", "arcs/splines through MCP", "dimensional algebra", "automatic stable topological naming", "mesh-to-parametric reconstruction", "arbitrary mirror planes", "self-intersection validation", "minimum wall thickness everywhere", "physical fit or printability certification"],
+      parameterExample: { parameters: { diameter: { value: 100, unit: "mm", min: 10, max: 500 } }, numericReference: { $expr: "diameter / 2" }, operators: ["+", "-", "*", "/", "parentheses"], lifecycle: "preview_model -> inspect_geometry(previewId) -> apply_model -> save_document -> preview_parameters; templates survive native save/reopen" },
+      validationLayers: ["schema", "CAD construction", "requested geometric measurements", "export mesh checks", "physical fit unverified"],
+    };
     case "jumpstart_list_editors": return { editors: listEditors() };
     case "jumpstart_get_document": return await run("get_document", { editorId: host(args), includeGeometry: args.includeGeometry === true });
-    case "jumpstart_preview_model": return await run("preview_model", { editorId: host(args), plan: args.plan, replaceBodyIds: args.replaceBodyIds || [], includeImage: args.includeImage !== false });
-    case "jumpstart_preview_resize_body": return await run("preview_resize_body", { editorId: host(args), bodyId: args.bodyId, size: args.size, anchor: args.anchor, includeImage: args.includeImage !== false });
+    case "jumpstart_preview_new_document": return await run("preview_new_document", { ...args, editorId: host(args) });
+    case "jumpstart_preview_model": return await run("preview_model", { editorId: host(args), plan: args.plan, replaceBodyIds: args.replaceBodyIds || [], includeImage: args.includeImage !== false, section: args.section, expectedRevision: args.expectedRevision });
+    case "jumpstart_preview_resize_body": return await run("preview_resize_body", { editorId: host(args), bodyId: args.bodyId, size: args.size, anchor: args.anchor, includeImage: args.includeImage !== false, section: args.section, expectedRevision: args.expectedRevision });
+    case "jumpstart_preview_parameters": return await run("preview_parameters", { ...args, editorId: host(args) });
+    case "jumpstart_inspect_geometry": return await run("inspect_geometry", { ...args, editorId: host(args) });
+    case "jumpstart_select_geometry": return await run("select_geometry", { ...args, editorId: host(args) });
+    case "jumpstart_save_document": return await run("save_document", { ...args, editorId: host(args) });
+    case "jumpstart_reopen_document": return await run("reopen_document", { ...args, editorId: host(args) });
     case "jumpstart_apply_model": return await run("apply_model", { editorId: host(args), previewId: args.previewId });
     case "jumpstart_undo": return await run("undo", { editorId: host(args), expectedRevision: args.expectedRevision });
     case "jumpstart_export_model": {
@@ -503,7 +536,19 @@ async function callTool(name, args) {
         const existing = await readFile(path);
         if (!existing.equals(bytes)) throw new Error("Export filename collision; change the export name and retry");
       }
-      return { format: args.format, path, byteLength: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+      let meshValidation;
+      if (args.format === "stl") {
+        const count = bytes.length >= 84 ? bytes.readUInt32LE(80) : 0;
+        if (!count || bytes.length !== 84 + count * 50) throw new Error("Malformed binary STL export");
+        if (count <= 200000) {
+          const vertices = new Float64Array(count * 9), triangles = new Uint32Array(count * 3);
+          for (let i = 0; i < count; i++) for (let j = 0; j < 9; j++) vertices[i * 9 + j] = bytes.readFloatLE(84 + i * 50 + 12 + j * 4);
+          for (let i = 0; i < triangles.length; i++) triangles[i] = i;
+          meshValidation = inspectTriangleMesh({ vertices, triangles }, { tolerance: 0.0001 });
+          meshValidation.valid = !meshValidation.degenerateTriangles && !meshValidation.boundaryEdges && !meshValidation.nonManifoldEdges && !meshValidation.inconsistentWindingEdges;
+        } else meshValidation = { valid: null, status: "not_checked", reason: "Export exceeds the 200000 triangle inspection budget" };
+      }
+      return { format: args.format, path, byteLength: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), meshValidation, physicalFit: "unverified", manufacturingPerformance: "unverified" };
     }
     default: throw new Error(`Unknown tool: ${name}`);
   }
@@ -521,6 +566,15 @@ function textContent(value) {
 
 function toolResult(value) {
   const content = [];
+  if (Array.isArray(value?.images)) {
+    const { images, ...summary } = value;
+    content.push(textContent({ ...summary, images: images.map(({ dataUrl, ...metadata }) => metadata) }));
+    for (const image of images) {
+      const match = /^data:image\/(png|jpeg);base64,/.exec(image.dataUrl || "");
+      if (match) { content.push(textContent({ view: image.view })); content.push({ type: "image", data: image.dataUrl.slice(match[0].length), mimeType: `image/${match[1]}` }); }
+    }
+    return { resultType: "complete", content, isError: false };
+  }
   const imageMatch = /^data:image\/(png|jpeg);base64,/.exec(value?.imageDataUrl || "");
   if (imageMatch) {
     const { imageDataUrl, ...summary } = value;
@@ -540,6 +594,7 @@ async function handleMessage(message) {
   if (typeof method !== "string") return rpcError(requestId ?? null, -32600, "Expected a JSON-RPC method");
   if (method === "notifications/initialized" || method === "notifications/cancelled") return;
   try {
+    if (["initialize", "server/discover"].includes(method)) presence.stdioConnected();
     if (method === "server/discover") {
       return response(requestId, {
         resultType: "complete",
@@ -565,7 +620,10 @@ async function handleMessage(message) {
       if (typeof params.name !== "string" || !tools.some((tool) => tool.name === params.name)) {
         return response(requestId, toolError(new Error(`Unknown tool: ${params.name || ""}`)));
       }
-      try { return response(requestId, toolResult(await callTool(params.name, params.arguments || {}))); }
+      try {
+        const args = params.arguments === undefined ? {} : params.arguments;
+        return response(requestId, toolResult(await callTool(params.name, args)));
+      }
       catch (error) { return response(requestId, toolError(error)); }
     }
     rpcError(requestId ?? null, -32601, `Unknown method: ${method}`);

@@ -24,6 +24,12 @@ This builds and starts the container, waits for it to become healthy, and prints
 Open that URL and keep the editor tab open while the agent works. The browser
 runs the geometry worker; the local server connects the MCP client to it.
 
+The status beside Save shows whether an AI client is connected and whether it
+is reading, previewing, editing, saving, or exporting this document. Completed
+edits remain visible briefly. A disconnected bridge and failed editor requests have
+explicit labels. Reload the editor and reconnect your MCP client after updates
+to load the indicator and client connection tracking.
+
 ## Connect your AI agent
 
 Print the MCP client configuration:
@@ -81,11 +87,24 @@ clearance still need to be measured and tested.
 | `jumpstart_apply_model` | Apply a successful preview as one recoverable edit. |
 | `jumpstart_undo` | Undo an edit against the expected document revision. |
 | `jumpstart_export_model` | Export STL or supported STEP geometry. |
+| `jumpstart_get_capabilities` | Discover schemas, examples, limits, and unsupported operations. |
+| `jumpstart_preview_parameters` | Preview changes to a saved model's named parameters and dependencies. |
+| `jumpstart_inspect_geometry` | Measure generated geometry, sections, channels, and mesh topology. |
+| `jumpstart_select_geometry` | Find native edges or faces by geometric predicates, with ambiguity reporting. |
+| `jumpstart_save_document` | Save the native project and parameter templates in browser-local storage. |
+| `jumpstart_reopen_document` | Read back the current saved local project while preserving undo. |
+| `jumpstart_preview_new_document` | Prepare a fresh document as an undoable preview. |
 
 Plans support primitives, dimensioned circle and polygon sketches, extrude,
 revolve, loft, transforms, rectangular and circular patterns, boolean joins and
 cuts, and native fillet, shell, hole, thread, emboss, and scale operations.
 Operation details and restrictions are in [MCP.md](MCP.md).
+
+Parameterized plans can persist named values, arithmetic dependencies, bounds,
+and comparison constraints. Previews return parameter and feature diffs, top,
+side, and isometric images, plus a section image when requested. Geometry
+inspection measures the generated tessellation separately from the plan's
+claimed dimensions. Failed requested preview checks prevent apply.
 
 Previews leave the saved design unchanged. Apply rejects stale document
 revisions, and retrying the same preview does not duplicate the edit. The server
@@ -133,6 +152,18 @@ does not measure how reliably an AI model translates new natural-language
 requests into those plans. The imported-lid regression checks mesh resizing;
 physical fit remains unverified.
 
+The separate agent benchmark provides requests without prepared plans:
+
+```sh
+npm run benchmark:agent -- tasks
+```
+
+An agent supplies the plans and revisions, while the recorder captures tool
+calls, images, independent measurements, exports, and recovery evidence. See
+[MCP.md](MCP.md#agent-design-and-revision-benchmark) for the session commands.
+The latest recorded observations are in
+[benchmarks/verification-results.json](benchmarks/verification-results.json).
+
 ## Useful commands
 
 | Command | Purpose |
@@ -151,6 +182,9 @@ After changing app source, run `make up` again to rebuild the Docker image.
 
 - Sketch input supports circles and polygons, without a general constraint
   solver, arcs, or splines.
+- Parameter units are explicit labels; expressions do not perform dimensional
+  algebra. Native edits outside a saved parameter template must be reconciled
+  before parameter regeneration, rather than silently overwritten.
 - Face and edge selectors may need to be selected again after upstream geometry
   changes. Arbitrary mirror planes are not exposed.
 - Imported mesh scaling is supported; reconstructing a parametric feature tree
@@ -158,6 +192,8 @@ After changing app source, run `make up` again to rebuild the Docker image.
 - MCP export supports STL and supported STEP geometry, not 3MF.
 - Successful geometry and export checks do not prove printability, thread fit,
   or cup fit. Inspect the slicer output and perform physical fit tests.
+- Section and mesh checks inspect tessellation at a reported tolerance. They do
+  not detect every self-intersection or establish minimum thickness everywhere.
 
 ## Where the integration lives
 
@@ -166,6 +202,9 @@ After changing app source, run `make up` again to rebuild the Docker image.
 | [MCP.md](MCP.md) | Detailed setup, protocol, examples, and limitations. |
 | [src/mcp-plan.js](src/mcp-plan.js) | Model-plan validation and native operation mapping. |
 | [src/mcp.js](src/mcp.js) | Live editor bridge, previews, transactions, and exports. |
+| [src/mcp-models.js](src/mcp-models.js) | Saved parameter models and guarded regeneration. |
+| [src/mcp-parameters.js](src/mcp-parameters.js) | Bounded arithmetic dependencies and constraints. |
+| [src/mcp-inspection.js](src/mcp-inspection.js) | Independent measurements of generated geometry. |
 | [scripts/](scripts/) | Local server, stdio proxy, and benchmark runner. |
 | [benchmarks/](benchmarks/) | Tutorial tasks, plans, and invariant checks. |
 | [tests/](tests/) | Contract and regression coverage. |
