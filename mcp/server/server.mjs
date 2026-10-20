@@ -473,8 +473,14 @@ async function serveStatic(req, res, pathname) {
     return res.end("Build the local JumpStart app first with npm run build.\n");
   }
   const contentType = MIME[extname(file).toLowerCase()] || "application/octet-stream";
+  let shell;
+  if (file === join(DOCS, "index.html") && req.method === "GET") {
+    try { shell = (await readFile(file, "utf8")).replace("</head>", '<meta name="jumpstart-mcp-bridge" content="1">\n</head>'); }
+    catch { return json(res, 503, { error: "The local app is rebuilding; retry after the build finishes" }); }
+  }
   res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" });
   if (req.method === "HEAD") return res.end();
+  if (shell !== undefined) return res.end(shell);
   createReadStream(file).on("error", () => { if (!res.headersSent) res.writeHead(404); res.end(); }).pipe(res);
 }
 

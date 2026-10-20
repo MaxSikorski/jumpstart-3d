@@ -171,6 +171,20 @@ export function pruneConstraints(sk) {
   sk.cons = sk.cons.filter((c) => (!c.e1 || E.has(c.e1)) && (!c.e2 || E.has(c.e2)) && (!c.e || E.has(c.e)) && (!c.p || Pt.has(c.p)) && (!c.p1 || Pt.has(c.p1)) && (!c.p2 || Pt.has(c.p2)));
 }
 
+// pull an arc's end point back onto its circle after the solver has moved things
+export function normalizeSketch(sk) {
+  const P = new Map(sk.pts.map((p) => [p.id, p]));
+  for (const e of sk.ents) {
+    if (e.t !== "arc") continue;
+    const c = P.get(e.c), a = P.get(e.a), b = P.get(e.b);
+    if (!c || !a || !b) continue;
+    const r = Math.hypot(a.x - c.x, a.y - c.y);
+    const ang = Math.atan2(b.y - c.y, b.x - c.x);
+    b.x = c.x + r * Math.cos(ang);
+    b.y = c.y + r * Math.sin(ang);
+  }
+}
+
 // ------------------------------------------------------------ the solver
 // keep: point ids that must not move (being dragged); projected points never move
 export function solveSketch(sk, keep = new Set()) {
@@ -395,4 +409,31 @@ export function glyphSpots(sk) {
     for (const id of [c.e1, c.e2]) { const m = mid(E.get(id)); if (m) out.push({ c, g, at: m }); }
   }
   return out;
+}
+
+// jumpstart-3d: parameters. How many degrees of freedom a sketch has left, as a plain count (free variables minus
+// equations), so it is an estimate: it can read too high when constraints repeat each other, or too low when they
+// fight. free is the variable count (0 for a sketch with no shapes); over is free minus equations (below 0: more
+// constraints than needed); dof is over, never below 0. A parallel or perpendicular between two lines that already
+// each have a horizontal or vertical constraint adds nothing (the usual repeat), so it is not counted.
+export function sketchDof(sk) {
+  const fixed = new Set(), ids = new Set(), hv = new Set();
+  let extra = 0, eqs = 0;
+  for (const c of sk.cons || []) {
+    if (c.t !== "horizontal" && c.t !== "vertical") continue;
+    if (c.e1) hv.add(c.e1);
+    else for (const e of sk.ents) if (e.t === "line" && ((e.a === c.p1 && e.b === c.p2) || (e.a === c.p2 && e.b === c.p1))) hv.add(e.id);
+  }
+  for (const e of sk.ents) {
+    for (const id of entIds(e)) { ids.add(id); if (e.proj) fixed.add(id); }
+    if (!e.proj) extra += e.t === "circle" ? 1 : e.t === "arc" ? -1 : 0; // a circle's radius; an arc's end sits on its circle
+  }
+  for (const c of sk.cons || []) {
+    if (c.t === "dim") eqs += c.v >= 0 ? 1 : 0;
+    else if (c.t === "origin") eqs += fixed.has(c.p) ? 0 : 2;
+    else if ((c.t === "parallel" || c.t === "perpendicular") && hv.has(c.e1) && hv.has(c.e2)) continue;
+    else eqs += c.t === "midpoint" ? 2 : 1;
+  }
+  const free = 2 * [...ids].filter((id) => !fixed.has(id)).length + extra;
+  return { free, dof: Math.max(0, free - eqs), over: free - eqs };
 }

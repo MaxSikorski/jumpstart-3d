@@ -1,8 +1,10 @@
-# JumpStart 3D v1.94: complete source code
+# JumpStart 3D v2.0: complete source code
 
-Everything needed to rebuild JumpStart 3D v1.94 (with the Mac / iPad / iPhone work, the open-source credits, and 16 step-by-step tutorials with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
+Everything needed to rebuild JumpStart 3D v2.0 (with the Mac / iPad / iPhone work, the open-source credits, and 18 step-by-step tutorials (two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
 
-Building from this folder gives the same app as the released `jumpstart_3d_v1.94.htm`. The only differences are the size number used by the loading bar and the file labels in two license comments.
+New in v2.0: **3D Sketch** (`app/src/sketch3d.js`), the **Lathe** (`app/src/lathe.js`) and **Jump Brick Builder** (`app/src/bricks.js`, in Advanced → Simulate). The version number shown on the splash screen and in About comes from `app/src/version.js` (and the splash line in `app/src/index.html`).
+
+Building from this folder gives the same app as the released `jumpstart_3d_v2.0.htm`. The only differences are the size number used by the loading bar and the file labels in two license comments.
 
 ## What's where
 
@@ -59,4 +61,4 @@ Source code for the engine:
 
 - **Third-party code and fonts:** MIT (three.js, replicad, opentype.js), ISC (Flatbush, Flatqueue), LGPL-2.1 (the OpenCascade engine), SIL Open Font License 1.1 (Poppins, Liberation, IBM Plex, Barlow). See `THIRD-PARTY-NOTICES.md` and `LICENSES/`. Keep these notices with any copy of the app you share.
 - **The two Liberation font subsets** are renamed "JumpStart Serif" and "JumpStart Mono" inside the font files, because modified versions of OFL fonts may not use the original names.
-- **JumpStart 3D's own code** (`app/`): no open-source license has been chosen for it yet. To let others reuse it, add a `LICENSE` file (MIT is a common, simple choice).
+- **JumpStart 3D's own code** (`app/`): released under the MIT License (see `LICENSE`): you're free to use, copy, modify and share it, for any purpose. It includes open-source libraries and fonts under their own licenses (MIT, ISC, LGPL-2.1 for the OpenCascade geometry engine, and the SIL Open Font License). Their notices are in `THIRD-PARTY-NOTICES.md` and `LICENSES/`; please keep them with any copy you share.

@@ -1,0 +1,80 @@
+{
+ "v": 1,
+ "id": "g_advanced_tapped_hole",
+ "name": "Tapped hole",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 40,
+     "d": 30,
+     "h": 20,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 2,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 6,
+      "through": true,
+      "depth": 10,
+      "tapped": true,
+      "pitch": 1,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         0,
+         0,
+         20
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

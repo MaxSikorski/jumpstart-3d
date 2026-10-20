@@ -3,6 +3,10 @@ import { initProjector } from "./projector.js";
 import { initMedia } from "./media.js";
 import { inflate } from "./inflate.js";
 import { CREDITS, LICENSE_TEXTS } from "./licenses.js";
+import { initSketch3D } from "./sketch3d.js";
+import { initLathe } from "./lathe.js";
+import { VERSION } from "./version.js";
+import { initBricks } from "./bricks.js";
 import { initTutorials } from "./tutorials.js";
 import * as THREE from "three";
 import { Viewport, ViewCube } from "./viewport.js";
@@ -14,6 +18,7 @@ import { setCustomTextureSource } from "./texture.js";
 setCustomTextureSource(() => ({ ...(store.doc.texImages || {}), ...((store.preview && store.preview.texImages) || {}) }));
 import { el, parseLength, fmt, IS_MAC, IS_IOS, IS_IPHONE, watchMacLabels } from "./util.js";
 const parseLengthMM = parseLength;
+import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import { getUnit, setUnit, onUnit, toU, fromU, showLen, parseLen, unitName, SNAP_SIZES } from "./units.js";
 import { setThemeColors, theme } from "./theme.js";
 import { ICON } from "./icons.js";
@@ -25,6 +30,7 @@ import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
 import { initMcp } from "../mcp/browser/editor-bridge.js";
+import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -107,10 +113,11 @@ function boot() {
   app.sketcher = new Sketcher(app);
   scene.onRefresh = () => app.onSceneRefresh && app.onSceneRefresh();
   // a shape's size and position boxes need its finished geometry: show them once it arrives
+  let drawnKey; // jumpstart-3d: fix. redraw when a new mesh lands, not only when the position boxes are missing
   app.onSceneRefresh = () => {
     if (app.mode !== "beginner" || app.sel.length !== 1 || app.command || app.sketcher.active) return;
-    const insp = $("inspector");
-    if (insp && !insp.hidden && !document.getElementById("insp-pos0") && scene.bodyTightBox(app.sel[0])) setTimeout(() => app.refreshUI("geometry"), 0);
+    const insp = $("inspector"), key = scene.views.get(app.sel[0])?.key; // jumpstart-3d: fix
+    if (insp && !insp.hidden && key && key !== drawnKey) { drawnKey = key; setTimeout(() => app.refreshUI("geometry"), 0); } // jumpstart-3d: fix
   };
 
   // on small screens the side panels start tucked away (toggle from the toolbar)
@@ -127,6 +134,10 @@ function boot() {
   app.projector = initProjector(app);
   app.projects = initProjects(app);
   app.tutorials = initTutorials(app);
+  app.sketch3d = initSketch3D(app);
+app.lathe = initLathe(app);
+{ const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + VERSION; }
+app.bricks = initBricks(app);
   // Save makes a new version (v1, v2...); the number shows next to the name
   app.onVersion = () => app.refreshUI && app.refreshUI("version");
   $("btn-save").onclick = () => app.projects.saveVersion();
@@ -550,7 +561,13 @@ app.showAbout = function () {
   const modal = el("div", { class: "modal about", role: "dialog", "aria-label": "About JumpStart 3D" },
     el("header", {}, el("h2", {}, "About"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
     el("div", { class: "mbody", id: "about-body" },
-      el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D"), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
+      el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D ", el("span", { class: "ab-hver" }, "Version " + VERSION)), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
+      sec("New in version 2.0", [
+        ["3D Sketch:", "draw lines in 3D on a body, a virtual sphere, egg or cube, or in the air, with a split screen: turn the camera with one hand while you draw with the other (touch, pen, mouse or trackpad). Freehand or nodes, undo and redo; every line becomes a solid tube."],
+        ["Lathe:", "turn a body (or a copy of it) or a square or round blank on a virtual wood lathe: pick the speed, a foot pedal (Space) that you hold or that stays on, seven chisels you can twist, flying chips, then hollow it out and add it to the design or export STL, 3MF or OBJ. In Beginner, Advanced and Chisel."],
+        ["Jump Brick Builder:", "in Advanced → Simulate, rebuild objects out of printable stud-and-tube building bricks (classic 8 mm or jumbo 16 mm) with a parts list and layer-by-layer building steps, built in place or laid out on print beds."],
+        ["Also:", "a 256 × 256 mm Beginner workplane, path patterns in Advanced, imperial threads, and two new Lathe tutorials."],
+      ]),
       sec("Three modes", [
         ["Beginner:", "drag-and-drop shapes, solids and holes, grouping, align, mirror, pattern and drop to workplane, like Tinkercad."],
         ["Advanced:", "sketch-based, parametric modeling with a feature timeline, like Fusion 360."],
@@ -592,7 +609,7 @@ app.showAbout = function () {
         ["Lighting:", "realistic shading and shadows (sun button), light, dark or high-contrast themes, orthographic view and the view cube."],
         ["Projection & animation:", "Projector (a second window that shows your objects on black, for a projector or second screen), Media (pictures and videos on objects: facing view, wrap around, all sides or ball), and Picture to 3D model (puffs a picture's subject up into a rounded, printable solid with the picture painted on), and in Chisel: ready-made characters (people, heads, animals, aliens), textures, a History strip, and the Puppet Animator (rig, pose, keyframes up to 10 seconds, an animation library, a virtual set with your own background, MP4 export)."],
         ["Performance:", "Auto, Normal (slower computers), High (most laptops and Chromebooks) or Ultra (powerful computers, sharpest) in the theme menu (◐): lighter modes draw fewer pixels while the view moves and simpler shadows, with every tool and export unchanged. Auto picks a mode for the computer and steps down if things get slow."],
-        ["Tutorials:", "sixteen step-by-step projects (eight in Beginner, eight in Advanced, marked Easy, Proficient or Advanced, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."],
+        ["Tutorials:", "nineteen step-by-step projects (nine in Beginner, ten in Advanced, marked Easy, Proficient or Advanced, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."], // jumpstart-3d: tutorials count
         ["Mesh detail:", "Normal, Fine, Extra fine or a custom level up to 32× in the theme menu (◐): how finely curved surfaces are divided into triangles, in the view and in STL, OBJ and 3MF exports. STEP is exact at every level. The menu shows the triangle count of your design and estimates it for other levels; above 500,000 it asks first, because building can take minutes."],
         ["Help:", "press ? for every keyboard shortcut; right-click a shape for copy, paste, duplicate and delete."]]),
       // the author's credit from v1.93.8 stays in this community build (see NOTICE.md)
@@ -600,6 +617,8 @@ app.showAbout = function () {
       el("p", { class: "ab-credit-sub" }, "Created with Vibe Coding Assistance"),
       el("p", { class: "ab-credit-sub" }, "Community build maintained by Max Sikorski · ",
         el("a", { href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "github.com/MaxSikorski/jumpstart-3d")),
+      // jumpstart-3d: what the community build adds
+      el("p", { class: "ab-credit-sub" }, "Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail."),
       // the open-source libraries and fonts inside the app, with their licenses (they ask for this notice)
       el("section", { class: "ab-oss", id: "ab-oss" },
         el("h3", {}, "Open-source credits"),
@@ -612,8 +631,10 @@ app.showAbout = function () {
           el("summary", {}, "Full license texts"),
           ...[["MIT License: three.js", "mit-three"], ["MIT License: replicad", "mit-replicad"], ["MIT License: opentype.js", "mit-opentype"], ["ISC License: Flatbush", "isc"], ["GNU Lesser General Public License 2.1: Open CASCADE Technology / opencascade.js / replicad-opencascadejs", "lgpl"], ["SIL Open Font License 1.1: Poppins, Liberation, IBM Plex, Barlow", "ofl"]]
             .map(([t, k]) => el("div", { class: "ab-lic" }, el("b", {}, t), el("pre", {}, LICENSE_TEXTS[k]))))),
-      el("div", { class: "ab-update" }, el("span", { class: "ab-ver" }, "Version 1.94 · community build"),
+      el("div", { class: "ab-update" }, el("span", { class: "ab-ver", id: "ab-ver" }, "Version " + VERSION + " · community build"),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/releases", target: "_blank", rel: "noopener" }, "What's new"),
+        // jumpstart-3d: support link (community build)
+        el("a", { class: "btn", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/issues", target: "_blank", rel: "noopener" }, "Report a bug or idea"))));
   back.append(modal);
   document.body.append(back);
@@ -781,21 +802,31 @@ app.submitCommand = function () {
 };
 // fields that hold a length (shown and typed in the chosen units); the rest are angles, counts, factors…
 const LEN_FIELD = /^(em-size|em-depth|ex-dist2?|ed-val2?|hole-(dia|depth|cbd|cbh|csd|p\d)|pl-d|ins-[hw]|img-w|th-len|of-d|sh-th|mv-d\d|pr-(w|d|h|tube|pos\d)|pr-x-(wall|r|c)|pt-s\d|pal-(imw|imx|imy|px|py|x|y|size|len|ax|ay|bx|by|dia|cx|cy|r)|insp-(s\d|size|h|w|d|pos\d)|pp-(size|wall)|cl-(d|h|pitch|size|o\d))$/;
-app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Infinity, id, unit = "mm", angle = false, live = false, len }) {
+app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Infinity, id, unit = "mm", angle = false, live = false, len, expr }) {
   const isLen = !angle && (len != null ? len : !!(id && LEN_FIELD.test(id)));
   // shown in the current units; the value handed back is always mm
   const show = (v) => (isLen ? showLen(v, 3) : fmt(v, 3));
   const parseLength = (txt) => (isLen ? parseLen(txt) : parseLengthMM(txt));
   if (isLen && getUnit() === "in") step = step >= 1 ? 25.4 / 16 : 25.4 / 64;
+  // jumpstart-3d: parameters. Passing expr (the saved expression text, or null) lets the field hold a parameter expression:
+  // onCommit(v, text) gets the trimmed text, or null for a plain number. Without expr (undefined) the field is unchanged.
+  let bound = expr || null;
+  const read = (txt) => {
+    const v = parseLength(txt);
+    if (expr === undefined || isFinite(v)) return { v, text: null };
+    return { v: evalExpr(txt, exprScope(store.view), { unit: isLen ? getUnit() : "mm", angle }), text: txt.trim() };
+  };
   // phone number pads in "decimal" mode have no minus key, so only use them where negatives aren't allowed
-  const inp = el("input", { class: "num", type: "text", inputmode: min >= 0 ? "decimal" : null, value: show(value), id, spellcheck: "false", autocomplete: "off" });
+  const inp = el("input", { class: "num" + (bound ? " fx" : ""), type: "text", inputmode: min >= 0 ? "decimal" : null, value: bound || show(value), id, spellcheck: "false", autocomplete: "off" }); // jumpstart-3d: parameters
   let last = value;
   const commit = () => {
-    const v = parseLength(inp.value);
+    const { v, text } = read(inp.value);
     if (!isFinite(v) || v < min || v > max) { inp.classList.add("bad"); return; }
     inp.classList.remove("bad");
-    if (Math.abs(v - last) > 1e-12) { last = v; onCommit(v); }
-    inp.value = show(v);
+    delete inp.dataset.dirty; // jumpstart-3d: fix. committed text is not half-typed; the inspector would put it back after its redraw and commit it again on blur
+    if (Math.abs(v - last) > 1e-12 || text !== bound) { last = v; bound = text; onCommit(v, text); } // jumpstart-3d: parameters
+    inp.value = bound || show(v); // jumpstart-3d: parameters
+    inp.classList.toggle("fx", !!bound); // jumpstart-3d: parameters
   };
   inp.addEventListener("keydown", (e) => {
     e.stopPropagation();
@@ -804,7 +835,7 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
       // Enter in a tool's dialog applies the change, like pressing OK
       if (!inp.classList.contains("bad") && inp.closest("#cmd")) app.submitCommand();
     }
-    else if (e.key === "Escape") { inp.value = show(last); inp.blur(); }
+    else if (e.key === "Escape") { inp.value = bound || show(last); inp.blur(); } // jumpstart-3d: parameters
     else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
       const cur = parseLength(inp.value);
@@ -813,15 +844,16 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
       commit();
     }
   });
-  if (live) inp.addEventListener("input", () => { const v = parseLength(inp.value); if (isFinite(v) && v >= min && v <= max) { inp.classList.remove("bad"); last = v; onCommit(v); } });
+  if (live) inp.addEventListener("input", () => { const { v, text } = read(inp.value); if (isFinite(v) && v >= min && v <= max) { inp.classList.remove("bad"); inp.classList.toggle("fx", !!text); last = v; bound = text; onCommit(v, text); } }); // jumpstart-3d: parameters
   inp.addEventListener("change", commit);
   inp.addEventListener("focus", () => inp.select());
-  inp.setValue = (v) => { last = v; if (document.activeElement !== inp) inp.value = show(v); };
+  inp.setValue = (v) => { last = v; bound = null; inp.classList.remove("fx"); if (document.activeElement !== inp) inp.value = show(v); }; // jumpstart-3d: parameters
   void unit; void angle;
   return inp;
 };
 
-app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit() }) {
+// jumpstart-3d: parameters. resolve(text) can replace the length parser; onOk also gets the typed text
+app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit(), resolve }) {
   const vpEl = $("viewport");
   vpEl.querySelector(".prompt")?.remove();
   const inp = el("input", { class: "num", value, type: "text", inputmode: "decimal", id: "prompt-value" });
@@ -833,7 +865,7 @@ app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit()
   const close = (ok) => { if (done) return; done = true; box.remove(); app.vp.canvas.focus(); if (!ok && onCancel) onCancel(); };
   inp.addEventListener("keydown", (e) => {
     e.stopPropagation();
-    if (e.key === "Enter") { const v = parseLength(inp.value, unit); if (isFinite(v)) { close(true); onOk(v); } else inp.classList.add("bad"); }
+    if (e.key === "Enter") { const v = resolve ? resolve(inp.value) : parseLength(inp.value, unit); if (isFinite(v)) { close(true); onOk(v, inp.value); } else inp.classList.add("bad"); }
     if (e.key === "Escape") close(false);
   });
   inp.addEventListener("blur", () => setTimeout(() => box.isConnected && close(false), 150));
@@ -895,3 +927,10 @@ function onKey(e) {
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
 else boot();
+
+// Our addition: the app and its document store on window, as the author's app/test/dbg.js
+// exposed them for his Playwright scripts. The regression tests in test/ drive both builds through these.
+window.__app = app; window.__store = store; window.__findBody = findBody;
+
+// jumpstart-3d: scripting bridge. window.JS3D, documented in BRIDGE.md; does nothing until a script calls it.
+initBridge(app);

@@ -1,0 +1,128 @@
+{
+ "v": 1,
+ "id": "g_advanced_pattern",
+ "name": "Pattern",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 3,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 20,
+     "d": 20,
+     "h": 10,
+     "r": 0,
+     "c": 0
+    },
+    "mods": []
+   }
+  },
+  {
+   "id": "b2",
+   "name": "b2",
+   "seq": 2,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    30,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 20,
+     "d": 20,
+     "h": 10,
+     "r": 0,
+     "c": 0
+    },
+    "mods": []
+   }
+  },
+  {
+   "id": "b3",
+   "name": "b3",
+   "seq": 3,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    60,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 20,
+     "d": 20,
+     "h": 10,
+     "r": 0,
+     "c": 0
+    },
+    "mods": []
+   }
+  }
+ ]
+}

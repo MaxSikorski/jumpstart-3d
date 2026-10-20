@@ -5,6 +5,8 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TUTORIAL_CASES, validateTutorialCase } from "./tutorial-cases.mjs";
 
+import { tutorialCoverage } from "./coverage.mjs";
+
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const EXPORTS = join(ROOT, "exports");
 const ENDPOINT = process.env.JUMPSTART_MCP_HTTP_URL || "http://127.0.0.1:3210/__mcp/rpc";
@@ -145,6 +147,7 @@ async function main() {
       }
     }
   }
+  process.stdout.write(`Upstream tutorial coverage: ${JSON.stringify(tutorialCoverage())}\n`);
   const passed = results.filter((result) => result.pass).length;
   process.stdout.write(`Tutorial MCP benchmark: ${passed}/${TUTORIAL_CASES.length} passed\n`);
   if (passed !== TUTORIAL_CASES.length) process.exitCode = process.exitCode || 1;

@@ -1,4 +1,28 @@
 <!doctype html>
+<!--
+  JumpStart 3D. MIT License.
+  Copyright (c) JumpStart 3D contributors
+  Copyright (c) 2026 classyapps2026
+  Copyright (c) 2026 Max Sikorski and the jumpstart-3d community contributors (the community additions)
+  The author's source: https://github.com/classyapps2026/jumpstart3d
+  Community build from https://github.com/MaxSikorski/jumpstart-3d (LICENSE and NOTICE.md there).
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+  associated documentation files (the "Software"), to deal in the Software without restriction,
+  including without limitation the rights to use, copy, modify, merge, publish, distribute,
+  sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions: The above copyright notice and this
+  permission notice shall be included in all copies or substantial portions of the Software.
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+  NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+  DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+  OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+  The bundled libraries and fonts (three.js, replicad, the OpenCascade kernel, opentype.js, Flatbush,
+  Flatqueue, Poppins, Liberation, IBM Plex, Barlow) keep their own licenses, listed with full texts in
+  the About dialog and in THIRD-PARTY-NOTICES.md.
+-->
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="format-detection" content="telephone=no">
 <meta name="description" content="Free 3D CAD in your browser. No install, no account, no server. Drag shapes together in Beginner mode, or sketch, extrude, fillet and shell in Advanced mode.">
 <meta name="theme-color" content="#1b232d">
@@ -382,6 +406,16 @@ button { cursor: pointer; }
 .props dt { color: var(--ink-3); }
 .props dd { margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; }
 .empty { color: var(--ink-3); font-size: 12px; padding: 6px 8px; }
+/* jumpstart-3d: parameters panel */
+.tree .folder .param-add { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 12px/1 var(--f-ui); letter-spacing: 0; padding: 3px 8px; cursor: pointer; }
+.tree .folder .param-add:hover { color: var(--accent); border-color: var(--hover-line); }
+.tree .folder .param-tools { display: flex; gap: 4px; }
+.tree .node .sk-dof { font-size: 11px; color: var(--ink-3); flex: none; } /* jumpstart-3d: parameters. how many degrees of freedom a sketch has left */
+.tree .node .sk-dof.ok { color: var(--accent); }
+.tree .param { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto 18px; align-items: center; gap: 4px; padding: 2px 6px; }
+.tree .param .num { padding: 3px 5px; font-size: 12px; }
+.tree .param .pv { font: 11px/1 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+.tree .param .pv.bad { color: var(--danger); }
 
 /* ---------------------------------------------------------------- floating panels */
 .float { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px var(--shadow); z-index: 5; }
@@ -399,6 +433,7 @@ button { cursor: pointer; }
 .row3 label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-3); }
 .num { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 4px; padding: 5px 6px; background: var(--panel); font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 0; }
 .num:focus { border-color: var(--accent-2); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+.num.fx { border-color: var(--accent-2); font-style: italic; } /* jumpstart-3d: parameters. holds a parameter expression */
 .num.bad { border-color: var(--danger); }
 select.num { font-family: var(--f-ui); }
 .seg { display: flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
@@ -546,6 +581,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 @keyframes sp-drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .sp-title { margin: 14px 0 4px; font: 700 52px/1 var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: #fff; }
 .sp-title b { color: #6f98d8; }
+.sp-ver { margin: -16px 0 24px; font: 600 13px/1.2 var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: #7f93a8; }
 .sp-tag { margin: 0 0 26px; font: 500 15px/1.2 var(--f-label); letter-spacing: .22em; text-transform: uppercase; color: #9fb0c2; }
 .sp-bar { width: min(300px, 70vw); height: 4px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
 .sp-bar i { display: block; height: 100%; width: 6%; border-radius: 4px; background: linear-gradient(90deg, #2d63c8, #6f98d8); transition: width .3s ease; }
@@ -587,8 +623,8 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .section-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a317; }
 .section-chip .btn { padding: 3px 10px; font-size: 12px; }
 .section-chip .xbtn { width: 26px; height: 26px; }
-.tree .folder .dxf-all { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 10.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; padding: 3px 6px; cursor: pointer; }
-.tree .folder .dxf-all:hover { color: var(--accent); border-color: var(--hover-line); }
+.tree .folder .dxf-all, .tree .folder .param-csv-out, .tree .folder .param-csv-in { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 10.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; padding: 3px 6px; cursor: pointer; }
+.tree .folder .dxf-all:hover, .tree .folder .param-csv-out:hover, .tree .folder .param-csv-in:hover { color: var(--accent); border-color: var(--hover-line); }
 .tree .node .dxf-one { opacity: .45; }
 .tree .node:hover .dxf-one, .tree .node .dxf-one:focus { opacity: 1; }
 .platenode .pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -651,6 +687,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .about .ab-lic { margin-top: 10px; }
 .about .ab-lic pre { max-height: 220px; overflow: auto; white-space: pre-wrap; font: 11px/1.45 var(--f-mono, monospace); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 4px 0 0; color: var(--ink-2); }
 .about .ab-update { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0 2px; flex-wrap: wrap; }
+.about .ab-hver { font: 600 12px/1 var(--f-label); color: var(--ink-3); margin-left: 6px; letter-spacing: .04em; }
 .about .ab-ver { font: 500 13px/1 var(--f-mono, monospace); color: var(--ink-3); }
 .about .ab-update .btn { text-decoration: none; }
 .about .ab-credit-sub { margin: 8px 0 0; text-align: center; font-size: 13px; color: var(--ink-2); }
@@ -826,6 +863,81 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .status select { max-width: 74px; }
 }
 .ibtn.dim { opacity: .45; }
+/* ---- 3D Sketch */
+body.s3d-on { overflow: hidden; }
+.s3d { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); }
+.s3d-bar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.s3d-title { display: flex; flex-direction: column; gap: 2px; margin-right: 6px; }
+.s3d-title b { font: 700 15px var(--f-label); letter-spacing: .06em; text-transform: uppercase; }
+.s3d-exp { font-size: 10px; font-weight: 700; color: #8a5a00; background: #ffe8b3; border-radius: 6px; padding: 1px 6px; align-self: flex-start; }
+.s3d-grp { display: flex; flex-direction: column; gap: 3px; }
+.s3d-grp > small { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.s3d-grp:not(:has(small)) { flex-direction: row; gap: 6px; align-items: center; }
+.s3d-seg { margin: 0; }
+.s3d-seg button { padding: 6px 10px; font-size: 12px; }
+.s3d-grp .num { width: 74px; }
+.s3d-colors { display: flex; gap: 4px; }
+.s3d-col { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line-2); padding: 0; cursor: pointer; }
+.s3d-col.on { box-shadow: 0 0 0 2px var(--ink); }
+.s3d-chk { align-self: center; margin: 0; }
+.s3d-sp { flex: 1; }
+.s3d-panes { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; }
+.s3d-canvas { position: absolute; inset: 0; display: block; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.s3d-div { position: absolute; top: 0; bottom: 0; left: var(--split, 42%); width: 3px; margin-left: -1px; background: var(--ink); opacity: .55; pointer-events: none; }
+.s3d-lab { position: absolute; top: 8px; display: flex; gap: 8px; align-items: baseline; max-width: calc(var(--split, 42%) - 20px); padding: 4px 9px; border-radius: 8px; background: rgba(255,255,255,.86); color: #1b1f24; font-size: 11.5px; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.s3d-lab b { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.s3d-lab.l { left: 10px; }
+.s3d-lab.r { left: calc(var(--split, 42%) + 12px); max-width: calc(100% - var(--split, 42%) - 24px); }
+.s3d-modal-back { position: absolute; inset: 0; background: rgba(15,20,30,.35); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 16px; }
+.s3d-modal { background: var(--panel); color: var(--ink); border-radius: 12px; padding: 16px 18px; width: min(440px, 100%); box-shadow: 0 16px 40px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 10px; }
+.s3d-modal h3 { margin: 0; font-size: 16px; }
+.s3d-bases { display: flex; flex-direction: column; gap: 4px; }
+.s3d-base-opt { display: flex; gap: 8px; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.s3d-base-opt.on { border-color: var(--accent, #2d63c8); background: rgba(45,99,200,.08); }
+.s3d-modal .row3 { display: flex; gap: 8px; }
+.s3d-modal .row3 label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); flex: 1; }
+.s3d-modal .row { display: flex; gap: 8px; align-items: center; }
+.s3d-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.lathe-row { display: flex; gap: 6px; align-items: center; }
+.lathe-sel { min-width: 150px; }
+.lathe-ang, .lathe-spd { font: 600 12px var(--f-mono, monospace); min-width: 44px; }
+#lathe-speed { width: 120px; }
+.lathe-tray { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; }
+.lathe-rpm { padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,.88); color: #1b1f24; font: 700 13px var(--f-mono, monospace); box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.lathe-rpm.on { color: #b33a00; }
+.lathe-latch { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); font-weight: 600; }
+.lathe-latch[aria-pressed="true"] { background: #ffe8b3; border-color: #c98a00; }
+.lathe-pedal { width: 96px; height: 64px; border-radius: 12px; border: 2px solid #333; background: linear-gradient(#5a5f66, #2c3036); color: #fff; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; box-shadow: 0 5px 0 #15181b; touch-action: none; user-select: none; -webkit-user-select: none; }
+.lathe-pedal.down, .lathe-pedal.on { transform: translateY(4px); box-shadow: 0 1px 0 #15181b; background: linear-gradient(#3f8b4a, #26632f); }
+.lathe-lab { max-width: calc(100% - 24px); }
+.chisel-lathe-btn { margin-left: 6px; }
+.lathe-msg { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: #b33a00; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
+.lathe-msg[hidden] { display: none; }
+.lathe-pedal.running { background: linear-gradient(#c8432b, #8f2a19); }
+body.s3d-on .tut-panel { z-index: 96; }
+.lathe-leave-btns { display: flex; flex-direction: column; gap: 8px; }
+.lathe-leave-btns .btn { justify-content: center; padding: 10px; }
+.lathe-leave-btns .btn.danger { color: #b3261e; border-color: #e3b0ab; }
+.lathe-done-back { background: transparent; justify-content: flex-end; align-items: flex-start; pointer-events: none; }
+.lathe-done-back .s3d-modal { pointer-events: auto; width: min(370px, 100%); max-height: 100%; overflow: auto; }
+
+.bk-panes { display: flex; }
+.bk-view { position: relative; flex: 1; min-width: 0; }
+.bk-side { width: 300px; max-width: 42vw; overflow: auto; border-left: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); font-size: 13px; }
+.bk-side h3 { margin: 0; font-size: 17px; }
+.bk-side small { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.bk-dim { margin: 0; color: var(--muted); }
+.bk-warn { margin: 0; padding: 6px 9px; border-radius: 8px; background: #fff1d6; color: #6b4300; font-size: 12px; }
+.bk-steps { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.bk-steprow { display: flex; align-items: center; gap: 8px; }
+.bk-stepnow { flex: 1; text-align: center; font-weight: 700; }
+.bk-ph { margin-top: 4px; }
+.bk-parts { border-collapse: collapse; width: 100%; }
+.bk-parts td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.bk-parts td.n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bk-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.25); vertical-align: middle; }
+@media (max-width: 700px) { .bk-panes { flex-direction: column; } .bk-side { width: auto; max-width: none; max-height: 40vh; border-left: 0; border-top: 1px solid var(--line); } }
+@media (max-width: 700px) { .s3d-lab span { display: none; } .s3d-grp .num { width: 60px; } }
 .tpi-wrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tpi-wrap .hint { font-size: 11px; }
 .al-dots { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
@@ -1052,6 +1164,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <svg class="sp-logo" viewBox="0 0 24 24" aria-hidden="true"><path class="l1" d="M3 16.5 12 21l9-4.5L12 12z" fill="#2d63c8"/><path class="l2" d="M3 12 12 16.5 21 12 12 7.5z" fill="#6f98d8"/><path class="l3" d="M3 7.5 12 12l9-4.5L12 3z" fill="#e9eef4"/></svg>
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
+    <p class="sp-ver" id="sp-ver">Version 2.0</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

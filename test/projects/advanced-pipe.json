@@ -1,0 +1,110 @@
+{
+ "v": 1,
+ "id": "g_advanced_pipe",
+ "name": "Pipe",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "pipe",
+    "path": {
+     "sketch": "s2",
+     "ents": [
+      "l1",
+      "l2"
+     ]
+    },
+    "section": "circle",
+    "size": 6,
+    "hollow": false,
+    "wall": 1,
+    "mods": []
+   }
+  }
+ ],
+ "sketches": [
+  {
+   "id": "s2",
+   "name": "s2",
+   "seq": 2,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     -1,
+     0
+    ]
+   },
+   "pts": [
+    {
+     "id": "q1",
+     "x": 0,
+     "y": 0
+    },
+    {
+     "id": "q2",
+     "x": 0,
+     "y": 30
+    },
+    {
+     "id": "q3",
+     "x": 20,
+     "y": 30
+    }
+   ],
+   "ents": [
+    {
+     "id": "l1",
+     "t": "line",
+     "a": "q1",
+     "b": "q2"
+    },
+    {
+     "id": "l2",
+     "t": "line",
+     "a": "q2",
+     "b": "q3"
+    }
+   ],
+   "hidden": true
+  }
+ ]
+}

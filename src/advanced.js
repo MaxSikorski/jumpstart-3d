@@ -9,6 +9,8 @@ import { planeMatrix } from "./scene.js";
 import { thickLines } from "./thickline.js";
 import { SKETCH_TOOLS, normalizeSketch, arcFrom3, addImportedCurves } from "./sketcher.js";
 import { parseSVG, parseDXF, curvesBounds } from "./importers.js";
+import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, exprOf, exprsOf, paramsToCsv, parseParamsCsv, importParams, PARAM_ERROR } from "./params.js";
+import { sketchDof } from "./constraints.js"; // jumpstart-3d: parameters
 import { traceImage, curvesFor } from "./trace.js";
 import { subjectMask, inflate, maskBox } from "./puffy.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
@@ -747,9 +749,9 @@ export function initAdvanced(app) {
   }
   function featureNode(st) {
     const base = { t: st.kind, sketch: st.sketchId, profiles: [...st.profiles.values()].map((p) => p.ref) };
-    if (st.kind === "extrude") Object.assign(base, { dist: st.dist, mode: st.mode, dist2: st.dist2 });
+    if (st.kind === "extrude") Object.assign(base, { dist: st.dist, mode: st.mode, dist2: st.dist2 }, exprsOf(st, st.mode === "two" ? ["dist", "dist2"] : ["dist"])); // jumpstart-3d: parameters
     else if (st.kind === "sweep") Object.assign(base, { path: st.path, orient: st.orient, dist: st.sdist, taper: st.taper, twist: st.twist, chain: st.chain });
-    else Object.assign(base, { axis: st.axis, angle: st.angle });
+    else Object.assign(base, { axis: st.axis, angle: st.angle }, exprsOf(st, ["angle"])); // jumpstart-3d: parameters
     return base;
   }
 
@@ -847,7 +849,7 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const node = editing.mod ? b.node.mods.find((m) => m.id === editing.mod).tool : b.node;
-      Object.assign(st, { sketchId: node.sketch, dist: node.dist ?? 10, mode: node.mode || "one", dist2: node.dist2 ?? 5, angle: node.angle ?? 360, axis: node.axis || null, path: node.path || null, orient: node.orient || "perp", sdist: kind === "sweep" && node.dist != null ? node.dist : 1, taper: node.taper ?? 0, twist: node.twist ?? 0, chain: node.chain !== false });
+      Object.assign(st, { sketchId: node.sketch, dist: node.dist ?? 10, mode: node.mode || "one", dist2: node.dist2 ?? 5, angle: node.angle ?? 360, axis: node.axis || null, path: node.path || null, orient: node.orient || "perp", sdist: kind === "sweep" && node.dist != null ? node.dist : 1, taper: node.taper ?? 0, twist: node.twist ?? 0, chain: node.chain !== false }, exprsOf(node, ["dist", "dist2", "angle"])); // jumpstart-3d: parameters
       st.op = editing.mod ? b.node.mods.find((m) => m.id === editing.mod).op : "new";
       const sk = findSk(store.doc, st.sketchId);
       if (sk) {
@@ -926,14 +928,14 @@ export function initAdvanced(app) {
           const sk = findSk(store.doc, st.sketchId);
           const axes = axesInPlane(sk);
           body.append(row("…or use", seg(axes.map((k) => [k, k + " axis"]), WORLD_AXES[st.axis] ? st.axis : null, (v) => { st.axis = v; st.axisLine = null; st.pickAxis = false; refresh(); }, "rv-axes")));
-          body.append(row("Angle", app.numField({ value: st.angle, id: "rv-angle", min: 0.1, max: 360, step: 15, live: true, onCommit: (v) => { st.angle = v; refresh(false); } }), "rv-angle"));
+          body.append(row("Angle", app.numField({ value: st.angle, id: "rv-angle", min: 0.1, max: 360, step: 15, live: true, expr: exprOf(st, "angle"), angle: true, onCommit: (v, t) => { st.angle = v; setExpr(st, "angle", t, true); refresh(false); } }), "rv-angle")); // jumpstart-3d: parameters
         } else {
           body.append(row("Extent", seg([["dist", "Distance"], ["to", "To object"]], st.extent, (v) => { st.extent = v; if (v === "dist") { st.toRef = null; st.pickTo = false; } else { st.mode = "one"; st.pickTo = !st.toRef; } refresh(); }, "ex-extent")));
           if (st.extent === "to") body.append(row("Object", pickbox(!st.toRef, st.toRef ? el("span", {}, el("b", {}, st.toRef.label || "Surface")) : "Click a face or plane", st.toRef ? () => { st.toRef = null; st.pickTo = true; refresh(); } : null, () => { st.pickTo = true; def.render(); }), "ex-object"));
           else body.append(row("Direction", seg([["one", "One side"], ["sym", "Symmetric"], ["two", "Two sides"]], st.mode, (v) => { st.mode = v; refresh(); }, "ex-mode")));
           const dl = st.mode === "sym" ? "Total distance" : st.mode === "two" ? "Side 1" : "Distance";
-          body.append(row(dl, (def.distInput = app.numField({ value: st.dist, id: "ex-dist", step: 1, live: true, onCommit: (v) => { st.dist = v; const was = st.extent === "to"; st.extent = "dist"; st.toRef = null; refresh(was); } })), "ex-dist"));
-          if (st.mode === "two") body.append(row("Side 2", app.numField({ value: st.dist2, id: "ex-dist2", min: 0, step: 1, live: true, onCommit: (v) => { st.dist2 = v; refresh(false); } }), "ex-dist2"));
+          body.append(row(dl, (def.distInput = app.numField({ value: st.dist, id: "ex-dist", step: 1, live: true, expr: exprOf(st, "dist"), onCommit: (v, t) => { st.dist = v; setExpr(st, "dist", t); const was = st.extent === "to"; st.extent = "dist"; st.toRef = null; refresh(was); } })), "ex-dist"));
+          if (st.mode === "two") body.append(row("Side 2", app.numField({ value: st.dist2, id: "ex-dist2", min: 0, step: 1, live: true, expr: exprOf(st, "dist2"), onCommit: (v, t) => { st.dist2 = v; setExpr(st, "dist2", t); refresh(false); } }), "ex-dist2")); // jumpstart-3d: parameters
         }
         if (!editing || editing.mod) {
           const ops = editing ? [["join", "Join"], ["cut", "Cut"], ["intersect", "Intersect"]] : [["auto", "Automatic"], ["new", "New body"], ["join", "Join"], ["cut", "Cut"], ["intersect", "Intersect"]];
@@ -1051,6 +1053,7 @@ export function initAdvanced(app) {
           if (st.mode === "sym") s = Math.abs(s) * 2;
           st.extent = "dist"; st.toRef = null;
           st.dist = s || (st.dist > 0 ? g : -g);
+          setExpr(st, "dist", null); // jumpstart-3d: parameters
           def.distInput && def.distInput.setValue(st.dist);
           refresh(false);
         },
@@ -1066,6 +1069,7 @@ export function initAdvanced(app) {
       const d = +new THREE.Vector3(...r.o).sub(new THREE.Vector3(...sk.plane.o)).dot(sn).toFixed(6);
       if (Math.abs(d) < 1e-6) { app.toast("That surface is on the same plane as the profile."); return; }
       Object.assign(st, { extent: "to", toRef: r, pickTo: false, mode: "one", dist: d, hoverPlane: null, hoverPlaneKey: "" });
+      setExpr(st, "dist", null); // jumpstart-3d: parameters
       def.distInput && def.distInput.setValue(d);
       refresh();
     }
@@ -1236,6 +1240,7 @@ export function initAdvanced(app) {
       const sets = m.sets && m.sets.length ? m.sets : [{ edges: m.edges, r: kind === "fillet" ? m.r : m.d }];
       st.sets = sets.map((x) => ({ items: [], keep: x.edges || [], value: x.r, value2: x.r2 ?? x.r, rt: x.rt || "const" }));
       st.chain = m.chain !== false;
+      Object.assign(st.sets[0], exprsOf(m, [kind === "fillet" ? "r" : "d"], ["r"])); // jumpstart-3d: parameters
       st.lockedBody = b.id;
     } else st.sets = [newSet(kind === "fillet" ? 2 : 1)];
     const cur = () => st.sets[Math.min(st.active, st.sets.length - 1)];
@@ -1257,11 +1262,13 @@ export function initAdvanced(app) {
           for (const g of sigs) { if (!per.has(g.body)) per.set(g.body, []); per.get(g.body).push(g.info); }
           for (const [body, edges] of per) {
             if (!byBody.has(body)) byBody.set(body, []);
-            byBody.get(body).push({ edges, r: s.value, ...(isF() && s.rt === "variable" ? { r2: s.value2, rt: "variable" } : isF() && s.rt === "chord" ? { rt: "chord" } : {}) });
+            byBody.get(body).push({ edges, r: s.value, ...(s === st.sets[0] && { exprs: s.exprs, exprUnits: s.exprUnits }), ...(isF() && s.rt === "variable" ? { r2: s.value2, rt: "variable" } : isF() && s.rt === "chord" ? { rt: "chord" } : {}) }); // jumpstart-3d: parameters
           }
         }
         const modOf = (sets) => {
-          const m = { t: st.kind, edges: sets[0].edges, chain: st.chain ? undefined : false };
+          const fx = exprsOf(sets[0], ["r"], [isF() ? "r" : "d"]); // jumpstart-3d: parameters
+          sets = sets.map(({ exprs, exprUnits, ...x }) => x);
+          const m = { t: st.kind, edges: sets[0].edges, chain: st.chain ? undefined : false, ...fx };
           if (st.kind === "fillet") m.r = sets[0].r; else m.d = sets[0].r;
           if (sets.length > 1 || sets[0].rt) m.sets = sets;
           return m;
@@ -1287,7 +1294,7 @@ export function initAdvanced(app) {
         const m = /about ([\d.]+) mm/.exec(msg);
         if (!m || box.querySelector("button")) return;
         const v = +m[1];
-        box.append(el("button", { class: "btn", style: { marginTop: "6px" }, onclick: () => { cur().value = v; if (cur().value2 > v && cur().rt === "variable") cur().value2 = v; refresh(); } }, `Use ${fmt(v, 2)} mm`));
+        box.append(el("button", { class: "btn", style: { marginTop: "6px" }, onclick: () => { cur().value = v; setExpr(cur(), "r", null); if (cur().value2 > v && cur().rt === "variable") cur().value2 = v; refresh(); } }, `Use ${fmt(v, 2)} mm`)); // jumpstart-3d: parameters
       },
       typeInto: () => (count(cur()) ? def.valInput : null),
       hint: () => editing && !cur().items.length ? "Drag the arrow or type a size, or click edges to pick a new set." : count(cur()) ? "Drag the arrow or type a size. Click edges or faces to add them; click again to remove. + adds a set with its own size." : "Click edges, or a face to take all its edges. Click again to remove.",
@@ -1308,7 +1315,7 @@ export function initAdvanced(app) {
         const s = cur();
         if (isF()) body.append(row("Radius type", seg([["const", "Constant"], ["chord", "Chord length"], ["variable", "Variable"]], s.rt, (v) => { s.rt = v; refresh(); }, "ed-rtype")));
         const lab = !isF() ? "Distance" : s.rt === "chord" ? "Chord length" : s.rt === "variable" ? "Start radius" : "Radius";
-        body.append(row(lab, (def.valInput = app.numField({ value: s.value, id: "ed-val", min: 0.001, step: 0.5, live: true, onCommit: (v) => { s.value = v; refresh(false); } })), "ed-val"));
+        body.append(row(lab, (def.valInput = app.numField({ value: s.value, id: "ed-val", min: 0.001, step: 0.5, live: true, ...(s === st.sets[0] && { expr: exprOf(s, "r") }), onCommit: (v, t) => { s.value = v; setExpr(s, "r", t); refresh(false); } })), "ed-val")); // jumpstart-3d: parameters
         if (isF() && s.rt === "variable") body.append(row("End radius", app.numField({ value: s.value2, id: "ed-val2", min: 0.001, step: 0.5, live: true, onCommit: (v) => { s.value2 = v; refresh(false); } }), "ed-val2"));
         body.append(el("label", { class: "check", title: "Picking an edge also takes the edges that run smoothly on from it" }, el("input", { type: "checkbox", id: "ed-chain", checked: st.chain, onchange: (e) => { st.chain = e.target.checked; } }), "Tangent chain"));
         if (isF() && s.rt === "chord") body.append(el("div", { class: "hint", style: { padding: 0 } }, "Chord length is the straight distance across the rounded edge."));
@@ -1323,6 +1330,7 @@ export function initAdvanced(app) {
           const g = app.gridStep();
           const step = g >= 1 ? 0.5 : g > 0 ? g : 0.01;
           cur().value = Math.max(step, round(sv, step));
+          setExpr(cur(), "r", null); // jumpstart-3d: parameters
           def.valInput && def.valInput.setValue(cur().value);
           refresh(false);
         },
@@ -1496,11 +1504,12 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const m = b.node.mods.find((x) => x.id === editing.mod);
-      Object.assign(st, { kind: m.tapped ? "tapped" : m.kind, dia: m.dia, through: !!m.through, depth: m.depth || 10, cbDia: m.cbDia || 9, cbDepth: m.cbDepth || 3, csDia: m.csDia || 10, csAngle: m.csAngle || 90, body: b.id, size: m.size || "", pitch: m.pitch || 0.5, clear: m.clear || 0, tip: !!m.tip });
+      Object.assign(st, { kind: m.tapped ? "tapped" : m.kind, dia: m.dia, through: !!m.through, depth: m.depth || 10, cbDia: m.cbDia || 9, cbDepth: m.cbDepth || 3, csDia: m.csDia || 10, csAngle: m.csAngle || 90, body: b.id, size: m.size || "", pitch: m.pitch || 0.5, clear: m.clear || 0, tip: !!m.tip }, exprsOf(m, ["dia", "depth"])); // jumpstart-3d: parameters
       const M = M4(b.m);
       st.at = (m.at || [{ p: m.p, n: m.n }]).map((s) => ({ ...s, world: new THREE.Vector3(...s.p).applyMatrix4(M) }));
     }
     function applySize(k) {
+      setExpr(st, "dia", null); // jumpstart-3d: parameters
       if (st.kind === "tapped") { const t = TAP[k]; if (!t) return; st.pitch = t[1]; st.dia = +(t[0] - 1.0825 * t[1]).toFixed(3); return; }
       if (!CLEAR[k]) return;
       st.dia = CLEAR[k];
@@ -1515,10 +1524,10 @@ export function initAdvanced(app) {
       canOk: () => def.valid(),
       apply(doc) {
         const tapped = st.kind === "tapped";
-        const params = { kind: tapped ? "simple" : st.kind, dia: st.dia, through: st.through, depth: st.depth, cbDia: st.cbDia, cbDepth: st.cbDepth, csDia: st.csDia, csAngle: st.csAngle, size: st.size, tapped, pitch: tapped ? st.pitch : 0, clear: tapped ? st.clear : 0, tip: !st.through && st.tip, at: st.at.map((s) => ({ p: s.p, n: s.n })) };
+        const params = { kind: tapped ? "simple" : st.kind, dia: st.dia, through: st.through, depth: st.depth, cbDia: st.cbDia, cbDepth: st.cbDepth, csDia: st.csDia, csAngle: st.csAngle, size: st.size, tapped, pitch: tapped ? st.pitch : 0, clear: tapped ? st.clear : 0, tip: !st.through && st.tip, at: st.at.map((s) => ({ p: s.p, n: s.n })), ...exprsOf(st, st.through ? ["dia"] : ["dia", "depth"]) }; // jumpstart-3d: parameters
         const b = findBody(doc, st.body);
         if (!b) throw new Error("Click a flat face to place the hole.");
-        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, params); return; }
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); delete m.exprs; delete m.exprUnits; Object.assign(m, params); return; } // jumpstart-3d: parameters
         b.node.mods = b.node.mods || [];
         b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "hole", ...params });
       },
@@ -1539,15 +1548,15 @@ export function initAdvanced(app) {
         const ssel = el("select", { class: "num", id: "hole-size", "aria-label": "Screw size" }, el("option", { value: "" }, "Custom"), ...groups);
         ssel.onchange = () => { st.size = ssel.value; if (st.size) applySize(st.size); refresh(); };
         body.append(row(st.kind === "tapped" ? "Thread" : "Screw size", ssel, "hole-size"));
-        const custom = (f) => (v) => { f(v); st.size = ""; const s2 = document.getElementById("hole-size"); if (s2) s2.value = ""; refresh(false); };
-        body.append(row(st.kind === "tapped" ? "Tap drill" : "Diameter", app.numField({ value: st.dia, id: "hole-dia", min: 0.01, step: 0.1, live: true, onCommit: custom((v) => (st.dia = v)) }), "hole-dia"));
+        const custom = (f) => (v, t) => { f(v, t); st.size = ""; const s2 = document.getElementById("hole-size"); if (s2) s2.value = ""; refresh(false); }; // jumpstart-3d: parameters
+        body.append(row(st.kind === "tapped" ? "Tap drill" : "Diameter", app.numField({ value: st.dia, id: "hole-dia", min: 0.01, step: 0.1, live: true, expr: exprOf(st, "dia"), onCommit: custom((v, t) => { st.dia = v; setExpr(st, "dia", t); }) }), "hole-dia")); // jumpstart-3d: parameters
         if (st.kind === "tapped") {
           body.append(pitchRow(st.pitch, custom((v) => (st.pitch = v)), "hole-pitch", true));
           body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; refresh(false); }, "hole-clear"), "hole-clear"));
         }
         body.append(row("Extent", seg([[true, "Through all"], [false, "Depth"]], st.through, (v) => { st.through = v; refresh(); }, "hole-ext")));
         if (!st.through) {
-          body.append(row("Depth", app.numField({ value: st.depth, id: "hole-depth", min: 0.01, step: 1, live: true, onCommit: (v) => { st.depth = v; refresh(false); } }), "hole-depth"));
+          body.append(row("Depth", app.numField({ value: st.depth, id: "hole-depth", min: 0.01, step: 1, live: true, expr: exprOf(st, "depth"), onCommit: (v, t) => { st.depth = v; setExpr(st, "depth", t); refresh(false); } }), "hole-depth")); // jumpstart-3d: parameters
           body.append(row("Bottom", seg([[false, "Flat"], [true, "118° drill"]], st.tip, (v) => { st.tip = v; refresh(); }, "hole-tip")));
         }
         if (st.kind === "cbore") {
@@ -3969,7 +3978,7 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const m = b.node.mods.find((x) => x.id === editing.mod);
-      Object.assign(st, { th: m.th, body: b.id, keepFaces: m.faces, dir: m.dir || "in", chain: !!m.chain, closed: !(m.faces || []).length });
+      Object.assign(st, { th: m.th, body: b.id, keepFaces: m.faces, dir: m.dir || "in", chain: !!m.chain, closed: !(m.faces || []).length }, exprsOf(m, ["th"])); // jumpstart-3d: parameters
     }
     let hover = null;
     const pickable = (b) => !b.hole && !b.locked && (!st.body || b.id === st.body || (st.closed && !editing));
@@ -3981,8 +3990,8 @@ export function initAdvanced(app) {
         const b = findBody(doc, st.body);
         if (!b) return;
         const faces = st.closed ? [] : st.faces.length ? st.faces.map((f) => ({ c: f.c })) : st.keepFaces || [];
-        const props = { th: st.th, faces, dir: st.dir === "in" ? undefined : st.dir, chain: st.chain && !st.closed ? true : undefined };
-        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, props); return; }
+        const props = { th: st.th, faces, dir: st.dir === "in" ? undefined : st.dir, chain: st.chain && !st.closed ? true : undefined, ...exprsOf(st, ["th"]) }; // jumpstart-3d: parameters
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); delete m.exprs; delete m.exprUnits; Object.assign(m, props); return; } // jumpstart-3d: parameters
         b.node.mods = b.node.mods || [];
         b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "shell", ...props });
       },
@@ -3994,7 +4003,7 @@ export function initAdvanced(app) {
         else body.append(pickbox(true, st.faces.length ? el("span", {}, el("b", {}, st.faces.length), ` face${st.faces.length > 1 ? "s" : ""} to remove`) : editing && (st.keepFaces || []).length ? "Keeps the original faces" : "Select faces to remove", st.faces.length ? () => { st.faces = []; if (!editing) st.body = null; refresh(); } : null));
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "sh-closed", checked: st.closed, onchange: (e) => { st.closed = e.target.checked; if (!editing) { st.faces = []; st.body = st.closed ? st.body : null; } refresh(); } }), "No openings (hollow inside)"));
         if (!st.closed) body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "sh-chain", checked: st.chain, onchange: (e) => { st.chain = e.target.checked; refresh(false); } }), "Tangent chain (take smoothly joined faces too)"));
-        body.append(row("Thickness", app.numField({ value: st.th, id: "sh-th", min: 0.01, step: 0.5, live: true, onCommit: (v) => { st.th = v; refresh(false); } }), "sh-th"));
+        body.append(row("Thickness", app.numField({ value: st.th, id: "sh-th", min: 0.01, step: 0.5, live: true, expr: exprOf(st, "th"), onCommit: (v, t) => { st.th = v; setExpr(st, "th", t); refresh(false); } }), "sh-th")); // jumpstart-3d: parameters
         body.append(row("Direction", seg([["in", "Inside"], ["out", "Outside"], ["both", "Both"]], st.dir, (v) => { st.dir = v; refresh(); }, "sh-dir")));
         body.append(el("div", { class: "hint", style: { padding: 0 } }, st.dir === "in" ? "The outside stays the same size; the wall grows inward." : st.dir === "out" ? "The inside keeps the body's shape; the wall grows outward." : "The wall is centered on the surface."));
       },
@@ -4583,17 +4592,131 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ Pattern
   // Rectangular (one or two directions) or circular copies of bodies, like Fusion's
   // Pattern. Copies can stay separate or be joined into one body.
-  function patternCmd() {
+  function patternCmd(editing = null) { // jumpstart-3d: pattern (editing: {body, mod} of a Pattern feature)
     const st = {
       ids: app.sel.slice(), type: "rect",
       ax1: "x", n1: 3, s1: 20, ax2: "y", n2: 1, s2: 20, sym: false,
       cax: "z", cn: 6, angle: 360, about: "origin", join: false,
+      // pattern along a path (a chain of sketch curves): count, spread over the whole path or a
+      // fixed spacing, keep the copies' direction or turn them with the path
+      path: null, pickPath: false, pn: 6, pdist: "fit", pspace: 20, orient: "same", flip: false,
+      // what is copied: whole bodies, or features (cuts, bosses, holes, text) on one body
+      what: "bodies", fbody: null, feats: [],
       center: new THREE.Vector3(), idmap: {},
     };
     const AXV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+    // jumpstart-3d: pattern. Editing a Pattern feature: its saved axes and centre are in the body's own coordinates; they
+    // stay as saved until the picker for that one is touched (the pickers only know the world x, y, z)
+    const keep = {}, saved = {};
+    if (editing) {
+      const eb = findBody(store.doc, editing.body), m = eb.node.mods.find((x) => x.id === editing.mod), B = M4(eb.m);
+      const letter = (v, d) => { if (!v) return d; const w = new THREE.Vector3(...v).transformDirection(B), a = [w.x, w.y, w.z].map(Math.abs); return "xyz"[a.indexOf(Math.max(...a))]; };
+      Object.assign(keep, { ax1: m.ax1, ax2: m.ax2, cax: m.cax, center: m.center });
+      Object.assign(st, { ids: [eb.id], type: m.kind, what: m.what === "feats" ? "features" : "bodies", fbody: eb.id, feats: m.feats || [],
+        ax1: letter(m.ax1, "x"), ax2: letter(m.ax2, "y"), cax: letter(m.cax, "z"), n1: m.n1 ?? 3, s1: m.s1 ?? 20, n2: m.n2 ?? 1, s2: m.s2 ?? 20, sym: !!m.sym, cn: m.cn ?? 6, angle: m.angle ?? 360 },
+        exprsOf(m, ["n1", "s1", "n2", "s2", "cn", "angle"]));
+      if (m.center) {
+        const c = new THREE.Vector3(...m.center).applyMatrix4(B);
+        st.about = m.about || (c.length() < 1e-6 ? "origin" : "center"); st.center = c;
+        saved.about = st.about; saved.center = m.center;
+      }
+    }
+    // kept as a Pattern feature (not baked copies): Advanced, not Path, and (editing, or Features, or Join)
+    const asFeature = () => app.mode === "advanced" && st.type !== "path" && (editing || st.what === "features" || st.join);
+
+    // ---------------- features that can be copied, and where each one sits (world)
+    const featLabel = (m) => m.t === "hole" ? (m.tapped ? "Tapped hole" : m.kind === "csink" ? "Countersunk hole" : m.kind === "cbore" ? "Counterbored hole" : "Hole") + ((m.at || []).length > 1 ? ` ×${m.at.length}` : "")
+      : m.t === "emboss" ? (m.mode === "deboss" ? "Deboss" : "Emboss") + ` "${String(m.str || "").slice(0, 12)}"`
+      : ({ extrude: "Extrude ", revolve: "Revolve ", sweep: "Sweep " }[m.tool && m.tool.t] || "") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join");
+    const featOK = (m) => m.t === "hole" || (m.t === "emboss" && m.kind !== "other") || (m.t === "bool" && m.src !== "combine" && m.tool && ["extrude", "revolve", "sweep"].includes(m.tool.t) && m.tool.sketch);
+    const featsOf = (b) => { // jumpstart-3d: pattern (an edited pattern repeats only what comes before it)
+      const ms = (b && b.node.mods) || [], i = editing ? ms.findIndex((x) => x.id === editing.mod) : -1;
+      return (i >= 0 ? ms.slice(0, i) : ms).filter(featOK);
+    };
+    function featRef(b, m) {
+      const B = M4(b.m), loc = (p) => new THREE.Vector3(...p).applyMatrix4(B);
+      if (m.t === "hole") { const a = (m.at && m.at.length ? m.at : [{ p: m.p }]); const c = new THREE.Vector3(); a.forEach((x) => c.add(loc(x.p))); return c.divideScalar(a.length); }
+      if (m.t === "emboss") return loc(m.p);
+      const sk = findSketch(store.doc, m.tool.sketch);
+      if (!sk) return null;
+      const P = planeMatrix(sk.plane), c = new THREE.Vector3(); let n = 0;
+      for (const pr of m.tool.profiles || []) if (pr.pt) { c.add(new THREE.Vector3(pr.pt[0], pr.pt[1], 0).applyMatrix4(P)); n++; }
+      if (!n) return null;
+      // the tool sits in the body through m (body coordinates when it was made)
+      return c.divideScalar(n).applyMatrix4(new THREE.Matrix4().fromArray(m.m || IDENTITY)).applyMatrix4(B);
+    }
+    const chosenFeats = () => { const b = findBody(store.doc, st.fbody); return b ? featsOf(b).filter((m) => st.feats.includes(m.id)) : []; };
+
+    // ---------------- the path: sampled into a world polyline with arc-length
+    function pathData() {
+      if (!st.path) return null;
+      const sk = findSketch(store.view, st.path.sketch) || findSketch(store.doc, st.path.sketch);
+      if (!sk) return null;
+      const segs = orderPath(resolveSketch(sk), st.path.ents);
+      if (!segs.length) return null;
+      const P2 = [];
+      const push = (q) => { const l = P2[P2.length - 1]; if (!l || Math.hypot(l[0] - q[0], l[1] - q[1]) > 1e-9) P2.push(q); };
+      for (const g of segs) {
+        if (g.t === "line") { push(g.a); push(g.b); }
+        else if (g.t === "circle") { for (let k = 0; k <= 96; k++) { const t = (k / 96) * Math.PI * 2; push([g.c[0] + g.r * Math.cos(t), g.c[1] + g.r * Math.sin(t)]); } }
+        else if (g.t === "arc") {
+          // circle through a, m, b; walk from a through m to b
+          const [ax, ay] = g.a, [mx, my] = g.m, [bx, by] = g.b;
+          const d = 2 * (ax * (my - by) + mx * (by - ay) + bx * (ay - my));
+          if (Math.abs(d) < 1e-12) { push(g.a); push(g.b); continue; }
+          const ux = ((ax * ax + ay * ay) * (my - by) + (mx * mx + my * my) * (by - ay) + (bx * bx + by * by) * (ay - my)) / d;
+          const uy = ((ax * ax + ay * ay) * (bx - mx) + (mx * mx + my * my) * (ax - bx) + (bx * bx + by * by) * (mx - ax)) / d;
+          const r = Math.hypot(ax - ux, ay - uy), ang = (x, y) => Math.atan2(y - uy, x - ux);
+          const a0 = ang(ax, ay), am = ang(mx, my), a1 = ang(bx, by), TAU = Math.PI * 2;
+          const norm = (v) => ((v % TAU) + TAU) % TAU;
+          let sw = norm(a1 - a0); if (norm(am - a0) > sw) sw -= TAU; // go the way that passes m
+          const n = Math.max(8, Math.ceil(Math.abs(sw) / (Math.PI / 32)));
+          for (let k = 0; k <= n; k++) { const t = a0 + (sw * k) / n; push([ux + r * Math.cos(t), uy + r * Math.sin(t)]); }
+        } else if (g.t === "bez") {
+          for (const sp of g.spans || []) for (let k = 0; k <= 24; k++) {
+            const t = k / 24, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+            push([0, 1].map((i) => w[0] * sp[0][i] + w[1] * sp[1][i] + w[2] * sp[2][i] + w[3] * sp[3][i]));
+          }
+        }
+      }
+      const M = planeMatrix(sk.plane);
+      const pts = P2.map((q) => new THREE.Vector3(q[0], q[1], 0).applyMatrix4(M));
+      if (pts.length < 2) return null;
+      const closed = pts[0].distanceTo(pts[pts.length - 1]) < 1e-6;
+      const cum = [0];
+      for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + pts[k].distanceTo(pts[k - 1]));
+      const L = cum[cum.length - 1];
+      // side: at a corner, which segment gives the direction (+1 the one after it, -1 the one before)
+      const at = (s, side = 1) => {
+        s = closed ? ((s % L) + L) % L : Math.max(0, Math.min(L, s));
+        if (closed && side < 0 && s < 1e-9) s = L; // going backwards from the start: the last segment
+        const q = Math.max(0, Math.min(L, s + side * 1e-6 * Math.max(1, L)));
+        let k = 1;
+        if (side > 0) { while (k < cum.length - 1 && cum[k] <= q) k++; } else { while (k < cum.length - 1 && cum[k] < q) k++; }
+        const f = (s - cum[k - 1]) / Math.max(1e-12, cum[k] - cum[k - 1]);
+        const tan = pts[k].clone().sub(pts[k - 1]).normalize();
+        return { p: pts[k - 1].clone().lerp(pts[k], f), t: tan };
+      };
+      // the arc length of the point on the path nearest to q
+      const nearest = (q) => {
+        let best = 0, bd = Infinity;
+        for (let k = 1; k < pts.length; k++) {
+          const a = pts[k - 1], d = pts[k].clone().sub(a), len2 = d.lengthSq() || 1e-12;
+          const f = Math.max(0, Math.min(1, q.clone().sub(a).dot(d) / len2)), c = a.clone().addScaledVector(d, f), e = c.distanceTo(q);
+          if (e < bd) { bd = e; best = cum[k - 1] + f * Math.sqrt(len2); }
+        }
+        return best;
+      };
+      return { pts, closed, L, at, nearest, n: new THREE.Vector3(...sk.plane.n).normalize(), segCount: segs.length };
+    }
+
     const recenter = () => {
+      if (editing && keep.center) { st.center = new THREE.Vector3(...keep.center).applyMatrix4(M4(findBody(store.doc, editing.body).m)); return; } // jumpstart-3d: pattern
       const box = new THREE.Box3();
-      for (const id of st.ids) { const b = findBody(store.doc, id); const bb = b && scene.boxWithMatrix(id, M4(b.m)); if (bb) box.union(bb); }
+      if (st.what === "features") {
+        const b = findBody(store.doc, st.fbody);
+        for (const m of chosenFeats()) { const r = b && featRef(b, m); if (r) box.expandByPoint(r); }
+      } else for (const id of st.ids) { const b = findBody(store.doc, id); const bb = b && scene.boxWithMatrix(id, M4(b.m)); if (bb) box.union(bb); }
       st.center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
     };
     // the transform of every copy (the original is not included)
@@ -4608,7 +4731,7 @@ export function initAdvanced(app) {
           const v = AXV[st.ax1].clone().multiplyScalar(i * st.s1).add(AXV[st.ax2].clone().multiplyScalar(j * st.s2));
           out.push({ key: i + "," + j, m: new THREE.Matrix4().makeTranslation(v.x, v.y, v.z) });
         }
-      } else {
+      } else if (st.type === "circ") {
         const n = Math.max(2, Math.round(st.cn));
         const full = st.angle >= 359.999;
         const step = full ? 360 / n : st.angle / (n - 1);
@@ -4619,16 +4742,97 @@ export function initAdvanced(app) {
             .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
           out.push({ key: "c" + i, m: R });
         }
+      } else {
+        const pd = pathData();
+        if (!pd) return out;
+        const n = Math.max(2, Math.round(st.pn)), dir = st.flip ? -1 : 1;
+        const s0 = pd.nearest(st.center);
+        // spacing: the whole path shared out (a closed path: n equal steps all the way round;
+        // an open one: from the object to the end of the path), or a typed distance
+        let step = st.pspace;
+        if (st.pdist === "fit") step = pd.closed ? pd.L / n : (dir > 0 ? pd.L - s0 : s0) / (n - 1);
+        const A = pd.at(s0, dir);
+        for (let i = 1; i < n; i++) {
+          const s = s0 + dir * i * step;
+          if (!pd.closed && (s < -1e-6 || s > pd.L + 1e-6)) break; // past the end of an open path
+          const B = pd.at(s, dir);
+          let m = new THREE.Matrix4().makeTranslation(B.p.x - A.p.x, B.p.y - A.p.y, B.p.z - A.p.z);
+          if (st.orient === "follow") {
+            // turn by the change in the path's direction, around the path's plane normal
+            const t0 = A.t.clone().projectOnPlane(pd.n).normalize(), t1 = B.t.clone().projectOnPlane(pd.n).normalize();
+            const ang = Math.atan2(t0.clone().cross(t1).dot(pd.n), t0.dot(t1));
+            m = new THREE.Matrix4().makeTranslation(B.p.x, B.p.y, B.p.z)
+              .multiply(new THREE.Matrix4().makeRotationAxis(pd.n, ang))
+              .multiply(new THREE.Matrix4().makeTranslation(-A.p.x, -A.p.y, -A.p.z));
+          }
+          out.push({ key: "p" + i, m });
+        }
       }
       return out;
     }
+    // a feature copied by a world transform W, in its body's own coordinates
+    function movedFeature(b, m, W, key, doc) {
+      const B = M4(b.m), L = B.clone().invert().multiply(W).multiply(B);
+      const P = (p) => new THREE.Vector3(...p).applyMatrix4(L).toArray().map((v) => +v.toFixed(9));
+      const D = (v) => new THREE.Vector3(...v).transformDirection(L).toArray().map((x) => +x.toFixed(9));
+      const c = clone(m);
+      c.id = st.idmap[m.id + key] || (st.idmap[m.id + key] = uid("f"));
+      c.seq = nextSeq(doc);
+      if (m.t === "hole") {
+        if (c.at) c.at = c.at.map((x) => ({ ...x, p: P(x.p), n: D(x.n) }));
+        if (c.p) c.p = P(c.p);
+        if (c.n) c.n = D(c.n);
+      } else if (m.t === "emboss") {
+        for (const k of ["p", "o", "c"]) if (c[k]) c[k] = P(c[k]);
+        for (const k of ["n", "x", "ax", "up"]) if (c[k]) c[k] = D(c[k]);
+      } else {
+        c.m = arr(L.clone().multiply(new THREE.Matrix4().fromArray(m.m || IDENTITY)));
+      }
+      return c;
+    }
+    // jumpstart-3d: pattern. The Pattern feature's properties for body b: axes and centre in b's own coordinates
+    function patternProps(b) {
+      const Bi = M4(b.m).invert(), r9 = (a) => a.map((v) => +v.toFixed(9));
+      // a mirrored body (determinant -1) turns the other way when undone, so its circular axis is flipped
+      const flip = M4(b.m).determinant() < 0 && st.type === "circ";
+      const D = (k) => keep[k] ? keep[k].slice() : r9(AXV[st[k]].clone().transformDirection(Bi).toArray()).map((x) => (flip ? 0 - x : x));
+      const props = { kind: st.type, what: st.what === "features" ? "feats" : "shape" };
+      if (st.what === "features") props.feats = featsOf(b).filter((m) => st.feats.includes(m.id)).map((m) => m.id);
+      if (st.type === "rect") Object.assign(props, { ax1: D("ax1"), n1: st.n1, s1: st.s1, ax2: D("ax2"), n2: st.n2, s2: st.s2, sym: st.sym }, exprsOf(st, ["n1", "s1", "n2", "s2"]));
+      else Object.assign(props, { cax: D("cax"), center: keep.center ? keep.center.slice() : r9((st.about === "center" ? st.center : new THREE.Vector3()).clone().applyMatrix4(Bi).toArray()), about: st.about, cn: st.cn, angle: st.angle }, exprsOf(st, ["cn", "angle"]));
+      return props;
+    }
     const def = {
-      title: "Pattern",
+      title: (editing ? "Edit " : "") + "Pattern", // jumpstart-3d: pattern
       keepSelection: true,
-      valid: () => st.ids.length > 0 && transforms().length > 0,
+      valid: () => (st.what === "features" ? chosenFeats().length > 0 : st.ids.length > 0) && transforms().length > 0,
       canOk: () => def.valid(),
       apply(doc) {
+        if (asFeature()) { // jumpstart-3d: pattern. One editable Pattern feature per body (copies are not made)
+          if (editing) {
+            const b = findBody(doc, editing.body), m = b && b.node.mods.find((x) => x.id === editing.mod);
+            if (!m) return;
+            for (const k of Object.keys(m)) if (k !== "id" && k !== "seq" && k !== "t") delete m[k];
+            Object.assign(m, patternProps(b));
+            return;
+          }
+          for (const id of st.what === "features" ? [st.fbody] : st.ids) {
+            const b = findBody(doc, id);
+            if (!b) continue;
+            b.node.mods = b.node.mods || [];
+            b.node.mods.push({ id: st.idmap["pattern" + id] || (st.idmap["pattern" + id] = uid("f")), seq: nextSeq(doc), t: "pattern", ...patternProps(b) });
+          }
+          return;
+        }
         const T = transforms();
+        if (st.what === "features") {
+          const b = findBody(doc, st.fbody);
+          if (!b) return;
+          const src = featsOf(b).filter((m) => st.feats.includes(m.id));
+          // copies go right after their originals' place in the list, original order kept
+          for (const t of T) for (const m of src) b.node.mods.push(movedFeature(b, m, t.m, t.key, doc));
+          return;
+        }
         const made = [];
         for (const id of st.ids) {
           const b = findBody(doc, id);
@@ -4663,12 +4867,33 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, "Pattern"); },
-      hint: () => st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
+      onDelete: editing ? () => deleteFeature(editing) : null, // jumpstart-3d: pattern
+      hint: () => editing ? "Change the count, spacing or angle. The copies update in the model."
+        : st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path. Connected curves are picked together."
+        : st.what === "features" ? (st.fbody ? "Tick the features to copy. Click another body to list its features." : "Click the body that has the features (cuts, bosses, holes, text).")
+        : st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
       build(body) {
-        body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null));
-        body.append(row("Type", seg([["rect", "Rectangular"], ["circ", "Circular"]], st.type, (v) => { st.type = v; changed(); }, "pt-type")));
-        const num = (label, key, opts) => row(label, app.numField({ value: st[key], id: "pt-" + key, live: true, ...opts, onCommit: (v) => { st[key] = v; changed(false); } }), "pt-" + key);
-        const axes = (key) => seg([["x", "X"], ["y", "Y"], ["z", "Z"]], st[key], (v) => { st[key] = v; changed(); }, "pt-" + key);
+        if (!editing) body.append(row("Objects", seg([["bodies", "Bodies"], ["features", "Features"]], st.what, (v) => { // jumpstart-3d: pattern
+          st.what = v;
+          if (v === "features" && !st.fbody) { const b = st.ids.map((id) => findBody(store.doc, id)).find((x) => featsOf(x).length) || store.doc.bodies.find((x) => featsOf(x).length); st.fbody = b ? b.id : null; }
+          changed();
+        }, "pt-what")));
+        if (st.what === "bodies" && editing) body.append(el("div", { class: "hint", style: { padding: 0 } }, `Repeats the whole shape of ${findBody(store.doc, editing.body).name} and joins the copies to it.`)); // jumpstart-3d: pattern
+        else if (st.what === "bodies") {
+          body.append(pickbox(!st.pickPath, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null, () => { st.pickPath = false; def.render(); }));
+        } else {
+          const b = findBody(store.doc, st.fbody), list = featsOf(b);
+          body.append(pickbox(!st.pickPath, b ? el("span", {}, el("b", {}, b.name), ` · ${st.feats.length} of ${list.length} feature${list.length === 1 ? "" : "s"}`) : "Click a body", null, () => { st.pickPath = false; def.render(); }));
+          if (b && !list.length) body.append(el("div", { class: "hint", style: { padding: 0 } }, "This body has no features that can be copied. Cuts and bosses made by extruding a sketch, holes and embossed text can be patterned."));
+          if (list.length) body.append(el("div", { class: "pt-feats", id: "pt-feats" }, ...list.map((m) => el("label", { class: "check" },
+            el("input", { type: "checkbox", "data-mod": m.id, checked: st.feats.includes(m.id), onchange: (e) => { st.feats = e.target.checked ? [...st.feats, m.id] : st.feats.filter((x) => x !== m.id); changed(); } }), featLabel(m)))));
+        }
+        const types = seg([["rect", "Rectangular"], ["circ", "Circular"], ...(editing ? [] : [["path", "Path"]])], st.type, (v) => { st.type = v; if (v === "path" && !st.path) st.pickPath = true; changed(); }, "pt-type");
+        types.classList.add("seg-wide");
+        body.append(el("div", { class: "subhead" }, "Type"), types);
+        // jumpstart-3d: pattern. Counts, spacings and the angle can be parameter expressions when the pattern is kept as a feature
+        const num = (label, key, opts) => { const fx = asFeature() && key !== "pn" && key !== "pspace"; return row(label, app.numField({ value: st[key], id: "pt-" + key, live: true, ...opts, ...(fx ? { expr: exprOf(st, key) } : {}), onCommit: (v, t) => { st[key] = v; if (fx) setExpr(st, key, t, key !== "s1" && key !== "s2"); changed(false); } }), "pt-" + key); };
+        const axes = (key) => seg([["x", "X"], ["y", "Y"], ["z", "Z"]], st[key], (v) => { st[key] = v; delete keep[key]; changed(); }, "pt-" + key);
         if (st.type === "rect") {
           body.append(el("div", { class: "subhead" }, "Direction 1"));
           body.append(row("Along", axes("ax1")));
@@ -4679,24 +4904,54 @@ export function initAdvanced(app) {
           body.append(num("Count", "n2", { min: 1, max: 200, step: 1 }));
           body.append(num("Spacing", "s2", { step: 1 }));
           body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-sym", checked: st.sym, onchange: (e) => { st.sym = e.target.checked; changed(false); } }), "Both sides of the original (count per side)"));
-        } else {
+        } else if (st.type === "circ") {
           body.append(row("Around", axes("cax")));
-          body.append(row("Through", seg([["origin", "Origin"], ["center", "Shape center"]], st.about, (v) => { st.about = v; changed(); }, "pt-about")));
+          // editing a shape pattern: the shape on screen already includes the copies, so its centre can't be measured again;
+          // the choice is the saved centre ("As saved") or the origin
+          const asSaved = editing && st.what === "bodies";
+          const aboutOpts = asSaved ? (saved.about === "center" ? [["origin", "Origin"], ["center", "As saved"]] : [["origin", "Origin"]]) : [["origin", "Origin"], ["center", st.what === "features" ? "Feature center" : "Shape center"]]; // jumpstart-3d: pattern
+          body.append(row("Through", seg(aboutOpts, st.about, (v) => { st.about = v; if (asSaved && v === saved.about) keep.center = saved.center; else delete keep.center; changed(); }, "pt-about")));
           body.append(num("Count", "cn", { min: 2, max: 360, step: 1 }));
-          body.append(num("Total angle", "angle", { min: 1, max: 360, step: 15 }));
+          body.append(num("Total angle", "angle", { min: 1, max: 360, step: 15, angle: true }));
           body.append(el("div", { class: "hint", style: { padding: 0 } }, "360° spaces the copies evenly around the full circle."));
+        } else {
+          const pd = pathData();
+          body.append(row("Path", pickbox(st.pickPath, pd ? el("span", {}, el("b", {}, pd.segCount), ` curve${pd.segCount > 1 ? "s" : ""} · ${pd.closed ? "closed" : "open"} · ${withUnit(pd.L, 1)}`) : "Click a sketch path", pd ? () => { st.path = null; st.pickPath = true; changed(); } : null, () => { st.pickPath = true; def.render(); }), "pt-path"));
+          body.append(num("Count", "pn", { min: 2, max: 500, step: 1 }));
+          body.append(row("Spread", seg([["fit", pd && !pd.closed ? "To the end" : "Whole path"], ["space", "Spacing"]], st.pdist, (v) => { st.pdist = v; changed(); }, "pt-pdist")));
+          if (st.pdist === "space") body.append(num("Spacing", "pspace", { min: 0.01, step: 1 }));
+          body.append(row("Copies", seg([["same", "Same direction"], ["follow", "Follow path"]], st.orient, (v) => { st.orient = v; changed(); }, "pt-orient")));
+          body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-flip", checked: st.flip, onchange: (e) => { st.flip = e.target.checked; changed(false); } }), "Go the other way along the path"));
+          body.append(el("div", { class: "hint", style: { padding: 0 } }, "Copies start where the " + (st.what === "features" ? "features sit" : "object sits") + " (the nearest point on the path) and step along it. Follow path turns each copy with the path, like beads on a string."));
         }
         const total = transforms().length + 1;
         body.append(el("div", { class: "hint", id: "pt-total", style: { padding: 0 } }, `${total} instance${total === 1 ? "" : "s"} in total.`));
-        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(false); } }), "Join copies into one body"));
+        if (st.what === "bodies" && !editing) body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(); } }), "Join copies into one body")); // jumpstart-3d: pattern
+        if (app.mode === "advanced" && st.type === "path") body.append(el("div", { class: "hint", style: { padding: 0 } }, "Path patterns are not editable yet: they make separate copies or fixed features.")); // jumpstart-3d: pattern
       },
-      start() { recenter(); scene.setSelected(st.ids); schedulePreview(def); },
-      cleanup() { scene.setSelected([]); },
+      start() { recenter(); scene.setSelected(st.ids); draw(); schedulePreview(def); },
+      cleanup() { scene.setSelected([]); clearOv(); },
       handler: {
-        hover(e) { const f = scene.pickFace(e); scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default"; },
+        hover(e) {
+          if (st.type === "path" && st.pickPath) { const h = pickSketchCurve(e); vp.canvas.style.cursor = h ? "pointer" : "default"; scene.setHovered(null); return; }
+          const f = scene.pickFace(e); scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default";
+        },
         down(e) {
+          // the path: a sketch curve and the curves joined to it
+          if (st.type === "path" && (st.pickPath || !scene.pickFace(e))) {
+            const h = pickSketchCurve(e);
+            if (h) {
+              const sk = findSk(store.view, h.sketch);
+              st.path = { sketch: h.sketch, ents: pathChain(resolveSketch(sk), h.curve.id) };
+              st.pickPath = false; changed();
+              return true;
+            }
+            if (st.pickPath) return true;
+          }
+          if (editing) return true; // jumpstart-3d: pattern
           const f = scene.pickFace(e);
           if (!f || !findBody(store.doc, f.body)) return true; // copies in the preview aren't pickable
+          if (st.what === "features") { if (st.fbody !== f.body) { st.fbody = f.body; st.feats = []; changed(); } return true; }
           const i = st.ids.indexOf(f.body);
           if (i >= 0) st.ids.splice(i, 1); else st.ids.push(f.body);
           changed();
@@ -4704,12 +4959,29 @@ export function initAdvanced(app) {
         },
       },
     };
+    // the picked path, drawn bold, with a dot where each copy goes
+    function draw() {
+      clearOv();
+      if (st.type !== "path") return;
+      const pd = pathData();
+      if (!pd) return;
+      const seg = [];
+      for (let k = 1; k < pd.pts.length; k++) { const a = pd.pts[k - 1], b = pd.pts[k]; seg.push(a.x, a.y, a.z, b.x, b.y, b.z); }
+      const o = thickLines(seg, 0xe8a317, 4, false); o.renderOrder = 15; ov.add(o);
+      const s0 = pd.nearest(st.center), A = pd.at(s0), mk = [];
+      for (const t of [{ m: new THREE.Matrix4() }, ...transforms()]) {
+        const q = A.p.clone().applyMatrix4(t.m), r = vp.pixelSize(q) * 5;
+        mk.push(q.x - r, q.y, q.z, q.x + r, q.y, q.z, q.x, q.y - r, q.z, q.x, q.y + r, q.z);
+      }
+      const d = thickLines(mk, 0x2f66c8, 5, false); d.renderOrder = 16; ov.add(d);
+    }
     function changed(rerender = true) {
       recenter();
       if (rerender) def.render();
       const t = document.getElementById("pt-total");
       if (t) { const n = transforms().length + 1; t.textContent = `${n} instance${n === 1 ? "" : "s"} in total.`; }
-      scene.setSelected(st.ids);
+      scene.setSelected(st.what === "features" ? (st.fbody ? [st.fbody] : []) : st.ids);
+      draw();
       schedulePreview(def);
       def.refreshOk();
     }
@@ -4719,7 +4991,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ Primitive
   function primCmd(kind, editingId = null) {
     const existing = editingId ? findBody(store.doc, editingId) : null;
-    const st = { kind: existing ? existing.node.kind : kind, p: existing ? { ...existing.node.p } : { ...PRIM_DEFAULTS[kind] }, m: existing ? existing.m.slice() : null, id: existing ? existing.id : uid("b"), placed: !!existing };
+    const st = { kind: existing ? existing.node.kind : kind, p: existing ? { ...existing.node.p } : { ...PRIM_DEFAULTS[kind] }, m: existing ? existing.m.slice() : null, id: existing ? existing.id : uid("b"), placed: !!existing, ...(existing && exprsOf(existing.node, ["w", "d", "h"])) }; // jumpstart-3d: parameters
     if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 5), round(t.y, 5), 0)); }
     const def = {
       title: (existing ? "Edit " : "") + primName(st.kind),
@@ -4728,6 +5000,7 @@ export function initAdvanced(app) {
         if (!b) { b = makePrimBody(doc, st.kind, st.m, { color: BODY_COLORS[doc.bodies.length % BODY_COLORS.length] }); b.id = st.id; doc.bodies.push(b); }
         b.node.p = { ...st.p };
         if (st.kind === "torus") b.node.p.d = b.node.p.w;
+        delete b.node.exprs; delete b.node.exprUnits; Object.assign(b.node, exprsOf(st, ["w", "d", "h"])); // jumpstart-3d: parameters
         b.m = st.m.slice();
       },
       ok() { commit(def, existing ? "Edit " + primName(st.kind).toLowerCase() : "Add " + primName(st.kind).toLowerCase()); },
@@ -4736,7 +5009,7 @@ export function initAdvanced(app) {
       build(body) {
         const dims = st.kind === "torus" ? [["Diameter", "w"], ["Tube", "tube"]] : st.kind === "sphere" ? [["X", "w"], ["Y", "d"], ["Z", "h"]] : [["Width", "w"], ["Depth", "d"], ["Height", "h"]];
         const r3 = el("div", { class: "row3" });
-        for (const [l, k] of dims) r3.append(el("label", {}, l, app.numField({ value: st.p[k], id: "pr-" + k, min: 0.01, step: 1, live: true, onCommit: (v) => { st.p[k] = v; schedulePreview(def); } })));
+        for (const [l, k] of dims) r3.append(el("label", {}, l, app.numField({ value: st.p[k], id: "pr-" + k, min: 0.01, step: 1, live: true, ...(k !== "tube" && { expr: exprOf(st, k) }), onCommit: (v, t) => { st.p[k] = v; setExpr(st, k, t); schedulePreview(def); } }))); // jumpstart-3d: parameters
         body.append(el("div", { class: "subhead" }, "Size"), r3);
         const extra = { cone: [["Top ratio", "top", 0, 1]], pyramid: [["Sides", "sides", 3, 12]], prism: [["Sides", "sides", 3, 24]], tube: [["Wall", "wall", 0.1, 1e9]], box: [["Fillet all", "r", 0, 1e9], ["Chamfer all", "c", 0, 1e9]], cylinder: [["Fillet ends", "r", 0, 1e9]] }[st.kind] || [];
         for (const [l, k, mn, mx] of extra) body.append(row(l, app.numField({ value: st.p[k] ?? 0, id: "pr-x-" + k, min: mn, max: mx, step: k === "top" ? 0.1 : 1, live: true, onCommit: (v) => { st.p[k] = v; schedulePreview(def); } }), "pr-x-" + k));
@@ -4811,6 +5084,7 @@ export function initAdvanced(app) {
     else if (m.t === "thread") threadCmd({ body: b.id, mod: m.id });
     else if (m.t === "scale") scaleCmd({ body: b.id, mod: m.id });
     else if (m.t === "emboss") embossCmd({ body: b.id, mod: m.id });
+    else if (m.t === "pattern") patternCmd({ body: b.id, mod: m.id }); // jumpstart-3d: pattern
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
     else if (m.t === "bool" && m.src === "combine") combineCmd({ body: b.id, mod: m.id });
     else if (m.t === "bool" && m.tool.t === "pipe") pipeCmd({ body: b.id, mod: m.id });
@@ -4907,7 +5181,8 @@ export function initAdvanced(app) {
       ]);
       group("Modify", "sketch", [t("trim"), t("dim"), { id: "sk-cons", label: "Construction", title: "Toggle construction (X)", icon: "construction", fn: () => sketcher.toggleConstruction() }, t("select")]);
       group("Finish", "sketch", [{ id: "sk-extrude", label: "Extrude", title: "Extrude this sketch now, without finishing it first (E)", icon: "extrude", fn: () => app.quickExtrude() }, { id: "sk-finish", label: "Finish sketch", icon: "finish", cls: "finish", fn: () => app.exitSketch() }]);
-      ribbon.append(el("div", { class: "note" }, "Profiles shade blue when closed."));
+      ribbon.append(el("div", { class: "note", id: "sk-note" }, "Profiles shade blue when closed.")); // jumpstart-3d: parameters (the id; showDofNote fills it)
+      showDofNote(); // jumpstart-3d: parameters
       return;
     }
     ribbon.append(el("div", { class: "wstabs", role: "tablist", "aria-label": "Workspace" },
@@ -4948,6 +5223,9 @@ export function initAdvanced(app) {
       group("Convert", "", [
         { id: "sim-meshstep", label: "Mesh to STEP", title: "Mesh to STEP Helper: turn an STL or 3MF mesh into an editable STEP solid, then open it here", icon: "import", fn: () => app.meshstep.open() },
       ]);
+      group("Bricks", "", [
+        { id: "sim-bricks", label: "Jump Brick Builder", title: "Rebuild the selected objects (or all) out of stud-and-tube building bricks you can print, press together and take apart", icon: "bricks", fn: () => app.bricks.open() },
+      ]);
       group("Flexi", "", [
         { id: "sim-flexigen", label: "FlexiGen", title: "Turn one object into a print-in-place articulated flexi model (your design is not changed)", icon: "flexigen", fn: () => flexiGenCmd() },
       ]);
@@ -4961,6 +5239,8 @@ export function initAdvanced(app) {
     group("Create", "", [
       { id: "ad-sketch", label: "Sketch", title: "Create sketch (S)", icon: "sketch", fn: () => createSketchCmd() },
       { id: "ad-extrude", label: "Extrude", title: "Extrude (E)", icon: "extrude", fn: () => extrudeCmd("extrude") },
+      { id: "ad-sketch3d", label: "3D Sketch", title: "Draw lines in 3D on a body, a virtual sphere or cube, or in the air, with a split camera view. Works with touch, pen, mouse and trackpad.", icon: "spline", fn: () => app.sketch3d.open() },
+      { id: "ad-lathe", label: "Lathe", title: "Turn a body or a wood blank on a virtual lathe with chisels (Space is the pedal), then hollow it out. The result is a mesh body.", icon: "lathe", fn: () => app.lathe.open() },
       { id: "ad-hole", label: "Hole", title: "Hole (H): simple, counterbore, countersink or tapped, with standard screw sizes", icon: "hole", fn: () => holeCmd() },
       { id: "ad-features", label: "Advanced Create", title: "Revolve, sweep, pipe, coil, loft, mirror, hole and thread", icon: "features", dropdown: [
         { id: "ad-revolve", label: "Revolve", title: "Revolve (Shift+R)", icon: "revolve", fn: () => extrudeCmd("revolve") },
@@ -5092,6 +5372,73 @@ export function initAdvanced(app) {
     app.toast(lock ? "Locked: it can't be moved, changed or deleted." : "Unlocked");
   }
 
+  // jumpstart-3d: parameters. How constrained a sketch is, from sketchDof's count: null for a sketch with no shapes.
+  const dofOf = (sk) => { const r = sketchDof(sk); return r.free ? r : null; };
+  const OVER = (n) => `Fully constrained by count; ${n} more constraint${n === 1 ? "" : "s"} than needed, some may fight`;
+  // the sketch ribbon's note while editing: the proof line, kept current by refresh()
+  function showDofNote() {
+    const note = document.getElementById("sk-note"), sk = (store.view.sketches || []).find((s) => s.id === sketcher.active), r = sk && dofOf(sk);
+    if (note) note.textContent = !r ? "Profiles shade blue when closed." : r.over < 0 ? OVER(-r.over) : r.dof === 0 ? "Fully constrained" : `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left: add dimensions or constraints`;
+  }
+  const dofBadge = (sk) => { // jumpstart-3d: parameters
+    const r = dofOf(sk);
+    return !r ? null : el("span", { class: "sk-dof" + (r.dof ? "" : " ok"), title: r.over < 0 ? OVER(-r.over) : r.dof ? `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left` : "Fully constrained" }, r.dof ? `${r.dof} free` : "✓");
+  };
+  // Parameters as a CSV file: one row each, name,expression,unit
+  async function exportParamsCsv() {
+    const params = store.view.params || [];
+    if (!params.length) { app.toast("There are no parameters to save yet."); return; }
+    const name = ((store.doc.name || "").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "design") + "-parameters.csv";
+    await app.projects.saveModel(name, new TextEncoder().encode(paramsToCsv(params)));
+    app.toast(`Saved ${params.length} parameter${params.length === 1 ? "" : "s"} as ${name}.`);
+  }
+
+  // jumpstart-3d: parameters. The Parameters folder (heading with CSV out, CSV in and + , then one row each); the Advanced browser and the Beginner inspector both show it.
+  function paramRows(tree) {
+    const params = store.view.params || [];
+    // re-running applyParams on the new doc changes nothing; it only reports dimensions that could not take the value
+    const editParams = (fn, label) => {
+      const next = store.update(fn, label), n = next ? applyParams(next) : 0;
+      if (n) app.toast(`${n} dimension(s), size(s) or feature value(s) can't take that value`);
+    };
+    // one undo step takes a whole import back; a name that exists takes the new expression, a new valid name is added
+    const importCsv = async () => {
+      const f = await pickFile(".csv,text/csv");
+      if (!f) return;
+      const rows = parseParamsCsv(await f.text());
+      let r;
+      editParams((d) => { r = importParams(d, rows); if (!r.used) return false; }, "Import parameters");
+      const bad = store.doc.params.filter((p) => !isFinite(p.value)).length;
+      app.toast(`Imported ${r.used} parameter${r.used === 1 ? "" : "s"}${r.skipped ? `, ${r.skipped} row${r.skipped === 1 ? "" : "s"} skipped` : ""}${bad ? `, ${bad} with errors` : ""}`);
+    };
+    const tool = (cls, title, label, fn) => el("button", { class: cls, title, "aria-label": title, onclick: (e) => { e.stopPropagation(); fn(); } }, label);
+    tree.append(el("div", { class: "folder" }, `Parameters (${params.length})`,
+      el("span", { class: "param-tools" },
+        tool("param-csv-out", "Export parameters as CSV", "CSV ↓", exportParamsCsv),
+        tool("param-csv-in", "Import parameters from CSV", "CSV ↑", importCsv),
+        el("button", { class: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+"))));
+    if (!params.length) tree.append(el("div", { class: "empty" }, "Add a parameter, then type its name in a dimension or a size box."));
+    for (const p of params) {
+      const nm = el("input", { class: "num param-name", value: p.name, title: "Name", "aria-label": "Parameter name" });
+      const ex = el("input", { class: "num param-expr", value: p.expr, title: "Value or expression", "aria-label": `Value of ${p.name}` });
+      for (const inp of [nm, ex]) inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") inp.blur(); if (e.key === "Escape") { inp.value = inp === nm ? p.name : p.expr; inp.blur(); } };
+      nm.onchange = () => {
+        const name = nm.value.trim(), err = paramNameOk(name, params, p.id);
+        if (err) { app.toast(err); nm.value = p.name; return; }
+        if (name !== p.name) editParams((d) => { renameParam(d, p.id, name); }, "Rename parameter");
+      };
+      ex.onchange = () => editParams((d) => {
+        const q = d.params.find((x) => x.id === p.id);
+        q.expr = ex.value.trim();
+        if (getUnit() !== "mm") q.unit = getUnit(); else delete q.unit;
+      }, "Edit parameter");
+      const ok = isFinite(p.value);
+      tree.append(el("div", { class: "param" }, nm, ex,
+        el("span", { class: "pv" + (ok ? "" : " bad"), title: ok ? "" : PARAM_ERROR }, ok ? `${showLen(p.value, 3)} ${getUnit()}` : "error"),
+        el("button", { class: "eye", title: "Delete parameter", "aria-label": "Delete " + p.name, html: ICON.del, onclick: () => { let n = 0; store.update((d) => { n = removeParam(d, p.id); }, "Delete parameter"); if (n) app.toast(`${p.name} removed; ${n} dimension(s), size(s) or feature value(s) keep their value`); } })));
+    }
+  }
+
   // ------------------------------------------------------------------ browser
   let selSketch = null;
   function renderBrowser() {
@@ -5123,11 +5470,12 @@ export function initAdvanced(app) {
     for (const s of doc.sketches) {
       const eye = el("button", { class: "eye", title: s.hidden ? "Show" : "Hide", "aria-label": (s.hidden ? "Show " : "Hide ") + s.name, html: s.hidden ? ICON.eyeOff : ICON.eye, onclick: (e) => { e.stopPropagation(); store.update((d) => { findSketch(d, s.id).hidden = !s.hidden; }, s.hidden ? "Show sketch" : "Hide sketch"); } });
       const dl = el("button", { class: "eye dxf-one", title: "Download this sketch as DXF", "aria-label": "Download " + s.name + " as DXF", html: ICON.import, onclick: (e) => { e.stopPropagation(); exportSketchesDXF([s.id]); } });
-      const n = el("div", { class: "node" + (selSketch === s.id || sketcher.active === s.id ? " sel" : ""), title: "Double-click to edit" }, eye, el("span", { class: "nm" }, s.name + (sketcher.active === s.id ? " (editing)" : "")), dl);
+      const n = el("div", { class: "node" + (selSketch === s.id || sketcher.active === s.id ? " sel" : ""), title: "Double-click to edit" }, eye, el("span", { class: "nm" }, s.name + (sketcher.active === s.id ? " (editing)" : "")), dofBadge(s), dl);
       n.onclick = () => { selSketch = s.id; app.select([]); renderBrowser(); };
       n.ondblclick = () => app.enterSketch(s.id);
       tree.append(n);
     }
+    paramRows(tree); // jumpstart-3d: parameters
     const planes = doc.planes || [];
     if (planes.length) {
       tree.append(el("div", { class: "folder" }, `Construction (${planes.length})`));
@@ -5180,7 +5528,7 @@ export function initAdvanced(app) {
   }
 
   // ------------------------------------------------------------------ timeline
-  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", plane: "planeOffset", joint: "joint" };
+  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
   let lastTl = null, lastTlT = 0;
   function renderTimeline() {
     tl.innerHTML = "";
@@ -5406,6 +5754,7 @@ export function initAdvanced(app) {
     if (r.bottom > innerHeight - 4) menu.style.top = Math.max(4, e.clientY - r.height) + "px";
   }
   return {
+    cancel: () => { if (app.command) closeCmd(false); },
     sim,
     printSim: psim,
     openPrintSim,
@@ -5420,6 +5769,7 @@ export function initAdvanced(app) {
       renderBrowser();
       renderTimeline();
       renderPalette();
+      showDofNote(); // jumpstart-3d: parameters
       if (app.command && (kind === "change" || kind === "load") && app.command.render && !app.command.noRerenderOnChange) {/* keep dialog */}
     },
     editItem,
@@ -5442,7 +5792,9 @@ export function initAdvanced(app) {
     sketchUI(kind) {
       if (kind === "sketch" || !ribbon.querySelector(".rgroup.sketch")) renderRibbon();
       renderPalette();
+      showDofNote(); // jumpstart-3d: parameters
     },
     showBuildErrors,
+    paramRows, // jumpstart-3d: parameters
   };
 }

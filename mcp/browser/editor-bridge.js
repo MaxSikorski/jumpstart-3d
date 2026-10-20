@@ -95,6 +95,12 @@ function documentSummary(app, editorId, revision, includeGeometry = false) {
     revision,
     document: { id: doc.id, name: doc.name, mode: doc.mode ?? app.mode },
     units: getUnit(),
+    nativeParameters: (doc.params || []).slice(0, 256).map((parameter) => ({
+      id: String(parameter.id || "").slice(0, 120), name: String(parameter.name || "").slice(0, 120),
+      expression: String(parameter.expr || "").slice(0, 2000), unit: String(parameter.unit || "mm").slice(0, 30),
+      value: Number.isFinite(parameter.value) ? parameter.value : null,
+    })),
+    nativeParametersTruncated: (doc.params?.length || 0) > 256,
     viewport: { target: app.vp.view.target.toArray(), azimuth: app.vp.view.az, elevation: app.vp.view.el, distance: app.vp.view.dist, roll: app.vp.view.roll || 0, orthographic: app.vp.useOrtho, section: clone(app.section?.info || null) },
     sketches: (doc.sketches || []).map((sketch) => ({
       id: sketch.id,
@@ -103,7 +109,7 @@ function documentSummary(app, editorId, revision, includeGeometry = false) {
       pointCount: sketch.pts?.length ?? 0,
       entityCount: sketch.ents?.length ?? 0,
       hidden: !!sketch.hidden,
-      ...(includeGeometry ? { points: sketch.pts?.slice(0, 512) ?? [], entities: sketch.ents?.slice(0, 512) ?? [], truncated: (sketch.pts?.length ?? 0) > 512 || (sketch.ents?.length ?? 0) > 512 } : {}),
+      ...(includeGeometry ? { points: sketch.pts?.slice(0, 512) ?? [], entities: sketch.ents?.slice(0, 512) ?? [], constraints: featureTree(sketch.cons?.slice(0, 512) || []), truncated: (sketch.pts?.length ?? 0) > 512 || (sketch.ents?.length ?? 0) > 512 || (sketch.cons?.length ?? 0) > 512 } : {}),
     })),
     planes: (doc.planes || []).map((plane) => ({ id: plane.id, name: plane.name, kind: plane.kind, plane: clone(plane.plane), hidden: !!plane.hidden })),
     bodies: doc.bodies.filter((body) => !body.cutPreview).map((body) => bodyInfo(body, app, includeGeometry)),
@@ -244,6 +250,15 @@ function previewImages(app, box, section) {
 }
 
 export function initMcp(app) {
+  // Static and offline upstream builds have no local broker. Only the broker's
+  // served shell or an explicit loopback opt-in should start MCP networking.
+  const local = location.protocol === "http:" && ["localhost", "127.0.0.1"].includes(location.hostname);
+  const enabled = local && (document.querySelector('meta[name="jumpstart-mcp-bridge"]')?.content === "1" || new URLSearchParams(location.search).get("mcp") === "1");
+  if (!enabled) {
+    const indicator = document.getElementById("ai-status");
+    if (indicator) indicator.hidden = true;
+    return { enabled: false };
+  }
   const drawStatus = initAgentStatus();
   const status = { checking: true, online: false, connected: false, recent: false };
   let statusTimer;

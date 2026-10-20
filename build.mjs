@@ -5,7 +5,7 @@
 //   npm install   (once; installs the pinned esbuild)
 //   node build.mjs
 //
-// This is the author's app/dist.sh + app/standalone.py from the v1.94 source
+// This is the author's app/dist.sh + app/standalone.py from the v2.0 source
 // release, written in Node. The helper pages (src/flexigen.html,
 // src/meshstep.html, src/chisel.html) are committed already built; see
 // tools/helpers/README.md to regenerate them.

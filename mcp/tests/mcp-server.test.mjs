@@ -94,6 +94,7 @@ for (const entry of ["mcp/server/server.mjs", "scripts/jumpstart-mcp-server.mjs"
       headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document" },
     });
     assert.equal(staticPage.status, 200);
+    assert.match(await staticPage.text(), /<meta name="jumpstart-mcp-bridge" content="1">/);
     const editors = await send({
       jsonrpc: "2.0", id: 3, method: "tools/call",
       params: { name: "jumpstart_list_editors", arguments: {} },

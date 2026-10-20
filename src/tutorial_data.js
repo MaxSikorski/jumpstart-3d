@@ -60,6 +60,88 @@ const TABS = "In the tool's panel, press <b>Tab</b> to go to the next box. (<b>E
 export const TUTORIALS = [
   // ============================================================== BEGINNER
   {
+    id: "b-top", mode: "beginner", level: "Proficient", minutes: "8-10", item: "Spinning Top",
+    title: "Spinning top (Lathe)",
+    blurb: "Turn a square block of wood into a spinning top on the virtual lathe: round it, shape a point and a handle.",
+    learn: ["Lathe", "Foot pedal", "Roughing gouge", "Spindle gouge", "Parting tool"],
+    steps: [
+      nameStep("Spinning Top", "Lopez, Maria, Spinning Top"),
+      {
+        title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#bb-lathe" }, anim: false,
+        how: [
+          "In the toolbar, click <b>Lathe</b> (next to 3D Sketch).",
+          "The Lathe opens over the whole screen with a window asking <b>What do you want to turn?</b>",
+        ],
+        when: "A lathe makes round things: it spins the wood while you hold a chisel against it, so everything you cut comes out perfectly round. Bowls, cups, bats, pens, chess pieces and tops are all turned.",
+        tip: "Your design is safe: nothing changes until you press Add to design.",
+        check: (t) => t.latheOpen(),
+      },
+      {
+        title: "Put a square blank on the lathe", tool: "Square blank", icon: "box", show: { sel: "#lathe-start" }, anim: false,
+        how: [
+          "Choose <b>Square blank</b>.",
+          "Type <b>Side 40</b> and <b>Length 70</b>. Material: <b>Maple</b>.",
+          "Click <b>Put it on the lathe</b>. The block is held between the two pointed centers.",
+        ],
+        when: "Real turners start from a square block cut from a board. The lathe turns it round.",
+        check: (t) => t.latheWork((w, st) => st.src === "square" && t.near(w.L, 70, 1) && t.near(st.blank.side, 40, 1)),
+      },
+      {
+        title: "Turn the lathe on", tool: "Foot pedal", icon: "lathe", show: { sel: "#lathe-pedalmode" }, anim: false,
+        how: [
+          "In the toolbar, under <b>Foot pedal</b>, choose <b>Stays on</b>.",
+          "Tap the <b>Space</b> bar once (or press the big <b>Start</b> button at the bottom right). The work starts spinning and the speed shows next to it.",
+          "Tap <b>Space</b> again whenever you want to stop. (With <b>Hold</b>, it only spins while you hold Space down, like a real foot pedal.)",
+        ],
+        when: "The chisel only cuts while the work is spinning. If you press while it's stopped, a red note reminds you to start it.",
+        tip: "Higher speed (the Speed slider) cuts faster. Start around 1200 rpm.",
+        check: (t) => t.latheSpinning(),
+      },
+      {
+        title: "Rough it round", tool: "Roughing gouge", icon: "lathe", show: { sel: "#lathe-tool" }, anim: false,
+        how: [
+          "Under <b>Chisel</b>, pick <b>Roughing gouge</b>. Set <b>Angle 0°</b>.",
+          "Point just inside the wood's outline near the left end, then press and hold. The chisel cuts in toward where you point, a little at a time, and chips fly off.",
+          "Keep holding and slowly drag to the right, all the way along. Go back and forth, a little further in each pass, until no flat sides are left and it looks like a smooth round bar.",
+        ],
+        when: "The roughing gouge is the big, fast tool: it knocks the corners off a square block. Always rough it round before the fine shaping.",
+        tip: "Drag slowly. If you lift your finger or the mouse button, the chisel stops cutting.",
+        check: (t) => t.latheWork((w) => t.roundness(w) > 0.85),
+      },
+      {
+        title: "Shape the point", tool: "Spindle gouge", icon: "lathe", show: { sel: "#lathe-angle" }, anim: false,
+        how: [
+          "Pick <b>Spindle gouge</b>. Set <b>Angle +30°</b> (or scroll, or press <b>E</b>, to twist the chisel).",
+          "Work on the <b>right third</b> (next to the tailstock). Press and hold inside the outline and drag to the right, pointing further in near the end each time.",
+          "Stop when it comes to a blunt point about the size of a pencil tip at the right end.",
+        ],
+        when: "The spindle gouge makes curves and points. Twisting it lets its side do the cutting, so a slope comes out smooth.",
+        check: (t) => t.latheWork((w) => { let mx = 0; for (let i = 0; i < w.N; i++) mx = Math.max(mx, w.rowMax[i]); return t.rAt(w, 0.96) < mx * 0.45 && mx > 8; }),
+      },
+      {
+        title: "Turn the handle", tool: "Parting tool", icon: "lathe", show: { sel: "#lathe-tool" }, anim: false,
+        how: [
+          "Pick <b>Parting tool</b> and set <b>Angle 0°</b>.",
+          "On the <b>left end</b>, press in and drag to the left, making a thin stem about <b>15 mm long</b> and about as thick as a pencil (8 mm).",
+          "Leave the middle fat: that's the body of the top, where its weight is.",
+        ],
+        when: "The parting tool is thin and cuts straight down. It sizes a stem or a tenon, or cuts a part right off (if you go all the way to the middle, the piece comes apart).",
+        check: (t) => t.latheWork((w) => { for (let f = 0.02; f <= 0.3; f += 0.02) { const r = t.rAt(w, f); if (r > 0.6 && r < 5.5) return true; } return false; }),
+      },
+      {
+        title: "Add it to your design", tool: "Done → Add to design", icon: "finish", show: { sel: "#lathe-done" }, anim: false,
+        how: [
+          "Click <b>Done</b> at the top right of the Lathe.",
+          "Click <b>Add to design</b>. The Lathe closes and your turned part appears in your design as a mesh body (it takes a moment to build).",
+        ],
+        when: "When the shape looks right. Until then you can keep cutting, or use Undo (Ctrl+Z): each time you press the chisel in is one step.",
+        check: (t) => t.turned().length > 0,
+      },
+      saveStep(),
+      exportStep(),
+    ],
+  },
+  {
     id: "b-keychain", mode: "beginner", level: "Easy", minutes: "5-7", item: "Keychain",
     title: "Name keychain",
     blurb: "A rounded tag with your name in raised letters and a hole for the key ring.",
@@ -1304,6 +1386,173 @@ export const TUTORIALS = [
         ],
         when: "Same pitch on both parts, or they won't screw together. The print offset gives a little play so printed threads turn smoothly.",
         check: (t) => t.countMods("thread") >= 2,
+      },
+      saveStep(),
+      exportStep(),
+    ],
+  },
+  {
+    id: "a-cup", mode: "advanced", level: "Proficient", minutes: "12-15", item: "Turned Cup",
+    title: "Turned cup (Lathe)",
+    blurb: "Turn a tapered cup with a decorative groove on the virtual lathe, hollow it out, export it, then scale it in Advanced.",
+    learn: ["Lathe", "Round blank", "Point tool", "Hollow", "3MF export", "Scale"],
+    steps: [
+      nameStep("Turned Cup", "Lopez, Maria, Turned Cup"),
+      {
+        title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#ad-lathe" }, anim: false,
+        how: [
+          "On the <b>Create</b> tab, click <b>Lathe</b>.",
+          "The Lathe opens over the whole screen with a window asking <b>What do you want to turn?</b>",
+        ],
+        when: "A lathe makes round things: it spins the wood while you hold a chisel against it, so everything you cut comes out perfectly round. Bowls, cups, bats, pens, chess pieces and tops are all turned.",
+        tip: "Your design is safe: nothing changes until you press Add to design.",
+        check: (t) => t.latheOpen(),
+      },
+      {
+        title: "Put a round blank on the lathe", tool: "Round blank", icon: "cylinder", show: { sel: "#lathe-start" }, anim: false,
+        how: [
+          "Choose <b>Round blank</b>.",
+          "Type <b>Diameter 60</b> and <b>Length 90</b>. Material: <b>Cherry</b>.",
+          "Click <b>Put it on the lathe</b>.",
+        ],
+        when: "A round blank is already a cylinder, so you can go straight to shaping.",
+        check: (t) => t.latheWork((w, st) => st.src === "round" && t.near(w.L, 90, 1) && t.near(st.blank.d, 60, 1)),
+      },
+      {
+        title: "Turn the lathe on", tool: "Foot pedal", icon: "lathe", show: { sel: "#lathe-pedalmode" }, anim: false,
+        how: [
+          "In the toolbar, under <b>Foot pedal</b>, choose <b>Stays on</b>.",
+          "Tap the <b>Space</b> bar once (or press the big <b>Start</b> button at the bottom right). The work starts spinning and the speed shows next to it.",
+          "Tap <b>Space</b> again whenever you want to stop. (With <b>Hold</b>, it only spins while you hold Space down, like a real foot pedal.)",
+        ],
+        when: "The chisel only cuts while the work is spinning. If you press on the wood while it's stopped, a red note reminds you to start it.",
+        tip: "Higher speed (the Speed slider) cuts faster. Start around 1200 rpm.",
+        check: (t) => t.latheSpinning(),
+      },
+      {
+        title: "Taper the outside", tool: "Roughing gouge", icon: "lathe", show: { sel: "#lathe-tool" }, anim: false,
+        how: [
+          "Pick <b>Roughing gouge</b>, <b>Angle 0°</b>.",
+          "The right end (tailstock) will be the cup's rim, so leave it full size.",
+          "Press and hold at the <b>left end</b>, pointing about 8 mm inside the outline, until it's about <b>44 mm across</b> there. Then drag slowly to the right while easing out, so the cup gets wider toward the rim.",
+        ],
+        when: "Shaping the outside comes first, while the wood is solid and stiff.",
+        check: (t) => t.latheWork((w) => t.rAt(w, 0.08) < 25 && t.rAt(w, 0.92) > 27),
+      },
+      {
+        title: "Cut a decorative groove", tool: "Point tool (V)", icon: "lathe", show: { sel: "#lathe-tool" }, anim: false,
+        how: [
+          "Pick <b>Point tool (V)</b>, <b>Angle 0°</b>.",
+          "About a third of the way from the right end, point about 3 mm inside the outline and press and hold for a moment to cut a V groove. Don't drag.",
+          "Want more? Add a second groove a little further along.",
+        ],
+        when: "Grooves and beads are classic lathe decoration, and they give your fingers something to grip.",
+        check: (t) => t.latheWork((w) => { const k = Math.round(5 / w.du); for (let i = k; i < w.N - k; i++) if (w.rowMax[i] < (w.rowMax[i - k] + w.rowMax[i + k]) / 2 - 1.5) return true; return false; }),
+      },
+      {
+        title: "Hollow it out", tool: "Done → Hollow it out", icon: "shell", show: { sel: "#lathe-done" }, anim: false,
+        how: [
+          "Click <b>Done</b>, then tick <b>Hollow it out</b>.",
+          "Open end: <b>Tailstock (right)</b>. Inside: <b>Follows the outside</b>. <b>Wall 3</b>, <b>Bottom 6</b>.",
+          "The preview cuts the front half away so you can see the inside of your cup.",
+        ],
+        when: "Hollowing makes it a cup instead of a solid post. A 3 mm wall is strong when 3D printed.",
+        check: (t) => { const u = t.lathe(); return (u && u.st.hollow.on && !!u.root.querySelector(".lathe-done-back")) || t.turned().some((b) => b.turned.hollow); },
+      },
+      {
+        title: "Export it from the lathe", tool: "Export 3MF", icon: "import", show: { sel: "#lathe-exp-3mf" }, anim: false,
+        how: [
+          "In the same panel, next to <b>Export</b>, click <b>3MF</b>. The cup (hollowed) is saved as a file you can open in a slicer.",
+          "STL and OBJ work the same way.",
+        ],
+        when: "Exporting from the lathe saves just the turned part. 3MF keeps millimeters and color; STL is the most common for printing; OBJ opens in most 3D apps.",
+        check: (t) => t.exported("3mf"),
+      },
+      {
+        title: "Add it to your design", tool: "Add to design", icon: "finish", show: { sel: "#lathe-add" }, anim: false,
+        how: ["Click <b>Add to design</b>. The Lathe closes and your hollow cup appears in Advanced as a mesh body."],
+        when: "In your design, the cup can be moved, scaled, combined with other parts and sliced, like any body.",
+        check: (t) => t.turned().some((b) => b.turned.hollow),
+      },
+      {
+        title: "Make it 10% bigger", tool: "Transform → Scale", icon: "scale", show: { sel: "#ad-scale", via: "#ad-transform" },
+        how: [
+          "Click the cup to select it.",
+          "Under <b>Modify</b>, open <b>Transform</b> and click <b>Scale</b>. Keep <b>Uniform</b> ticked, type <b>Factor 1.1</b> and click <b>OK</b>.",
+        ],
+        when: "A turned part is a mesh, so you change its size by scaling it rather than with sketch dimensions.",
+        check: (t) => t.turned().some((b) => (b.node.mods || []).some((m) => m.t === "scale")),
+      },
+      saveStep(),
+      exportStep(),
+    ],
+  },
+  {
+    id: "a-params", mode: "advanced", level: "Proficient", minutes: "8-10", item: "Bracket",
+    title: "Parametric bracket",
+    blurb: "Name your numbers, use them in dimensions and an extrude, then change one number and watch the whole bracket follow.",
+    learn: ["Parameters", "Expressions", "Sketch dimensions", "Extrude by a parameter", "CSV"],
+    steps: [
+      nameStep("Bracket", "Lopez, Maria, Bracket"),
+      {
+        title: "Sketch a rectangle", tool: "Sketch → Rectangle", icon: "sketch", show: { sel: "#ad-sketch" },
+        how: [
+          "Click <b>Sketch</b>, then <b>XY · Top</b> in the panel.",
+          "Click <b>Rectangle</b> (or press <b>R</b>). Click the origin dot, then click out to the right and up to make any size you like. You will set the real size with parameters in a moment.",
+        ],
+        when: "A parametric design starts like any other: a sketch. What changes is that the numbers come from names you choose.",
+        check: (t) => t.sketchLines(4),
+      },
+      {
+        title: "Add two parameters", tool: "Parameters list (+)", icon: "text", show: { sel: "#browser .param-add" },
+        how: [
+          "In the browser on the left, find <b>Parameters</b> and click <b>+</b>. Rename <b>p1</b> to <b>w</b> and type <b>60</b> as its value.",
+          "Click <b>+</b> again. Name it <b>h</b> and type <b>w/2</b> as its value. It shows <b>30 mm</b>.",
+        ],
+        when: "A parameter is a named number. A value can be a sum or a fraction of other parameters, so <b>h</b> stays half of <b>w</b> without you doing any sums.",
+        tip: "A name uses letters, digits and _ and starts with a letter. Names like d1, d2 are kept for the sketch's own dimensions.",
+        check: (t) => { const p = t.doc().params || [], w = p.find((q) => q.name.toLowerCase() === "w"), h = p.find((q) => q.name.toLowerCase() === "h"); return !!w && !!h && t.near(w.value, 60, 0.01) && t.near(h.value, 30, 0.01); },
+      },
+      {
+        title: "Size the rectangle with the names", tool: "Select, then click an edge", icon: "dim", show: { sel: "#sk-select" },
+        how: [
+          "You are still in the Rectangle tool: press <b>Esc</b> (or click <b>Select</b>).",
+          "Click the <b>bottom edge</b> of the rectangle. A box opens for its length: type <b>w</b> and press <b>Enter</b>.",
+          "Click the <b>left edge</b>, type <b>h</b> and press <b>Enter</b>.",
+          "The labels now read like <b>d1 = w = 60</b>: the dimension's own name, the expression, then the size.",
+        ],
+        when: "Typing a name instead of a number ties the dimension to the parameter. When a corner sits on the origin and both sizes are set, the sketch has nothing left to move: the toolbar note says <b>Fully constrained</b> and the browser shows a ✓.",
+        tip: "Every dimension has a name (d1, d2…). You can use those in any dimension, feature value or shape size too, for example <b>d1/2</b>.",
+        check: (t) => { const c = t.sketches().flatMap((s) => s.cons || []).filter((x) => x.t === "dim"); return c.some((x) => /^w$/i.test(x.expr || "")) && c.some((x) => /^h$/i.test(x.expr || "")); },
+      },
+      {
+        title: "Extrude by a parameter", tool: "Parameters + Extrude", icon: "extrude", show: { sel: "#sk-extrude, #ad-extrude" },
+        how: [
+          "In <b>Parameters</b>, click <b>+</b>, name it <b>t</b> and type <b>8</b>.",
+          "Press <b>E</b>. The rectangle is picked.",
+          TABS,
+          "Type <b>t</b> for the Distance (the box turns italic). Click <b>OK</b>.",
+        ],
+        when: "Features take names too, not just sketches. The thickness of the bracket now lives in one place.",
+        check: (t) => t.bodies().some((b) => b.node.exprs && b.node.exprs.dist),
+      },
+      {
+        title: "Change one number", tool: "Parameters list", icon: "text", show: { sel: "#browser .param-expr" },
+        how: [
+          "In <b>Parameters</b>, click the value box of <b>w</b>, type <b>80</b> and press <b>Enter</b>.",
+          "The rectangle is wider, <b>h</b> follows to 40, and the bracket rebuilds. Press <b>Ctrl+Z</b> to take it back, or <b>Ctrl+Y</b> to redo.",
+        ],
+        when: "This is what parametric means: change the number once and everything that depends on it follows. Try it again with <b>t</b>.",
+        check: (t) => { const w = (t.doc().params || []).find((q) => q.name.toLowerCase() === "w"); return !!w && t.near(w.value, 80, 0.01); },
+      },
+      {
+        title: "Export the parameters", tool: "Parameters → CSV", icon: "import", show: { sel: "#browser .param-csv-out" },
+        how: [
+          "Next to <b>Parameters</b>, click <b>CSV ↓</b>. The names and values are saved as a small spreadsheet file.",
+          "<b>CSV ↑</b> reads a file like it back in: names that exist take the new value, new names are added.",
+        ],
+        when: "Optional. A spreadsheet is a handy way to keep sets of sizes (small, medium, large) and to try values on a copy of your design.",
+        tip: "Importing is one step in Undo, so you can always take it back.",
       },
       saveStep(),
       exportStep(),

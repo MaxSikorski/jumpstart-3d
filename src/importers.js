@@ -69,6 +69,16 @@ export function parseSVG(text) {
   const doc = new DOMParser().parseFromString(text, "image/svg+xml");
   const root = doc.documentElement;
   if (!root || root.nodeName.toLowerCase() !== "svg") throw new Error("That file doesn't look like an SVG drawing.");
+  // Our addition (CodeQL js/xss-through-dom): the drawing is attached to the live page below, so
+  // anything in it that could run has to go first. Scripts, foreignObject (HTML inside SVG), on*
+  // handler attributes and javascript: links are never geometry, so dropping them changes no import.
+  for (const bad of root.querySelectorAll("script, foreignObject")) bad.remove();
+  for (const node of [root, ...root.querySelectorAll("*")]) {
+    for (const at of [...node.attributes]) {
+      const n = at.name.toLowerCase();
+      if (n.startsWith("on") || ((n === "href" || n === "xlink:href") && /^\s*javascript:/i.test(at.value))) node.removeAttribute(at.name);
+    }
+  }
   // put it on the page (out of sight) so the browser works out every transform
   const host = document.createElement("div");
   host.style.cssText = "position:absolute;left:-10000px;top:0;width:10px;height:10px;overflow:hidden;visibility:hidden";

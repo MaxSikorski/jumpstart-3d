@@ -344,7 +344,7 @@ geometry acceptance.
 
 ## Tutorial benchmark
 
-The benchmark has one natural-language prompt and a deterministic structured plan for each of the 16 built-in tutorials. It checks rejected-preview isolation, stale-preview rejection, duplicate-apply protection, real browser-kernel previews, document geometry and feature history, binary STL output, and undo back to an empty document. It exercises the MCP/model-plan path; the prompts are paired with fixed plans, so it does not measure a particular language model's ability to translate prose into CAD plans.
+The benchmark has one natural-language prompt and a deterministic structured plan for 16 of the 19 upstream tutorials. It checks rejected-preview isolation, stale-preview rejection, duplicate-apply protection, real browser-kernel previews, document geometry and feature history, binary STL output, and undo back to an empty document. It exercises the MCP/model-plan path; the prompts are paired with fixed plans, so it does not measure a particular language model's ability to translate prose into CAD plans.
 
 `npm test` also includes an imported yogurt-lid resize regression using the supplied STL's measured 99 × 99 × 5.5 mm bounds. It checks a resize from the reference dimensions to 100 mm, a second revision to 95 mm, preservation of the mesh asset, and immutability of the previous document snapshot. Cup fit remains unverified without the cup rim profile and clearance measurements.
 
@@ -397,3 +397,26 @@ This plan exercises the round cross-section, revolve, patterned cuts, preview, a
   ]
 }
 ```
+
+## Native 2.0 compatibility
+
+The editor retains upstream's native scripting bridge and parameter system.
+MCP reads native parameters through `nativeParameters` and sketch constraints
+through geometry inspection. MCP model parameters in `mcpModels` remain separate;
+MCP does not yet author native parameter bindings, solver constraints, arcs,
+splines, or Lathe features. The uncovered tutorials are `b-top` (Spinning top),
+`a-cup` (Turned cup), and `a-params` (Parametric bracket). The benchmark reports
+these gaps separately from its implemented-plan pass count.
+
+Legacy local snapshots without `params` reopen with an empty native parameter
+list. The bridge activates on loopback HTTP pages served by the local MCP server,
+or with explicit `?mcp=1`. Static and offline builds do not poll an absent broker.
+
+After `npm ci`, install browser prerequisites with `npx playwright install chromium`.
+`npm test` builds once and runs MCP contracts, upstream editor regressions for the
+site and standalone artifact, then the MCP browser compatibility checks.
+
+The regression harness isolates each golden export case in a fresh browser
+context and blurs focused controls before loading a new test document. These
+prevent repeated offline-download stalls and edits leaking between test cases;
+upstream's expected geometry and export hashes remain unchanged.

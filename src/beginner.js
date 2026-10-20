@@ -6,6 +6,7 @@ import { showLen, parseLen } from "./units.js";
 import { ICON, shapeTile } from "./icons.js";
 import { LIB, textureThumb } from "./texture.js";
 import { FONT_NAMES } from "./fonts.js";
+import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import {
   M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodies, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
@@ -165,6 +166,8 @@ export function initBeginner(app) {
     btn("del", "Delete", "Delete (Del)", () => del(), "bb-del");
     bar.append(el("span", { class: "sep" }));
     btn("sketch", "Sketch", "Draw a 2D sketch on the workplane or a flat face", () => app.advanced.createSketch(), "bb-sketch", true);
+    btn("spline", "3D Sketch", "Draw lines in 3D on a shape, a virtual sphere or cube, or in the air", () => app.sketch3d.open(), "bb-sketch3d", true);
+    btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
     btn("extrude", "Extrude", "Extrude a sketch into a shape (E)", () => app.quickExtrude(), "bb-extrude", true);
     btn("import", "Import", "Import a 3D model (STL, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true);
     bar.append(el("span", { class: "sep" }));
@@ -895,6 +898,7 @@ export function initBeginner(app) {
               p.w = +(p0.w * kx).toFixed(4); p.d = +(p0.d * ky).toFixed(4); p.h = +(p0.h * kz).toFixed(4);
             }
             if (b.node.kind === "torus") { p.d = p.w; p.tube = p0.tube; }
+            for (const k of ["w", "d", "h"]) if (Math.abs(p[k] - p0[k]) > 1e-4) setExpr(b.node, k, null); // jumpstart-3d: parameters. a dragged size stops following its parameter
             b.m = arr(m0.clone().multiply(new THREE.Matrix4().makeTranslation(off.x, off.y, off.z)));
           });
         },
@@ -981,7 +985,7 @@ export function initBeginner(app) {
   function renderInspector(force) {
     const sel = app.selected();
     if (!sel.length || app.mode !== "beginner") { inspector.hidden = true; inspKey = ""; return; }
-    const key = JSON.stringify(sel.map((b) => [b.id, b.node.t === "prim" ? b.node.p : null, b.hole, b.color, b.name, b.m, !!b.locked, b.textures || null, b.node.mods || null, !!app.scene.views.get(b.id)?.data]));
+    const key = JSON.stringify(sel.map((b) => [b.id, b.node.t === "prim" ? [b.node.p, b.node.exprs || null] : null, b.hole, b.color, b.name, b.m, !!b.locked, b.textures || null, b.node.mods || null, app.scene.views.get(b.id)?.key])) + JSON.stringify(store.doc.params); // jumpstart-3d: parameters // jumpstart-3d: fix
     if (!force && key === inspKey && !inspector.hidden) return;
     const ae = document.activeElement && inspector.contains(document.activeElement) ? document.activeElement : null;
     let focusId = ae ? ae.id : null;
@@ -1025,6 +1029,9 @@ export function initBeginner(app) {
     if (sel.length > 1) body.append(el("button", { class: "btn primary", onclick: () => group() }, `Group ${sel.length} shapes`));
     const feats = one ? (one.node.mods || []).filter((m) => m.t !== "scale").length : 0;
     if (feats) body.append(el("div", { class: "hint", style: { padding: 0 } }, `Has ${feats} feature${feats > 1 ? "s" : ""} from Advanced mode (fillets, holes…).`));
+    const pbox = el("div", { class: "tree", id: "insp-params" }); // jumpstart-3d: parameters
+    app.advanced.paramRows(pbox);
+    body.append(pbox);
     if (focusId) {
       const f = document.getElementById(focusId);
       if (f) {
@@ -1078,8 +1085,9 @@ export function initBeginner(app) {
     }
     body.append(el("button", { class: "btn", id: "insp-texture", onclick: () => app.advanced.texture() }, list.length ? "Add another texture" : "Add texture…"));
   }
-  function updatePrim(id, patch, label = "Edit shape") {
-    store.update((doc) => { const b = findBody(doc, id); Object.assign(b.node.p, patch); if (b.node.kind === "torus") b.node.p.d = b.node.p.w; }, label);
+  // exprs: { w: "w/2" } for a size typed as a parameter expression; any other key in the patch loses its binding
+  function updatePrim(id, patch, label = "Edit shape", exprs = {}) {
+    store.update((doc) => { const b = findBody(doc, id); Object.assign(b.node.p, patch); if (b.node.kind === "torus") b.node.p.d = b.node.p.w; for (const k of Object.keys(patch)) setExpr(b.node, k, exprs[k]); }, label); // jumpstart-3d: parameters
   }
   function primControls(body, b) {
     const p = b.node.p, kind = b.node.kind;
@@ -1128,7 +1136,7 @@ export function initBeginner(app) {
     const sizeRow = el("div", { class: "row3" });
     const dims = kind === "torus" ? [["Diameter", "w"]] : [["Width", "w"], ["Depth", "d"], ["Height", "h"]];
     for (const [lab, key] of dims) {
-      const f = app.numField({ value: p[key], id: "insp-" + key, min: 0.01, step: Math.max(app.gridStep(), 0.1), onCommit: (v) => updatePrim(b.id, { [key]: v }, "Resize") });
+      const f = app.numField({ value: p[key], id: "insp-" + key, min: 0.01, step: Math.max(app.gridStep(), 0.1), expr: exprOf(b.node, key), onCommit: (v, t) => updatePrim(b.id, { [key]: v }, "Resize", { [key]: t }) }); // jumpstart-3d: parameters
       sizeRow.append(el("label", {}, lab, f));
     }
     body.append(sizeRow);

@@ -44,7 +44,7 @@ function fakePreview(plan) {
   return { valid: true, bodies };
 }
 
-test("all tutorial prompts compile to the typed native model-plan DSL", async () => {
+test("all implemented MCP tutorial plans compile to the typed native model-plan DSL", async () => {
   assert.equal(TUTORIAL_CASES.length, 16);
   const empty = { id: "doc-test", name: "Untitled", mode: "beginner", seq: 0, sketches: [], bodies: [], planes: [], joints: [] };
   const seen = new Set();

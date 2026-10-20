@@ -1,0 +1,154 @@
+{
+ "v": 1,
+ "id": "g_advanced_overlap_extrude",
+ "name": "Overlapping profiles",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 3,
+ "grid": 1,
+ "sketches": [
+  {
+   "id": "s1",
+   "name": "Overlap",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     0,
+     1
+    ]
+   },
+   "pts": [
+    {
+     "id": "p0",
+     "x": 0,
+     "y": 0
+    },
+    {
+     "id": "p1",
+     "x": 30,
+     "y": 0
+    },
+    {
+     "id": "p2",
+     "x": 30,
+     "y": 20
+    },
+    {
+     "id": "p3",
+     "x": 0,
+     "y": 20
+    },
+    {
+     "id": "pc",
+     "x": 30,
+     "y": 10
+    }
+   ],
+   "ents": [
+    {
+     "id": "e0",
+     "t": "line",
+     "a": "p0",
+     "b": "p1"
+    },
+    {
+     "id": "e1",
+     "t": "line",
+     "a": "p1",
+     "b": "p2"
+    },
+    {
+     "id": "e2",
+     "t": "line",
+     "a": "p2",
+     "b": "p3"
+    },
+    {
+     "id": "e3",
+     "t": "line",
+     "a": "p3",
+     "b": "p0"
+    },
+    {
+     "id": "ec",
+     "t": "circle",
+     "c": "pc",
+     "r": 10
+    }
+   ],
+   "hidden": false
+  }
+ ],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Union plate",
+   "seq": 2,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "extrude",
+    "sketch": "s1",
+    "profiles": [
+     {
+      "key": "rect-only",
+      "pt": [
+       10,
+       10
+      ]
+     },
+     {
+      "key": "lens",
+      "pt": [
+       27,
+       10
+      ]
+     },
+     {
+      "key": "circle-only",
+      "pt": [
+       36,
+       10
+      ]
+     }
+    ],
+    "dist": 8,
+    "mode": "one",
+    "dist2": 0,
+    "mods": []
+   }
+  }
+ ]
+}

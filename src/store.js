@@ -2,6 +2,7 @@
 import { clone, uid } from "./util.js";
 import { resolveSketch, findRegions, resolveRegionRef, regionContains, polyArea } from "./regions.js";
 import { textShapes, textBounds } from "./textgeo.js";
+import { applyParams } from "./params.js"; // jumpstart-3d: parameters
 
 // text entities resolved to a spec the kernel and the outline code understand
 export function sketchTexts(sk) {
@@ -19,7 +20,7 @@ export function sketchTexts(sk) {
 export const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 export function newDoc(name = "Untitled", mode = "beginner") {
-  return { v: 1, id: uid("d"), name, mode, created: Date.now(), seq: 0, grid: 1, bodies: [], sketches: [], planes: [], joints: [] };
+  return { v: 1, id: uid("d"), name, mode, created: Date.now(), seq: 0, grid: 1, bodies: [], sketches: [], planes: [], joints: [], params: [] };
 }
 // older designs have no mode: anything with sketches or features is Advanced
 export function docMode(doc) {
@@ -40,6 +41,7 @@ export const store = {
   emit(kind) { for (const f of listeners) f(kind); },
   load(doc) {
     this.doc = migrate(doc);
+    applyParams(this.doc); // jumpstart-3d: parameters
     this.preview = null;
     this.undoStack = [];
     this.redoStack = [];
@@ -50,6 +52,7 @@ export const store = {
     const next = clone(this.doc);
     const r = fn(next);
     if (r === false) return;
+    applyParams(next); // jumpstart-3d: parameters
     this.undoStack.push({ doc: this.doc, label });
     if (this.undoStack.length > 120) this.undoStack.shift();
     this.redoStack = [];
@@ -102,6 +105,7 @@ function migrate(doc) {
   d.sketches = d.sketches || [];
   d.planes = d.planes || [];
   d.joints = d.joints || [];
+  d.params = d.params || [];
   d.mode = docMode(doc);
   return d;
 }
@@ -231,28 +235,73 @@ export function sketchPathSegs(psk, ents) {
 }
 // ------------------------------------------------------------- resolution
 // Replace sketch references with concrete geometry so the kernel can build it.
-// When every piece of a shape the user drew is picked (a face's projected outline cut it into
-// pieces), use the drawn shape itself: one clean profile instead of slivers that share edges.
-// Pieces that share edges extrude into solids that touch, and booleans with those can fail.
-function wholeLoops(sk, regs, picked) {
-  if (picked.length < 2 || !sk.ents.some((e) => e.proj)) return picked;
-  const own = regionOwners(sk), loops = userLoops(sk);
-  const idx = new Set(picked.map((r) => regs.indexOf(r)));
-  const byOwner = new Map();
-  own.forEach((o, i) => { if (o.startsWith("u:")) { if (!byOwner.has(o)) byOwner.set(o, []); byOwner.get(o).push(i); } });
-  const out = [];
-  const used = new Set();
-  for (const r of picked) {
-    const i = regs.indexOf(r), o = own[i];
-    const all = o && byOwner.get(o);
-    if (all && all.length > 1 && all.every((j) => idx.has(j))) {
-      if (used.has(o)) continue;
-      const L = loops.find((l) => "u:" + l.key === o);
-      if (L) { used.add(o); out.push(L); continue; }
+// Picked profiles that touch each other (a rectangle and a circle drawn overlapping, or a shape
+// split by a face's outline) are joined into one outline before extruding. Each profile's
+// boundary is a loop of pieces; a piece two profiles share runs in opposite directions in each,
+// so those cancel, and what is left is the outline of the whole picked area (plus its holes).
+// Extruding touching pieces separately makes solids that only touch, and joins or cuts with
+// those can quietly lose pieces.
+export function mergeRegions(regions) {
+  const flat = regions.filter((r) => !r.text && r.outer);
+  if (flat.length < 2) return regions;
+  const R6 = (v) => Math.round(v * 1e5) / 1e5;
+  const pk = (p) => R6(p[0]) + "," + R6(p[1]);
+  const keyOf = (g) => g.t === "circle" ? "c" + pk(g.c) + ":" + R6(g.r) : [g.t, pk(g.a), pk(g.b), g.m ? pk(g.m) : g.spans ? pk(g.spans[0][1]) : ""].join("|");
+  const revKey = (g) => g.t === "circle" ? keyOf(g) : [g.t, pk(g.b), pk(g.a), g.m ? pk(g.m) : g.spans ? pk(g.spans[g.spans.length - 1][2]) : ""].join("|");
+  const all = [];
+  for (const r of flat) for (const loop of [r.outer, ...(r.holes || [])]) for (const g of loop) all.push(g);
+  // count each piece; a piece and its reverse cancel
+  const cnt = new Map();
+  for (const g of all) cnt.set(keyOf(g), (cnt.get(keyOf(g)) || 0) + 1);
+  const left = [];
+  const used = new Map();
+  for (const g of all) {
+    const k = keyOf(g), rk = revKey(g);
+    if (g.t === "circle") { // no direction: the same circle twice (a disc and the ring around it) cancels in pairs
+      const n = cnt.get(k); if (n % 2 === 0 || (used.get(k) || 0) < n - 1) { used.set(k, (used.get(k) || 0) + 1); continue; }
+      left.push(g); continue;
     }
-    out.push(r);
+    if (cnt.get(rk) && (used.get(rk) || 0) < cnt.get(rk)) { used.set(rk, (used.get(rk) || 0) + 1); continue; }
+    left.push(g);
   }
-  return out;
+  if (left.length === all.length) return regions; // nothing shared: they don't touch
+  // chain the remaining pieces into closed loops
+  const loops = [], pool = left.filter((g) => g.t !== "circle");
+  for (const c of left.filter((g) => g.t === "circle")) loops.push([c]);
+  while (pool.length) {
+    const loop = [pool.shift()];
+    for (let guard = 0; guard < 10000; guard++) {
+      const end = pk(loop[loop.length - 1].b);
+      if (end === pk(loop[0].a)) break;
+      const i = pool.findIndex((g) => pk(g.a) === end);
+      if (i < 0) return regions; // didn't close up: keep the profiles as they were
+      loop.push(pool.splice(i, 1)[0]);
+    }
+    loops.push(loop);
+  }
+  // signed area (sampled) tells outer loops (counter-clockwise) from holes
+  const samp = (loop) => {
+    const pts = [];
+    for (const g of loop) {
+      if (g.t === "circle") { for (let k = 0; k < 48; k++) pts.push([g.c[0] + g.r * Math.cos((k / 48) * 2 * Math.PI), g.c[1] + g.r * Math.sin((k / 48) * 2 * Math.PI)]); continue; }
+      pts.push(g.a);
+      if (g.m) pts.push(g.m);
+      if (g.spans) for (const sp of g.spans) pts.push(sp[1], sp[2], sp[3]);
+    }
+    return pts;
+  };
+  const area = (P) => { let a = 0; for (let i = 0, j = P.length - 1; i < P.length; j = i++) a += (P[j][0] + P[i][0]) * (P[j][1] - P[i][1]); return -a / 2; };
+  const inside = (q, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > q[1]) !== (P[j][1] > q[1]) && q[0] < ((P[j][0] - P[i][0]) * (q[1] - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; };
+  const info = loops.map((l) => { const P = samp(l); return { l, P, A: area(P) }; });
+  // a lone circle has no direction: it's an outer loop unless it sits inside another outer loop
+  const outers = info.filter((x) => x.A > 0 || (x.l[0].t === "circle" && !info.some((o) => o !== x && o.A > 0 && inside(x.P[0], o.P))));
+  const holes = info.filter((x) => !outers.includes(x));
+  const out = outers.map((o) => ({ outer: o.l, holes: [], _P: o.P, _A: Math.abs(o.A) }));
+  for (const h of holes) {
+    const host = out.filter((o) => inside(h.P[0], o._P)).sort((a, b) => a._A - b._A)[0];
+    if (host) host.holes.push(h.l);
+  }
+  return [...regions.filter((r) => r.text || !r.outer), ...out.map(({ outer, holes }) => ({ outer, holes }))];
 }
 export function resolveNode(node, doc) {
   const n = { ...node };
@@ -278,12 +327,11 @@ export function resolveNode(node, doc) {
     if (sk) {
       const regs = regionsFor(sk);
       n.plane = sk.plane;
-      let picked = (node.profiles || [])
+      const picked = (node.profiles || [])
         .map((ref) => resolveRegionRef(regs, ref))
         .filter(Boolean)
         .filter((r, i, a) => a.indexOf(r) === i);
-      picked = wholeLoops(sk, regs, picked);
-      n.regions = picked.map((r) => (r.text ? { text: r.text } : { outer: r.outer, holes: r.holes }));
+      n.regions = mergeRegions(picked.map((r) => (r.text ? { text: r.text } : { outer: r.outer, holes: r.holes })));
       if (node.t === "revolve" && node.axis) {
         const W = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
         if (W[node.axis]) { n.axisWorld = { o: [0, 0, 0], d: W[node.axis] }; n.axis = null; }
@@ -334,16 +382,23 @@ export function resolveNode(node, doc) {
     n.children = node.children.map((c) => ({ node: resolveNode(c.node, doc), m: c.m, hole: !!c.hole }));
   }
   if (node.mods && node.mods.length) {
-    n.mods = node.mods.map((m) => {
+    n.mods = node.mods.map((m, i) => {
       if (m.t === "bool") return { ...m, tool: resolveNode(m.tool, doc) };
+      if (m.t === "pattern" && m.what === "feats") return { ...m, feats: patternFeats(m, node.mods.slice(0, i), doc) }; // jumpstart-3d: pattern
       return m;
     });
   }
   return n;
 }
 
+// jumpstart-3d: pattern. A feature pattern lists the ids of the earlier mods it repeats; the kernel gets them as
+// resolved copies, so editing the source hole changes every copy. An id that is gone is dropped.
+function patternFeats(m, before, doc) {
+  return (m.feats || []).map((id) => before.find((x) => x.id === id)).filter((f) => f && ["hole", "emboss", "bool"].includes(f.t)).map((f) => (f.t === "bool" ? { ...f, tool: resolveNode(f.tool, doc) } : f));
+}
+
 export function bodyKey(resolved) {
-  return JSON.stringify(resolved, (k, v) => (k === "id" || k === "seq" || k === "name" || k === "color" ? undefined : v));
+  return JSON.stringify(resolved, (k, v) => (k === "id" || k === "seq" || k === "name" || k === "color" || k === "exprs" || k === "exprUnits" ? undefined : v)); // jumpstart-3d: parameters
 }
 
 // ------------------------------------------------------------- timeline
@@ -351,6 +406,8 @@ export function bodyKey(resolved) {
 const PRIM_NAMES = { box: "Box", cylinder: "Cylinder", sphere: "Sphere", cone: "Cone", pyramid: "Pyramid", wedge: "Wedge", torus: "Torus", tube: "Tube", hemisphere: "Hemisphere", prism: "Prism", text: "Text", star: "Star", heart: "Heart", roof: "Roof", roundroof: "Round roof", paraboloid: "Paraboloid", gem: "Gem", spring: "Spring", capsule: "Capsule", arrow: "Arrow" };
 export function primName(kind) { return PRIM_NAMES[kind] || kind; }
 
+// jumpstart-3d: parameters. " (dist = t)" after the label of a feature with bound values
+const exprTag = (o) => { const e = Object.entries(o.exprs || {}); return e.length ? ` (${e.map(([k, v]) => `${k} = ${v}`).join(", ")})` : ""; };
 export function timeline(doc) {
   const items = [];
   for (const s of doc.sketches) items.push({ seq: s.seq, kind: "sketch", label: s.name, sketch: s.id });
@@ -361,11 +418,11 @@ export function timeline(doc) {
     const n = b.node;
     const kind = n.t === "prim" || n.t === "mesh" || n.t === "step" ? "prim" : n.t === "group" ? "combine" : n.t;
     const label = n.t === "mesh" ? (b.sculpt ? "Sculpt" : "Imported mesh") : n.t === "step" ? "Imported STEP" : n.t === "prim" ? primName(n.kind) : n.t === "group" ? (n.op === "intersect" ? "Intersect" : "Combine") : n.t === "extrude" ? "Extrude" : n.t === "sweep" ? "Sweep" : n.t === "pipe" ? "Pipe" : n.t === "coil" ? "Coil" : n.t === "loft" ? "Loft" : n.t === "mirror" ? "Mirror" : "Revolve";
-    items.push({ seq: b.seq, kind, label, body: b.id });
+    items.push({ seq: b.seq, kind, label: label + exprTag(n), body: b.id }); // jumpstart-3d: parameters
     for (const m of n.mods || []) {
-      const lab = { halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t];
+      const lab = { halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", pattern: "Pattern", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t]; // jumpstart-3d: pattern (label)
       if (m.src === "combine") { items.push({ seq: m.seq || b.seq, kind: "combine", label: "Combine" + (m.op === "cut" ? " (cut)" : m.op === "intersect" ? " (intersect)" : ""), body: b.id, mod: m.id }); continue; }
-      items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab, body: b.id, mod: m.id });
+      items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab && lab + exprTag(m.t === "bool" ? m.tool : m), body: b.id, mod: m.id }); // jumpstart-3d: parameters
     }
     for (const tx of b.textures || []) items.push({ seq: tx.seq || b.seq, kind: "texture", label: "Texture", body: b.id, tex: tx.id });
   }

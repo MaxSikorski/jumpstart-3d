@@ -4,12 +4,20 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test",
+    "pretest": "node build.mjs",
+    "test": "npm run test:mcp && npm run test:editor && npm run test:mcp:browser",
+    "test:site": "playwright test --project=site",
+    "test:single": "playwright test --project=single",
+    "test:update": "UPDATE_GOLDEN=1 playwright test --project=site",
     "benchmark:tutorials": "node mcp/benchmarks/tutorial-runner.mjs",
     "benchmark:agent": "node mcp/benchmarks/agent-runner.mjs",
-    "mcp:jumpstart": "node mcp/server/server.mjs"
+    "mcp:jumpstart": "node mcp/server/server.mjs",
+    "test:mcp": "node --test mcp/tests/*.test.mjs",
+    "test:editor": "playwright test",
+    "test:mcp:browser": "playwright test --config=mcp/playwright.config.mjs"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "@playwright/test": "1.62.1"
   }
 }

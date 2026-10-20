@@ -1,0 +1,212 @@
+{
+ "v": 1,
+ "id": "g_advanced_loft",
+ "name": "Loft",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 1,
+ "grid": 1,
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "loft",
+    "sections": [
+     {
+      "sketch": "s1",
+      "ref": {
+       "key": "ae1,ae2,ae3,ae4",
+       "pt": [
+        0,
+        0
+       ]
+      }
+     },
+     {
+      "sketch": "s2",
+      "ref": {
+       "key": "be1,be2,be3,be4",
+       "pt": [
+        0,
+        0
+       ]
+      }
+     }
+    ],
+    "rail": null,
+    "ruled": true,
+    "closed": false,
+    "mods": []
+   }
+  }
+ ],
+ "sketches": [
+  {
+   "id": "s1",
+   "name": "s1",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     0,
+     1
+    ]
+   },
+   "pts": [
+    {
+     "id": "ap1",
+     "x": -20,
+     "y": -20
+    },
+    {
+     "id": "ap2",
+     "x": 20,
+     "y": -20
+    },
+    {
+     "id": "ap3",
+     "x": 20,
+     "y": 20
+    },
+    {
+     "id": "ap4",
+     "x": -20,
+     "y": 20
+    }
+   ],
+   "ents": [
+    {
+     "id": "ae1",
+     "t": "line",
+     "a": "ap1",
+     "b": "ap2"
+    },
+    {
+     "id": "ae2",
+     "t": "line",
+     "a": "ap2",
+     "b": "ap3"
+    },
+    {
+     "id": "ae3",
+     "t": "line",
+     "a": "ap3",
+     "b": "ap4"
+    },
+    {
+     "id": "ae4",
+     "t": "line",
+     "a": "ap4",
+     "b": "ap1"
+    }
+   ],
+   "hidden": true
+  },
+  {
+   "id": "s2",
+   "name": "s2",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     30
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     0,
+     1
+    ]
+   },
+   "pts": [
+    {
+     "id": "bp1",
+     "x": -10,
+     "y": -10
+    },
+    {
+     "id": "bp2",
+     "x": 10,
+     "y": -10
+    },
+    {
+     "id": "bp3",
+     "x": 10,
+     "y": 10
+    },
+    {
+     "id": "bp4",
+     "x": -10,
+     "y": 10
+    }
+   ],
+   "ents": [
+    {
+     "id": "be1",
+     "t": "line",
+     "a": "bp1",
+     "b": "bp2"
+    },
+    {
+     "id": "be2",
+     "t": "line",
+     "a": "bp2",
+     "b": "bp3"
+    },
+    {
+     "id": "be3",
+     "t": "line",
+     "a": "bp3",
+     "b": "bp4"
+    },
+    {
+     "id": "be4",
+     "t": "line",
+     "a": "bp4",
+     "b": "bp1"
+    }
+   ],
+   "hidden": true
+  }
+ ]
+}

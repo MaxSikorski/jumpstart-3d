@@ -4,3 +4,6 @@ node_modules
 dist
 build
 exports
+
+test-results
+playwright-report

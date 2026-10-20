@@ -402,7 +402,7 @@ function buildRevolve(node) {
 // Sweep (Fusion-style): closed profiles swept along a path of sketch lines and arcs.
 function sweepPath(segs) {
   if (!segs || !segs.length) throw new Error("Pick a path: a sketch line, arc or a chain of them");
-  const edges = segs.flatMap((s) => (s.t === "line" ? [R.makeLine(s.a, s.b)] : s.t === "arc" ? [R.makeThreePointArc(s.a, s.m, s.b)] : s.t === "bez" ? s.spans.map((b) => R.makeBezierCurve(b)) : [R.makeCircle(s.r, s.c, s.n)]));
+  const edges = segs.flatMap((s) => (s.t === "line" ? [R.makeLine(s.a, s.b)] : s.t === "arc" ? [R.makeThreePointArc(s.a, s.m, s.b)] : s.t === "bez" ? s.spans.map((b) => R.makeBezierCurve(b)) : s.t === "bsp" ? [bsplineThrough(s.pts)] : [R.makeCircle(s.r, s.c, s.n)]));
   return R.assembleWire(edges);
 }
 function pipe(wire, spine, orient) {
@@ -1199,9 +1199,83 @@ function applyMod(shape, mod) {
       return out;
     }
     case "scale": return scaleShape(shape, mod.k, mod.o);
+    case "pattern": return applyPattern(shape, mod); // jumpstart-3d: pattern
     default:
       throw new Error("Unknown feature " + mod.t);
   }
+}
+
+// ---------------------------------------------------------------- pattern (jumpstart-3d: pattern)
+// A Pattern mod repeats features (mod.feats: resolved copies of earlier mods, filled in by resolveNode) or
+// the whole shape so far (mod.what "shape"). Vectors are in the body's own coordinates, so the copies follow
+// the body when it moves. Matrices are column-major 4x4, like transformShape takes.
+const m4Mul = (a, b) => {
+  const o = new Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+  return o;
+};
+const m4Move = (v) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, v[0], v[1], v[2], 1];
+const m4Turn = (axis, deg, c) => {
+  const [x, y, z] = Vec.norm(axis), a = (deg * Math.PI) / 180, co = Math.cos(a), s = Math.sin(a), t = 1 - co;
+  const R = [t * x * x + co, t * x * y + s * z, t * x * z - s * y, 0, t * x * y - s * z, t * y * y + co, t * y * z + s * x, 0, t * x * z + s * y, t * y * z - s * x, t * z * z + co, 0, 0, 0, 0, 1];
+  return m4Mul(m4Move(c), m4Mul(R, m4Move(c.map((v) => -v))));
+};
+const m4Pt = (m, p) => [0, 1, 2].map((i) => +(m[i] * p[0] + m[4 + i] * p[1] + m[8 + i] * p[2] + m[12 + i]).toFixed(9));
+const m4Dir = (m, v) => Vec.norm([0, 1, 2].map((i) => m[i] * v[0] + m[4 + i] * v[1] + m[8 + i] * v[2])).map((x) => +x.toFixed(9));
+// the copies' transforms (the original is not included)
+function patternTransforms(mod) {
+  // the dialog's own limits: a parameter that runs away would otherwise freeze the worker
+  const count = (v, min, max) => Math.min(max, Math.max(min, Math.round(v) || min));
+  const out = [];
+  if (mod.kind === "circ") {
+    if (!mod.cax) throw new Error("Pattern: missing axis");
+    const angle = mod.angle ?? 360, n = count(mod.cn, 2, 360), step = angle >= 359.999 ? 360 / n : angle / (n - 1);
+    for (let i = 1; i < n; i++) out.push(m4Turn(mod.cax, i * step, mod.center || [0, 0, 0]));
+    return out;
+  }
+  if (!mod.ax1) throw new Error("Pattern: missing axis");
+  const n1 = count(mod.n1, 1, 200), n2 = count(mod.n2, 1, 200);
+  const r1 = mod.sym ? [-(n1 - 1), n1 - 1] : [0, n1 - 1], r2 = mod.sym ? [-(n2 - 1), n2 - 1] : [0, n2 - 1];
+  const a1 = Vec.norm(mod.ax1), a2 = Vec.norm(mod.ax2 || [0, 0, 0]);
+  for (let i = r1[0]; i <= r1[1]; i++) for (let j = r2[0]; j <= r2[1]; j++) {
+    if (i === 0 && j === 0) continue;
+    out.push(m4Move([0, 1, 2].map((k) => i * mod.s1 * a1[k] + j * (mod.s2 || 0) * a2[k])));
+  }
+  return out;
+}
+// a feature mod moved by L: the same maths as movedFeature in advanced.js
+function movedMod(f, L) {
+  const c = { ...f };
+  if (f.t === "hole") {
+    if (f.at) c.at = f.at.map((x) => ({ ...x, p: m4Pt(L, x.p), n: m4Dir(L, x.n) }));
+    if (f.p) c.p = m4Pt(L, f.p);
+    if (f.n) c.n = m4Dir(L, f.n);
+  } else if (f.t === "emboss") {
+    for (const k of ["p", "o", "c"]) if (f[k]) c[k] = m4Pt(L, f[k]);
+    for (const k of ["n", "x", "ax", "up"]) if (f[k]) c[k] = m4Dir(L, f[k]);
+  } else c.m = m4Mul(L, f.m || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  return c;
+}
+function applyPattern(shape, mod) {
+  const T = patternTransforms(mod), total = T.length + 1;
+  let cur = shape;
+  if (mod.what === "shape") {
+    cur = shape.clone();
+    T.forEach((L, i) => {
+      try {
+        const copy = transformShape(shape.clone(), L), out = cur.fuse(copy);
+        copy.delete(); cur.delete();
+        cur = out;
+      } catch (e) { throw new Error(`Pattern copy ${i + 2} of ${total} could not be built: ${friendly(e)}`); }
+    });
+    shape.delete();
+    return cur;
+  }
+  T.forEach((L, i) => {
+    try { for (const f of mod.feats || []) cur = applyMod(cur, movedMod(f, L)); }
+    catch (e) { throw new Error(`Pattern copy ${i + 2} of ${total} could not be built: ${friendly(e)}`); }
+  });
+  return cur;
 }
 
 // Try OpenCascade's thick-solid with a few join styles and tolerances; keep the
@@ -1774,7 +1848,109 @@ function perpTo(t, hint) {
   return Vec.norm(x);
 }
 // Pipe: a round, square or triangular section (optionally hollow) along a path
+// one smooth cubic B-spline through many points (3D Sketch lines): far quicker and steadier for
+// a tube to follow than a chain of short Bezier pieces
+function bsplineThrough(pts) {
+  const tol = Math.max(0.01, (node_tol_hint || 0.05));
+  return R.makeBSplineApproximation(pts, { tolerance: tol, degMin: 3, degMax: 3 });
+}
+let node_tol_hint = 0.05;
+// a 3D Sketch line (one smooth curve through many points): when the engine can't sweep it as it
+// is (a bend tighter than the tube, a wobble), try again on a smoothed copy, and if that fails
+// too, build the tube from triangles, which always works
 function buildPipe(node) {
+  const segs = node.pathSegs || [];
+  if (segs.length === 1 && segs[0].t === "bsp" && !node.hollow && !node._try) {
+    const size = clampPos(node.size ?? 5), P0 = segs[0].pts;
+    // a bend much tighter than the tube can't sweep (and finding that out is slow): smooth first
+    if (minBend(P0) > size * 0.55) { try { return buildPipeShell(node); } catch (e1) {} }
+    const P = relaxPath(P0, size);
+    try { return buildPipeShell({ ...node, _tol: Math.max(0.05, size * 0.1), pathSegs: [{ t: "bsp", a: P[0], b: P[P.length - 1], pts: P }] }); } catch (e2) {}
+    return solidFromMesh(...tubeMesh(P, size / 2));
+  }
+  return buildPipeShell(node);
+}
+function minBend(pts) {
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  let m = Infinity;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1], ab = d(a, b), bc = d(b, c), ca = d(c, a), s2 = (ab + bc + ca) / 2;
+    const A = Math.sqrt(Math.max(0, s2 * (s2 - ab) * (s2 - bc) * (s2 - ca)));
+    if (A > 1e-12) m = Math.min(m, (ab * bc * ca) / (4 * A));
+  }
+  return m;
+}
+function relaxPath(pts, size) {
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  let L = 0; for (let i = 1; i < pts.length; i++) L += d(pts[i - 1], pts[i]);
+  const closed = pts.length > 3 && d(pts[0], pts[pts.length - 1]) < 1e-3;
+  // even spacing
+  const step = Math.max(size * 0.8, L / 150), out = [pts[0].slice()];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    let a = pts[i - 1], seg = d(a, pts[i]);
+    while (acc + seg >= step) { const t = (step - acc) / seg; const q = a.map((v, k) => v + (pts[i][k] - v) * t); out.push(q); a = q; seg = d(a, pts[i]); acc = 0; }
+    acc += seg;
+  }
+  if (closed) out[out.length - 1] = out[0].slice(); else if (d(out[out.length - 1], pts[pts.length - 1]) > step * 0.3) out.push(pts[pts.length - 1].slice()); else out[out.length - 1] = pts[pts.length - 1].slice();
+  // smooth until no bend is tighter than the tube (or it stops helping)
+  const rad = (a, b, c) => { const ab = d(a, b), bc = d(b, c), ca = d(c, a); const s2 = (ab + bc + ca) / 2, A = Math.sqrt(Math.max(0, s2 * (s2 - ab) * (s2 - bc) * (s2 - ca))); return A < 1e-12 ? Infinity : (ab * bc * ca) / (4 * A); };
+  let p = out;
+  const n = p.length, m = closed ? n - 1 : n; // m distinct points (a closed path repeats its first)
+  for (let it = 0; it < 60 && m > 2; it++) {
+    let tight = false;
+    const q = p.map((v) => v.slice());
+    for (let i = closed ? 0 : 1; i < (closed ? m : m - 1); i++) {
+      const ia = p[(i - 1 + m) % m], b = p[i], ic = p[(i + 1) % m];
+      if (rad(ia, b, ic) < size * 0.75) tight = true;
+      for (let k = 0; k < 3; k++) q[i][k] = b[k] * 0.5 + (ia[k] + ic[k]) * 0.25;
+    }
+    if (closed) q[n - 1] = q[0].slice();
+    p = q;
+    if (!tight && it > 1) break;
+  }
+  return p;
+}
+// a round tube along points as triangles: rings turned with the path (no twisting), flat ends,
+// or joined up when the path closes
+function tubeMesh(P, r, sides = 20) {
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const closed = P.length > 3 && d(P[0], P[P.length - 1]) < 1e-3;
+  const pts = closed ? P.slice(0, -1) : P, n = pts.length;
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], nrm = (a) => { const l = Math.hypot(...a) || 1; return a.map((v) => v / l); };
+  const crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const T = pts.map((_, i) => nrm(closed ? sub(pts[(i + 1) % n], pts[(i - 1 + n) % n]) : sub(pts[Math.min(n - 1, i + 1)], pts[Math.max(0, i - 1)])));
+  let ref = Math.abs(T[0][2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  let N = nrm(crs(crs(T[0], ref), T[0]));
+  const Ns = [N];
+  for (let i = 1; i < n; i++) { const t = T[i]; N = nrm(sub(N, t.map((v) => v * dot(N, t)))); Ns.push(N); }
+  // a closed loop: spread the leftover twist along it so the last ring meets the first
+  let twist = 0;
+  if (closed) {
+    const t0 = T[0], Nl = nrm(sub(Ns[n - 1], t0.map((v) => v * dot(Ns[n - 1], t0)))), B0 = crs(t0, Ns[0]);
+    twist = Math.atan2(dot(Nl, B0), dot(Nl, Ns[0]));
+  }
+  const V = [], I = [];
+  for (let i = 0; i < n; i++) {
+    const t = T[i], b = crs(t, Ns[i]), off = closed ? (-twist * i) / n : 0;
+    for (let j = 0; j < sides; j++) {
+      const a = off + (2 * Math.PI * j) / sides, c = Math.cos(a), s = Math.sin(a);
+      for (let k = 0; k < 3; k++) V.push(pts[i][k] + r * (Ns[i][k] * c + b[k] * s));
+    }
+  }
+  const rings = closed ? n : n - 1;
+  for (let i = 0; i < rings; i++) {
+    const A0 = i * sides, B0 = ((i + 1) % n) * sides;
+    for (let j = 0; j < sides; j++) { const j1 = (j + 1) % sides; I.push(A0 + j, B0 + j, A0 + j1, A0 + j1, B0 + j, B0 + j1); }
+  }
+  if (!closed) {
+    const c0 = V.length / 3; V.push(...pts[0]); const c1 = c0 + 1; V.push(...pts[n - 1]);
+    const L = (n - 1) * sides;
+    for (let j = 0; j < sides; j++) { const j1 = (j + 1) % sides; I.push(c0, j1, j); I.push(c1, L + j, L + j1); }
+  }
+  return [new Float32Array(V), new Uint32Array(I)];
+}
+function buildPipeShell(node) {
   const segs = node.pathSegs || [];
   if (!segs.length) throw new Error("Pick a path: sketch curves or body edges");
   const size = clampPos(node.size ?? 5);
@@ -1788,6 +1964,11 @@ function buildPipe(node) {
     if (Vec.dot(t, Vec.sub(s0.m, s0.a)) < 0) t = t.map((v) => -v);
     hint = Vec.sub(s0.a, c);
   } else if (s0.t === "bez") { const b = s0.spans[0]; sp = b[0]; t = Vec.norm(Vec.sub(b[1], b[0])); }
+  else if (s0.t === "bsp") {
+    node_tol_hint = node._tol || Math.max(0.02, (node.size || 3) * 0.02);
+    // start on the fitted curve itself, along its own direction
+    const e = bsplineThrough(s0.pts); sp = e.startPoint.toTuple(); const tv = e.tangentAt(0); t = Vec.norm(tv.toTuple()); tv.delete(); e.delete();
+  }
   else {
     // a full circle: start where its edge starts
     const e = R.makeCircle(s0.r, s0.c, s0.n);
@@ -2170,7 +2351,11 @@ function buildMeshAsset(node) {
   const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
   const head = new Uint32Array(buf, 0, 2), nv = head[0], nt = head[1];
   const V = new Float32Array(buf, 8, nv * 3), I = new Uint32Array(buf, 8 + nv * 12, nt * 3);
-  const k = node.k || 1;
+  return solidFromMesh(V, I, node.k || 1);
+}
+// a solid from triangles (shared corners, consistent winding)
+function solidFromMesh(V, I, k = 1) {
+  const nv = V.length / 3, nt = I.length / 3;
   const T = { t0: Date.now() };
   // Build the faces on shared vertices and edges, so the triangles are already joined
   // (much faster than making loose triangles and sewing them together afterwards).

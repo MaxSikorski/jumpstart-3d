@@ -330,9 +330,9 @@ export function initProjects(app) {
     };
     box.append(opt("sel", "Selected", nSel, !nSel), opt("all", "All bodies", nAll, false));
   }
-  function stlBytes() {
+  function stlBytes(bodies = exportBodies()) { // jumpstart-3d: scripting bridge (the list can be passed in)
     const tris = [];
-    for (const b of exportBodies()) {
+    for (const b of bodies) {
       const v = app.scene.views.get(b.id);
       if (!v || !v.data) continue;
       tris.push({ data: v.data, m: v.group.matrix });
@@ -372,11 +372,11 @@ export function initProjects(app) {
     app.onExport && app.onExport("stl");
   }
   // OBJ (our addition): one "o" group per body, in mm, same bodies and transforms as STL
-  function objBytes() {
+  function objBytes(bodies = exportBodies()) { // jumpstart-3d: scripting bridge
     const lines = ["# JumpStart 3D export (mm)"];
     let off = 1;
     const f = (x) => { const v = Math.round(x * 1e5) / 1e5; return Object.is(v, -0) ? "0" : String(v); };
-    for (const b of exportBodies()) {
+    for (const b of bodies) {
       const v = app.scene.views.get(b.id);
       if (!v || !v.data) continue;
       const M = v.group.matrix.elements, P = v.data.vertices, T = v.data.triangles;
@@ -403,9 +403,9 @@ export function initProjects(app) {
     app.onExport && app.onExport("obj");
   }
   // 3MF: one object per body with its color, vertices shared so slicers see closed meshes
-  function threeMFBytes() {
+  function threeMFBytes(bodies = exportBodies()) { // jumpstart-3d: scripting bridge
     const objs = [];
-    for (const b of exportBodies()) {
+    for (const b of bodies) {
       const v = app.scene.views.get(b.id);
       if (v && v.data) objs.push({ b, data: v.data, m: v.group.matrix });
     }
@@ -463,14 +463,17 @@ export function initProjects(app) {
     await offerModel(exportName() + ".3mf", await bytes);
     app.onExport && app.onExport("3mf");
   }
-  async function exportSTEP() {
+  // jumpstart-3d: scripting bridge. the STEP bytes of a list of bodies, split out of exportSTEP
+  async function stepBytes(bodies) {
     const { resolveNode } = await import("./store.js");
-    const bodies = exportBodies().map((b) => ({ node: resolveNode(b.node, store.doc), m: b.m }));
+    return new Uint8Array(await app.kernel.step(bodies.map((b) => ({ node: resolveNode(b.node, store.doc), m: b.m }))));
+  }
+  async function exportSTEP() {
+    const bodies = exportBodies();
     if (!bodies.length) { app.toast("Nothing to export yet."); return; }
     app.toast("Preparing STEP file…");
     try {
-      const buf = await app.kernel.step(bodies);
-      await offerModel(exportName() + ".step", new Uint8Array(buf));
+      await offerModel(exportName() + ".step", await stepBytes(bodies));
     } catch (e) { app.toast("STEP export failed: " + e.message, "err"); }
   }
   async function exportJSON() {
@@ -577,6 +580,9 @@ export function initProjects(app) {
       const saved = readJSON(LS_DOC + documentId, null);
       if (!saved || saved.id !== documentId || !Array.isArray(saved.bodies) || !Array.isArray(saved.sketches)) throw new Error("Saved local project is missing or invalid");
       delete saved._updated;
+      // Older project snapshots predate the native parameter list required by 2.0.
+      if (saved.params === undefined) saved.params = [];
+      if (!Array.isArray(saved.params)) throw new Error("Saved project's native parameters are invalid");
       if (JSON.stringify(saved).length > 32 * 1024 * 1024) throw new Error("Saved project exceeds the local reopen budget");
       const unchanged = JSON.stringify(saved) === JSON.stringify(store.doc);
       if (!unchanged) store.update((doc) => {
@@ -591,6 +597,7 @@ export function initProjects(app) {
     version: () => verOf(),
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
+    stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
   };
 }
 void fmt;

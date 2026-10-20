@@ -233,5 +233,164 @@
     "legacyAgentRunnerCompatible": true,
     "buildPassed": true,
     "containerHealthy": true
+  },
+  "upstreamSync": {
+    "recordedAt": "2026-10-20T18:01:47.536370+00:00",
+    "upstreamCommit": "e172560972f41bb288737fe67b06efb8ff0fd75c",
+    "editorVersion": "2.0",
+    "command": "npm test",
+    "mcpContractTestsPassed": 43,
+    "upstreamEditorTestsPassed": 232,
+    "mcpBrowserTestsPassed": 5,
+    "expectedGoldenFilesChanged": false,
+    "tutorialExecution": {
+      "passed": 16,
+      "implemented": 16,
+      "upstreamTotal": 19,
+      "missing": [
+        "b-top",
+        "a-cup",
+        "a-params"
+      ],
+      "cases": [
+        {
+          "id": "b-keychain",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 207284,
+          "triangles": 4144
+        },
+        {
+          "id": "b-coaster",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 438284,
+          "triangles": 8764
+        },
+        {
+          "id": "b-pencil",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 2284,
+          "triangles": 44
+        },
+        {
+          "id": "b-phone",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 3684,
+          "triangles": 72
+        },
+        {
+          "id": "b-fidget",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 92484,
+          "triangles": 1848
+        },
+        {
+          "id": "b-rocket",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 30184,
+          "triangles": 602
+        },
+        {
+          "id": "b-desk",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 244184,
+          "triangles": 4882
+        },
+        {
+          "id": "b-castle",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 40684,
+          "triangles": 812
+        },
+        {
+          "id": "a-coaster",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 278484,
+          "triangles": 5568
+        },
+        {
+          "id": "a-plate",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 65684,
+          "triangles": 1312
+        },
+        {
+          "id": "a-phone",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 7484,
+          "triangles": 148
+        },
+        {
+          "id": "a-pawn",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 369684,
+          "triangles": 7392
+        },
+        {
+          "id": "a-vase",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 807484,
+          "triangles": 16148
+        },
+        {
+          "id": "a-hook",
+          "pass": true,
+          "bodyCount": 1,
+          "stlBytes": 43284,
+          "triangles": 864
+        },
+        {
+          "id": "a-drawer",
+          "pass": true,
+          "bodyCount": 2,
+          "stlBytes": 37684,
+          "triangles": 752
+        },
+        {
+          "id": "a-candy",
+          "pass": true,
+          "bodyCount": 2,
+          "stlBytes": 349684,
+          "triangles": 6992
+        }
+      ]
+    },
+    "designRevisionRegressions": {
+      "method": "Replay of recorded agent plans on merged 2.0 editor; not a fresh reasoning evaluation",
+      "cases": [
+        {
+          "taskId": "coaster-revision",
+          "pass": true
+        },
+        {
+          "taskId": "offset-tray",
+          "pass": true
+        },
+        {
+          "taskId": "reject-and-correct",
+          "pass": true
+        }
+      ]
+    },
+    "dockerBuildPassed": true,
+    "legacyDockerProxyToolCount": 14,
+    "limitations": [
+      "MCP does not author native Lathe features or native 2.0 parameter bindings.",
+      "MCP parameter templates remain separate from native editor parameters.",
+      "Recorded design regression replays do not evaluate fresh AI reasoning.",
+      "Cup fit remains unverified."
+    ]
   }
 }

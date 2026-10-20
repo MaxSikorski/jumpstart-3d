@@ -1,0 +1,397 @@
+{
+ "v": 1,
+ "id": "g_advanced_pattern_feature",
+ "name": "Pattern of features",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 10,
+ "grid": 1,
+ "sketches": [
+  {
+   "id": "s1",
+   "name": "Pocket",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     0,
+     1
+    ]
+   },
+   "pts": [
+    {
+     "id": "p0",
+     "x": -33,
+     "y": 5
+    },
+    {
+     "id": "p1",
+     "x": -27,
+     "y": 5
+    },
+    {
+     "id": "p2",
+     "x": -27,
+     "y": 11
+    },
+    {
+     "id": "p3",
+     "x": -33,
+     "y": 11
+    }
+   ],
+   "ents": [
+    {
+     "id": "e0",
+     "t": "line",
+     "a": "p0",
+     "b": "p1"
+    },
+    {
+     "id": "e1",
+     "t": "line",
+     "a": "p1",
+     "b": "p2"
+    },
+    {
+     "id": "e2",
+     "t": "line",
+     "a": "p2",
+     "b": "p3"
+    },
+    {
+     "id": "e3",
+     "t": "line",
+     "a": "p3",
+     "b": "p0"
+    }
+   ],
+   "hidden": false
+  }
+ ],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Bar",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 80,
+     "d": 30,
+     "h": 10,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 2,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 5,
+      "through": true,
+      "depth": 10,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         -30,
+         -8,
+         10
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f2",
+      "seq": 3,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 5,
+      "through": true,
+      "depth": 10,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         -10,
+         -8,
+         10
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f3",
+      "seq": 4,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 5,
+      "through": true,
+      "depth": 10,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         10,
+         -8,
+         10
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f4",
+      "seq": 5,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 5,
+      "through": true,
+      "depth": 10,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         30,
+         -8,
+         10
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f5",
+      "seq": 6,
+      "t": "bool",
+      "op": "cut",
+      "tool": {
+       "t": "extrude",
+       "sketch": "s1",
+       "profiles": [
+        {
+         "key": "e0,e1,e2,e3",
+         "pt": [
+          -30,
+          8
+         ]
+        }
+       ],
+       "dist": 4,
+       "mode": "one",
+       "dist2": 0,
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ]
+     },
+     {
+      "id": "f6",
+      "seq": 7,
+      "t": "bool",
+      "op": "cut",
+      "tool": {
+       "t": "extrude",
+       "sketch": "s1",
+       "profiles": [
+        {
+         "key": "e0,e1,e2,e3",
+         "pt": [
+          -30,
+          8
+         ]
+        }
+       ],
+       "dist": 4,
+       "mode": "one",
+       "dist2": 0,
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       20,
+       0,
+       0,
+       1
+      ]
+     },
+     {
+      "id": "f7",
+      "seq": 8,
+      "t": "bool",
+      "op": "cut",
+      "tool": {
+       "t": "extrude",
+       "sketch": "s1",
+       "profiles": [
+        {
+         "key": "e0,e1,e2,e3",
+         "pt": [
+          -30,
+          8
+         ]
+        }
+       ],
+       "dist": 4,
+       "mode": "one",
+       "dist2": 0,
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       40,
+       0,
+       0,
+       1
+      ]
+     },
+     {
+      "id": "f8",
+      "seq": 9,
+      "t": "bool",
+      "op": "cut",
+      "tool": {
+       "t": "extrude",
+       "sketch": "s1",
+       "profiles": [
+        {
+         "key": "e0,e1,e2,e3",
+         "pt": [
+          -30,
+          8
+         ]
+        }
+       ],
+       "dist": 4,
+       "mode": "one",
+       "dist2": 0,
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       60,
+       0,
+       0,
+       1
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

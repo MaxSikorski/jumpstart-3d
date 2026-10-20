@@ -1,6 +1,6 @@
 # JumpStart 3D with local MCP
 
-A local CAD workspace where an AI agent can create and revise models in the
+A local CAD workspace based on JumpStart 3D 2.0 where an AI agent can create and revise models in the
 running browser editor. Describe a change to your agent, inspect its preview,
 then apply it as an undoable edit and export the result for printing.
 
@@ -138,6 +138,7 @@ For host development and verification, use Node.js 22, matching the container:
 
 ```sh
 npm ci
+npx playwright install chromium
 npm test
 ```
 
@@ -147,8 +148,10 @@ With the app running, open a separate blank editor tab and run:
 make benchmark
 ```
 
-The benchmark exercises one task and a fixed model plan for each of the 16
-built-in tutorials. It checks geometry invariants, feature history, STL export,
+The MCP benchmark exercises the 16 tutorials covered before this upstream sync.
+JumpStart 2.0 now has 19 tutorials; Spinning Top (`b-top`), Turned Cup (`a-cup`),
+and Parametric Bracket (`a-params`) are not yet covered by MCP plans. The
+benchmark checks geometry invariants, feature history, STL export,
 and transactional behavior. Each case starts from a fresh document state and
 is undone afterward. The runner refuses to use a populated document.
 
@@ -185,15 +188,21 @@ The latest recorded observations are in
 | `make mcp-config` | Print the MCP client configuration. |
 | `make codex-install` | Register or update JumpStart MCP in Codex. |
 | `npm run build` | Rebuild the browser app from `src/`. |
-| `npm test` | Run contract and regression tests. |
+| `npm test` | Build and run MCP unit, upstream editor, and MCP browser compatibility tests. |
+| `npm run test:mcp` | Run the MCP Node contract and regression tests. |
+| `npm run test:editor` | Run upstream Playwright regressions against both builds. |
+| `npm run test:mcp:browser` | Run MCP browser compatibility regressions. |
 | `make benchmark` | Run the tutorial benchmark against a connected blank editor. |
 
 After changing app source, run `make up` again to rebuild the Docker image.
 
 ## Current limits
 
-- Sketch input supports circles and polygons, without a general constraint
-  solver, arcs, or splines.
+- MCP sketch plans support circles and polygons. They do not yet expose the
+  native 2.0 constraint solver, arcs, splines, or Lathe operations.
+- MCP parameter templates and native editor parameters remain separate.
+  `get_document` exposes native definitions and sketch constraints for inspection;
+  native parameter authoring through MCP is not part of this upgrade.
 - Parameter units are explicit labels; expressions do not perform dimensional
   algebra. Native edits outside a saved parameter template must be reconciled
   before parameter regeneration, rather than silently overwritten.

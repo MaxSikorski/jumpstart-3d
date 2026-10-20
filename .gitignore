@@ -4,3 +4,5 @@ node_modules/
 .DS_Store
 /mesh-to-step-helper.html
 /exports/
+/test-results/
+/playwright-report/
