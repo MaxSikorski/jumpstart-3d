@@ -53,8 +53,15 @@ That is all. You do not need anything else in this repository.
 - Named parameters: a Parameters list in the Advanced sidebar and in the
   Beginner shape panel, and sketch dimensions, feature values (extrude
   distance, revolve angle, fillet and chamfer size, hole diameter and depth,
-  shell thickness) and Beginner shape sizes (Width, Depth, Height) that take
-  a name or an expression (`w`, `w/2`) and follow it when the value changes
+  shell thickness), a Pattern's count, spacing and angle, and Beginner shape
+  sizes (Width, Depth, Height) that take a name or an expression (`w`, `w/2`)
+  and follow it when the value changes
+- Pattern as an editable feature: in Advanced, a pattern of features (holes,
+  cuts, bosses, text) or a "join copies" pattern of a shape is one Pattern
+  entry in the timeline, not a pile of copies; double-click it to change the
+  count, spacing or angle, and editing the source hole updates every copy.
+  Patterns of separate bodies, Beginner patterns and path patterns still make
+  plain copies
 - Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
   with a live triangle count) for smoother curves in the view and in mesh
   exports
@@ -215,8 +222,21 @@ UPSTREAM-README.md         the author's README from the source release
   Beginner shape's Width, Depth and Height boxes take them too, and the shape
   panel lists the parameters under its other settings; typing a plain number,
   or resizing on the canvas, frees that size again. Parameters are saved in
-  the project file; older files open unchanged. An editable Pattern is next
-  (`IMPROVEMENT_PLAN.md`, Phase P)
+  the project file; older files open unchanged. A Pattern's count, spacing
+  and angle take them too (`Pattern (n1 = n)` on the timeline). Parameters
+  are lengths, so a count or angle parameter typed in inch mode is scaled by
+  25.4: make those in mm mode
+- Pattern as an editable feature (Advanced): a new `pattern` entry in a
+  body's feature list repeats the earlier hole, cut, boss or text features it
+  names (by id, so editing the source updates every copy), or the whole shape
+  so far, fusing the copies into it (Fusion's "pattern bodies, joined").
+  Rectangular (one or two directions, optionally both sides) and circular;
+  the axes and centre are saved in the body's own coordinates, so the pattern
+  follows the body when it is moved or turned. The Pattern dialog opens again
+  from the timeline (Edit Pattern). Still baked, as before: Beginner patterns,
+  patterns of several bodies left separate (they are separate bodies) and path
+  patterns. A trailing uneven Scale turns the body into a mesh, as it does for
+  any feature it cannot replay
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 

@@ -382,12 +382,19 @@ export function resolveNode(node, doc) {
     n.children = node.children.map((c) => ({ node: resolveNode(c.node, doc), m: c.m, hole: !!c.hole }));
   }
   if (node.mods && node.mods.length) {
-    n.mods = node.mods.map((m) => {
+    n.mods = node.mods.map((m, i) => {
       if (m.t === "bool") return { ...m, tool: resolveNode(m.tool, doc) };
+      if (m.t === "pattern" && m.what === "feats") return { ...m, feats: patternFeats(m, node.mods.slice(0, i), doc) }; // jumpstart-3d: pattern
       return m;
     });
   }
   return n;
+}
+
+// jumpstart-3d: pattern. A feature pattern lists the ids of the earlier mods it repeats; the kernel gets them as
+// resolved copies, so editing the source hole changes every copy. An id that is gone is dropped.
+function patternFeats(m, before, doc) {
+  return (m.feats || []).map((id) => before.find((x) => x.id === id)).filter((f) => f && ["hole", "emboss", "bool"].includes(f.t)).map((f) => (f.t === "bool" ? { ...f, tool: resolveNode(f.tool, doc) } : f));
 }
 
 export function bodyKey(resolved) {
@@ -413,7 +420,7 @@ export function timeline(doc) {
     const label = n.t === "mesh" ? (b.sculpt ? "Sculpt" : "Imported mesh") : n.t === "step" ? "Imported STEP" : n.t === "prim" ? primName(n.kind) : n.t === "group" ? (n.op === "intersect" ? "Intersect" : "Combine") : n.t === "extrude" ? "Extrude" : n.t === "sweep" ? "Sweep" : n.t === "pipe" ? "Pipe" : n.t === "coil" ? "Coil" : n.t === "loft" ? "Loft" : n.t === "mirror" ? "Mirror" : "Revolve";
     items.push({ seq: b.seq, kind, label: label + exprTag(n), body: b.id }); // jumpstart-3d: parameters
     for (const m of n.mods || []) {
-      const lab = { halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t];
+      const lab = { halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", pattern: "Pattern", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t]; // jumpstart-3d: pattern (label)
       if (m.src === "combine") { items.push({ seq: m.seq || b.seq, kind: "combine", label: "Combine" + (m.op === "cut" ? " (cut)" : m.op === "intersect" ? " (intersect)" : ""), body: b.id, mod: m.id }); continue; }
       items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab && lab + exprTag(m.t === "bool" ? m.tool : m), body: b.id, mod: m.id }); // jumpstart-3d: parameters
     }

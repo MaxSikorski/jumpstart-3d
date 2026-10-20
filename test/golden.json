@@ -319,5 +319,16 @@
     "obj": "7cebc0b29c6d9a8f0c52e8ef87f4ab13bbcc22afddb5ccd099cb4887288367df",
     "3mf": "7e198b18881d6dd5a777b00719210d24501e33544143f56854ce56b51c3be38e",
     "step": "16b45ece394f695b94ba8a0af15aea18c8fdb7e5ea1814568fd861847c4c242f"
+  },
+  "advanced-pattern-mod.json": {
+    "volumes": {
+      "b1 Bar": 22869,
+      "b2 Ring": 6000
+    },
+    "stlTriangles": 1108,
+    "stl": "3ef1d2932b6be049022f9ffe82578a832f9564f2f7d9c737a429fa677f704c39",
+    "obj": "1920166eab405e33ed9bf806c4fa960536fc9af1505a370a0c3bc43cb5d9f087",
+    "3mf": "79ec8eb155a3aea05626c8318390f7cb11e2a6e540119239efc4c8c7d20bba08",
+    "step": "aa2ba3bd5f828ea03d7c26b65dcc1edef14ed7176e1ab9c58b82618a2394e02a"
   }
 }

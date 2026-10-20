@@ -45,8 +45,9 @@ export function forEachFeatureExpr(doc, fn) {
   for (const b of doc.bodies) visit(b.node);
 }
 // the dialogs' own limits
-const FEATURE_MIN = { dist2: 0, angle: 0.1, r: 0.001, d: 0.001, dia: 0.01, depth: 0.01, th: 0.01 };
-const featureOk = (o, k, v) => isFinite(v) && (k === "dist" ? Math.abs(v) > 1e-6 : v >= (o.t === "prim" ? 0.01 : FEATURE_MIN[k]) && (k !== "angle" || v <= 360));
+const FEATURE_MIN = { dist2: 0, angle: 0.1, r: 0.001, d: 0.001, dia: 0.01, depth: 0.01, th: 0.01, n1: 1, n2: 1, cn: 2, s1: -Infinity, s2: -Infinity }; // jumpstart-3d: pattern (counts and spacings; a negative spacing is a direction)
+const FEATURE_MAX = { n1: 200, n2: 200, cn: 360 }; // jumpstart-3d: pattern (the Pattern dialog's own count limits)
+const featureOk = (o, k, v) => isFinite(v) && (k === "dist" ? Math.abs(v) > 1e-6 : v >= (o.t === "prim" ? 0.01 : FEATURE_MIN[k]) && v <= (FEATURE_MAX[k] ?? Infinity) && (k !== "angle" || v <= 360));
 
 // A feature value typed as an expression keeps its text in o.exprs[key] (and the unit it was typed in in o.exprUnits)
 export function setExpr(o, key, text, angle) {

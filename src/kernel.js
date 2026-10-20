@@ -1199,9 +1199,83 @@ function applyMod(shape, mod) {
       return out;
     }
     case "scale": return scaleShape(shape, mod.k, mod.o);
+    case "pattern": return applyPattern(shape, mod); // jumpstart-3d: pattern
     default:
       throw new Error("Unknown feature " + mod.t);
   }
+}
+
+// ---------------------------------------------------------------- pattern (jumpstart-3d: pattern)
+// A Pattern mod repeats features (mod.feats: resolved copies of earlier mods, filled in by resolveNode) or
+// the whole shape so far (mod.what "shape"). Vectors are in the body's own coordinates, so the copies follow
+// the body when it moves. Matrices are column-major 4x4, like transformShape takes.
+const m4Mul = (a, b) => {
+  const o = new Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+  return o;
+};
+const m4Move = (v) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, v[0], v[1], v[2], 1];
+const m4Turn = (axis, deg, c) => {
+  const [x, y, z] = Vec.norm(axis), a = (deg * Math.PI) / 180, co = Math.cos(a), s = Math.sin(a), t = 1 - co;
+  const R = [t * x * x + co, t * x * y + s * z, t * x * z - s * y, 0, t * x * y - s * z, t * y * y + co, t * y * z + s * x, 0, t * x * z + s * y, t * y * z - s * x, t * z * z + co, 0, 0, 0, 0, 1];
+  return m4Mul(m4Move(c), m4Mul(R, m4Move(c.map((v) => -v))));
+};
+const m4Pt = (m, p) => [0, 1, 2].map((i) => +(m[i] * p[0] + m[4 + i] * p[1] + m[8 + i] * p[2] + m[12 + i]).toFixed(9));
+const m4Dir = (m, v) => Vec.norm([0, 1, 2].map((i) => m[i] * v[0] + m[4 + i] * v[1] + m[8 + i] * v[2])).map((x) => +x.toFixed(9));
+// the copies' transforms (the original is not included)
+function patternTransforms(mod) {
+  // the dialog's own limits: a parameter that runs away would otherwise freeze the worker
+  const count = (v, min, max) => Math.min(max, Math.max(min, Math.round(v) || min));
+  const out = [];
+  if (mod.kind === "circ") {
+    if (!mod.cax) throw new Error("Pattern: missing axis");
+    const angle = mod.angle ?? 360, n = count(mod.cn, 2, 360), step = angle >= 359.999 ? 360 / n : angle / (n - 1);
+    for (let i = 1; i < n; i++) out.push(m4Turn(mod.cax, i * step, mod.center || [0, 0, 0]));
+    return out;
+  }
+  if (!mod.ax1) throw new Error("Pattern: missing axis");
+  const n1 = count(mod.n1, 1, 200), n2 = count(mod.n2, 1, 200);
+  const r1 = mod.sym ? [-(n1 - 1), n1 - 1] : [0, n1 - 1], r2 = mod.sym ? [-(n2 - 1), n2 - 1] : [0, n2 - 1];
+  const a1 = Vec.norm(mod.ax1), a2 = Vec.norm(mod.ax2 || [0, 0, 0]);
+  for (let i = r1[0]; i <= r1[1]; i++) for (let j = r2[0]; j <= r2[1]; j++) {
+    if (i === 0 && j === 0) continue;
+    out.push(m4Move([0, 1, 2].map((k) => i * mod.s1 * a1[k] + j * (mod.s2 || 0) * a2[k])));
+  }
+  return out;
+}
+// a feature mod moved by L: the same maths as movedFeature in advanced.js
+function movedMod(f, L) {
+  const c = { ...f };
+  if (f.t === "hole") {
+    if (f.at) c.at = f.at.map((x) => ({ ...x, p: m4Pt(L, x.p), n: m4Dir(L, x.n) }));
+    if (f.p) c.p = m4Pt(L, f.p);
+    if (f.n) c.n = m4Dir(L, f.n);
+  } else if (f.t === "emboss") {
+    for (const k of ["p", "o", "c"]) if (f[k]) c[k] = m4Pt(L, f[k]);
+    for (const k of ["n", "x", "ax", "up"]) if (f[k]) c[k] = m4Dir(L, f[k]);
+  } else c.m = m4Mul(L, f.m || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  return c;
+}
+function applyPattern(shape, mod) {
+  const T = patternTransforms(mod), total = T.length + 1;
+  let cur = shape;
+  if (mod.what === "shape") {
+    cur = shape.clone();
+    T.forEach((L, i) => {
+      try {
+        const copy = transformShape(shape.clone(), L), out = cur.fuse(copy);
+        copy.delete(); cur.delete();
+        cur = out;
+      } catch (e) { throw new Error(`Pattern copy ${i + 2} of ${total} could not be built: ${friendly(e)}`); }
+    });
+    shape.delete();
+    return cur;
+  }
+  T.forEach((L, i) => {
+    try { for (const f of mod.feats || []) cur = applyMod(cur, movedMod(f, L)); }
+    catch (e) { throw new Error(`Pattern copy ${i + 2} of ${total} could not be built: ${friendly(e)}`); }
+  });
+  return cur;
 }
 
 // Try OpenCascade's thick-solid with a few join styles and tolerances; keep the
