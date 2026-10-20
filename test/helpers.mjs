@@ -78,12 +78,12 @@ export const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 // STEP files carry things that depend on the export, not the shape. Blank them so the hash only sees geometry:
 //  - the time the file was written
 //  - the export counter in product names: "STEP translator 8.0 3'" (one body) or "... 3.2'" (body 2 of a
-//    multi-body file); only the counter before the dot goes, the body index stays
+//    multi-body file, "... 3.2.1'" when a body is several solids); only the counter before the first dot goes, the indexes stay
 //  - the same counter in the links between bodies: NEXT_ASSEMBLY_USAGE_OCCURRENCE('12', ...)
 // Both counters keep running for as long as the page lives, so they depend on how many STEP exports came before.
 export const normalizeStep = (bytes) => Buffer.from(bytes.toString("latin1")
   .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?/g, "DATE")
-  .replace(/STEP translator ([\d.]+) \d+(\.\d+)?'/g, "STEP translator $1 N$2'")
+  .replace(/STEP translator ([\d.]+) \d+((\.\d+)*)'/g, "STEP translator $1 N$2'")
   .replace(/NEXT_ASSEMBLY_USAGE_OCCURRENCE\('\d+'/g, "NEXT_ASSEMBLY_USAGE_OCCURRENCE('N'"), "latin1");
 
 export const stlTriangles = (bytes) => bytes.readUInt32LE(80);

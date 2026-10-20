@@ -1,0 +1,176 @@
+{
+ "v": 1,
+ "id": "g_advanced_pattern_mod",
+ "name": "Pattern as a feature",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 6,
+ "grid": 1,
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Bar",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 80,
+     "d": 30,
+     "h": 10,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 2,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 6,
+      "through": true,
+      "depth": 10,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         -30,
+         -8,
+         10
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f2",
+      "seq": 3,
+      "t": "pattern",
+      "kind": "rect",
+      "what": "feats",
+      "feats": [
+       "f1"
+      ],
+      "ax1": [
+       1,
+       0,
+       0
+      ],
+      "n1": 4,
+      "s1": 20,
+      "n2": 1,
+      "s2": 0,
+      "sym": false,
+      "exprs": {
+       "n1": "n",
+       "s1": "sp"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "b2",
+   "name": "Ring",
+   "seq": 4,
+   "color": "#c4553b",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    30,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 10,
+     "d": 10,
+     "h": 10,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f3",
+      "seq": 5,
+      "t": "pattern",
+      "kind": "circ",
+      "what": "shape",
+      "cax": [
+       0,
+       0,
+       1
+      ],
+      "center": [
+       -30,
+       0,
+       0
+      ],
+      "cn": 6,
+      "angle": 360
+     }
+    ]
+   }
+  }
+ ],
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "params": [
+  {
+   "id": "q1",
+   "name": "n",
+   "expr": "4",
+   "value": 4
+  },
+  {
+   "id": "q2",
+   "name": "sp",
+   "expr": "20",
+   "value": 20
+  }
+ ]
+}

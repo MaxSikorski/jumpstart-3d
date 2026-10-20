@@ -4591,7 +4591,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ Pattern
   // Rectangular (one or two directions) or circular copies of bodies, like Fusion's
   // Pattern. Copies can stay separate or be joined into one body.
-  function patternCmd() {
+  function patternCmd(editing = null) { // jumpstart-3d: pattern (editing: {body, mod} of a Pattern feature)
     const st = {
       ids: app.sel.slice(), type: "rect",
       ax1: "x", n1: 3, s1: 20, ax2: "y", n2: 1, s2: 20, sym: false,
@@ -4604,13 +4604,34 @@ export function initAdvanced(app) {
       center: new THREE.Vector3(), idmap: {},
     };
     const AXV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+    // jumpstart-3d: pattern. Editing a Pattern feature: its saved axes and centre are in the body's own coordinates; they
+    // stay as saved until the picker for that one is touched (the pickers only know the world x, y, z)
+    const keep = {}, saved = {};
+    if (editing) {
+      const eb = findBody(store.doc, editing.body), m = eb.node.mods.find((x) => x.id === editing.mod), B = M4(eb.m);
+      const letter = (v, d) => { if (!v) return d; const w = new THREE.Vector3(...v).transformDirection(B), a = [w.x, w.y, w.z].map(Math.abs); return "xyz"[a.indexOf(Math.max(...a))]; };
+      Object.assign(keep, { ax1: m.ax1, ax2: m.ax2, cax: m.cax, center: m.center });
+      Object.assign(st, { ids: [eb.id], type: m.kind, what: m.what === "feats" ? "features" : "bodies", fbody: eb.id, feats: m.feats || [],
+        ax1: letter(m.ax1, "x"), ax2: letter(m.ax2, "y"), cax: letter(m.cax, "z"), n1: m.n1 ?? 3, s1: m.s1 ?? 20, n2: m.n2 ?? 1, s2: m.s2 ?? 20, sym: !!m.sym, cn: m.cn ?? 6, angle: m.angle ?? 360 },
+        exprsOf(m, ["n1", "s1", "n2", "s2", "cn", "angle"]));
+      if (m.center) {
+        const c = new THREE.Vector3(...m.center).applyMatrix4(B);
+        st.about = m.about || (c.length() < 1e-6 ? "origin" : "center"); st.center = c;
+        saved.about = st.about; saved.center = m.center;
+      }
+    }
+    // kept as a Pattern feature (not baked copies): Advanced, not Path, and (editing, or Features, or Join)
+    const asFeature = () => app.mode === "advanced" && st.type !== "path" && (editing || st.what === "features" || st.join);
 
     // ---------------- features that can be copied, and where each one sits (world)
     const featLabel = (m) => m.t === "hole" ? (m.tapped ? "Tapped hole" : m.kind === "csink" ? "Countersunk hole" : m.kind === "cbore" ? "Counterbored hole" : "Hole") + ((m.at || []).length > 1 ? ` ×${m.at.length}` : "")
       : m.t === "emboss" ? (m.mode === "deboss" ? "Deboss" : "Emboss") + ` "${String(m.str || "").slice(0, 12)}"`
       : ({ extrude: "Extrude ", revolve: "Revolve ", sweep: "Sweep " }[m.tool && m.tool.t] || "") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join");
     const featOK = (m) => m.t === "hole" || (m.t === "emboss" && m.kind !== "other") || (m.t === "bool" && m.src !== "combine" && m.tool && ["extrude", "revolve", "sweep"].includes(m.tool.t) && m.tool.sketch);
-    const featsOf = (b) => (b && b.node.mods ? b.node.mods.filter(featOK) : []);
+    const featsOf = (b) => { // jumpstart-3d: pattern (an edited pattern repeats only what comes before it)
+      const ms = (b && b.node.mods) || [], i = editing ? ms.findIndex((x) => x.id === editing.mod) : -1;
+      return (i >= 0 ? ms.slice(0, i) : ms).filter(featOK);
+    };
     function featRef(b, m) {
       const B = M4(b.m), loc = (p) => new THREE.Vector3(...p).applyMatrix4(B);
       if (m.t === "hole") { const a = (m.at && m.at.length ? m.at : [{ p: m.p }]); const c = new THREE.Vector3(); a.forEach((x) => c.add(loc(x.p))); return c.divideScalar(a.length); }
@@ -4689,6 +4710,7 @@ export function initAdvanced(app) {
     }
 
     const recenter = () => {
+      if (editing && keep.center) { st.center = new THREE.Vector3(...keep.center).applyMatrix4(M4(findBody(store.doc, editing.body).m)); return; } // jumpstart-3d: pattern
       const box = new THREE.Box3();
       if (st.what === "features") {
         const b = findBody(store.doc, st.fbody);
@@ -4767,12 +4789,40 @@ export function initAdvanced(app) {
       }
       return c;
     }
+    // jumpstart-3d: pattern. The Pattern feature's properties for body b: axes and centre in b's own coordinates
+    function patternProps(b) {
+      const Bi = M4(b.m).invert(), r9 = (a) => a.map((v) => +v.toFixed(9));
+      // a mirrored body (determinant -1) turns the other way when undone, so its circular axis is flipped
+      const flip = M4(b.m).determinant() < 0 && st.type === "circ";
+      const D = (k) => keep[k] ? keep[k].slice() : r9(AXV[st[k]].clone().transformDirection(Bi).toArray()).map((x) => (flip ? 0 - x : x));
+      const props = { kind: st.type, what: st.what === "features" ? "feats" : "shape" };
+      if (st.what === "features") props.feats = featsOf(b).filter((m) => st.feats.includes(m.id)).map((m) => m.id);
+      if (st.type === "rect") Object.assign(props, { ax1: D("ax1"), n1: st.n1, s1: st.s1, ax2: D("ax2"), n2: st.n2, s2: st.s2, sym: st.sym }, exprsOf(st, ["n1", "s1", "n2", "s2"]));
+      else Object.assign(props, { cax: D("cax"), center: keep.center ? keep.center.slice() : r9((st.about === "center" ? st.center : new THREE.Vector3()).clone().applyMatrix4(Bi).toArray()), about: st.about, cn: st.cn, angle: st.angle }, exprsOf(st, ["cn", "angle"]));
+      return props;
+    }
     const def = {
-      title: "Pattern",
+      title: (editing ? "Edit " : "") + "Pattern", // jumpstart-3d: pattern
       keepSelection: true,
       valid: () => (st.what === "features" ? chosenFeats().length > 0 : st.ids.length > 0) && transforms().length > 0,
       canOk: () => def.valid(),
       apply(doc) {
+        if (asFeature()) { // jumpstart-3d: pattern. One editable Pattern feature per body (copies are not made)
+          if (editing) {
+            const b = findBody(doc, editing.body), m = b && b.node.mods.find((x) => x.id === editing.mod);
+            if (!m) return;
+            for (const k of Object.keys(m)) if (k !== "id" && k !== "seq" && k !== "t") delete m[k];
+            Object.assign(m, patternProps(b));
+            return;
+          }
+          for (const id of st.what === "features" ? [st.fbody] : st.ids) {
+            const b = findBody(doc, id);
+            if (!b) continue;
+            b.node.mods = b.node.mods || [];
+            b.node.mods.push({ id: st.idmap["pattern" + id] || (st.idmap["pattern" + id] = uid("f")), seq: nextSeq(doc), t: "pattern", ...patternProps(b) });
+          }
+          return;
+        }
         const T = transforms();
         if (st.what === "features") {
           const b = findBody(doc, st.fbody);
@@ -4816,16 +4866,19 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, "Pattern"); },
-      hint: () => st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path. Connected curves are picked together."
+      onDelete: editing ? () => deleteFeature(editing) : null, // jumpstart-3d: pattern
+      hint: () => editing ? "Change the count, spacing or angle. The copies update in the model."
+        : st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path. Connected curves are picked together."
         : st.what === "features" ? (st.fbody ? "Tick the features to copy. Click another body to list its features." : "Click the body that has the features (cuts, bosses, holes, text).")
         : st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
       build(body) {
-        body.append(row("Objects", seg([["bodies", "Bodies"], ["features", "Features"]], st.what, (v) => {
+        if (!editing) body.append(row("Objects", seg([["bodies", "Bodies"], ["features", "Features"]], st.what, (v) => { // jumpstart-3d: pattern
           st.what = v;
           if (v === "features" && !st.fbody) { const b = st.ids.map((id) => findBody(store.doc, id)).find((x) => featsOf(x).length) || store.doc.bodies.find((x) => featsOf(x).length); st.fbody = b ? b.id : null; }
           changed();
         }, "pt-what")));
-        if (st.what === "bodies") {
+        if (st.what === "bodies" && editing) body.append(el("div", { class: "hint", style: { padding: 0 } }, `Repeats the whole shape of ${findBody(store.doc, editing.body).name} and joins the copies to it.`)); // jumpstart-3d: pattern
+        else if (st.what === "bodies") {
           body.append(pickbox(!st.pickPath, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null, () => { st.pickPath = false; def.render(); }));
         } else {
           const b = findBody(store.doc, st.fbody), list = featsOf(b);
@@ -4834,11 +4887,12 @@ export function initAdvanced(app) {
           if (list.length) body.append(el("div", { class: "pt-feats", id: "pt-feats" }, ...list.map((m) => el("label", { class: "check" },
             el("input", { type: "checkbox", "data-mod": m.id, checked: st.feats.includes(m.id), onchange: (e) => { st.feats = e.target.checked ? [...st.feats, m.id] : st.feats.filter((x) => x !== m.id); changed(); } }), featLabel(m)))));
         }
-        const types = seg([["rect", "Rectangular"], ["circ", "Circular"], ["path", "Path"]], st.type, (v) => { st.type = v; if (v === "path" && !st.path) st.pickPath = true; changed(); }, "pt-type");
+        const types = seg([["rect", "Rectangular"], ["circ", "Circular"], ...(editing ? [] : [["path", "Path"]])], st.type, (v) => { st.type = v; if (v === "path" && !st.path) st.pickPath = true; changed(); }, "pt-type");
         types.classList.add("seg-wide");
         body.append(el("div", { class: "subhead" }, "Type"), types);
-        const num = (label, key, opts) => row(label, app.numField({ value: st[key], id: "pt-" + key, live: true, ...opts, onCommit: (v) => { st[key] = v; changed(false); } }), "pt-" + key);
-        const axes = (key) => seg([["x", "X"], ["y", "Y"], ["z", "Z"]], st[key], (v) => { st[key] = v; changed(); }, "pt-" + key);
+        // jumpstart-3d: pattern. Counts, spacings and the angle can be parameter expressions when the pattern is kept as a feature
+        const num = (label, key, opts) => { const fx = asFeature() && key !== "pn" && key !== "pspace"; return row(label, app.numField({ value: st[key], id: "pt-" + key, live: true, ...opts, ...(fx ? { expr: exprOf(st, key) } : {}), onCommit: (v, t) => { st[key] = v; if (fx) setExpr(st, key, t, key !== "s1" && key !== "s2"); changed(false); } }), "pt-" + key); };
+        const axes = (key) => seg([["x", "X"], ["y", "Y"], ["z", "Z"]], st[key], (v) => { st[key] = v; delete keep[key]; changed(); }, "pt-" + key);
         if (st.type === "rect") {
           body.append(el("div", { class: "subhead" }, "Direction 1"));
           body.append(row("Along", axes("ax1")));
@@ -4851,9 +4905,13 @@ export function initAdvanced(app) {
           body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-sym", checked: st.sym, onchange: (e) => { st.sym = e.target.checked; changed(false); } }), "Both sides of the original (count per side)"));
         } else if (st.type === "circ") {
           body.append(row("Around", axes("cax")));
-          body.append(row("Through", seg([["origin", "Origin"], ["center", st.what === "features" ? "Feature center" : "Shape center"]], st.about, (v) => { st.about = v; changed(); }, "pt-about")));
+          // editing a shape pattern: the shape on screen already includes the copies, so its centre can't be measured again;
+          // the choice is the saved centre ("As saved") or the origin
+          const asSaved = editing && st.what === "bodies";
+          const aboutOpts = asSaved ? (saved.about === "center" ? [["origin", "Origin"], ["center", "As saved"]] : [["origin", "Origin"]]) : [["origin", "Origin"], ["center", st.what === "features" ? "Feature center" : "Shape center"]]; // jumpstart-3d: pattern
+          body.append(row("Through", seg(aboutOpts, st.about, (v) => { st.about = v; if (asSaved && v === saved.about) keep.center = saved.center; else delete keep.center; changed(); }, "pt-about")));
           body.append(num("Count", "cn", { min: 2, max: 360, step: 1 }));
-          body.append(num("Total angle", "angle", { min: 1, max: 360, step: 15 }));
+          body.append(num("Total angle", "angle", { min: 1, max: 360, step: 15, angle: true }));
           body.append(el("div", { class: "hint", style: { padding: 0 } }, "360° spaces the copies evenly around the full circle."));
         } else {
           const pd = pathData();
@@ -4867,7 +4925,8 @@ export function initAdvanced(app) {
         }
         const total = transforms().length + 1;
         body.append(el("div", { class: "hint", id: "pt-total", style: { padding: 0 } }, `${total} instance${total === 1 ? "" : "s"} in total.`));
-        if (st.what === "bodies") body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(false); } }), "Join copies into one body"));
+        if (st.what === "bodies" && !editing) body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(); } }), "Join copies into one body")); // jumpstart-3d: pattern
+        if (app.mode === "advanced" && st.type === "path") body.append(el("div", { class: "hint", style: { padding: 0 } }, "Path patterns are not editable yet: they make separate copies or fixed features.")); // jumpstart-3d: pattern
       },
       start() { recenter(); scene.setSelected(st.ids); draw(); schedulePreview(def); },
       cleanup() { scene.setSelected([]); clearOv(); },
@@ -4888,6 +4947,7 @@ export function initAdvanced(app) {
             }
             if (st.pickPath) return true;
           }
+          if (editing) return true; // jumpstart-3d: pattern
           const f = scene.pickFace(e);
           if (!f || !findBody(store.doc, f.body)) return true; // copies in the preview aren't pickable
           if (st.what === "features") { if (st.fbody !== f.body) { st.fbody = f.body; st.feats = []; changed(); } return true; }
@@ -5023,6 +5083,7 @@ export function initAdvanced(app) {
     else if (m.t === "thread") threadCmd({ body: b.id, mod: m.id });
     else if (m.t === "scale") scaleCmd({ body: b.id, mod: m.id });
     else if (m.t === "emboss") embossCmd({ body: b.id, mod: m.id });
+    else if (m.t === "pattern") patternCmd({ body: b.id, mod: m.id }); // jumpstart-3d: pattern
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
     else if (m.t === "bool" && m.src === "combine") combineCmd({ body: b.id, mod: m.id });
     else if (m.t === "bool" && m.tool.t === "pipe") pipeCmd({ body: b.id, mod: m.id });
@@ -5430,7 +5491,7 @@ export function initAdvanced(app) {
   }
 
   // ------------------------------------------------------------------ timeline
-  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", plane: "planeOffset", joint: "joint" };
+  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
   let lastTl = null, lastTlT = 0;
   function renderTimeline() {
     tl.innerHTML = "";

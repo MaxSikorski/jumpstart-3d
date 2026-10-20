@@ -808,3 +808,282 @@ test("Beginner: a shape's size and position boxes act once when you press Enter 
     expect(await bodiesJson(), id).toBe(before);
   }
 });
+
+// ---- Pattern as an editable feature (Phase P step 4) ----
+// "Bar" (box 80 x 30 x 10) with one 6 mm through hole and a rectangular Pattern of it: n = 4 copies, sp = 20 apart (x = -30..30).
+// "Ring" (box 10 x 10 x 10) with a circular Pattern of the whole shape: 6 around the origin.
+const patDoc = () => JSON.parse(readFileSync(new URL("./projects/advanced-pattern-mod.json", import.meta.url), "utf8"));
+const holeVol = (dia = 6) => Math.PI * (dia / 2) ** 2 * 10; // one hole through the 10 mm bar
+const barVol = (holes, dia = 6) => 24000 - holes * holeVol(dia);
+const patBar = async () => (await bodies(page)).find((b) => b.name === "Bar");
+const patMod = () => page.evaluate(() => window.__store.doc.bodies[0].node.mods.find((m) => m.t === "pattern"));
+// the Bar alone, with only its hole (no Pattern), for making one through the dialog
+const holeOnly = () => { const d = patDoc(); d.bodies = [d.bodies[0]]; d.bodies[0].node.mods = [d.bodies[0].node.mods[0]]; d.params = []; return d; };
+const closed = () => expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+
+test("Pattern: the count and spacing follow parameters, and one undo brings the shape and the STL back", async () => {
+  await loadDoc(page, patDoc());
+  let list = await bodies(page);
+  expect(list.filter((b) => b.error)).toEqual([]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(4), 0);
+  const a = await stlHash();
+  // n = 6 needs a closer spacing to stay on the bar: both change in one step
+  await page.evaluate(() => window.__store.update((d) => { d.params.find((p) => p.name === "n").expr = "6"; d.params.find((p) => p.name === "sp").expr = "12"; }, "Edit parameters"));
+  await waitIdle(page);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(6), 0); // two more holes
+  const m = await patMod();
+  expect([m.n1, m.s1]).toEqual([6, 12]);
+  const b = await stlHash();
+  expect(b.hash).not.toBe(a.hash);
+  expect(b.tris).toBeGreaterThan(a.tris);
+  await undoOnce();
+  expect((await patBar()).volume).toBeCloseTo(barVol(4), 0);
+  expect((await stlHash()).hash).toBe(a.hash);
+});
+
+test("Pattern: double-click it in the timeline, type a plain count, and the binding goes", async () => {
+  await loadDoc(page, patDoc());
+  await expect(page.locator('.tl-item[aria-label="Pattern (n1 = n, s1 = sp)"]')).toHaveCount(1);
+  await page.locator('.tl-item[aria-label^="Pattern"]').first().dblclick();
+  await expect(page.locator("#cmd")).toContainText("Edit Pattern");
+  await expect(page.locator("#pt-n1")).toHaveValue("n");
+  await expect(page.locator("#pt-n1")).toHaveClass(/fx/);
+  await expect(page.locator("#pt-s1")).toHaveValue("sp");
+  await page.fill("#pt-n1", "3");
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  const m = await patMod();
+  expect(m.n1).toBe(3);
+  expect(m.exprs).toEqual({ s1: "sp" }); // n1 is gone, the spacing is still bound
+  expect(m.feats).toEqual(["f1"]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(3), 0);
+  await expect(page.locator('.tl-item[aria-label="Pattern (s1 = sp)"]')).toHaveCount(1);
+});
+
+test("Pattern: editing the source hole changes every copy; deleting it leaves a pattern that does nothing", async () => {
+  await loadDoc(page, patDoc());
+  await page.locator('.tl-item[aria-label^="Hole"]').dblclick();
+  await page.fill("#hole-dia", "10");
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(4, 10), 0); // all four holes are 10 mm now
+  await page.locator('.tl-item[aria-label^="Hole"]').dblclick();
+  await page.locator("#cmd footer .btn.danger").click(); // Delete
+  await closed();
+  await waitIdle(page);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect((await patBar()).volume).toBeCloseTo(24000, 0);
+  expect((await patMod()).t).toBe("pattern"); // still on the timeline
+  await undoOnce();
+  expect((await patBar()).volume).toBeCloseTo(barVol(4, 10), 0);
+});
+
+test("Pattern: it follows the body when the body is moved and turned 30 degrees, and still edits", async () => {
+  await loadDoc(page, patDoc());
+  const a = await stlHash();
+  // 30 degrees about z, then 5 right and 7 forward
+  await page.evaluate(() => window.__store.update((d) => { const c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6); d.bodies[0].m = [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 5, 7, 0, 1]; }, "Move"));
+  await waitIdle(page);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(4), 0);
+  expect((await stlHash()).tris).toBe(a.tris);
+  // editing keeps the axis that was saved exactly, whatever the body's matrix is (the Along picker shows the nearest world axis)
+  await page.locator('.tl-item[aria-label^="Pattern"]').first().dblclick();
+  await page.fill("#pt-n1", "3");
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  expect((await patMod()).ax1).toEqual([1, 0, 0]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(3), 0);
+});
+
+test("Pattern: a circular pattern of a shape fuses into the same body and follows its count", async () => {
+  await loadDoc(page, patDoc());
+  const ring = async () => (await bodies(page)).filter((b) => b.name === "Ring");
+  expect(await ring()).toHaveLength(1);
+  expect((await ring())[0].volume).toBeCloseTo(6000, 0); // six 10 mm cubes, none touching
+  await page.evaluate(() => window.__store.update((d) => { d.bodies[1].node.mods[0].cn = 8; }, "Edit pattern"));
+  await waitIdle(page);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect(await ring()).toHaveLength(1);
+  expect((await ring())[0].volume).toBeCloseTo(8000, 0);
+  // the dialog edits it and keeps the saved centre (the world origin, which is x = -30 in the ring's own coordinates)
+  await page.locator('.tl-item[aria-label="Pattern"]').dblclick();
+  await expect(page.locator("#cmd")).toContainText("Edit Pattern");
+  await expect(page.locator("#pt-cn")).toHaveValue("8");
+  await page.fill("#pt-cn", "4");
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  expect(await page.evaluate(() => { const m = window.__store.doc.bodies[1].node.mods[0]; return [m.kind, m.cn, m.center, m.cax, m.angle]; })).toEqual(["circ", 4, [-30, 0, 0], [0, 0, 1], 360]);
+  expect((await ring())[0].volume).toBeCloseTo(4000, 0);
+  // the count box takes a parameter too
+  await page.evaluate(() => window.__store.update((d) => { d.params.push({ id: "q9", name: "k", expr: "5", value: 5 }); d.bodies[1].node.mods[0].exprs = { cn: "k" }; }, "Bind"));
+  await waitIdle(page);
+  expect((await ring())[0].volume).toBeCloseTo(5000, 0);
+});
+
+test("Pattern: Advanced makes a Pattern feature from the dialog, not baked copies", async () => {
+  await loadDoc(page, holeOnly());
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.keyboard.press("p");
+  await expect(page.locator("#cmd")).toContainText("Pattern");
+  await page.locator("#pt-what button", { hasText: "Features" }).click();
+  await page.locator('#pt-feats input[data-mod="f1"]').check();
+  await page.fill("#pt-n1", "3");
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  const mods = await page.evaluate(() => window.__store.doc.bodies[0].node.mods.map((m) => [m.t, m.feats, m.n1, m.s1, m.ax1]));
+  expect(mods).toEqual([["hole", undefined, undefined, undefined, undefined], ["pattern", ["f1"], 3, 20, [1, 0, 0]]]); // two mods: the baked copies were not made
+  expect((await patBar()).volume).toBeCloseTo(barVol(3), 0);
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(1);
+  await undoOnce();
+  expect(await page.evaluate(() => window.__store.doc.bodies[0].node.mods.length)).toBe(1); // one commit, one undo step
+});
+
+test("Pattern: on a turned body the dialog's world axis is saved in the body's own axes", async () => {
+  const doc = holeOnly();
+  doc.bodies[0].m = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 5, 7, 0, 1]; // the bar's long side now runs along world y
+  await loadDoc(page, doc);
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.keyboard.press("p");
+  await page.locator("#pt-what button", { hasText: "Features" }).click();
+  await page.locator('#pt-feats input[data-mod="f1"]').check();
+  await page.locator("#pt-ax1 button", { hasText: "Y" }).click();
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  const m = await patMod();
+  expect(m.ax1.map((v) => Math.round(v * 1e6) / 1e6)).toEqual([1, 0, 0]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(3), 0);
+});
+
+test("Pattern: Join copies makes one Pattern of the shape in Advanced", async () => {
+  await loadDoc(page, box20());
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.keyboard.press("p");
+  await page.locator("#pt-join").check();
+  await page.locator("#cmd-ok").click();
+  await closed();
+  await waitIdle(page);
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(1);
+  expect(await page.evaluate(() => window.__store.doc.bodies[0].node.mods.map((m) => [m.t, m.what, m.kind]))).toEqual([["pattern", "shape", "rect"]]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(24000, 0); // three 20 mm cubes touching along x
+});
+
+test("Pattern: Beginner still makes separate copies, with no Pattern feature", async () => {
+  const doc = newDoc("Two boxes", "beginner", { bodies: [
+    body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 })),
+    body("b2", "Far box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 100, 0, 1]),
+  ] });
+  await loadDoc(page, doc);
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.keyboard.press("p");
+  await expect(page.locator("#cmd")).toContainText("Pattern");
+  await page.locator("#cmd-ok").click();
+  await closed();
+  await waitIdle(page);
+  const d = await page.evaluate(() => window.__store.doc.bodies.map((b) => ({ name: b.name, mods: (b.node.mods || []).map((m) => m.t) })));
+  expect(d).toHaveLength(4); // the box, its two copies, and the far box
+  expect(d.filter((b) => b.name !== "Far box")).toHaveLength(3);
+  expect(d.flatMap((b) => b.mods)).toEqual([]);
+});
+
+// the bounding box of a binary STL
+const stlBox = (bytes) => {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], n = bytes.readUInt32LE(80);
+  for (let t = 0; t < n; t++) for (let v = 0; v < 3; v++) for (let k = 0; k < 3; k++) {
+    const x = bytes.readFloatLE(84 + t * 50 + 12 + v * 12 + k * 4);
+    lo[k] = Math.min(lo[k], x); hi[k] = Math.max(hi[k], x);
+  }
+  return [...lo, ...hi].map((x) => Math.round(x * 100) / 100);
+};
+
+test("Pattern: an extrude cut is repeated through feats, with the same volume as the baked copies", async () => {
+  const doc = JSON.parse(readFileSync(new URL("./projects/advanced-pattern-feature.json", import.meta.url), "utf8"));
+  const mods = doc.bodies[0].node.mods;
+  doc.bodies[0].node.mods = [mods.find((m) => m.id === "f5"), { id: "p1", seq: 20, t: "pattern", kind: "rect", what: "feats", feats: ["f5"], ax1: [1, 0, 0], n1: 4, s1: 20, n2: 1, s2: 0, sym: false }];
+  await loadDoc(page, doc);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(24000 - 4 * 6 * 6 * 4, 0); // four 6 x 6 x 4 pockets
+});
+
+test("Pattern: a circular pattern made with Feature center saves the centre in the body's own coordinates", async () => {
+  const doc = holeOnly();
+  doc.bodies[0].node.mods[0].at = [{ p: [-30, -8, 10], n: [0, 0, 1] }, { p: [-30, 8, 10], n: [0, 0, 1] }]; // centre (-30, 0, 10)
+  doc.bodies[0].m = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 100, 50, 0, 1]; // turned 90 degrees and moved
+  await loadDoc(page, doc);
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.keyboard.press("p");
+  await page.locator("#pt-what button", { hasText: "Features" }).click();
+  await page.locator('#pt-feats input[data-mod="f1"]').check();
+  await page.locator("#pt-type button", { hasText: "Circular" }).click();
+  await page.locator("#pt-about button", { hasText: "Feature center" }).click();
+  await page.fill("#pt-cn", "3");
+  await page.keyboard.press("Enter");
+  await closed();
+  await waitIdle(page);
+  const m = await patMod();
+  expect([m.kind, m.about, m.cn]).toEqual(["circ", "center", 3]);
+  expect(m.center.map((v) => Math.round(v * 1e6) / 1e6)).toEqual([-30, 0, 10]);
+  expect(m.cax.map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, 0, 1]);
+  expect((await patBar()).volume).toBeCloseTo(barVol(6), 0); // two holes turned to six
+});
+
+test("Pattern: a partial circle spaces the copies over the angle, and both sides in two directions count every copy", async () => {
+  const doc = patDoc();
+  Object.assign(doc.bodies[1].node.mods[0], { cn: 3, angle: 180 }); // copies at 90 and 180 degrees
+  doc.bodies[0].node.mods = [{ ...doc.bodies[0].node.mods[0], at: [{ p: [0, 0, 10], n: [0, 0, 1] }] }, { id: "f2", seq: 3, t: "pattern", kind: "rect", what: "feats", feats: ["f1"], ax1: [2, 0, 0], n1: 2, s1: 20, ax2: [0, 1, 0], n2: 2, s2: 10, sym: true }];
+  await loadDoc(page, doc);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+  expect((await bodies(page)).find((b) => b.name === "Ring").volume).toBeCloseTo(3000, 0);
+  expect((await patBar()).volume).toBeCloseTo(barVol(9), 0); // 3 x 3 holes; ax1 [2,0,0] still moves by the spacing
+});
+
+test("Pattern: a runaway count is clamped and a parameter out of range is skipped", async () => {
+  await loadDoc(page, patDoc());
+  await setParam("n", "500");
+  await waitIdle(page);
+  expect((await patMod()).n1).toBe(4); // 500 is over the dialog's limit of 200: skipped, the last count stays
+  expect((await patBar()).volume).toBeCloseTo(barVol(4), 0);
+  await page.evaluate(() => window.__store.update((d) => { const m = d.bodies[0].node.mods[1]; m.feats = []; m.n1 = 1e6; m.n2 = 1e6; delete m.exprs; }, "Edit pattern"));
+  await waitIdle(page);
+  expect((await bodies(page)).filter((b) => b.error)).toEqual([]); // 200 x 200 copies of nothing, not a million
+  expect((await patBar()).volume).toBeCloseTo(24000 - holeVol(), 0); // only the source hole is left
+});
+
+test("Pattern: a mirrored body turns the copies the same way as an unmirrored one", async () => {
+  const run = async (m) => {
+    await loadDoc(page, newDoc("Mirrored", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 10, d: 10, h: 10, r: 0, c: 0 }), m)] }));
+    await page.evaluate(() => window.__app.select(["b1"]));
+    await page.keyboard.press("p");
+    await page.locator("#pt-join").check();
+    await page.locator("#pt-type button", { hasText: "Circular" }).click();
+    await page.fill("#pt-cn", "2");
+    await page.fill("#pt-angle", "90");
+    await page.locator("#cmd-ok").click();
+    await closed();
+    await waitIdle(page);
+    expect((await bodies(page))[0].error).toBeNull();
+    return stlBox((await exportBytes(page, "stl")).bytes);
+  };
+  const plain = await run([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 30, 0, 0, 1]);
+  expect(plain).toEqual([-5, -5, 0, 35, 35, 10]); // the copy is a quarter turn counter-clockwise about the origin: at y = +30
+  const mirrored = await run([-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 30, 0, 0, 1]); // the same box, reflected in x
+  expect(mirrored).toEqual(plain);
+});
+
+test("Pattern: Advanced bodies without Join still bake separate copies", async () => {
+  await loadDoc(page, box20());
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.keyboard.press("p");
+  await page.locator("#cmd-ok").click();
+  await closed();
+  await waitIdle(page);
+  expect(await page.evaluate(() => window.__store.doc.bodies.map((b) => (b.node.mods || []).length))).toEqual([0, 0, 0]);
+});
