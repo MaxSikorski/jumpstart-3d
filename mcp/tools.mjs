@@ -13,9 +13,12 @@ const caller = (opts) => (s, name, ...args) => { while (args.length && args[args
 const call = caller();
 const callLong = caller({ timeoutMs: 600_000 }); // exports, pictures and scripts of big designs can take minutes
 
-const ids = z.union([z.string(), z.array(z.string()).min(1)]).describe("A body id, or a list of ids (see list_bodies)");
-const vec3 = z.tuple([z.number(), z.number(), z.number()]);
-const size = z.union([z.array(z.number()).length(3), z.record(z.union([z.number(), z.string()]))])
+// Factories, so every tool builds its own copy: the JSON Schema comes out self-contained (a "$ref" appears when one zod object
+// is reused inside a single tool, as rotate_bodies once did). Plain 3-number arrays, not tuples ("items": [...]). Some clients
+// (Gemini family, small local servers) reject both.
+const ids = () => z.union([z.string(), z.array(z.string()).min(1)]).describe("A body id, or a list of ids (see list_bodies)");
+const vec3 = () => z.array(z.number()).length(3);
+const size = () => z.union([z.array(z.number()).length(3), z.record(z.union([z.number(), z.string()]))])
   .describe("Shape size in mm: [w, d, h] or an object such as {w, d, h}. Other kinds have other keys (see list_kinds for each kind's defaults).");
 const exportKind = z.enum(["stl", "obj", "3mf", "step", "json"]);
 
@@ -40,23 +43,23 @@ tool("list_bodies", "Lists the design's top-level bodies: id, name, kind, hole, 
 tool("get_body", "One body in full: the list_bodies entry plus its definition (node) and its 16-number matrix.", { id: z.string() }, ({ id }, s) => call(s, "get", id));
 
 tool("add_shape", "Adds a basic shape and returns its id. The shape's footprint is centred on `at` [x, y] with its base at z. Set hole: true to make a cutter that group_bodies can subtract from another body.",
-  { kind: z.string().describe("box, cylinder, sphere, cone, ... (see list_kinds)"), size: size.optional(), at: vec3.optional().describe("Where to put it, mm. Default [0, 0, 0]"), hole: z.boolean().optional(), color: z.string().optional().describe('"#rrggbb"'), name: z.string().optional() },
+  { kind: z.string().describe("box, cylinder, sphere, cone, ... (see list_kinds)"), size: size().optional(), at: vec3().optional().describe("Where to put it, mm. Default [0, 0, 0]"), hole: z.boolean().optional(), color: z.string().optional().describe('"#rrggbb"'), name: z.string().optional() },
   ({ kind, size, at, hole, color, name }, s) => call(s, "add", kind, { size, at, hole, color, name }));
-tool("remove_bodies", "Deletes bodies. Returns how many.", { ids }, ({ ids }, s) => call(s, "remove", ids));
-tool("duplicate_bodies", "Copies bodies, shifted by offset (mm). Returns the new ids.", { ids, offset: vec3.optional() }, ({ ids, offset }, s) => call(s, "duplicate", ids, offset));
-tool("move_bodies", "Moves bodies by [dx, dy, dz] mm.", { ids, delta: vec3 }, ({ ids, delta }, s) => call(s, "move", ids, delta));
-tool("move_to", "Puts one body's origin at [x, y, z] mm.", { id: z.string(), position: vec3 }, ({ id, position }, s) => call(s, "moveTo", id, position));
+tool("remove_bodies", "Deletes bodies. Returns how many.", { ids: ids() }, ({ ids }, s) => call(s, "remove", ids));
+tool("duplicate_bodies", "Copies bodies, shifted by offset (mm). Returns the new ids.", { ids: ids(), offset: vec3().optional() }, ({ ids, offset }, s) => call(s, "duplicate", ids, offset));
+tool("move_bodies", "Moves bodies by [dx, dy, dz] mm.", { ids: ids(), delta: vec3() }, ({ ids, delta }, s) => call(s, "move", ids, delta));
+tool("move_to", "Puts one body's origin at [x, y, z] mm.", { id: z.string(), position: vec3() }, ({ id, position }, s) => call(s, "moveTo", id, position));
 tool("rotate_bodies", "Turns bodies by an angle in degrees about an axis through `about` (default: the middle of their box, which needs them built: call wait_ready first, or pass about).",
-  { ids, axis: z.union([z.enum(["x", "y", "z"]), vec3]), degrees: z.number(), about: vec3.optional() }, ({ ids, axis, degrees, about }, s) => call(s, "rotate", ids, axis, degrees, about ? { about } : {}));
-tool("resize_shape", "Changes the size of one basic shape (not a group), in mm. Give only the keys to change, such as {w: 50}.", { id: z.string(), size }, ({ id, size }, s) => call(s, "resize", id, size));
+  { ids: ids(), axis: z.union([z.enum(["x", "y", "z"]), vec3()]), degrees: z.number(), about: vec3().optional() }, ({ ids, axis, degrees, about }, s) => call(s, "rotate", ids, axis, degrees, about ? { about } : {}));
+tool("resize_shape", "Changes the size of one basic shape (not a group), in mm. Give only the keys to change, such as {w: 50}.", { id: z.string(), size: size() }, ({ id, size }, s) => call(s, "resize", id, size));
 tool("scale_bodies", "Scales bodies by a factor k, or [kx, ky, kz] along their own axes, about `about` (default: the middle of their box; needs them built). Works on any body.",
-  { ids, k: z.union([z.number().positive(), z.tuple([z.number().positive(), z.number().positive(), z.number().positive()])]), about: vec3.optional() }, ({ ids, k, about }, s) => call(s, "scale", ids, k, about ? { about } : {}));
-tool("set_hole", "Marks basic shapes as holes (cutters, shown see-through) or solid again.", { ids, hole: z.boolean() }, ({ ids, hole }, s) => call(s, "setHole", ids, hole));
-tool("set_color", "Sets the colour of bodies.", { ids, color: z.string().describe('"#rrggbb"') }, ({ ids, color }, s) => call(s, "setColor", ids, color));
+  { ids: ids(), k: z.union([z.number().positive(), z.array(z.number().positive()).length(3)]), about: vec3().optional() }, ({ ids, k, about }, s) => call(s, "scale", ids, k, about ? { about } : {}));
+tool("set_hole", "Marks basic shapes as holes (cutters, shown see-through) or solid again.", { ids: ids(), hole: z.boolean() }, ({ ids, hole }, s) => call(s, "setHole", ids, hole));
+tool("set_color", "Sets the colour of bodies.", { ids: ids(), color: z.string().describe('"#rrggbb"') }, ({ ids, color }, s) => call(s, "setColor", ids, color));
 tool("rename_body", "Renames a body.", { id: z.string(), name: z.string() }, ({ id, name }, s) => call(s, "rename", id, name));
-tool("set_hidden", "Hides or shows bodies. Hidden bodies are left out of exports.", { ids, hidden: z.boolean() }, ({ ids, hidden }, s) => call(s, "setHidden", ids, hidden));
+tool("set_hidden", "Hides or shows bodies. Hidden bodies are left out of exports.", { ids: ids(), hidden: z.boolean() }, ({ ids, hidden }, s) => call(s, "setHidden", ids, hidden));
 tool("group_bodies", "Combines two or more bodies into one group and returns its id. By default it joins them; any bodies marked as holes are cut out of the result. op \"cut\" subtracts the others from the first id; op \"intersect\" keeps only what they share.",
-  { ids, name: z.string().optional(), op: z.enum(["cut", "intersect"]).optional() }, ({ ids, name, op }, s) => call(s, "group", ids, { name, op }));
+  { ids: ids(), name: z.string().optional(), op: z.enum(["cut", "intersect"]).optional() }, ({ ids, name, op }, s) => call(s, "group", ids, { name, op }));
 tool("ungroup_body", "Splits a group back into its parts and returns their ids.", { id: z.string() }, ({ id }, s) => call(s, "ungroup", id));
 
 tool("list_params", "Lists the design's named parameters: name, expression, value (mm) and unit.", {}, (_, s) => call(s, "params"));
@@ -72,11 +75,15 @@ tool("select_bodies", "Selects bodies in the view (an empty list clears the sele
 tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, (_, s) => call(s, "fit"));
 tool("set_mode", "Switches the app between Beginner and Advanced mode.", { mode: z.enum(["beginner", "advanced"]) }, ({ mode }, s) => call(s, "setMode", mode));
 
-tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels.",
-  { width: z.number().int().min(1).max(8192).default(800), fit: z.boolean().default(true) },
-  async ({ width, fit }, s) => raw([{ type: "image", data: (await callLong(s, "screenshot", { fit, width })).toString("base64"), mimeType: "image/png" }]));
+tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels. Give `path` if your model cannot see images: the PNG is written there and you get {path, bytes, width} as text instead of the picture.",
+  { width: z.number().int().min(1).max(8192).default(800), fit: z.boolean().default(true), path: z.string().optional().describe("Write the PNG to this file instead of returning the picture") },
+  async ({ width, fit, path }, s) => {
+    const png = await callLong(s, "screenshot", { fit, width });
+    if (path) return { ...(await save(path, png)), width: png.readUInt32BE(16) }; // IHDR: the width follows the 8-byte signature and the chunk header
+    return raw([{ type: "image", data: png.toString("base64"), mimeType: "image/png" }]);
+  });
 tool("export_file", "Writes the design to a file on this computer and returns its path and size. kind: stl, obj, 3mf, step, or json (the project file). Holes and hidden bodies are left out; ids limits it to some bodies. Relative paths are relative to the folder the server runs in.",
-  { kind: exportKind, path: z.string(), ids: ids.optional() }, async ({ kind, path, ids }, s) => save(path, await callLong(s, "export", kind, ids ? { ids } : {})));
+  { kind: exportKind, path: z.string(), ids: ids().optional() }, async ({ kind, path, ids }, s) => save(path, await callLong(s, "export", kind, ids ? { ids } : {})));
 tool("save_project", "Returns the whole design as project-file JSON text (see BRIDGE.md), or writes it to `path` and returns the path and size.",
   { path: z.string().optional() }, async ({ path }, s) => {
     const bytes = await callLong(s, "export", "json");

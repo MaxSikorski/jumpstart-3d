@@ -618,6 +618,8 @@ app.showAbout = function () {
         el("a", { href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "github.com/MaxSikorski/jumpstart-3d")),
       // jumpstart-3d: what the community build adds
       el("p", { class: "ab-credit-sub" }, "Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail."),
+      // jumpstart-3d: agent setup
+      el("p", { class: "ab-credit-sub" }, "Have an AI agent set up the MCP server for itself: tell it \"Read https://raw.githubusercontent.com/MaxSikorski/jumpstart-3d/main/mcp/AGENT-SETUP.md and set it up for me.\""),
       // the open-source libraries and fonts inside the app, with their licenses (they ask for this notice)
       el("section", { class: "ab-oss", id: "ab-oss" },
         el("h3", {}, "Open-source credits"),

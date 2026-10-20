@@ -30,6 +30,16 @@ test("the tools are listed, with the contract names", async () => {
   assert.ok(tools.every((t) => t.description && t.description.length > 10), "every tool is described");
 });
 
+test("no tool's input schema has a $ref or a tuple (items array): Gemini-family clients and small local servers reject them", async () => {
+  const { tools } = await s.client.listTools();
+  assert.ok(tools.length >= 34);
+  for (const t of tools) {
+    const json = JSON.stringify(t.inputSchema);
+    assert.ok(!json.includes('"$ref"'), t.name + " has a $ref: " + json);
+    assert.ok(!json.includes('"items":['), t.name + " has a tuple: " + json);
+  }
+});
+
 test("status before any page does not start a browser", async () => {
   const st = data(await call(s.client, "status"));
   assert.equal(st.mode, "headless");
@@ -59,6 +69,20 @@ test("screenshot returns a PNG image block 800 pixels wide", async () => {
   assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   assert.equal(pngWidth(png), 800);
   assert.equal(pngWidth(Buffer.from((await call(s.client, "screenshot", { width: 300 })).content[0].data, "base64")), 300);
+});
+
+test("screenshot with a path writes the PNG there and answers with text, not an image", async () => {
+  const file = join(dir, "view.png");
+  const r = await call(s.client, "screenshot", { path: file, width: 320 });
+  assert.equal(r.content.length, 1);
+  assert.equal(r.content[0].type, "text");
+  const out = data(r);
+  assert.equal(out.path, file);
+  assert.equal(out.width, 320);
+  const png = await readFile(file);
+  assert.equal(out.bytes, png.length);
+  assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.equal(pngWidth(png), 320);
 });
 
 test("export_file writes an STL to disk and says where and how big", async () => {

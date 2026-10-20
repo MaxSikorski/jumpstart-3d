@@ -71,6 +71,16 @@ That is all. You do not need anything else in this repository.
 
 ## Use it with an AI agent
 
+Give any AI agent that can read a web page and run commands this one line, and it sets the server up for itself (it asks you
+before it edits files outside the repository):
+
+```
+Read https://raw.githubusercontent.com/MaxSikorski/jumpstart-3d/main/mcp/AGENT-SETUP.md and set it up for me.
+```
+
+(If the agent cannot fetch the address, use the same file on the web page:
+[mcp/AGENT-SETUP.md](https://github.com/MaxSikorski/jumpstart-3d/blob/main/mcp/AGENT-SETUP.md).)
+
 If you use Claude Code, two commands let your agent build and edit designs in JumpStart 3D, look at the result and export
 STL, STEP, OBJ or 3MF files:
 
@@ -81,8 +91,32 @@ claude plugin install jumpstart-3d@maxsikorski
 
 To have the agent edit the design you have open, turn on **Connect to AI agent** in the theme menu (the half-moon button); it is
 off unless you turn it on. Without that, the agent works in its own invisible browser (run `npx playwright@1.62.1 install chromium` once).
-Other agents, the command line (`jumpstart run`, `export`, `shot`, `status`) and the safety notes are in
+The command line (`jumpstart run`, `export`, `shot`, `status`), the full tool list and the safety notes are in
 [mcp/README.md](mcp/README.md).
+
+### Other agents
+
+Any client that starts a stdio MCP server can use it; `mcp/README.md` has the exact file and block for each.
+
+| Client | How to add | Does a screenshot reach the model? |
+|---|---|---|
+| Claude Code | the plugin above | yes |
+| Codex (CLI, desktop app) | `~/.codex/config.toml`, or `codex mcp add` and then `tool_timeout_sec = 600` under that server in the same file | not confirmed |
+| Hermes Agent | `~/.hermes/config.yaml` | yes (text-only model: file path) |
+| OpenCode | `opencode.json` | not documented |
+| Gemini CLI, Antigravity | `~/.gemini/settings.json`, `~/.gemini/config/mcp_config.json` | Gemini CLI yes |
+| Cursor | `~/.cursor/mcp.json` | yes |
+| Cline, LM Studio | `cline_mcp_settings.json`, `~/.lmstudio/mcp.json` | not reliably; use the `path` option |
+| Grok Build | `~/.grok/config.toml` | not documented |
+| Open WebUI | through the `mcpo` bridge | not documented |
+| ChatGPT on the web | cannot: remote servers only (the Codex desktop app works, see its row) | |
+
+Ollama and oMLX run models only; put one of the agents above on top. When a model cannot see images, the agent can call
+`screenshot` with a `path` and the picture is saved to that file instead. The shape most clients read:
+
+```json
+{ "mcpServers": { "jumpstart-3d": { "command": "node", "args": ["<repo>/mcp/server.mjs"] } } }
+```
 
 ## See it in action
 
@@ -192,9 +226,12 @@ src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
-mcp/                our MCP server for AI agents, its Claude Code plugin and skill, and the `jumpstart`
-                    command line (see mcp/README.md); it has its own package.json, so `npm ci` inside
+mcp/                our MCP server for AI agents, its Claude Code plugin and skill, the `jumpstart`
+                    command line and AGENT-SETUP.md, the page an agent reads to set itself up
+                    (see mcp/README.md); it has its own package.json, so `npm ci` inside
                     mcp/ once; its tests run with `npm run test:mcp`
+skills/             a copy of the agent skill (mcp/skills/jumpstart-3d/SKILL.md) where `npx skills add`
+                    and other agents' skill folders look; a test keeps the two identical
 .claude-plugin/     marketplace.json, so `claude plugin marketplace add` finds the plugin in mcp/
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
@@ -284,8 +321,11 @@ UPSTREAM-README.md         the author's README from the source release
   headless browser. `mcp/README.md` has the install lines, the tool list and
   what an agent can and cannot do
 - A Claude Code plugin (two install commands) with a skill that teaches an agent
-  to use those tools, and a `jumpstart` command line that runs a script or makes
-  an export or a picture without an agent
+  to use those tools, a `jumpstart` command line that runs a script or makes
+  an export or a picture without an agent, and a one-line prompt that has any
+  other agent (Codex, Hermes, OpenCode, Gemini CLI, Cursor...) set the server
+  up for itself; `screenshot` can save its picture to a file for models that
+  cannot see images
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 
