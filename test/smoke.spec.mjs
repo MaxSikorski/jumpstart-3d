@@ -264,7 +264,7 @@ test("Parameters: the sidebar adds a parameter and evaluates what is typed", asy
   await loadDoc(page, parametric());
   const rows = page.locator("#browser .param");
   await expect(rows).toHaveCount(2);
-  await page.click("#param-add");
+  await page.click("#browser .param-add");
   await expect(rows).toHaveCount(3);
   expect(await page.evaluate(() => window.__store.doc.params.length)).toBe(3);
   await rows.nth(2).locator("input.param-expr").fill("w+5");
@@ -505,4 +505,236 @@ test("Parameters: the copy kept by Mirror with Join follows t and its renames", 
   await page.locator("#browser .param", { has: page.locator('input.param-name[value="t"]') }).locator("input.param-name").fill("thick");
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await src()).exprs).toEqual({ dist: "thick" });
+});
+
+// ---- Beginner shapes follow named parameters (Phase P step 3) ----
+// a plate (box 40 x w/2 x 20) with a hole of diameter h/2 through it; w = 40, h = 20
+const beginnerDoc = () => JSON.parse(readFileSync(new URL("./projects/parametric-beginner.json", import.meta.url), "utf8"));
+const plateVol = (w = 40, h = 20) => w * (w / 2) * h - Math.PI * (h / 4) ** 2 * h;
+// the same box on its own (a shape the Beginner inspector shows Width, Depth and Height for)
+const lone = () => { const doc = beginnerDoc(); doc.bodies[0].node = doc.bodies[0].node.children[0].node; return doc; };
+const kids = () => page.evaluate(() => window.__store.doc.bodies[0].node.children.map((c) => ({ p: c.node.p, exprs: c.node.exprs, exprUnits: c.node.exprUnits })));
+const loneNode = () => page.evaluate(() => { const n = window.__store.doc.bodies[0].node; return { p: n.p, exprs: n.exprs, exprUnits: n.exprUnits, hasExprs: "exprs" in n }; });
+const selectBody = async (id = "b1") => { await page.evaluate((id) => window.__app.select([id]), id); await expect(page.locator("#inspector")).toBeVisible(); };
+
+test("Parameters: Beginner sizes follow w, and undo brings the shape and the STL back in one step", async () => {
+  await loadDoc(page, beginnerDoc());
+  let list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(plateVol(), 0);
+  const a = await stlHash();
+  await setParam("w", "60");
+  await waitIdle(page);
+  list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(plateVol(60), 0);
+  expect((await kids())[0].p).toMatchObject({ w: 60, d: 30, h: 20 });
+  const b = await stlHash();
+  expect(b.hash).not.toBe(a.hash);
+  await setParam("h", "24"); // the hole follows h/2 as well: w and d of the cylinder (its 30 mm height still passes through)
+  await waitIdle(page);
+  expect((await kids())[1].p).toMatchObject({ w: 12, d: 12 });
+  expect((await bodies(page))[0].volume).toBeCloseTo(plateVol(60, 24), 0);
+  await page.evaluate(() => { window.__app.undo(); window.__app.undo(); });
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(plateVol(), 0);
+  expect((await stlHash()).hash).toBe(a.hash);
+  await page.evaluate(() => window.__app.redo());
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(plateVol(60), 0);
+});
+
+test("Parameters: a bad expression for w keeps the Beginner shape, shows 'error' and keeps the binding", async () => {
+  await loadDoc(page, lone());
+  await setParam("w", "nope*2");
+  await waitIdle(page);
+  expect((await bodies(page))[0].error).toBeNull();
+  expect((await bodies(page))[0].volume).toBeCloseTo(40 * 20 * 20, 0);
+  expect((await loneNode()).exprs).toEqual({ w: "w", d: "w/2", h: "h" });
+  await selectBody();
+  await expect(page.locator("#insp-params .param", { has: page.locator('input.param-name[value="w"]') }).locator(".pv")).toContainText("error");
+});
+
+test("Parameters: renaming w follows into Beginner sizes, deleting h unbinds only h", async () => {
+  await loadDoc(page, beginnerDoc());
+  await selectBody();
+  await page.locator('#insp-params input.param-name[value="w"]').fill("width");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await kids())[0].exprs).toEqual({ w: "width", d: "width/2", h: "h" });
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(plateVol(), 0);
+  await page.locator('#insp-params button[aria-label="Delete h"]').click();
+  await expect.poll(async () => (await kids())[0].exprs).toEqual({ w: "width", d: "width/2" });
+  const k = await kids();
+  expect(k[0].p.h).toBe(20); // the number stays
+  expect(k[1].exprs).toBeUndefined(); // its only bindings were h/2, so the map is gone, not left as {}
+  expect(k[1].p).toMatchObject({ w: 10, d: 10 });
+  await page.locator('#insp-params button[aria-label="Delete width"]').click();
+  await expect.poll(async () => (await kids())[0].exprs).toBeUndefined();
+});
+
+test("Parameters: typing an expression into the Beginner Width box binds it, a number unbinds it", async () => {
+  await loadDoc(page, lone());
+  await selectBody();
+  await expect(page.locator("#insp-w")).toHaveClass(/fx/);
+  await expect(page.locator("#insp-w")).toHaveValue("w");
+  await page.fill("#insp-w", "w*2");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).p.w).toBe(80);
+  let n = await loneNode();
+  expect(n.exprs).toEqual({ w: "w*2", d: "w/2", h: "h" });
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(80 * 20 * 20, 0);
+  await expect(page.locator("#insp-w")).toHaveValue("w*2");
+  await setParam("w", "50"); // 100 wide, depth 25
+  await waitIdle(page);
+  n = await loneNode();
+  expect(n.p).toMatchObject({ w: 100, d: 25 });
+  await page.fill("#insp-w", "50");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).exprs).toEqual({ d: "w/2", h: "h" });
+  expect((await loneNode()).p.w).toBe(50);
+  await page.fill("#insp-d", "7");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).exprs).toEqual({ h: "h" });
+  await page.fill("#insp-h", "7");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).hasExprs).toBe(false);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur()); // a box left focused would send its text into the next design
+});
+
+test("Parameters: resizing a Beginner shape without an expression drops the binding for that size only", async () => {
+  await loadDoc(page, lone());
+  await selectBody();
+  await page.locator("#viewport canvas").first().focus();
+  await page.keyboard.press("Tab"); // type a size on the shape, like Tinkercad: Width first
+  await expect(page.locator("#dim-input")).toBeVisible();
+  await page.fill("#dim-input", "70");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).p.w).toBe(70);
+  expect((await loneNode()).exprs).toEqual({ d: "w/2", h: "h" });
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(70 * 20 * 20, 0);
+  await setParam("w", "60"); // d follows, w no longer does
+  await waitIdle(page);
+  expect((await loneNode()).p).toMatchObject({ w: 70, d: 30 });
+});
+
+test("Parameters: a Beginner design opened in Advanced keeps its bindings and w still drives it", async () => {
+  await loadDoc(page, lone());
+  await page.click("#mode-advanced");
+  await waitIdle(page);
+  expect((await loneNode()).exprs).toEqual({ w: "w", d: "w/2", h: "h" });
+  await setParam("w", "60");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(60 * 30 * 20, 0);
+  await expect(page.locator('.tl-item[aria-label^="Box"]')).toHaveAttribute("aria-label", /w = w/);
+  // the Advanced Box dialog shows the bindings; a number typed over one drops just that one
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.locator("#browser .props button", { hasText: "Edit" }).click();
+  await expect(page.locator("#pr-w")).toHaveValue("w");
+  await expect(page.locator("#pr-w")).toHaveClass(/fx/);
+  await page.fill("#pr-h", "30");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).p.h).toBe(30);
+  expect((await loneNode()).exprs).toEqual({ w: "w", d: "w/2" });
+  await page.click("#mode-beginner");
+  await waitIdle(page);
+  expect((await loneNode()).exprs).toEqual({ w: "w", d: "w/2" });
+});
+
+test("Parameters: the Beginner inspector lists parameters and adds one", async () => {
+  await loadDoc(page, lone());
+  await selectBody();
+  const rows = page.locator("#insp-params .param");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first().locator(".pv")).toContainText("40");
+  await page.locator("#insp-params .param-add").click();
+  await expect(rows).toHaveCount(3);
+  expect(await page.evaluate(() => window.__store.doc.params.map((p) => p.name))).toEqual(["w", "h", "p3"]);
+  await page.fill("#insp-w", "p3*2"); // a new parameter is available to the size boxes at once
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).exprs.w).toBe("p3*2");
+  expect((await loneNode()).p.w).toBe(20); // p3 = 10
+});
+
+test("Parameters: ungrouping a resized group drops the bindings of the sizes it stretched", async () => {
+  const doc = beginnerDoc();
+  doc.bodies[0].node.mods = [{ id: "f1", seq: 3, t: "scale", k: [2, 1, 1], o: [0, 0, 0] }]; // what typing 80 into the group Width box leaves behind
+  await loadDoc(page, doc);
+  await selectBody();
+  await page.locator("#inspector button", { hasText: "Ungroup" }).click();
+  await expect.poll(async () => page.evaluate(() => window.__store.doc.bodies.length)).toBe(2);
+  const nodes = await page.evaluate(() => window.__store.doc.bodies.map((b) => b.node));
+  const box = nodes.find((n) => n.kind === "box"), cyl = nodes.find((n) => n.kind === "cylinder");
+  expect(box.p.w).toBe(80);
+  expect(box.exprs).toEqual({ d: "w/2", h: "h" }); // w is free, d and h still follow
+  expect(cyl.p.w).toBe(20);
+  expect(cyl.exprs).toEqual({ d: "h/2" });
+  await waitIdle(page);
+  expect((await bodies(page)).find((b) => b.name === "Box 1").volume).toBeCloseTo(80 * 20 * 20, 0);
+});
+
+test("Parameters: undoing a bind that did not change the number redraws the Beginner box", async () => {
+  await loadDoc(page, lone());
+  await selectBody();
+  await page.fill("#insp-w", "40"); // the same 40 mm, but no longer a name
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).exprs).toEqual({ d: "w/2", h: "h" });
+  await expect(page.locator("#insp-w")).not.toHaveClass(/fx/);
+  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); window.__app.undo(); });
+  await expect(page.locator("#insp-w")).toHaveValue("w");
+  await expect(page.locator("#insp-w")).toHaveClass(/fx/);
+});
+
+test("Parameters: a Beginner size below 0.01 mm is skipped and the shape keeps its size", async () => {
+  await loadDoc(page, lone());
+  await selectBody();
+  await page.locator('#insp-params input.param-expr').first().fill("0.005");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#toasts .toast", { hasText: "size(s)" })).toBeVisible();
+  await waitIdle(page);
+  expect((await loneNode()).p).toMatchObject({ w: 40, d: 20, h: 20 });
+  expect((await bodies(page))[0].volume).toBeCloseTo(40 * 20 * 20, 0);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+});
+
+test("Parameters: the Advanced Box dialog takes an expression for Width", async () => {
+  await loadDoc(page, lone());
+  await page.click("#mode-advanced");
+  await page.evaluate(() => window.__app.select(["b1"]));
+  await page.locator("#browser .props button", { hasText: "Edit" }).click();
+  await page.fill("#pr-w", "w+5");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await loneNode()).p.w).toBe(45);
+  expect((await loneNode()).exprs).toEqual({ w: "w+5", d: "w/2", h: "h" });
+  await page.click("#mode-beginner");
+  await waitIdle(page);
+});
+
+test("Parameters: dragging a Beginner resize handle frees that size and keeps the others bound", async () => {
+  await loadDoc(page, lone());
+  await selectBody();
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await waitIdle(page);
+  // the handle in the middle of the +x edge: where it is on screen, and where 10 mm further along x is
+  const pts = await page.evaluate(() => {
+    const a = window.__app, vp = a.vp;
+    let h = null;
+    vp.overlay.traverse((o) => { const i = o.userData && o.userData.handle; if (i && i.type === "size" && i.sx === 1 && i.sy === 0 && o.visible) h = o; });
+    if (!h) return null;
+    const r = vp.canvas.getBoundingClientRect();
+    const scr = (v) => { const p = v.clone().project(vp.camera); return [r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height]; };
+    const w = h.getWorldPosition(h.position.clone());
+    return { from: scr(w), to: scr(w.clone().setX(w.x + 10)) };
+  });
+  expect(pts).not.toBeNull();
+  await page.mouse.move(...pts.from);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(pts.from[0] + ((pts.to[0] - pts.from[0]) * i) / 10, pts.from[1] + ((pts.to[1] - pts.from[1]) * i) / 10);
+  await page.mouse.up();
+  await expect.poll(async () => (await loneNode()).p.w).toBeGreaterThan(45);
+  const n = await loneNode();
+  expect(n.exprs).toEqual({ d: "w/2", h: "h" });
+  expect(n.p.h).toBe(20);
 });
