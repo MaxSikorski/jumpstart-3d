@@ -9,7 +9,8 @@ import { planeMatrix } from "./scene.js";
 import { thickLines } from "./thickline.js";
 import { SKETCH_TOOLS, normalizeSketch, arcFrom3, addImportedCurves } from "./sketcher.js";
 import { parseSVG, parseDXF, curvesBounds } from "./importers.js";
-import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, exprOf, exprsOf, PARAM_ERROR } from "./params.js";
+import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, exprOf, exprsOf, paramsToCsv, parseParamsCsv, importParams, PARAM_ERROR } from "./params.js";
+import { sketchDof } from "./constraints.js"; // jumpstart-3d: parameters
 import { traceImage, curvesFor } from "./trace.js";
 import { subjectMask, inflate, maskBox } from "./puffy.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
@@ -5180,7 +5181,8 @@ export function initAdvanced(app) {
       ]);
       group("Modify", "sketch", [t("trim"), t("dim"), { id: "sk-cons", label: "Construction", title: "Toggle construction (X)", icon: "construction", fn: () => sketcher.toggleConstruction() }, t("select")]);
       group("Finish", "sketch", [{ id: "sk-extrude", label: "Extrude", title: "Extrude this sketch now, without finishing it first (E)", icon: "extrude", fn: () => app.quickExtrude() }, { id: "sk-finish", label: "Finish sketch", icon: "finish", cls: "finish", fn: () => app.exitSketch() }]);
-      ribbon.append(el("div", { class: "note" }, "Profiles shade blue when closed."));
+      ribbon.append(el("div", { class: "note", id: "sk-note" }, "Profiles shade blue when closed.")); // jumpstart-3d: parameters (the id; showDofNote fills it)
+      showDofNote(); // jumpstart-3d: parameters
       return;
     }
     ribbon.append(el("div", { class: "wstabs", role: "tablist", "aria-label": "Workspace" },
@@ -5370,7 +5372,28 @@ export function initAdvanced(app) {
     app.toast(lock ? "Locked: it can't be moved, changed or deleted." : "Unlocked");
   }
 
-  // jumpstart-3d: parameters. The Parameters folder (heading with + and one row each); the Advanced browser and the Beginner inspector both show it.
+  // jumpstart-3d: parameters. How constrained a sketch is, from sketchDof's count: null for a sketch with no shapes.
+  const dofOf = (sk) => { const r = sketchDof(sk); return r.free ? r : null; };
+  const OVER = (n) => `Fully constrained by count; ${n} more constraint${n === 1 ? "" : "s"} than needed, some may fight`;
+  // the sketch ribbon's note while editing: the proof line, kept current by refresh()
+  function showDofNote() {
+    const note = document.getElementById("sk-note"), sk = (store.view.sketches || []).find((s) => s.id === sketcher.active), r = sk && dofOf(sk);
+    if (note) note.textContent = !r ? "Profiles shade blue when closed." : r.over < 0 ? OVER(-r.over) : r.dof === 0 ? "Fully constrained" : `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left: add dimensions or constraints`;
+  }
+  const dofBadge = (sk) => { // jumpstart-3d: parameters
+    const r = dofOf(sk);
+    return !r ? null : el("span", { class: "sk-dof" + (r.dof ? "" : " ok"), title: r.over < 0 ? OVER(-r.over) : r.dof ? `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left` : "Fully constrained" }, r.dof ? `${r.dof} free` : "✓");
+  };
+  // Parameters as a CSV file: one row each, name,expression,unit
+  async function exportParamsCsv() {
+    const params = store.view.params || [];
+    if (!params.length) { app.toast("There are no parameters to save yet."); return; }
+    const name = ((store.doc.name || "").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "design") + "-parameters.csv";
+    await app.projects.saveModel(name, new TextEncoder().encode(paramsToCsv(params)));
+    app.toast(`Saved ${params.length} parameter${params.length === 1 ? "" : "s"} as ${name}.`);
+  }
+
+  // jumpstart-3d: parameters. The Parameters folder (heading with CSV out, CSV in and + , then one row each); the Advanced browser and the Beginner inspector both show it.
   function paramRows(tree) {
     const params = store.view.params || [];
     // re-running applyParams on the new doc changes nothing; it only reports dimensions that could not take the value
@@ -5378,8 +5401,22 @@ export function initAdvanced(app) {
       const next = store.update(fn, label), n = next ? applyParams(next) : 0;
       if (n) app.toast(`${n} dimension(s), size(s) or feature value(s) can't take that value`);
     };
+    // one undo step takes a whole import back; a name that exists takes the new expression, a new valid name is added
+    const importCsv = async () => {
+      const f = await pickFile(".csv,text/csv");
+      if (!f) return;
+      const rows = parseParamsCsv(await f.text());
+      let r;
+      editParams((d) => { r = importParams(d, rows); if (!r.used) return false; }, "Import parameters");
+      const bad = store.doc.params.filter((p) => !isFinite(p.value)).length;
+      app.toast(`Imported ${r.used} parameter${r.used === 1 ? "" : "s"}${r.skipped ? `, ${r.skipped} row${r.skipped === 1 ? "" : "s"} skipped` : ""}${bad ? `, ${bad} with errors` : ""}`);
+    };
+    const tool = (cls, title, label, fn) => el("button", { class: cls, title, "aria-label": title, onclick: (e) => { e.stopPropagation(); fn(); } }, label);
     tree.append(el("div", { class: "folder" }, `Parameters (${params.length})`,
-      el("button", { class: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+")));
+      el("span", { class: "param-tools" },
+        tool("param-csv-out", "Export parameters as CSV", "CSV ↓", exportParamsCsv),
+        tool("param-csv-in", "Import parameters from CSV", "CSV ↑", importCsv),
+        el("button", { class: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+"))));
     if (!params.length) tree.append(el("div", { class: "empty" }, "Add a parameter, then type its name in a dimension or a size box."));
     for (const p of params) {
       const nm = el("input", { class: "num param-name", value: p.name, title: "Name", "aria-label": "Parameter name" });
@@ -5433,7 +5470,7 @@ export function initAdvanced(app) {
     for (const s of doc.sketches) {
       const eye = el("button", { class: "eye", title: s.hidden ? "Show" : "Hide", "aria-label": (s.hidden ? "Show " : "Hide ") + s.name, html: s.hidden ? ICON.eyeOff : ICON.eye, onclick: (e) => { e.stopPropagation(); store.update((d) => { findSketch(d, s.id).hidden = !s.hidden; }, s.hidden ? "Show sketch" : "Hide sketch"); } });
       const dl = el("button", { class: "eye dxf-one", title: "Download this sketch as DXF", "aria-label": "Download " + s.name + " as DXF", html: ICON.import, onclick: (e) => { e.stopPropagation(); exportSketchesDXF([s.id]); } });
-      const n = el("div", { class: "node" + (selSketch === s.id || sketcher.active === s.id ? " sel" : ""), title: "Double-click to edit" }, eye, el("span", { class: "nm" }, s.name + (sketcher.active === s.id ? " (editing)" : "")), dl);
+      const n = el("div", { class: "node" + (selSketch === s.id || sketcher.active === s.id ? " sel" : ""), title: "Double-click to edit" }, eye, el("span", { class: "nm" }, s.name + (sketcher.active === s.id ? " (editing)" : "")), dofBadge(s), dl);
       n.onclick = () => { selSketch = s.id; app.select([]); renderBrowser(); };
       n.ondblclick = () => app.enterSketch(s.id);
       tree.append(n);
@@ -5732,6 +5769,7 @@ export function initAdvanced(app) {
       renderBrowser();
       renderTimeline();
       renderPalette();
+      showDofNote(); // jumpstart-3d: parameters
       if (app.command && (kind === "change" || kind === "load") && app.command.render && !app.command.noRerenderOnChange) {/* keep dialog */}
     },
     editItem,
@@ -5754,6 +5792,7 @@ export function initAdvanced(app) {
     sketchUI(kind) {
       if (kind === "sketch" || !ribbon.querySelector(".rgroup.sketch")) renderRibbon();
       renderPalette();
+      showDofNote(); // jumpstart-3d: parameters
     },
     showBuildErrors,
     paramRows, // jumpstart-3d: parameters

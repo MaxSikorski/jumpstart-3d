@@ -18,7 +18,7 @@ import { setCustomTextureSource } from "./texture.js";
 setCustomTextureSource(() => ({ ...(store.doc.texImages || {}), ...((store.preview && store.preview.texImages) || {}) }));
 import { el, parseLength, fmt, IS_MAC, IS_IOS, IS_IPHONE, watchMacLabels } from "./util.js";
 const parseLengthMM = parseLength;
-import { evalExpr } from "./params.js"; // jumpstart-3d: parameters
+import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import { getUnit, setUnit, onUnit, toU, fromU, showLen, parseLen, unitName, SNAP_SIZES } from "./units.js";
 import { setThemeColors, theme } from "./theme.js";
 import { ICON } from "./icons.js";
@@ -606,7 +606,7 @@ app.showAbout = function () {
         ["Lighting:", "realistic shading and shadows (sun button), light, dark or high-contrast themes, orthographic view and the view cube."],
         ["Projection & animation:", "Projector (a second window that shows your objects on black, for a projector or second screen), Media (pictures and videos on objects: facing view, wrap around, all sides or ball), and Picture to 3D model (puffs a picture's subject up into a rounded, printable solid with the picture painted on), and in Chisel: ready-made characters (people, heads, animals, aliens), textures, a History strip, and the Puppet Animator (rig, pose, keyframes up to 10 seconds, an animation library, a virtual set with your own background, MP4 export)."],
         ["Performance:", "Auto, Normal (slower computers), High (most laptops and Chromebooks) or Ultra (powerful computers, sharpest) in the theme menu (◐): lighter modes draw fewer pixels while the view moves and simpler shadows, with every tool and export unchanged. Auto picks a mode for the computer and steps down if things get slow."],
-        ["Tutorials:", "sixteen step-by-step projects (eight in Beginner, eight in Advanced, marked Easy, Proficient or Advanced, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."],
+        ["Tutorials:", "nineteen step-by-step projects (nine in Beginner, ten in Advanced, marked Easy, Proficient or Advanced, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."], // jumpstart-3d: tutorials count
         ["Mesh detail:", "Normal, Fine, Extra fine or a custom level up to 32× in the theme menu (◐): how finely curved surfaces are divided into triangles, in the view and in STL, OBJ and 3MF exports. STEP is exact at every level. The menu shows the triangle count of your design and estimates it for other levels; above 500,000 it asks first, because building can take minutes."],
         ["Help:", "press ? for every keyboard shortcut; right-click a shape for copy, paste, duplicate and delete."]]),
       // the author's credit from v1.93.8 stays in this community build (see NOTICE.md)
@@ -614,6 +614,8 @@ app.showAbout = function () {
       el("p", { class: "ab-credit-sub" }, "Created with Vibe Coding Assistance"),
       el("p", { class: "ab-credit-sub" }, "Community build maintained by Max Sikorski · ",
         el("a", { href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "github.com/MaxSikorski/jumpstart-3d")),
+      // jumpstart-3d: what the community build adds
+      el("p", { class: "ab-credit-sub" }, "Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail."),
       // the open-source libraries and fonts inside the app, with their licenses (they ask for this notice)
       el("section", { class: "ab-oss", id: "ab-oss" },
         el("h3", {}, "Open-source credits"),
@@ -809,7 +811,7 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
   const read = (txt) => {
     const v = parseLength(txt);
     if (expr === undefined || isFinite(v)) return { v, text: null };
-    return { v: evalExpr(txt, store.view.params, { unit: isLen ? getUnit() : "mm", angle }), text: txt.trim() };
+    return { v: evalExpr(txt, exprScope(store.view), { unit: isLen ? getUnit() : "mm", angle }), text: txt.trim() };
   };
   // phone number pads in "decimal" mode have no minus key, so only use them where negatives aren't allowed
   const inp = el("input", { class: "num" + (bound ? " fx" : ""), type: "text", inputmode: min >= 0 ? "decimal" : null, value: bound || show(value), id, spellcheck: "false", autocomplete: "off" }); // jumpstart-3d: parameters

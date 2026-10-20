@@ -11,7 +11,7 @@ import { uid, parseLength, fmt, round, el } from "./util.js";
 import { getUnit } from "./units.js";
 import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
 import { buildDim, dimGraphics, measureDim } from "./dims.js";
-import { evalExpr } from "./params.js"; // jumpstart-3d: parameters
+import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 
 const DEG = Math.PI / 180;
 import { theme } from "./theme.js";
@@ -880,7 +880,7 @@ export class Sketcher {
       label: d.k === "dia" ? `Diameter (${getUnit()})` : d.k === "rad" ? `Radius (${getUnit()})` : `Length (${getUnit()})`,
       value: skDisp(d.v, 3),
       unit: getUnit(),
-      resolve: (t) => evalExpr(t, store.view.params, { unit: getUnit() }), // jumpstart-3d: parameters
+      resolve: (t) => evalExpr(t, exprScope(store.view), { unit: getUnit() }), // jumpstart-3d: parameters
       onOk: (v, text) => {
         if (!(v > 0)) { this.app.toast && this.app.toast("Use a size above 0."); return; }
         const did = "dm" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1080,11 +1080,11 @@ export class Sketcher {
     const shown = c.expr || (isAng ? fmt(c.v, 3) : skDisp(c.v, 3)); // jumpstart-3d: parameters
     this.app.promptValue({
       at: [at[0] - 20, at[1] - 30],
-      label: isAng ? "Angle (°)" : c.k === "dia" ? `Diameter (${getUnit()})` : c.k === "rad" ? `Radius (${getUnit()})` : `Distance (${getUnit()})`,
+      label: (c.name ? c.name + " · " : "") + (isAng ? "Angle (°)" : c.k === "dia" ? `Diameter (${getUnit()})` : c.k === "rad" ? `Radius (${getUnit()})` : `Distance (${getUnit()})`), // jumpstart-3d: parameters (the dimension's name)
       value: shown,
       unit,
       // jumpstart-3d: parameters. A number is a plain value; anything else is an expression of parameter names, read in the unit typed
-      resolve: (t) => evalExpr(t, store.view.params, { unit: getUnit(), angle: isAng }),
+      resolve: (t) => evalExpr(t, exprScope(store.view, c), { unit: getUnit(), angle: isAng }),
       onOk: (v, text) => {
         if (!(v > 0) || (isAng && v >= 180)) { this.app.toast && this.app.toast(isAng ? "Use an angle between 0° and 180°." : "Use a size above 0."); return; }
         const plain = isFinite(parseLength(text, unit));

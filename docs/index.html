@@ -402,6 +402,9 @@ button { cursor: pointer; }
 /* jumpstart-3d: parameters panel */
 .tree .folder .param-add { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 12px/1 var(--f-ui); letter-spacing: 0; padding: 3px 8px; cursor: pointer; }
 .tree .folder .param-add:hover { color: var(--accent); border-color: var(--hover-line); }
+.tree .folder .param-tools { display: flex; gap: 4px; }
+.tree .node .sk-dof { font-size: 11px; color: var(--ink-3); flex: none; } /* jumpstart-3d: parameters. how many degrees of freedom a sketch has left */
+.tree .node .sk-dof.ok { color: var(--accent); }
 .tree .param { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto 18px; align-items: center; gap: 4px; padding: 2px 6px; }
 .tree .param .num { padding: 3px 5px; font-size: 12px; }
 .tree .param .pv { font: 11px/1 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
@@ -613,8 +616,8 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .section-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a317; }
 .section-chip .btn { padding: 3px 10px; font-size: 12px; }
 .section-chip .xbtn { width: 26px; height: 26px; }
-.tree .folder .dxf-all { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 10.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; padding: 3px 6px; cursor: pointer; }
-.tree .folder .dxf-all:hover { color: var(--accent); border-color: var(--hover-line); }
+.tree .folder .dxf-all, .tree .folder .param-csv-out, .tree .folder .param-csv-in { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; font: 600 10.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; padding: 3px 6px; cursor: pointer; }
+.tree .folder .dxf-all:hover, .tree .folder .param-csv-out:hover, .tree .folder .param-csv-in:hover { color: var(--accent); border-color: var(--hover-line); }
 .tree .node .dxf-one { opacity: .45; }
 .tree .node:hover .dxf-one, .tree .node .dxf-one:focus { opacity: 1; }
 .platenode .pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
