@@ -985,7 +985,7 @@ export function initBeginner(app) {
   function renderInspector(force) {
     const sel = app.selected();
     if (!sel.length || app.mode !== "beginner") { inspector.hidden = true; inspKey = ""; return; }
-    const key = JSON.stringify(sel.map((b) => [b.id, b.node.t === "prim" ? [b.node.p, b.node.exprs || null] : null, b.hole, b.color, b.name, b.m, !!b.locked, b.textures || null, b.node.mods || null, !!app.scene.views.get(b.id)?.data])) + JSON.stringify(store.doc.params); // jumpstart-3d: parameters
+    const key = JSON.stringify(sel.map((b) => [b.id, b.node.t === "prim" ? [b.node.p, b.node.exprs || null] : null, b.hole, b.color, b.name, b.m, !!b.locked, b.textures || null, b.node.mods || null, app.scene.views.get(b.id)?.key])) + JSON.stringify(store.doc.params); // jumpstart-3d: parameters // jumpstart-3d: fix
     if (!force && key === inspKey && !inspector.hidden) return;
     const ae = document.activeElement && inspector.contains(document.activeElement) ? document.activeElement : null;
     let focusId = ae ? ae.id : null;

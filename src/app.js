@@ -111,10 +111,11 @@ function boot() {
   app.sketcher = new Sketcher(app);
   scene.onRefresh = () => app.onSceneRefresh && app.onSceneRefresh();
   // a shape's size and position boxes need its finished geometry: show them once it arrives
+  let drawnKey; // jumpstart-3d: fix. redraw when a new mesh lands, not only when the position boxes are missing
   app.onSceneRefresh = () => {
     if (app.mode !== "beginner" || app.sel.length !== 1 || app.command || app.sketcher.active) return;
-    const insp = $("inspector");
-    if (insp && !insp.hidden && !document.getElementById("insp-pos0") && scene.bodyTightBox(app.sel[0])) setTimeout(() => app.refreshUI("geometry"), 0);
+    const insp = $("inspector"), key = scene.views.get(app.sel[0])?.key; // jumpstart-3d: fix
+    if (insp && !insp.hidden && key && key !== drawnKey) { drawnKey = key; setTimeout(() => app.refreshUI("geometry"), 0); } // jumpstart-3d: fix
   };
 
   // on small screens the side panels start tucked away (toggle from the toolbar)
@@ -817,6 +818,7 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
     const { v, text } = read(inp.value);
     if (!isFinite(v) || v < min || v > max) { inp.classList.add("bad"); return; }
     inp.classList.remove("bad");
+    delete inp.dataset.dirty; // jumpstart-3d: fix. committed text is not half-typed; the inspector would put it back after its redraw and commit it again on blur
     if (Math.abs(v - last) > 1e-12 || text !== bound) { last = v; bound = text; onCommit(v, text); } // jumpstart-3d: parameters
     inp.value = bound || show(v); // jumpstart-3d: parameters
     inp.classList.toggle("fx", !!bound); // jumpstart-3d: parameters

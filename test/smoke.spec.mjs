@@ -738,3 +738,73 @@ test("Parameters: dragging a Beginner resize handle frees that size and keeps th
   expect(n.exprs).toEqual({ d: "w/2", h: "h" });
   expect(n.p.h).toBe(20);
 });
+
+// Beginner inspector: type a number, press Enter, then click elsewhere. The box must act once
+// (one change in the design, one undo step), not again when it loses focus.
+const typeThenClickAway = async (id, text) => {
+  await page.locator("#" + id).fill(text);
+  await page.keyboard.press("Enter");
+  await waitIdle(page);
+  await page.locator("#inspector .subhead").first().click();
+  await waitIdle(page);
+};
+const bodiesJson = () => page.evaluate(() => JSON.stringify(window.__store.doc.bodies));
+const undoOnce = async () => { await page.evaluate(() => window.__app.undo()); await waitIdle(page); };
+
+test("Beginner: a group's Width, Depth and Height act once when you press Enter and click away", async () => {
+  // two 20 mm boxes side by side: a 40 x 20 x 20 group
+  const child = (name, x) => ({ node: prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0, 0, 1], hole: false, name, color: "#3b82c4" });
+  const doc = newDoc("Wide group", "beginner", { bodies: [body("g1", "Group", { t: "group", children: [child("Box 1", -10), child("Box 2", 10)], mods: [] })] });
+  for (const [i, from] of [[0, 40], [1, 20], [2, 20]]) {
+    await loadDoc(page, doc);
+    await page.evaluate(() => window.__app.select(["g1"]));
+    const before = await bodiesJson();
+    await expect(page.locator("#insp-s" + i)).toHaveValue(String(from));
+    await typeThenClickAway("insp-s" + i, String(from * 2));
+    await expect(page.locator("#insp-s" + i)).toHaveValue(String(from * 2)); // the box shows the new size once the mesh lands
+    const scales = await page.evaluate(() => window.__store.doc.bodies[0].node.mods.filter((m) => m.t === "scale").map((m) => m.k));
+    expect(scales).toHaveLength(1);
+    scales[0].forEach((k, j) => expect(k).toBeCloseTo(j === i ? 2 : 1, 6));
+    await undoOnce(); // one commit means one undo step
+    expect(await bodiesJson()).toBe(before);
+  }
+  // stretch again: the box has the new size, so 100 is 2.5 times the 40 mm shown, not 100 / 40 on top of 80
+  await loadDoc(page, doc);
+  await page.evaluate(() => window.__app.select(["g1"]));
+  await typeThenClickAway("insp-s0", "80");
+  await typeThenClickAway("insp-s0", "100");
+  const width = () => page.evaluate(() => { const b = window.__app.scene.views.get("g1").data.bbox; return b.max[0] - b.min[0]; });
+  expect(await width()).toBeCloseTo(100, 1);
+  const chained = await page.evaluate(() => window.__store.doc.bodies[0].node.mods.map((m) => m.k));
+  expect(chained).toHaveLength(1);
+  expect(chained[0][0]).toBeCloseTo(2.5, 6);
+  // text half-typed in another box survives the redraw when the new mesh lands
+  await page.locator("#insp-s1").fill("30");
+  await page.evaluate(() => window.__app.scene.onRefresh());
+  await waitIdle(page);
+  await expect(page.locator("#insp-s1")).toHaveValue("30");
+  await page.keyboard.press("Escape"); // drop the unsent text before the next design replaces this one
+  // a box that already carries a Scale feature shows the same Size boxes
+  const scaled = newDoc("Scaled box", "beginner", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }, [{ id: "f1", seq: 1, t: "scale", k: [1, 1, 1], o: [0, 0, 0] }]))] });
+  await loadDoc(page, scaled);
+  await page.evaluate(() => window.__app.select(["b1"]));
+  const before = await bodiesJson();
+  await typeThenClickAway("insp-s0", "40");
+  expect(await page.evaluate(() => window.__store.doc.bodies[0].node.mods.map((m) => m.k))).toEqual([[2, 1, 1]]);
+  await undoOnce();
+  expect(await bodiesJson()).toBe(before);
+});
+
+test("Beginner: a shape's size and position boxes act once when you press Enter and click away", async () => {
+  const doc = newDoc("Lone box", "beginner", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
+  for (const [id, text] of [["insp-w", "30"], ["insp-d", "30"], ["insp-h", "30"], ["insp-pos0", "15"], ["insp-pos1", "15"], ["insp-pos2", "15"]]) {
+    await loadDoc(page, doc);
+    await page.evaluate(() => window.__app.select(["b1"]));
+    const before = await bodiesJson();
+    await typeThenClickAway(id, text);
+    const after = await bodiesJson();
+    expect(after, id).not.toBe(before);
+    await undoOnce();
+    expect(await bodiesJson(), id).toBe(before);
+  }
+});
