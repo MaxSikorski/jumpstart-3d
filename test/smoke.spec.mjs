@@ -329,3 +329,180 @@ test("Parameters: typing an expression into a dimension's value box binds it", a
     await page.evaluate(() => window.__app.exitSketch());
   }
 });
+
+// ---- feature values follow named parameters (Phase P step 2) ----
+// t = 15 (extrude distance), d = 6 (through hole), f = 2 (fillet on one vertical edge)
+const features = () => JSON.parse(readFileSync(new URL("./projects/parametric-features.json", import.meta.url), "utf8"));
+const featureVol = (t = 15, d = 6, f = 2) => 40 * 20 * t - Math.PI * (d / 2) ** 2 * t - (1 - Math.PI / 4) * f * f * t;
+const featureNode = () => page.evaluate(() => { const n = window.__store.doc.bodies[0].node; return { dist: n.dist, exprs: n.exprs, mods: n.mods.map((m) => ({ t: m.t, dia: m.dia, r: m.r, exprs: m.exprs })) }; });
+
+test("Parameters: changing t moves the extrude distance, the volume and the STL; undo brings them back", async () => {
+  await loadDoc(page, features());
+  let list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(featureVol(), 0);
+  const a = await stlHash();
+  await setParam("t", "30");
+  await waitIdle(page);
+  list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(featureVol(30), 0);
+  expect((await featureNode()).dist).toBe(30);
+  expect((await stlHash()).hash).not.toBe(a.hash);
+  await page.evaluate(() => window.__app.undo());
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(featureVol(), 0);
+  expect((await featureNode()).dist).toBe(15);
+  expect((await stlHash()).hash).toBe(a.hash);
+});
+
+test("Parameters: changing d resizes the hole, changing f resizes the fillet", async () => {
+  await loadDoc(page, features());
+  await setParam("d", "10");
+  await waitIdle(page);
+  let list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(featureVol(15, 10), 0);
+  expect((await featureNode()).mods[0].dia).toBe(10);
+  await setParam("f", "4");
+  await waitIdle(page);
+  list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(featureVol(15, 10, 4), 0);
+  expect((await featureNode()).mods[1].r).toBe(4);
+});
+
+test("Parameters: a bad expression for t keeps the last shape and shows 'error'", async () => {
+  await loadDoc(page, features());
+  await setParam("t", "nope*2");
+  await waitIdle(page);
+  const list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(featureVol(), 0);
+  expect((await featureNode()).dist).toBe(15);
+  expect((await featureNode()).exprs).toEqual({ dist: "t" }); // still bound
+  await expect(paramValue("t")).toContainText("error");
+});
+
+test("Parameters: renaming a parameter follows it into features; deleting one unbinds them", async () => {
+  await loadDoc(page, features());
+  const t = page.locator("#browser .param", { has: page.locator('input.param-name[value="t"]') });
+  await t.locator("input.param-name").fill("thick");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await featureNode()).exprs).toEqual({ dist: "thick" });
+  await page.locator('#browser button[aria-label="Delete thick"]').click();
+  await expect.poll(async () => (await featureNode()).exprs).toBeUndefined();
+  const n = await featureNode();
+  expect(n.dist).toBe(15); // the number stays
+  expect(n.mods.map((m) => m.exprs)).toEqual([{ dia: "d" }, { r: "f" }]); // the others are untouched
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(featureVol(), 0);
+});
+
+test("Parameters: the Extrude dialog takes an expression for the distance and keeps it", async () => {
+  await loadDoc(page, features());
+  await page.locator('.tl-item[aria-label^="Extrude"]').dblclick();
+  const dist = page.locator("#ex-dist");
+  await expect(dist).toHaveValue("t");
+  await expect(dist).toHaveClass(/fx/);
+  await dist.fill("t*2");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+  await waitIdle(page);
+  const n = await featureNode();
+  expect(n.exprs).toEqual({ dist: "t*2" });
+  expect(n.dist).toBe(30);
+  expect((await bodies(page))[0].volume).toBeCloseTo(featureVol(30), 0);
+  await expect(page.locator('.tl-item[aria-label="Extrude (dist = t*2)"]')).toHaveCount(1);
+});
+
+test("Parameters: fillet and hole dialogs take expressions; a chamfer (also with a sets list) and a shell follow a parameter", async () => {
+  await loadDoc(page, features());
+  await page.locator('.tl-item[aria-label^="Fillet"]').dblclick();
+  await expect(page.locator("#ed-val")).toHaveValue("f");
+  await page.fill("#ed-val", "f*2");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+  await page.locator('.tl-item[aria-label^="Hole"]').dblclick();
+  await expect(page.locator("#hole-dia")).toHaveValue("d");
+  await page.fill("#hole-dia", "d+2");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+  await waitIdle(page);
+  const n = await featureNode();
+  expect(n.mods.map((m) => [m.exprs, m.r, m.dia])).toEqual([[{ dia: "d+2" }, undefined, 8], [{ r: "f*2" }, 4, undefined]]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(featureVol(15, 8, 4), 0);
+
+  const doc = box20();
+  doc.params = [{ id: "q1", name: "c", expr: "3", value: 3 }, { id: "q2", name: "w", expr: "1.5", value: 1.5 }, { id: "q3", name: "a", expr: "90", value: 90 }];
+  doc.bodies[0].node.mods.push({ id: "c1", seq: 2, t: "chamfer", d: 2, edges: [FRONT_RIGHT], exprs: { d: "c" } });
+  await loadDoc(page, doc);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000 - 0.5 * 3 * 3 * 20, 0);
+  await setParam("c", "4");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000 - 0.5 * 4 * 4 * 20, 0);
+
+  // with a sets list the kernel reads sets[0].r, so that is where the new size goes
+  doc.bodies[0].node.mods[0] = { id: "c1", seq: 2, t: "chamfer", d: 2, edges: [FRONT_RIGHT], sets: [{ edges: [FRONT_RIGHT], r: 2, rt: "const" }], exprs: { d: "c" } };
+  await loadDoc(page, doc);
+  await setParam("c", "4");
+  await waitIdle(page);
+  expect((await page.evaluate(() => window.__store.doc.bodies[0].node.mods[0].sets[0].r))).toBe(4);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000 - 0.5 * 4 * 4 * 20, 0);
+
+  doc.bodies[0].node.mods = [{ id: "s1", seq: 2, t: "shell", th: 2, faces: [], exprs: { th: "w" } }];
+  await loadDoc(page, doc);
+  const v1 = (await bodies(page))[0].volume;
+  expect(v1).toBeCloseTo(8000 - 17 ** 3, 0);
+  await setParam("w", "3");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(8000 - 14 ** 3, 0);
+});
+
+test("Parameters: a revolve angle follows a parameter and an out-of-range value is skipped", async () => {
+  const doc = features();
+  doc.params.push({ id: "q6", name: "a", expr: "360", value: 360 });
+  doc.sketches[0].cons = doc.sketches[0].cons.map((c) => (c.id === "d1" ? { ...c, expr: undefined, v: 40 } : c));
+  doc.bodies[0].node = { t: "revolve", sketch: "s1", profiles: doc.bodies[0].node.profiles, axis: "X", angle: 360, exprs: { angle: "a" }, mods: [] };
+  await loadDoc(page, doc);
+  expect((await bodies(page))[0].volume).toBeCloseTo(Math.PI * 20 * 20 * 40, 0);
+  await setParam("a", "180");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo((Math.PI * 20 * 20 * 40) / 2, 0);
+  await setParam("a", "400"); // out of range: keeps 180
+  await waitIdle(page);
+  expect((await page.evaluate(() => window.__store.doc.bodies[0].node.angle))).toBe(180);
+});
+
+test("Parameters: typing a plain number into a bound distance box removes the binding", async () => {
+  await loadDoc(page, features());
+  await page.locator('.tl-item[aria-label^="Extrude"]').dblclick();
+  await expect(page.locator("#ex-dist")).toHaveClass(/fx/);
+  await page.fill("#ex-dist", "20");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => !window.__app.command)).toBe(true);
+  await waitIdle(page);
+  expect((await featureNode()).dist).toBe(20);
+  expect(await page.evaluate(() => "exprs" in window.__store.doc.bodies[0].node)).toBe(false); // the key is gone, not left as {}
+  expect((await bodies(page))[0].volume).toBeCloseTo(featureVol(20), 0);
+});
+
+test("Parameters: the copy kept by Mirror with Join follows t and its renames", async () => {
+  const doc = features();
+  const node = doc.bodies[0].node;
+  node.mods.push({ id: "m1", seq: 5, t: "bool", op: "join", tool: { t: "mirror", src: JSON.parse(JSON.stringify(node)), srcM: doc.bodies[0].m.slice(), plane: { o: [0, 0, 0], n: [1, 0, 0] }, mods: [] }, m: doc.bodies[0].m.slice() });
+  await loadDoc(page, doc);
+  const src = () => page.evaluate(() => { const s = window.__store.doc.bodies[0].node.mods[2].tool.src; return { dist: s.dist, exprs: s.exprs }; });
+  let list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(2 * featureVol(), 0);
+  await setParam("t", "30");
+  await waitIdle(page);
+  list = await bodies(page);
+  expect(list[0].error).toBeNull();
+  expect(list[0].volume).toBeCloseTo(2 * featureVol(30), 0); // both halves grew
+  expect((await src()).dist).toBe(30);
+  await page.locator("#browser .param", { has: page.locator('input.param-name[value="t"]') }).locator("input.param-name").fill("thick");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await src()).exprs).toEqual({ dist: "thick" });
+});

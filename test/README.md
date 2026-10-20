@@ -29,7 +29,13 @@ suite runs on GitHub Actions for every pull request (`.github/workflows/test.yml
   in mm (a bare number next to a name is plain, a lone number typed in inches is
   read as inches), renaming a parameter
   follows it into other parameters and dimensions, and a dimension's value box
-  takes an expression.
+  takes an expression. Nine more load `projects/parametric-features.json`
+  (feature values following parameters): changing `t`, `d` or `f` moves the
+  extrude distance, hole and fillet and the STL hash with undo restoring it,
+  a bad expression keeps the last shape, renaming and deleting a parameter
+  follow into features, the Extrude, Fillet and Hole dialogs take an expression
+  typed into their value box, and a revolve angle, a chamfer (with a sets list)
+  and a shell thickness follow too, a plain number typed over a bound box removes the binding, and the copy kept by Mirror with Join follows a parameter and its renames.
 - `golden.spec.mjs`: every design in `projects/` is loaded, exported as STL,
   OBJ, 3MF and STEP (and DXF when it has sketches) through the real menu, and the bytes are hashed against
   `golden.json` (the STEP file is cleaned first: the time it was written and the
@@ -53,7 +59,7 @@ sets `UPDATE_GOLDEN=1` and records from the site build; in PowerShell run
 Drop a project file in `projects/` (Export > Save Project File, or a
 hand-written document like the existing ones) and re-record. Keep designs
 small: each one is built, exported three times and hashed on every run.
-A design can carry `params` (`[{ id, name, expr, value }]`, plus `unit: "in"` when typed in inches) and sketch dimensions with an `expr`, as `parametric-plate.json` does.
+A design can carry `params` (`[{ id, name, expr, value }]`, plus `unit: "in"` when typed in inches) and sketch dimensions with an `expr`, as `parametric-plate.json` does. A feature (extrude or revolve node, fillet, chamfer, hole or shell mod) can carry `exprs: { dist: "t" }` (keys `dist`, `dist2`, `angle`, `r`, `d`, `dia`, `depth`, `th`; plus `exprUnits` when typed in inches), as `parametric-features.json` does; leave `exprs` out when nothing is bound.
 
 ## How the tests reach the app
 

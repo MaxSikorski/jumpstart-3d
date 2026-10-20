@@ -18,6 +18,7 @@ import { setCustomTextureSource } from "./texture.js";
 setCustomTextureSource(() => ({ ...(store.doc.texImages || {}), ...((store.preview && store.preview.texImages) || {}) }));
 import { el, parseLength, fmt, IS_MAC, IS_IOS, IS_IPHONE, watchMacLabels } from "./util.js";
 const parseLengthMM = parseLength;
+import { evalExpr } from "./params.js"; // jumpstart-3d: parameters
 import { getUnit, setUnit, onUnit, toU, fromU, showLen, parseLen, unitName, SNAP_SIZES } from "./units.js";
 import { setThemeColors, theme } from "./theme.js";
 import { ICON } from "./icons.js";
@@ -795,21 +796,30 @@ app.submitCommand = function () {
 };
 // fields that hold a length (shown and typed in the chosen units); the rest are angles, counts, factors…
 const LEN_FIELD = /^(em-size|em-depth|ex-dist2?|ed-val2?|hole-(dia|depth|cbd|cbh|csd|p\d)|pl-d|ins-[hw]|img-w|th-len|of-d|sh-th|mv-d\d|pr-(w|d|h|tube|pos\d)|pr-x-(wall|r|c)|pt-s\d|pal-(imw|imx|imy|px|py|x|y|size|len|ax|ay|bx|by|dia|cx|cy|r)|insp-(s\d|size|h|w|d|pos\d)|pp-(size|wall)|cl-(d|h|pitch|size|o\d))$/;
-app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Infinity, id, unit = "mm", angle = false, live = false, len }) {
+app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Infinity, id, unit = "mm", angle = false, live = false, len, expr }) {
   const isLen = !angle && (len != null ? len : !!(id && LEN_FIELD.test(id)));
   // shown in the current units; the value handed back is always mm
   const show = (v) => (isLen ? showLen(v, 3) : fmt(v, 3));
   const parseLength = (txt) => (isLen ? parseLen(txt) : parseLengthMM(txt));
   if (isLen && getUnit() === "in") step = step >= 1 ? 25.4 / 16 : 25.4 / 64;
+  // jumpstart-3d: parameters. Passing expr (the saved expression text, or null) lets the field hold a parameter expression:
+  // onCommit(v, text) gets the trimmed text, or null for a plain number. Without expr (undefined) the field is unchanged.
+  let bound = expr || null;
+  const read = (txt) => {
+    const v = parseLength(txt);
+    if (expr === undefined || isFinite(v)) return { v, text: null };
+    return { v: evalExpr(txt, store.view.params, { unit: isLen ? getUnit() : "mm", angle }), text: txt.trim() };
+  };
   // phone number pads in "decimal" mode have no minus key, so only use them where negatives aren't allowed
-  const inp = el("input", { class: "num", type: "text", inputmode: min >= 0 ? "decimal" : null, value: show(value), id, spellcheck: "false", autocomplete: "off" });
+  const inp = el("input", { class: "num" + (bound ? " fx" : ""), type: "text", inputmode: min >= 0 ? "decimal" : null, value: bound || show(value), id, spellcheck: "false", autocomplete: "off" }); // jumpstart-3d: parameters
   let last = value;
   const commit = () => {
-    const v = parseLength(inp.value);
+    const { v, text } = read(inp.value);
     if (!isFinite(v) || v < min || v > max) { inp.classList.add("bad"); return; }
     inp.classList.remove("bad");
-    if (Math.abs(v - last) > 1e-12) { last = v; onCommit(v); }
-    inp.value = show(v);
+    if (Math.abs(v - last) > 1e-12 || text !== bound) { last = v; bound = text; onCommit(v, text); } // jumpstart-3d: parameters
+    inp.value = bound || show(v); // jumpstart-3d: parameters
+    inp.classList.toggle("fx", !!bound); // jumpstart-3d: parameters
   };
   inp.addEventListener("keydown", (e) => {
     e.stopPropagation();
@@ -818,7 +828,7 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
       // Enter in a tool's dialog applies the change, like pressing OK
       if (!inp.classList.contains("bad") && inp.closest("#cmd")) app.submitCommand();
     }
-    else if (e.key === "Escape") { inp.value = show(last); inp.blur(); }
+    else if (e.key === "Escape") { inp.value = bound || show(last); inp.blur(); } // jumpstart-3d: parameters
     else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
       const cur = parseLength(inp.value);
@@ -827,10 +837,10 @@ app.numField = function ({ value, onCommit, step = 1, min = -Infinity, max = Inf
       commit();
     }
   });
-  if (live) inp.addEventListener("input", () => { const v = parseLength(inp.value); if (isFinite(v) && v >= min && v <= max) { inp.classList.remove("bad"); last = v; onCommit(v); } });
+  if (live) inp.addEventListener("input", () => { const { v, text } = read(inp.value); if (isFinite(v) && v >= min && v <= max) { inp.classList.remove("bad"); inp.classList.toggle("fx", !!text); last = v; bound = text; onCommit(v, text); } }); // jumpstart-3d: parameters
   inp.addEventListener("change", commit);
   inp.addEventListener("focus", () => inp.select());
-  inp.setValue = (v) => { last = v; if (document.activeElement !== inp) inp.value = show(v); };
+  inp.setValue = (v) => { last = v; bound = null; inp.classList.remove("fx"); if (document.activeElement !== inp) inp.value = show(v); }; // jumpstart-3d: parameters
   void unit; void angle;
   return inp;
 };

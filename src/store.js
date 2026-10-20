@@ -391,7 +391,7 @@ export function resolveNode(node, doc) {
 }
 
 export function bodyKey(resolved) {
-  return JSON.stringify(resolved, (k, v) => (k === "id" || k === "seq" || k === "name" || k === "color" ? undefined : v));
+  return JSON.stringify(resolved, (k, v) => (k === "id" || k === "seq" || k === "name" || k === "color" || k === "exprs" || k === "exprUnits" ? undefined : v)); // jumpstart-3d: parameters
 }
 
 // ------------------------------------------------------------- timeline
@@ -399,6 +399,8 @@ export function bodyKey(resolved) {
 const PRIM_NAMES = { box: "Box", cylinder: "Cylinder", sphere: "Sphere", cone: "Cone", pyramid: "Pyramid", wedge: "Wedge", torus: "Torus", tube: "Tube", hemisphere: "Hemisphere", prism: "Prism", text: "Text", star: "Star", heart: "Heart", roof: "Roof", roundroof: "Round roof", paraboloid: "Paraboloid", gem: "Gem", spring: "Spring", capsule: "Capsule", arrow: "Arrow" };
 export function primName(kind) { return PRIM_NAMES[kind] || kind; }
 
+// jumpstart-3d: parameters. " (dist = t)" after the label of a feature with bound values
+const exprTag = (o) => { const e = Object.entries(o.exprs || {}); return e.length ? ` (${e.map(([k, v]) => `${k} = ${v}`).join(", ")})` : ""; };
 export function timeline(doc) {
   const items = [];
   for (const s of doc.sketches) items.push({ seq: s.seq, kind: "sketch", label: s.name, sketch: s.id });
@@ -409,11 +411,11 @@ export function timeline(doc) {
     const n = b.node;
     const kind = n.t === "prim" || n.t === "mesh" || n.t === "step" ? "prim" : n.t === "group" ? "combine" : n.t;
     const label = n.t === "mesh" ? (b.sculpt ? "Sculpt" : "Imported mesh") : n.t === "step" ? "Imported STEP" : n.t === "prim" ? primName(n.kind) : n.t === "group" ? (n.op === "intersect" ? "Intersect" : "Combine") : n.t === "extrude" ? "Extrude" : n.t === "sweep" ? "Sweep" : n.t === "pipe" ? "Pipe" : n.t === "coil" ? "Coil" : n.t === "loft" ? "Loft" : n.t === "mirror" ? "Mirror" : "Revolve";
-    items.push({ seq: b.seq, kind, label, body: b.id });
+    items.push({ seq: b.seq, kind, label: label + exprTag(n), body: b.id }); // jumpstart-3d: parameters
     for (const m of n.mods || []) {
       const lab = { halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t];
       if (m.src === "combine") { items.push({ seq: m.seq || b.seq, kind: "combine", label: "Combine" + (m.op === "cut" ? " (cut)" : m.op === "intersect" ? " (intersect)" : ""), body: b.id, mod: m.id }); continue; }
-      items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab, body: b.id, mod: m.id });
+      items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab && lab + exprTag(m.t === "bool" ? m.tool : m), body: b.id, mod: m.id }); // jumpstart-3d: parameters
     }
     for (const tx of b.textures || []) items.push({ seq: tx.seq || b.seq, kind: "texture", label: "Texture", body: b.id, tex: tx.id });
   }

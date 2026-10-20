@@ -1,0 +1,284 @@
+{
+ "v": 1,
+ "id": "g_parametric_features",
+ "name": "Parametric features",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 14,
+ "grid": 1,
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Plate",
+   "seq": 2,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "extrude",
+    "sketch": "s1",
+    "profiles": [
+     {
+      "key": "e0,e1,e2,e3",
+      "pt": [
+       20,
+       10
+      ]
+     }
+    ],
+    "dist": 15,
+    "mode": "one",
+    "dist2": 0,
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 3,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 6,
+      "through": true,
+      "depth": 10,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "at": [
+       {
+        "p": [
+         20,
+         10,
+         0
+        ],
+        "n": [
+         0,
+         0,
+         -1
+        ]
+       }
+      ],
+      "exprs": {
+       "dia": "d"
+      }
+     },
+     {
+      "id": "f2",
+      "seq": 4,
+      "t": "fillet",
+      "r": 2,
+      "edges": [
+       {
+        "a": [
+         40,
+         20,
+         0
+        ],
+        "b": [
+         40,
+         20,
+         15
+        ],
+        "m": [
+         40,
+         20,
+         7.5
+        ],
+        "n": [
+         1,
+         1,
+         0.5
+        ],
+        "t": "LINE"
+       }
+      ],
+      "exprs": {
+       "r": "f"
+      }
+     }
+    ],
+    "exprs": {
+     "dist": "t"
+    }
+   }
+  }
+ ],
+ "sketches": [
+  {
+   "id": "s1",
+   "name": "Sketch 1",
+   "seq": 1,
+   "plane": {
+    "o": [
+     0,
+     0,
+     0
+    ],
+    "x": [
+     1,
+     0,
+     0
+    ],
+    "n": [
+     0,
+     0,
+     1
+    ]
+   },
+   "pts": [
+    {
+     "id": "p0",
+     "x": 0,
+     "y": 0
+    },
+    {
+     "id": "p1",
+     "x": 40,
+     "y": 0
+    },
+    {
+     "id": "p2",
+     "x": 40,
+     "y": 20
+    },
+    {
+     "id": "p3",
+     "x": 0,
+     "y": 20
+    }
+   ],
+   "ents": [
+    {
+     "id": "e0",
+     "t": "line",
+     "a": "p0",
+     "b": "p1"
+    },
+    {
+     "id": "e1",
+     "t": "line",
+     "a": "p1",
+     "b": "p2"
+    },
+    {
+     "id": "e2",
+     "t": "line",
+     "a": "p2",
+     "b": "p3"
+    },
+    {
+     "id": "e3",
+     "t": "line",
+     "a": "p3",
+     "b": "p0"
+    }
+   ],
+   "hidden": false,
+   "cons": [
+    {
+     "id": "c1",
+     "t": "origin",
+     "p": "p0"
+    },
+    {
+     "id": "c2",
+     "t": "horizontal",
+     "e1": "e0"
+    },
+    {
+     "id": "c3",
+     "t": "vertical",
+     "e1": "e1"
+    },
+    {
+     "id": "c4",
+     "t": "horizontal",
+     "e1": "e2"
+    },
+    {
+     "id": "c5",
+     "t": "vertical",
+     "e1": "e3"
+    },
+    {
+     "id": "d1",
+     "t": "dim",
+     "k": "dist",
+     "p1": "p0",
+     "p2": "p1",
+     "o": "h",
+     "v": 40,
+     "off": [
+      20,
+      -6
+     ],
+     "expr": "w"
+    },
+    {
+     "id": "d2",
+     "t": "dim",
+     "k": "dist",
+     "p1": "p1",
+     "p2": "p2",
+     "o": "v",
+     "v": 20,
+     "off": [
+      46,
+      10
+     ],
+     "expr": "h"
+    }
+   ]
+  }
+ ],
+ "planes": [],
+ "joints": [],
+ "params": [
+  {
+   "id": "q1",
+   "name": "w",
+   "expr": "40",
+   "value": 40
+  },
+  {
+   "id": "q2",
+   "name": "h",
+   "expr": "w/2",
+   "value": 20
+  },
+  {
+   "id": "q3",
+   "name": "t",
+   "expr": "15",
+   "value": 15
+  },
+  {
+   "id": "q4",
+   "name": "d",
+   "expr": "6",
+   "value": 6
+  },
+  {
+   "id": "q5",
+   "name": "f",
+   "expr": "2",
+   "value": 2
+  }
+ ]
+}
