@@ -78,6 +78,18 @@ through Beginner, Advanced and Chisel in
 - GitHub Discussions, for announcements, polls and Q&A:
   https://github.com/MaxSikorski/jumpstart-3d/discussions
 
+## Support the project
+
+JumpStart 3D is free and stays free. If it saves you time, you can chip in
+towards the maintainer's hosting and coffee. Both are Stripe payment links;
+no account needed.
+
+- One-time, any amount: https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
+- Monthly: https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
+
+This supports the community build only; the original author is credited in
+the app's About dialog and in NOTICE.md.
+
 ## Help improve it
 
 You do not need to write code to help.
@@ -95,6 +107,8 @@ You do not need to write code to help.
   Helping other users counts.
 - **Want to change the code?** Read on, and see
   [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+- **Want to support the work with money?** See
+  [Support the project](#support-the-project) above.
 
 ## I want to change it or contribute
 
