@@ -57,7 +57,7 @@ test("SKILL.md has a name and a description under 1,000 characters, in frontmatt
 
 test("every Chromium install line in the docs names the Playwright version the plugin pins", () => {
   const pin = json("package.json").dependencies.playwright;
-  for (const file of [["..", "README.md"], ["README.md"], ["skills", plugin.name, "SKILL.md"], ["cli.mjs"]]) {
+  for (const file of [["..", "README.md"], ["README.md"], ["AGENT-SETUP.md"], ["skills", plugin.name, "SKILL.md"], ["cli.mjs"]]) {
     const doc = text(...file);
     assert.doesNotMatch(doc, /npx playwright install/, file.join("/") + ": a bare \"npx playwright install\" fetches the newest browser, not the one this version drives");
     assert.ok(/npx playwright@/.test(doc) || file[0] === "..", file.join("/") + " should say how to install Chromium");
@@ -67,4 +67,16 @@ test("every Chromium install line in the docs names the Playwright version the p
 
 test("the root @playwright/test is the same version as mcp's playwright (CI installs the browser from the root)", () => {
   assert.equal(json("..", "package.json").devDependencies["@playwright/test"], json("package.json").dependencies.playwright);
+});
+
+test("the skill at the repository root is byte-identical to the plugin's (npx skills add and other agents read the root one)", () => {
+  const root = readFileSync(resolve(MCP, "..", "skills", plugin.name, "SKILL.md"));
+  assert.ok(root.equals(readFileSync(resolve(MCP, "skills", plugin.name, "SKILL.md"))), "copy mcp/skills/jumpstart-3d/SKILL.md to skills/jumpstart-3d/SKILL.md");
+});
+
+test("the one-line setup prompt is in both READMEs and the About dialog, and AGENT-SETUP.md is short", () => {
+  const prompt = "Read https://raw.githubusercontent.com/MaxSikorski/jumpstart-3d/main/mcp/AGENT-SETUP.md and set it up for me.";
+  for (const file of [["README.md"], ["..", "README.md"], ["..", "src", "app.js"]]) assert.ok(text(...file).includes(prompt), file.join("/") + " should carry the setup prompt");
+  const setup = text("AGENT-SETUP.md");
+  assert.ok(setup.trimEnd().split("\n").length <= 140, "AGENT-SETUP.md must stay within 140 lines");
 });

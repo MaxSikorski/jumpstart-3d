@@ -14,6 +14,16 @@ call that needs a page when none is. The `status` tool tells you which one you a
 
 ## Install
 
+### Let your agent do it
+
+Paste this line to any AI agent that can read a web page and run commands (Claude Code, Codex, Hermes, OpenCode, Gemini CLI...):
+
+```
+Read https://raw.githubusercontent.com/MaxSikorski/jumpstart-3d/main/mcp/AGENT-SETUP.md and set it up for me.
+```
+
+[`AGENT-SETUP.md`](AGENT-SETUP.md) tells the agent how to get the code, add the server to its own configuration (asking you before it edits files outside the repository) and check that it works. The rest of this section is the same thing done by hand.
+
 ### Claude Code: two commands
 
 ```
@@ -49,7 +59,7 @@ npm ci
 npx playwright@1.62.1 install chromium      # only needed for headless mode
 ```
 
-Add the server to Claude Code's `.mcp.json` (project folder) or with `claude mcp add`:
+Add the server to Claude Code's `.mcp.json` (project folder) or with `claude mcp add --scope user jumpstart-3d -- node <repo>/mcp/server.mjs` (the same entry as below, for every folder):
 
 ```json
 { "mcpServers": { "jumpstart-3d": { "command": "node", "args": ["<repo>/mcp/server.mjs"] } } }
@@ -62,6 +72,82 @@ headless mode opens the checkout's own `docs/` folder when it is there. Tools ad
 To use your open tab: open JumpStart 3D (the website or the single file), open the theme menu (◐) and turn on
 **Connect to AI agent**. The row reads "waiting" until the server is found, then "connected". On the website your browser may ask to allow "local network access": allow it. The setting is remembered in
 that browser, so the tab reconnects by itself when you reload it or restart the agent. Turn it off the same way.
+
+### Other agents
+
+Any client that starts a stdio MCP server can use it. Replace `<repo>` with the path of your checkout (`npm ci` inside `mcp/` once). Windows: write the path with forward slashes, for example `C:/Users/name/jumpstart-3d/mcp/server.mjs` (works in JSON, TOML and YAML). Merge the entry into the file; keep the other servers. `JS3D_MODE` is shown as `auto` (your tab if connected, else headless); see Settings below.
+
+| Client | How to add | Does a screenshot reach the model? |
+|---|---|---|
+| Claude Code | the plugin above, or `claude mcp add --scope user jumpstart-3d -- node <repo>/mcp/server.mjs` | yes |
+| Codex (CLI and desktop app) | `~/.codex/config.toml`, or `codex mcp add jumpstart-3d -- node <repo>/mcp/server.mjs`, then add `tool_timeout_sec = 600` under that server in `~/.codex/config.toml` (or use the TOML block below instead) | not confirmed in its docs; use `path` if it does not |
+| Hermes Agent | `~/.hermes/config.yaml` | yes with a vision model; a text-only model gets the file path |
+| OpenCode | `opencode.json` | not documented; use `path` |
+| Gemini CLI | `~/.gemini/settings.json`, or `gemini mcp add jumpstart-3d node <repo>/mcp/server.mjs` | yes |
+| Antigravity | `~/.gemini/config/mcp_config.json` | not documented; use `path` |
+| Cursor | `~/.cursor/mcp.json` | yes |
+| Cline | `cline_mcp_settings.json` (MCP Servers icon, Configure) | not reliably (a known bug); use `path` |
+| LM Studio | `~/.lmstudio/mcp.json` (Program tab, Install, Edit mcp.json) | no (a known bug); use `path` |
+| Grok Build | `~/.grok/config.toml`, or `grok mcp add jumpstart-3d -- node <repo>/mcp/server.mjs` | not documented; use `path` |
+| Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
+| ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
+
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 34 tools is a lot for a small one.
+
+Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
+
+```json
+{ "mcpServers": { "jumpstart-3d": { "command": "node", "args": ["<repo>/mcp/server.mjs"], "env": { "JS3D_MODE": "auto" } } } }
+```
+
+The others have their own shapes. Codex (`tool_timeout_sec` is raised because exports and pictures can take longer than its 60 second default):
+
+```toml
+[mcp_servers.jumpstart-3d]
+command = "node"
+args = ["<repo>/mcp/server.mjs"]
+startup_timeout_sec = 30
+tool_timeout_sec = 600
+[mcp_servers.jumpstart-3d.env]
+JS3D_MODE = "auto"
+```
+
+Grok Build (`~/.grok/config.toml`; it also reads `~/.claude.json` and `.mcp.json` entries):
+
+```toml
+[mcp_servers.jumpstart-3d]
+command = "node"
+args = ["<repo>/mcp/server.mjs"]
+env = { JS3D_MODE = "auto" }
+startup_timeout_sec = 30
+```
+
+Hermes (`mcp_servers:` in `~/.hermes/config.yaml`; Hermes passes only the `env` you list, so add `PATH` if `node` is not found):
+
+```yaml
+mcp_servers:
+  jumpstart-3d:
+    command: "node"
+    args: ["<repo>/mcp/server.mjs"]
+    env:
+      JS3D_MODE: "auto"
+    timeout: 600
+    connect_timeout: 60
+```
+
+OpenCode (`mcp` in `opencode.json`; tools are named `jumpstart-3d_<tool>`; `timeout` is for fetching the tool list):
+
+```json
+{ "$schema": "https://opencode.ai/config.json", "mcp": { "jumpstart-3d": { "type": "local", "command": ["node", "<repo>/mcp/server.mjs"], "enabled": true, "environment": { "JS3D_MODE": "auto" }, "timeout": 30000 } } }
+```
+
+Gemini CLI (`mcpServers` in `~/.gemini/settings.json`; `timeout` is in milliseconds):
+
+```json
+{ "mcpServers": { "jumpstart-3d": { "command": "node", "args": ["<repo>/mcp/server.mjs"], "env": { "JS3D_MODE": "auto" }, "timeout": 600000 } } }
+```
+
+The tool names carry a prefix your client adds (`mcp__jumpstart-3d__status`, `jumpstart-3d_status`...). Where a client can load skills, point it at [`mcp/skills/jumpstart-3d/SKILL.md`](skills/jumpstart-3d/SKILL.md) (also copied to `skills/jumpstart-3d/SKILL.md` at the repository root, so `npx skills add MaxSikorski/jumpstart-3d` finds it); otherwise paste its body into the agent's instructions file (`AGENTS.md`, `GEMINI.md`...). The client rows above come from each product's documentation as of October 2026; the Codex, OpenCode, Grok and Antigravity picture behaviour is untested here.
 
 ## Settings (environment variables)
 
@@ -89,7 +175,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
 | `list_params`, `set_param`, `remove_param`, `bind_size` | Named parameters and sizes that follow them |
 | `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner or Advanced |
-| `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true) |
+| `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
 | `export_file` | Writes STL, OBJ, 3MF, STEP or the project `json` to a path and returns path and size |
 | `save_project`, `load_project` | The design as project-file JSON (text, or a file); open one from text or a file |
 | `new_design` | Start an empty design |
@@ -152,7 +238,7 @@ jumpstart status [--app <url|file|dir>]                  start the app and print
 ## Tests
 
 `npm run test:mcp` at the repository root (run `npm ci` inside `mcp/` first; it builds `docs/`, then runs every file in `mcp/test/`).
-`server` and `tab` start the real server over stdio and drive it with the MCP SDK's client, headless and with a Playwright page as the tab.
-`cli` runs the command line. `plugin` checks that the plugin files agree with each other. `install` copies this folder to a scratch place,
+`server` (which also checks that no tool's input schema has a `$ref` or a tuple, and the `screenshot` `path` option) and `tab` start the real server over stdio and drive it with the MCP SDK's client, headless and with a Playwright page as the tab.
+`cli` runs the command line. `plugin` checks that the plugin files agree with each other, that the skill at the repository root (`skills/jumpstart-3d/SKILL.md`) is byte-identical to `mcp/skills/jumpstart-3d/SKILL.md`, and that the one-line setup prompt is the same everywhere it appears. `install` copies this folder to a scratch place,
 runs `npm ci --ignore-scripts` there as Claude Code does, and starts the copy's server (it needs the npm registry or a warm npm cache).
 The page-side half (the link, the menu row, `JS3D.run`, screenshot width) is `test/agent.spec.mjs`, run by `npm test`.
