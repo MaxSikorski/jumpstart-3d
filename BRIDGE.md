@@ -51,8 +51,8 @@ JS3D.get(id).volume;        // 24000
 - A call that names a body that does not exist throws `Error("no body <id>")`.
   Bad input throws an `Error` with a plain message that says what to change.
 - While Chisel mode is open, every call that edits or loads throws `leave Chisel mode first` (`setMode` is how you leave it).
-- Everything is synchronous except `ready`, `export`, `screenshot`, `load` and
-  `newDesign`, which return promises.
+- Everything is synchronous except `ready`, `export`, `screenshot`,
+  `screenshotDataURL`, `load`, `newDesign`, `run` and `invoke`, which return promises.
 - Every edit is one undo step with a readable label (the Undo button and
   `JS3D.undo()` use it) and leaves the selection alone.
 - **Shapes are built in the background.** After an edit, `volume` and `bbox`
@@ -68,7 +68,8 @@ JS3D.get(id).volume;        // 24000
 
 | Call | Returns |
 |---|---|
-| `JS3D.version` | `"1"`. Changes when a call changes shape. |
+| `JS3D.version` | `"1.1"`. The last number goes up when calls are added; the first changes when a call changes shape. |
+| `JS3D.appVersion` | The app's version, such as `"2.0"`. |
 | `JS3D.kinds()` | `[{ kind, defaults }]`: the 20 shape kinds `add` accepts and their default sizes (`box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, `arrow`). |
 | `JS3D.list()` | The top-level bodies: `[{ id, name, kind, hole, hidden, locked, color, position, bbox, volume, error, children? }]`. `kind` is the shape kind for a basic shape and `"group"`, `"extrude"`, `"revolve"`... for the rest. `bbox` is the world box `{ min: [x,y,z], max: [x,y,z] }` and `volume` is in mm³; both are `null` until built (and while an error is shown). `error` is the geometry engine's message or `null`. `children` is the number of parts in a group. |
 | `JS3D.get(id)` | The same entry plus `node` (a copy of the body's definition) and `m` (its 16-number matrix). |
@@ -123,8 +124,8 @@ check them.
 | `JS3D.select(ids)` | Selects bodies (`[]` clears). |
 | `JS3D.fit()` | Frames the selection, or everything when nothing is selected. |
 | `JS3D.setMode("beginner" \| "advanced")` | Switches the mode. |
-| `await JS3D.screenshot(opts)` → `Uint8Array` | A PNG of the 3D view, after waiting for `ready`. `opts.fit: true` frames everything shown first (ignoring the selection). |
-| `await JS3D.screenshotDataURL(opts)` → string | The same as a `data:image/png;base64,...` string (also async). In a background tab the browser runs no animation frames; the camera move for `fit` is then jumped to its end. |
+| `await JS3D.screenshot(opts)` → `Uint8Array` | A PNG of the 3D view, after waiting for `ready`. `opts.fit: true` frames everything shown first (ignoring the selection). `opts.width` (1 to 8192) makes the picture that many pixels wide with the same shape, drawn in the same step as the render; without it the picture is the size of the 3D view. |
+| `await JS3D.screenshotDataURL(opts)` → string | The same (`fit` and `width` too) as a `data:image/png;base64,...` string (also async). In a background tab the browser runs no animation frames; the camera move for `fit` is then jumped to its end. |
 
 ### Files
 
@@ -149,6 +150,20 @@ await JS3D.load(new TextDecoder().decode(file));
 
 To save an export from the console, wrap the bytes in a download:
 `const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([stl])), download: "part.stl" }); a.click();`
+
+### Scripts, and the link to a tool server
+
+| Call | What it does |
+|---|---|
+| `await JS3D.run(text)` → value | Runs script text with `JS3D` and `app` in scope and returns what the script returns: the last statement's value of a plain script (a promise is awaited), or the `return` value of a script with top-level `await`. It is what Open/Export › Run script… uses. Same trust as the console. |
+| `JS3D.connect(url = "ws://127.0.0.1:8822")` | Opens a WebSocket to a tool server on this computer (`mcp/server.mjs`, see `mcp/README.md`), answers its calls and retries every 3 seconds while on. Throws if `url` is not `ws://` or `wss://`. |
+| `JS3D.disconnect()` | Closes the link and stops retrying. |
+| `JS3D.connection()` → `{ on, url, state }` | `state` is `"off"`, `"waiting"` (on, no server yet) or `"connected"`. |
+| `await JS3D.invoke(call, args)` | Plumbing: runs `JS3D[call](...args)` and returns the result, with a `Uint8Array` as `{"$bytes": base64}`. Refuses `internals`, itself and anything that is not a call. The WebSocket link and the server's headless browser both go through it. |
+
+Nothing connects unless asked: the page makes no connection until `connect` is called or the **Connect to AI agent** row in the theme menu (◐) is turned on. That row is remembered in this browser (`jumpstart.agent`, "on" or "off", off by default) and connects to the default address when the page loads. There is no web address parameter.
+
+The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.1","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
 
 ### What the bridge does not do
 
