@@ -17,15 +17,23 @@ This file has two parts:
 ## Try it in two minutes
 
 1. Open the app (https://maxsikorski.github.io/jumpstart-3d/ or the single file).
-2. Open the browser console: Chrome and Edge, F12 or Ctrl+Shift+J (Mac:
-   Cmd+Option+J); Firefox, Ctrl+Shift+K; Safari, turn on the Develop menu in
-   Settings, then Cmd+Option+C.
-3. Paste the whole of `tools/bridge-demo.js` and press Enter. A block with a
-   hole appears, and the console prints a summary (volume, file sizes, whether
-   saving and reloading gave the same shape). The demo starts a new design, so
-   run it on a fresh page.
+2. Save `tools/bridge-demo.js` to your computer (on GitHub, open the file and
+   use the download button).
+3. Open/Export › **Run script…** and pick that file. A block with a hole appears,
+   and a message at the bottom says "Script finished" with the demo's summary
+   (volume, file sizes, whether saving and reloading gave the same shape). The
+   demo starts a new design, so run it on a fresh page.
 
-Or type single calls:
+A script run this way has `JS3D` and `app` in scope, can use `await` at the
+top level and can end with `return` to show a value in the message. If it
+fails, the error shows in red. It runs with the same trust as text pasted into
+the browser console: it is your own file, running in your own page, and
+nothing runs unless you pick a file (no web address parameter, no auto-run).
+
+The console path still works, and is handy for single calls: open the browser
+console (Chrome and Edge, F12 or Ctrl+Shift+J, Mac: Cmd+Option+J; Firefox,
+Ctrl+Shift+K; Safari, turn on the Develop menu in Settings, then Cmd+Option+C),
+paste the whole demo and press Enter, or type calls one at a time:
 
 ```js
 const id = JS3D.add("box", { size: { w: 40, d: 30, h: 20 } });
