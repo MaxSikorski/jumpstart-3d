@@ -25,7 +25,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mcp/package-lock.json
       - run: npm ci
+      - run: npm ci
+        working-directory: mcp
       - run: npx playwright install --with-deps chromium
       - run: npm test
       - run: npm run test:mcp

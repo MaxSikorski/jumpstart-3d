@@ -14,11 +14,39 @@ call that needs a page when none is. The `status` tool tells you which one you a
 
 ## Install
 
-From a checkout of this repository, once:
+### Claude Code: two commands
 
 ```
+claude plugin marketplace add MaxSikorski/jumpstart-3d
+claude plugin install jumpstart-3d@maxsikorski
+```
+
+(Inside a session: `/plugin marketplace add MaxSikorski/jumpstart-3d`, then `/plugin install jumpstart-3d@maxsikorski`, then `/reload-plugins`.)
+
+That installs the server and a skill that teaches the agent how to use it. Claude Code installs the server's packages itself.
+The plugin lives in this `mcp/` folder, with no built site next to it, so **headless mode opens the public site**
+(https://maxsikorski.github.io/jumpstart-3d/) and needs internet. Headless also needs Chromium, once:
+
+```
+npx playwright@1.62.1 install chromium
+```
+
+Using your open tab needs no Chromium and no internet beyond the page itself (see below).
+
+If you pre-approve tools in your Claude Code settings, the plugin's tool names are `mcp__plugin_jumpstart-3d_jumpstart-3d__<tool>`
+(for example `mcp__plugin_jumpstart-3d_jumpstart-3d__status`), or `mcp__plugin_jumpstart-3d_jumpstart-3d__*` for all of them.
+Update with `claude plugin marketplace update maxsikorski` then `claude plugin update jumpstart-3d@maxsikorski`;
+remove with `claude plugin uninstall jumpstart-3d@maxsikorski`.
+Updates follow the repository, but the plugin's `version` (in `mcp/.claude-plugin/plugin.json`) keeps an installed copy where it is until that number changes: every change under `mcp/` needs a bump in both `mcp/.claude-plugin/plugin.json` and `mcp/package.json`.
+
+### From a checkout, or for other agents
+
+Inside `mcp/` of a checkout of this repository, once:
+
+```
+cd mcp
 npm ci
-npx playwright install chromium      # only needed for headless mode
+npx playwright@1.62.1 install chromium      # only needed for headless mode
 ```
 
 Add the server to Claude Code's `.mcp.json` (project folder) or with `claude mcp add`:
@@ -27,7 +55,8 @@ Add the server to Claude Code's `.mcp.json` (project folder) or with `claude mcp
 { "mcpServers": { "jumpstart-3d": { "command": "node", "args": ["<repo>/mcp/server.mjs"] } } }
 ```
 
-Replace `<repo>` with the path of your checkout. For other agents that speak MCP over stdio, the command is the same.
+Replace `<repo>` with the path of your checkout. Any agent that speaks MCP over stdio uses the same command. From a checkout,
+headless mode opens the checkout's own `docs/` folder when it is there. Tools added this way are called `mcp__jumpstart-3d__<tool>`.
 `node <repo>/mcp/server.mjs --help` lists the settings. The server needs Node 18 or newer (the repository's tests use 22).
 
 To use your open tab: open JumpStart 3D (the website or the single file), open the theme menu (◐) and turn on
@@ -76,9 +105,24 @@ write files you name in `export_file`, `save_project` and `load_project`. Sketch
 features have no tool of their own; `run_script` reaches anything in the page, and `load_project` opens a project file written
 by hand (format in BRIDGE.md Part 2).
 
+## Command line
+
+`mcp/cli.mjs` (installed as `jumpstart` when the package is linked; from a checkout, `node mcp/cli.mjs`) runs a script or makes a file
+without an agent. It starts its own headless browser (so it needs Chromium, see above) and never touches your tab or a running
+server. It prints a JSON result on stdout; progress and errors go to stderr. Exit codes: 0 done, 1 the script or the app failed, 2 bad usage.
+
+```
+jumpstart run <script.js> [--app <url|file|dir>]         run a script with JS3D in scope; prints what it returns
+jumpstart export <project.json> <out.stl|obj|3mf|step>   open a project, write the export, print the path and size
+jumpstart shot <project.json> <out.png> [--width N]      a picture of the 3D view (800 pixels wide by default)
+jumpstart status [--app <url|file|dir>]                  start the app and print app version, JS3D version, design, body count
+```
+
+`--app` is the same as `JS3D_APP` above. For example `node mcp/cli.mjs run tools/bridge-demo.js` runs the scripting demo and prints its summary.
+
 ## Security
 
-- The server listens on **127.0.0.1 only**, so only programs on your computer can reach it, and it never connects out by itself.
+- The server listens on **127.0.0.1 only**, so only programs on your computer can reach it, and it connects out only when headless mode has no local `docs/` and opens the public site.
 - It looks at the browser's `Origin` header and lets in only the official site (https://maxsikorski.github.io),
   `http://127.0.0.1`, `http://localhost` and `null`. Browsers send `null` for a page opened from disk, and the single-file build
   (`dist/jumpstart-3d.html`) is exactly that, so it has to be accepted. The catch: `null` is also what a sandboxed frame or a
@@ -101,12 +145,14 @@ by hand (format in BRIDGE.md Part 2).
 - **"No JumpStart 3D tab is connected"**: open the app, theme menu › Connect to AI agent. If the row says "waiting", the server is not running or is on another port (`status` shows `wsPort`).
 - **The website cannot connect but the single file can**: recent Chrome and Edge ask before a public website may reach a program on your computer ("local network access"). Allow it when asked; if you dismissed the question, open the lock icon in the address bar and allow "Local network access" for the site, then reload. The console shows `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` until you do.
 - **`wsError` in `status`**: the port was taken (another copy of the server?). The server keeps running with headless only. Set `JS3D_WS_PORT`.
-- **Headless fails to start**: run `npx playwright install chromium`. The first start takes several seconds (the geometry engine loads).
+- **Headless fails to start**: run `npx playwright@1.62.1 install chromium`. The first start takes several seconds (the geometry engine loads).
 - **A page with the console open shows "WebSocket connection ... failed"** while the setting is on and no server runs: the tab retries every 3 seconds. Turn the setting off.
 - Logs go to the agent's MCP log (stderr). stdout is the protocol.
 
 ## Tests
 
-`npm run test:mcp` at the repository root (it builds `docs/` first). It starts the real server over stdio and drives it with the
-MCP SDK's client, headless and with a Playwright page as the tab. The page-side half (the link, the menu row, `JS3D.run`,
-screenshot width) is `test/agent.spec.mjs`, run by `npm test`.
+`npm run test:mcp` at the repository root (run `npm ci` inside `mcp/` first; it builds `docs/`, then runs every file in `mcp/test/`).
+`server` and `tab` start the real server over stdio and drive it with the MCP SDK's client, headless and with a Playwright page as the tab.
+`cli` runs the command line. `plugin` checks that the plugin files agree with each other. `install` copies this folder to a scratch place,
+runs `npm ci --ignore-scripts` there as Claude Code does, and starts the copy's server (it needs the npm registry or a warm npm cache).
+The page-side half (the link, the menu row, `JS3D.run`, screenshot width) is `test/agent.spec.mjs`, run by `npm test`.
