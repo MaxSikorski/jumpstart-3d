@@ -1,0 +1,19 @@
+services:
+  jumpstart:
+    build: .
+    container_name: jumpstart-3d
+    ports:
+      - "127.0.0.1:3210:3210"
+    volumes:
+      - ./exports:/app/exports
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3210/?mcp=1').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s

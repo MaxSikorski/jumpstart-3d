@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "test": "node --test",
+    "benchmark:tutorials": "node scripts/tutorial-benchmark.mjs",
+    "mcp:jumpstart": "node scripts/jumpstart-mcp-server.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

@@ -24,6 +24,7 @@ import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
+import { initMcp } from "./mcp.js";
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -268,6 +269,7 @@ function boot() {
     vp.setView("home", scene.allBox().isEmpty() ? null : scene.allBox());
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
+    app.mcp = initMcp(app);
   });
 }
 

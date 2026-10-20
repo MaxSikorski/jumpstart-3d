@@ -1,141 +1,177 @@
-# JumpStart 3D
+# JumpStart 3D with local MCP
 
-[![JumpStart 3D: 3D CAD in your browser](docs/og-image.png)](https://maxsikorski.github.io/jumpstart-3d/)
+A local CAD workspace where an AI agent can create and revise models in the
+running browser editor. Describe a change to your agent, inspect its preview,
+then apply it as an undoable edit and export the result for printing.
 
-A free 3D CAD tool that runs in your web browser. No install, no account,
-no server. Somewhere between Tinkercad and a real CAD program: drag shapes
-together in Beginner mode, or sketch, extrude, fillet and shell in Advanced
-mode.
+The agent connects through typed MCP tools that use JumpStart's document model
+and CAD kernel. Native models retain their sketches and feature history.
+Imported STL models remain meshes, with resizing kept distinct from parametric
+feature editing.
 
-Created by **J.Siwek**. This is a community-maintained copy; see
-[NOTICE.md](NOTICE.md) for credit and licensing.
+## Start the app
 
-## I just want to use it
+Install Docker with Docker Compose and run this from the repository directory:
 
-Pick one:
-
-- **Online:** open https://maxsikorski.github.io/jumpstart-3d/
-- **Offline:** download
-  [jumpstart-3d.html](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)
-  and double-click it. That one file is the whole app. It works without an
-  internet connection (only the fonts come from the web).
-
-That is all. You do not need anything else in this repository.
-
-## What it does
-
-- Beginner mode: drag shapes, group them, cut holes
-- Advanced mode: sketches, extrude, revolve, loft, sweep, fillet, chamfer,
-  shell, patterns and a feature timeline, driven by a real CAD kernel
-  (OpenCascade)
-- Chisel: clay-style sculpting, with Puppet Animator
-- FlexiGen: print-in-place articulated figures
-- Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Sixteen step-by-step tutorials with built-in animations
-- Projector window, Media (pictures and video on objects), Picture to 3D
-- Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
-- Layer-by-layer print preview, section analysis, multi-filament colors
-- Export to STL, OBJ, 3MF, STEP and DXF
-- Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
-  with a live triangle count) for smoother curves in the view and in mesh
-  exports
-
-## See it in action
-
-Mike at Making Layers walks through Beginner, Advanced and Chisel in
-[4 New 3D CAD/Modeling Programs!](https://youtu.be/KGi11k9tQhA?t=308)
-(from 5:08). More videos, posts and things people made are collected in
-[COMMUNITY.md](COMMUNITY.md); add yours there.
-
-## Help improve it
-
-You do not need to write code to help.
-
-- **Found a bug?** Open an issue:
-  https://github.com/MaxSikorski/jumpstart-3d/issues/new/choose and pick
-  "Bug report". Say which browser you use and what you clicked, and attach a
-  saved project file if you can.
-- **Want a feature?** Same page, pick "Feature request". Describe the
-  problem you are trying to solve; that helps more than a specific design.
-- **Have a question, or want to show what you made?** Use
-  [Discussions](https://github.com/MaxSikorski/jumpstart-3d/discussions):
-  Q&A for "how do I", Show and tell for pictures of your prints.
-- **Know the answer to someone else's issue or question?** Reply to it.
-  Helping other users counts.
-- **Want to change the code?** Read on, and see
-  [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
-
-## I want to change it or contribute
-
-The app is plain JavaScript modules under `src/`, from the author's own
-source release of version 1.94. One command bundles them into the website
-and the single offline file.
-
-You need [Node.js](https://nodejs.org/) (version 18 or newer). Then:
-
-```
-git clone https://github.com/MaxSikorski/jumpstart-3d.git
-cd jumpstart-3d
-npm install
-node build.mjs
+```sh
+make up
 ```
 
-`npm install` fetches one tool, esbuild, pinned to the version the author
-used. The build writes two things:
+This builds and starts the container, waits for it to become healthy, and prints:
 
-- `docs/` the website (the same files GitHub Pages serves)
-- `dist/jumpstart-3d.html` the single offline file
+[http://localhost:3210/?mcp=1](http://localhost:3210/?mcp=1)
 
-To try the website locally, serve the `docs/` folder with any static
-server, for example:
+Open that URL and keep the editor tab open while the agent works. The browser
+runs the geometry worker; the local server connects the MCP client to it.
 
-```
-npx serve docs
-```
+## Connect your AI agent
 
-### Where things are
+Print the MCP client configuration:
 
-```
-src/index.html      page shell, CSS and menus
-src/app.js          the app's entry point; the other src/*.js files are its modules
-                    (beginner.js, advanced.js, sketcher.js, kernel.js, projects.js, ...)
-src/worker.js       geometry worker that runs the CAD kernel (kernel.js) via replicad
-src/occt-gz.wasm    OpenCascade kernel, gzipped
-src/flexigen.html, src/meshstep.html, src/chisel.html
-                    the helper pages, built; their source is in tools/
-src/meshdetail.js   our Mesh detail setting
-third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
-                    Flatbush, Flatqueue, the OpenCascade loader
-LICENSES/, THIRD-PARTY-NOTICES.md
-                    licenses of everything in third_party/ and of the fonts
-build.mjs           the build (the author's dist.sh and standalone.py, in Node)
-tools/              helper page sources and the scripts that rebuild them
-                    (see tools/README-helpers.md); og-card/ renders the link-preview image
-docs/               built website, committed so GitHub Pages can serve it
-jumpstart_3d_v1.94.htm     the untouched upstream file this version came from
-UPSTREAM-README.md         the author's README from the source release
+```sh
+make mcp-config
 ```
 
-### Rules of thumb
+For a client that uses TOML configuration, the entry is:
 
-- After any change run `node build.mjs`, then test both outputs: the site in
-  a browser and `dist/jumpstart-3d.html` opened from disk.
-- Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
-  single file is attached to releases instead.
-- Keep "Created by J.Siwek" in the About dialog. Our additions are listed
-  below, not claimed as the original.
+```toml
+[mcp_servers.jumpstart]
+command = "docker"
+args = ["exec", "-i", "jumpstart-3d", "node", "scripts/jumpstart-mcp-stdio-proxy.mjs"]
+```
 
-## What this repository adds on top of the original
+Start the container before connecting or reconnecting the MCP client. The client
+must be able to run `docker`. If several editor tabs are open, have the agent
+list editors and select the intended document.
 
-- OBJ export in the Open/Export menu
-- Link previews: when the site address is shared on Discord, Reddit, iMessage,
-  Slack or X, it shows a title, a description and a 1200×630 card image. The
-  tags live in `src/index.html`; the card is rendered from `tools/og-card/`
-- Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
-  up to 32× set by a slider or by typing the triangle count you want. It
-  controls how finely curved surfaces are divided into triangles, for the view
-  and for STL, OBJ and 3MF exports, and asks before building more than
-  500,000 triangles. The original always used the Normal level.
-- The website build keeps the 7 MB kernel as a separate file, so the page
-  itself is about 5 MB instead of 14 MB
-- A reproducible build from readable source, with the libraries pinned
+See [MCP.md](MCP.md) for tool schemas, native startup without Docker, limits, and
+example model plans.
+
+## Everyday workflow
+
+1. Open or import a model in the editor, or start with a blank document.
+2. Ask the agent to read the document and its dimensions.
+3. Ask for a preview. Check the returned image, dimensions, and geometry errors.
+4. Apply the successful preview. Each application is one undoable edit.
+5. Revise, undo, or export through the agent. Save the project in the browser to
+   keep an editable copy.
+
+Example requests:
+
+- "Create a parametric keychain with the text MAYA, a rounded base, and a hole.
+  Preview it and report the dimensions before applying."
+- "Resize this imported lid to 100 mm across while keeping its height unchanged.
+  Show the resulting dimensions before applying."
+- "Increase the native model's wall thickness, regenerate it, and export STL
+  and STEP if supported by this model."
+
+For the yogurt lid, the reference mesh is approximately 99 × 99 × 5.5 units.
+Treat those as nominal millimetres for this workflow. Resizing the mesh does not
+recover its original sketches or prove that it fits a cup. Rim dimensions and
+clearance still need to be measured and tested.
+
+## Available MCP tools
+
+| Tool | Purpose |
+| --- | --- |
+| `jumpstart_list_editors` | Find connected editor tabs. |
+| `jumpstart_get_document` | Read the document, revision, units, and geometry. |
+| `jumpstart_preview_model` | Preview a structured CAD plan with dimensions, errors, and an image. |
+| `jumpstart_preview_resize_body` | Preview a body's target dimensions, including imported meshes. |
+| `jumpstart_apply_model` | Apply a successful preview as one recoverable edit. |
+| `jumpstart_undo` | Undo an edit against the expected document revision. |
+| `jumpstart_export_model` | Export STL or supported STEP geometry. |
+
+Plans support primitives, dimensioned circle and polygon sketches, extrude,
+revolve, loft, transforms, rectangular and circular patterns, boolean joins and
+cuts, and native fillet, shell, hole, thread, emboss, and scale operations.
+Operation details and restrictions are in [MCP.md](MCP.md).
+
+Previews leave the saved design unchanged. Apply rejects stale document
+revisions, and retrying the same preview does not duplicate the edit. The server
+is exposed on loopback only, bounds tool inputs, and provides no arbitrary
+JavaScript execution tool.
+
+## Files and exports
+
+Docker exports are written to the repository's `exports/` directory. A returned
+container path such as `/app/exports/model-<hash>.stl` maps to
+`exports/model-<hash>.stl` on the host.
+
+Use the editor's Save action for an editable project. Browser project storage
+and the export directory are separate; the container volume is not a backup of
+the browser document. `make down` stops the service and preserves host exports.
+
+## Verify the integration
+
+For host development and verification, use Node.js 22, matching the container:
+
+```sh
+npm ci
+npm test
+```
+
+With the app running, open a separate blank editor tab and run:
+
+```sh
+make benchmark
+```
+
+The benchmark exercises one task and a fixed model plan for each of the 16
+built-in tutorials. It checks geometry invariants, feature history, STL export,
+and transactional behavior. Each case starts from a fresh document state and
+is undone afterward. The runner refuses to use a populated document.
+
+If multiple blank editors are connected, select one explicitly:
+
+```sh
+JUMPSTART_MCP_EDITOR_ID=<editor-id> make benchmark
+```
+
+This benchmark verifies tool and CAD execution using deterministic plans. It
+does not measure how reliably an AI model translates new natural-language
+requests into those plans. The imported-lid regression checks mesh resizing;
+physical fit remains unverified.
+
+## Useful commands
+
+| Command | Purpose |
+| --- | --- |
+| `make up` | Build and start Docker, wait for readiness, print the URL. |
+| `make down` | Stop the container. |
+| `make logs` | Follow server logs. |
+| `make mcp-config` | Print the MCP client configuration. |
+| `npm run build` | Rebuild the browser app from `src/`. |
+| `npm test` | Run contract and regression tests. |
+| `make benchmark` | Run the tutorial benchmark against a connected blank editor. |
+
+After changing app source, run `make up` again to rebuild the Docker image.
+
+## Current limits
+
+- Sketch input supports circles and polygons, without a general constraint
+  solver, arcs, or splines.
+- Face and edge selectors may need to be selected again after upstream geometry
+  changes. Arbitrary mirror planes are not exposed.
+- Imported mesh scaling is supported; reconstructing a parametric feature tree
+  from an STL is not.
+- MCP export supports STL and supported STEP geometry, not 3MF.
+- Successful geometry and export checks do not prove printability, thread fit,
+  or cup fit. Inspect the slicer output and perform physical fit tests.
+
+## Where the integration lives
+
+| Path | Purpose |
+| --- | --- |
+| [MCP.md](MCP.md) | Detailed setup, protocol, examples, and limitations. |
+| [src/mcp-plan.js](src/mcp-plan.js) | Model-plan validation and native operation mapping. |
+| [src/mcp.js](src/mcp.js) | Live editor bridge, previews, transactions, and exports. |
+| [scripts/](scripts/) | Local server, stdio proxy, and benchmark runner. |
+| [benchmarks/](benchmarks/) | Tutorial tasks, plans, and invariant checks. |
+| [tests/](tests/) | Contract and regression coverage. |
+| [compose.yaml](compose.yaml) | Local container and export-volume configuration. |
+
+JumpStart 3D was created by J.Siwek. This workspace builds on the
+[MaxSikorski community repository](https://github.com/MaxSikorski/jumpstart-3d).
+See [NOTICE.md](NOTICE.md) and [UPSTREAM-README.md](UPSTREAM-README.md) for upstream
+credits and background.

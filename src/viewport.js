@@ -47,7 +47,8 @@ void main(){
 export class Viewport {
   constructor(container) {
     this.container = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: true }); // stencil: section analysis caps
+    const mcpPreview = new URLSearchParams(location.search).get("mcp") === "1";
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: true, preserveDrawingBuffer: mcpPreview }); // stencil: section analysis caps
     this.perf = PERF.ultra; this.perfName = "ultra"; this.movingUntil = 0;
     this.renderer.setPixelRatio(this.wantDpr(false));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
