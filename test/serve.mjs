@@ -7,7 +7,8 @@ import { join, normalize, extname } from "node:path";
 const [dir, port] = [process.argv[2], +process.argv[3]];
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".json": "application/json" };
 createServer((req, res) => {
-  const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^(\.\.[/\\])+/, "");
+  let path;
+  try { path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^(\.\.[/\\])+/, ""); } catch { res.writeHead(400); res.end("bad request"); return; }
   let file = join(dir, path);
   try { if (statSync(file).isDirectory()) file = join(file, "index.html"); statSync(file); }
   catch { res.writeHead(404); res.end("not found"); return; }

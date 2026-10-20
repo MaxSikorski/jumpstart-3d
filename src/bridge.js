@@ -6,7 +6,7 @@
 // its position is m[12..14]). `ids` takes one id or an array. A call that names a missing body throws
 // Error("no body <id>"). Every edit is one undo step with a readable label, and leaves the selection alone.
 //
-//   Reading    version, kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
+//   Reading    version, appVersion, kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              remove(ids) (alias delete) -> count, duplicate(ids, offset) -> new ids
@@ -16,9 +16,12 @@
 //              group(ids, {name, op}) -> id, ungroup(id) -> new ids
 //   Parameters setParam(name, expr, {unit}) -> value, removeParam(name) -> count, bind(id, key, expr|null)
 //   History    undo(), redo() -> label or null
-//   View       select(ids), fit(), setMode("beginner"|"advanced"), screenshot({fit}), screenshotDataURL({fit})
+//   View       select(ids), fit(), setMode("beginner"|"advanced"), screenshot({fit, width}), screenshotDataURL({fit, width})
 //   Files      export("stl"|"obj"|"3mf"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
+//   Scripts    run(text) -> the value the script returns
+//   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
+import { VERSION } from "./version.js";
 import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
@@ -30,6 +33,9 @@ const AXES = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 const MIN_SIZE_KEYS = new Set(["w", "d", "h", "size"]); // 0.01 mm is the smallest the app allows; other numbers (corner radius...) may be 0
 const INTEGER_KEYS = new Set(["sides", "points"]);
 const COLOR = /^#[0-9a-f]{6}$/i;
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const AGENT_KEY = "jumpstart.agent", AGENT_URL = "ws://127.0.0.1:8822", AGENT_RETRY_MS = 3000;
+const base64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 
 export function initBridge(app) {
   const need = (id) => {
@@ -150,6 +156,7 @@ export function initBridge(app) {
 
   // ------------------------------------------------------------- the pieces of export and screenshot
   async function screenshotDataURL(opts = {}) {
+    if (opts.width !== undefined && !(typeof opts.width === "number" && opts.width >= 1 && opts.width <= 8192)) throw new Error("width must be a number of pixels between 1 and 8192");
     await ready();
     if (opts.fit) {
       const box = app.scene.allBox();
@@ -159,14 +166,26 @@ export function initBridge(app) {
     }
     // the canvas does not keep its picture: draw and read in the same task
     app.vp.render();
-    const url = app.vp.canvas.toDataURL("image/png");
+    const src = app.vp.canvas;
+    let url;
+    if (opts.width !== undefined && src.width > 0) {
+      // a smaller picture: the same frame drawn onto a 2D canvas, the aspect kept
+      const w = Math.round(opts.width), c = document.createElement("canvas");
+      c.width = w;
+      c.height = Math.max(1, Math.round((src.height * w) / src.width));
+      const g = c.getContext("2d");
+      g.imageSmoothingQuality = "high";
+      g.drawImage(src, 0, 0, c.width, c.height);
+      url = c.toDataURL("image/png");
+    } else url = src.toDataURL("image/png");
     if (url.length < 100) throw new Error("the 3D view has no size to draw (is the tab hidden?)");
     return url;
   }
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", step: "stepBytes" };
 
   const api = {
-    version: "1",
+    version: "1.1",
+    appVersion: VERSION,
     internals: { app, store },
 
     kinds: () => Object.entries(PRIM_DEFAULTS).map(([kind, defaults]) => ({ kind, defaults: { ...defaults } })),
@@ -403,7 +422,124 @@ export function initBridge(app) {
       app.projects.newDesign(mode);
       return ready();
     },
+
+    // ----------------------------------------------------------- scripts
+    // Two shapes of script are accepted. A plain script (like tools/bridge-demo.js, whose last statement is an
+    // async IIFE) is run with eval so the value of its last statement comes back and its promise is awaited.
+    // A script with top-level await or a trailing return does not parse as a plain script; it is run as the body
+    // of an async function instead. The eval lives in a string so the bundler never sees a direct eval.
+    async run(text) {
+      if (typeof text !== "string") throw new Error("run needs the script as text");
+      let began = false;
+      const asScript = new AsyncFunction("JS3D", "app", "__src", "__began", "return eval('__began();\\n' + __src)");
+      try {
+        return await asScript(api, app, text, () => { began = true; });
+      } catch (e) {
+        if (began || !(e instanceof SyntaxError)) throw e; // the script itself failed
+      }
+      return await new AsyncFunction("JS3D", "app", text)(api, app);
+    },
+
+    // ----------------------------------------------------------- the link to a tool server
+    // The one way a call arrives from outside: the tool server's WebSocket client and its headless page both use
+    // this, so they cannot drift apart. A Uint8Array result becomes {"$bytes": base64}, because JSON has no bytes.
+    async invoke(call, args = []) {
+      if (call === "invoke" || !Object.hasOwn(api, call) || typeof api[call] !== "function") throw new Error(`unknown call "${call}"`);
+      if (!Array.isArray(args)) throw new Error("args must be an array");
+      const r = await api[call](...args);
+      return r instanceof Uint8Array ? { $bytes: base64(r) } : r;
+    },
+    connect(url = AGENT_URL) {
+      let ok = false;
+      try { ok = /^wss?:$/.test(new URL(url).protocol); } catch (e) {}
+      if (!ok) throw new Error("url must be a ws:// or wss:// address");
+      link.on = true;
+      link.url = url;
+      link.warned = false;
+      openLink();
+    },
+    disconnect() {
+      link.on = false;
+      link.state = "off";
+      closeLink();
+      linkChanged();
+    },
+    connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
   api.delete = api.remove;
+
+  // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers
+  // its calls one at a time; it retries every few seconds while on. The "Connect to AI agent" menu row is the user's switch,
+  // remembered in this browser; with it off (the default) no connection is ever made and no socket exists.
+  const link = { on: false, url: AGENT_URL, state: "off", warned: false };
+  let sock = null, retry = 0, queue = Promise.resolve();
+  function closeLink() {
+    clearTimeout(retry);
+    const s = sock;
+    sock = null; // so its onclose does nothing
+    if (s) s.close();
+  }
+  function linkChanged() {
+    const b = document.querySelector("#menu-theme button[data-agent]");
+    if (!b) return;
+    b.setAttribute("aria-checked", link.on);
+    b.querySelector("small").textContent = link.on ? "· " + link.state : "";
+  }
+  function openLink() {
+    closeLink();
+    link.state = "waiting";
+    linkChanged();
+    let s;
+    try { s = new WebSocket(link.url); } catch (e) { // Safari refuses ws:// from an https page: say so once, keep trying
+      if (!link.warned) { link.warned = true; app.toast("This browser will not let the page reach the AI agent: " + ((e && e.message) || e), "err"); }
+      retry = setTimeout(openLink, AGENT_RETRY_MS);
+      return;
+    }
+    sock = s;
+    s.onopen = () => {
+      link.state = "connected";
+      linkChanged();
+      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, app: VERSION, url: location.href }));
+      setTimeout(() => { if (sock === s) app.toast("Connected to an AI agent."); }, 500); // the server may refuse right away (another tab has the link)
+    };
+    s.onmessage = (ev) => { queue = queue.then(() => answer(s, ev.data)); };
+    s.onclose = (ev) => {
+      if (sock !== s) return;
+      sock = null;
+      if (ev.code === 4001) { // another tab already has the link: stop trying (the setting stays on, so a reload connects later)
+        link.on = false;
+        link.state = "off";
+        linkChanged();
+        app.toast("Another tab already has the AI agent link.");
+        return;
+      }
+      const lost = link.state === "connected";
+      link.state = "waiting";
+      linkChanged();
+      if (lost) app.toast("Lost the connection to the AI agent. Trying again every few seconds.", "err");
+      retry = setTimeout(openLink, AGENT_RETRY_MS);
+    };
+  }
+  async function answer(s, data) {
+    if (s !== sock) return; // asked on a link that has closed since
+    let msg, reply;
+    try { msg = JSON.parse(data); } catch (e) { return; }
+    if (!msg || msg.id === undefined) return;
+    try { reply = JSON.stringify({ id: msg.id, result: await api.invoke(msg.call, msg.args) }); }
+    catch (e) { reply = JSON.stringify({ id: msg.id, error: (e && e.message) || String(e) }); }
+    if (s.readyState === WebSocket.OPEN) s.send(reply);
+  }
+  // the setting: on = true/false, or null to read the remembered one. quiet: apply without saving or telling.
+  app.setAgent = function (on, quiet) {
+    if (on == null) { try { on = localStorage.getItem(AGENT_KEY) === "on"; } catch (e) { on = false; } }
+    if (on) api.connect(); else if (link.on) api.disconnect();
+    if (quiet) return;
+    try { localStorage.setItem(AGENT_KEY, on ? "on" : "off"); } catch (e) {}
+    app.toast(on ? "Connect to AI agent: on. Looking for a program on this computer; if the browser asks about local network access, allow it." : "Connect to AI agent: off.");
+  };
+  const row = document.querySelector("#menu-theme button[data-agent]");
+  if (row) row.addEventListener("click", () => app.setAgent(!link.on));
+
   window.JS3D = api;
+  app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
 }

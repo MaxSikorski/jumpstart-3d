@@ -1086,6 +1086,11 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
           <label class="mc-row" title="Type the triangle count you want for the whole design and press Enter"><span>Triangles</span><input type="number" id="detail-tris" min="1" step="1" inputmode="numeric"><small id="detail-est"></small></label>
         </div>
         <div class="menu-note">Applies to the view and to STL, OBJ and 3MF exports. STEP is exact at every level. Above 500,000 triangles you are asked first; very fine levels can take many minutes to build.</div>
+        <!-- jumpstart-3d: agent link -->
+        <hr>
+        <div class="menu-head">AI agent</div>
+        <button data-agent role="menuitemcheckbox" aria-checked="false" title="Lets a program on this computer edit this design">Connect to AI agent <small></small></button>
+        <div class="menu-note">Lets a program on this computer edit this design (see mcp/README.md). Off unless you turn it on.</div>
       </div>
     </div>
     <button class="tb-btn tut-btn" id="btn-tutorials" title="Tutorials: step-by-step projects for Beginner and Advanced"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/><path d="M22 9v6"/></svg><span class="lbl">Tutorials</span></button>

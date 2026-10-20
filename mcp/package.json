@@ -1,0 +1,18 @@
+{
+  "name": "jumpstart-3d-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets an AI agent edit a design in JumpStart 3D, in the open browser tab or in a headless browser",
+  "private": true,
+  "type": "module",
+  "bin": { "jumpstart-mcp": "./server.mjs" },
+  "scripts": {
+    "pretest": "node ../build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "playwright": "1.62.1",
+    "ws": "8.22.0",
+    "zod": "3.25.76"
+  }
+}

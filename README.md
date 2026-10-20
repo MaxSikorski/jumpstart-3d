@@ -177,6 +177,7 @@ src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
+mcp/                our MCP server for AI agents (see mcp/README.md); its tests run with `npm run test:mcp`
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
 LICENSES/, THIRD-PARTY-NOTICES.md
@@ -259,6 +260,11 @@ UPSTREAM-README.md         the author's README from the source release
   you can paste into the console
 - Open/Export › Run script…: pick a `.js` file and it runs with `JS3D` in
   scope, no console needed; the result or the error shows as a message
+- An MCP server for AI agents (`mcp/`): Claude Code or any MCP client can build
+  and edit designs through tools that mirror `JS3D`, either in the tab you have
+  open (theme menu › Connect to AI agent, off unless you turn it on) or in a
+  headless browser. `mcp/README.md` has the install lines, the tool list and
+  what an agent can and cannot do
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 

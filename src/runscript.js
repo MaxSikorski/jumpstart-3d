@@ -1,7 +1,7 @@
 // jumpstart-3d: run script. "Run script…" in the Open/Export menu: pick a .js file and run it with
 // JS3D (see BRIDGE.md) and app in scope, so nobody has to open the browser console. The file runs
 // with the same trust as text pasted into the console: it is the user's own file, in their own page.
-// Nothing runs on its own: no URL parameter, no auto-run on load, no remembered file.
+// The runner itself is JS3D.run (bridge.js). Nothing runs on its own: no URL parameter, no auto-run on load, no remembered file.
 export function initRunScript(app) {
   const button = document.querySelector('#menu-export button[data-act="runscript"]');
   if (!button) return;
@@ -24,29 +24,12 @@ export function initRunScript(app) {
     running = true;
     app.toast(`Running ${file.name}…`);
     try {
-      const result = await runScript(await file.text(), app);
+      const result = await window.JS3D.run(await file.text());
       app.toast(result === undefined ? "Script finished" : "Script finished: " + oneLine(result));
     } catch (err) {
       app.toast("Script failed: " + ((err && err.message) || String(err)), "err");
     } finally { running = false; }
   };
-}
-
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-
-// Two shapes of script are accepted. A plain script (like tools/bridge-demo.js, whose last statement is an
-// async IIFE) is run with eval so the value of its last statement comes back and its promise is awaited.
-// A script with top-level await or a trailing return does not parse as a plain script; it is run as the body
-// of an async function instead. The eval lives in a string so the bundler never sees a direct eval.
-async function runScript(text, app) {
-  let began = false;
-  const asScript = new AsyncFunction("JS3D", "app", "__src", "__began", "return eval('__began();\\n' + __src)");
-  try {
-    return await asScript(window.JS3D, app, text, () => { began = true; });
-  } catch (e) {
-    if (began || !(e instanceof SyntaxError)) throw e; // the script itself failed
-  }
-  return await new AsyncFunction("JS3D", "app", text)(window.JS3D, app);
 }
 
 function oneLine(value, max = 200) {
