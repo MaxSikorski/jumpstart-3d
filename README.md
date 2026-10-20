@@ -7,10 +7,17 @@ no server. Somewhere between Tinkercad and a real CAD program: drag shapes
 together in Beginner mode, or sketch, extrude, fillet and shell in Advanced
 mode.
 
-Created by **J.Siwek**. Official home: https://sites.google.com/view/jumpstart-3d-creator/home
-(the official JumpStart 3D site, with the original downloads). This repository is the community fork:
-it tracks his releases and adds its own work. See [NOTICE.md](NOTICE.md) for
-credit and licensing.
+Created by **J.Siwek**, who publishes it under the MIT License. Find him at
+the [official site](https://sites.google.com/view/jumpstart-3d-creator/home)
+(his own downloads), his [source repository on GitHub](https://github.com/classyapps2026/jumpstart3d)
+and his [video introducing 2.0](https://youtu.be/OmoVmYzoIsk).
+
+This repository is the community fork, maintained by **Max Sikorski** with the
+jumpstart-3d community: it put the app back online when the original
+download disappeared, tracks his releases, and adds its own work (a
+reproducible build, a test suite, named parameters, Mesh detail, OBJ export
+and more, listed [below](#what-this-repository-adds-on-top-of-the-original)).
+See [NOTICE.md](NOTICE.md) for credit and licensing.
 
 ## I just want to use it
 
@@ -52,7 +59,11 @@ That is all. You do not need anything else in this repository.
 
 ## See it in action
 
-Mike at Making Layers walks through Beginner, Advanced and Chisel in
+The author's own tour of version 2.0:
+[JumpStart 3D Design is BACK! Version 2.0](https://youtu.be/OmoVmYzoIsk)
+(12½ minutes: the three modes, Lathe, 3D Sketch, patterns, the print
+simulator, Chisel's animator and the projector). Mike at Making Layers walks
+through Beginner, Advanced and Chisel in
 [4 New 3D CAD/Modeling Programs!](https://youtu.be/KGi11k9tQhA?t=308)
 (from 5:08). More videos, posts and things people made are collected in
 [COMMUNITY.md](COMMUNITY.md); add yours there.
@@ -61,6 +72,7 @@ Mike at Making Layers walks through Beginner, Advanced and Chisel in
 
 - The official JumpStart 3D site, with the author's own downloads:
   https://sites.google.com/view/jumpstart-3d-creator/home
+- The author's source repository: https://github.com/classyapps2026/jumpstart3d
 - Reddit: https://www.reddit.com/r/Jumpstart3D/ for questions, prints and ideas
 - GitHub Discussions, for announcements, polls and Q&A:
   https://github.com/MaxSikorski/jumpstart-3d/discussions
@@ -189,7 +201,10 @@ UPSTREAM-README.md         the author's README from the source release
 ## License
 
 MIT. The author released the source of version 2.0 under the MIT License
-(see the official site: https://sites.google.com/view/jumpstart-3d-creator/home), and
-this repository's additions use the same license. The full text is in
+(on the official site, https://sites.google.com/view/jumpstart-3d-creator/home,
+and in his GitHub repository, https://github.com/classyapps2026/jumpstart3d).
+This repository's additions, by Max Sikorski and the community, use the same
+license. The author's repository has the app source but not the bundled
+libraries; this repository has both, so it builds on its own. The full text is in
 [LICENSE](LICENSE); credit, history and third-party licenses are in
 [NOTICE.md](NOTICE.md).
