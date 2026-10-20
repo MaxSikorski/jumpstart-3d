@@ -188,5 +188,6 @@ export function dimGraphics(sk, c, px, fmtLen) {
     text = (+c.v.toFixed(2)) + "°";
   } else return null;
   if (c.expr) text = `${c.expr} = ${text}`; // jumpstart-3d: parameters
+  if (c.name) text = `${c.name} = ${text}`; // jumpstart-3d: parameters. the dimension's name, usable in any dimension, feature value or shape size (labels are only drawn while a sketch is edited)
   return { segs, at, text };
 }

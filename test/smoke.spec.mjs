@@ -1086,4 +1086,268 @@ test("Pattern: Advanced bodies without Join still bake separate copies", async (
   await closed();
   await waitIdle(page);
   expect(await page.evaluate(() => window.__store.doc.bodies.map((b) => (b.node.mods || []).length))).toEqual([0, 0, 0]);
+
+});
+
+// ---- visible proof (Phase P step 5): constrained mark, dimension names, CSV, tutorial ----
+const toastWith = (text) => page.locator("#toasts .toast", { hasText: text });
+const clearToasts = () => page.evaluate(() => document.querySelectorAll("#toasts .toast").forEach((t) => t.remove())); // an older toast must not satisfy a later check
+const sketchDofs = () => page.locator("#browser .sk-dof");
+
+test("Sketch proof: sketchDof counts variables minus equations", async () => {
+  const { sketchDof } = await import("../src/constraints.js");
+  const pt = (id, x, y) => ({ id, x, y });
+  expect(sketchDof({ pts: [], ents: [], cons: [] })).toEqual({ free: 0, dof: 0, over: 0 });
+  // a lone circle: center 2 + radius 1; a diameter dimension and an origin pin close it
+  const circle = { pts: [pt("c", 0, 0)], ents: [{ id: "e1", t: "circle", c: "c", r: 5 }], cons: [] };
+  expect(sketchDof(circle)).toEqual({ free: 3, dof: 3, over: 3 });
+  circle.cons = [{ id: "k1", t: "origin", p: "c" }, { id: "k2", t: "dim", k: "dia", e1: "e1", v: 10 }];
+  expect(sketchDof(circle)).toEqual({ free: 3, dof: 0, over: 0 });
+  // an arc has 5 (its end sits on its circle); a projected line adds nothing
+  const arc = { pts: [pt("c", 0, 0), pt("a", 5, 0), pt("b", 0, 5), pt("q", 9, 9), pt("r", 9, 0)], ents: [{ id: "e1", t: "arc", c: "c", a: "a", b: "b" }, { id: "e2", t: "line", a: "q", b: "r", proj: true }], cons: [] };
+  expect(sketchDof(arc)).toEqual({ free: 5, dof: 5, over: 5 });
+  // a dimension with no value yet (v below 0) is not an equation; dof never goes below 0
+  expect(sketchDof({ ...circle, cons: [{ id: "k2", t: "dim", k: "dia", e1: "e1", v: -1 }] })).toEqual({ free: 3, dof: 3, over: 3 });
+  expect(sketchDof({ ...circle, cons: [{ id: "k1", t: "origin", p: "c" }, { id: "k2", t: "origin", p: "c" }, { id: "k3", t: "equal" }] })).toEqual({ free: 3, dof: 0, over: -2 });
+  // a rectangle: 8 variables; origin 2 + four horizontal/vertical + the width = 7, so one is left
+  const rect = { pts: [pt("p0", 0, 0), pt("p1", 40, 0), pt("p2", 40, 20), pt("p3", 0, 20)], ents: [["e0", "p0", "p1"], ["e1", "p1", "p2"], ["e2", "p2", "p3"], ["e3", "p3", "p0"]].map(([id, a, b]) => ({ id, t: "line", a, b })),
+    cons: [{ id: "k0", t: "origin", p: "p0" }, { id: "k1", t: "horizontal", e1: "e0" }, { id: "k2", t: "vertical", e1: "e1" }, { id: "k3", t: "horizontal", e1: "e2" }, { id: "k4", t: "vertical", e1: "e3" }, { id: "k5", t: "dim", k: "dist", p1: "p0", p2: "p1", o: "h", v: 40 }] };
+  expect(sketchDof(rect)).toEqual({ free: 8, dof: 1, over: 1 });
+  // a perpendicular between two edges that are already horizontal and vertical repeats them: it must not close the last freedom
+  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "perpendicular", e1: "e0", e2: "e1" }] })).toEqual({ free: 8, dof: 1, over: 1 });
+  // a real second constraint does (a horizontal given as two points counts as the edge's own)
+  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }] })).toEqual({ free: 8, dof: 0, over: 0 });
+  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }, { id: "k7", t: "dim", k: "dist", p1: "p0", p2: "p3", o: "v", v: 20 }] })).toEqual({ free: 8, dof: 0, over: -1 });
+  const twoPoint = { ...rect, cons: [{ id: "k1", t: "horizontal", p1: "p0", p2: "p1" }, { id: "k2", t: "vertical", e1: "e1" }, { id: "k3", t: "parallel", e1: "e0", e2: "e1" }] };
+  expect(sketchDof(twoPoint).over).toBe(8 - 2); // e0 and e1 each carry a constraint of their own: the parallel adds nothing
+});
+
+test("Sketch proof: the Browser shows a check on a fully constrained sketch and '1 free' when a dimension goes", async () => {
+  await loadDoc(page, parametric());
+  await expect(sketchDofs()).toHaveCount(1);
+  await expect(sketchDofs()).toHaveText("✓");
+  await expect(sketchDofs()).toHaveAttribute("title", "Fully constrained");
+  // editing: the ribbon note says so, and follows the sketch
+  await page.evaluate(() => window.__app.enterSketch(window.__store.doc.sketches[0].id));
+  await expect(page.locator("#sk-note")).toHaveText("Fully constrained");
+  await page.evaluate(() => window.__store.update((d) => { d.sketches[0].cons = d.sketches[0].cons.filter((c) => c.id !== "d2"); }, "Remove dimension"));
+  await expect(sketchDofs()).toHaveText("1 free");
+  await expect(page.locator("#sk-note")).toHaveText("1 degree of freedom left: add dimensions or constraints");
+  await page.evaluate(() => window.__app.exitSketch());
+  await waitIdle(page);
+  // a perpendicular on two edges that are already horizontal and vertical is a repeat: still one free, no check
+  await page.evaluate(() => window.__store.update((d) => { d.sketches[0].cons.push({ id: "c9", t: "perpendicular", e1: "e0", e2: "e1" }); }, "Add perpendicular"));
+  await expect(sketchDofs()).toHaveText("1 free");
+  // too many constraints: the check stays, with a warning in its title
+  await page.evaluate(() => window.__store.update((d) => { d.sketches[0].cons.push({ id: "d2", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }, { id: "x3", t: "dim", k: "dist", p1: "p0", p2: "p3", o: "v", v: 20 }); }, "Add dimensions"));
+  await expect(sketchDofs()).toHaveText("✓");
+  await expect(sketchDofs()).toHaveAttribute("title", "Fully constrained by count; 1 more constraint than needed, some may fight");
+  // a design with no sketches shows nothing
+  await loadDoc(page, box20());
+  await expect(sketchDofs()).toHaveCount(0);
+});
+
+test("Dimension names: old files get d1, d2; any expression can use them and they follow changes", async () => {
+  await clearToasts();
+  const old = parametric();
+  for (const c of old.sketches[0].cons) delete c.name; // files from before names
+  await loadDoc(page, old);
+  expect(await page.evaluate(() => window.__store.doc.sketches[0].cons.filter((c) => c.t === "dim").map((c) => c.name))).toEqual(["d1", "d2"]);
+  // an extrude distance of d1/2: 20 mm while the plate is 40 wide, 30 when w is 60
+  await page.evaluate(() => window.__store.update((d) => { d.bodies[0].node.exprs = { dist: "d1/2" }; }, "Bind distance"));
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(40 * 20 * 20, 0);
+  await setParam("w", "60");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(60 * 30 * 30, 0);
+  // the dimension prompt names the dimension, and the label shows name = expression = value while editing
+  await page.evaluate(() => window.__app.enterSketch(window.__store.doc.sketches[0].id));
+  await expect(page.locator(".dimlabel", { hasText: "d1 = w = 60" })).toBeVisible();
+  await page.evaluate(() => window.__app.exitSketch());
+  // a parameter cannot take a dimension's name
+  await page.click("#browser .param-add");
+  const nm = page.locator("#browser .param").nth(2).locator("input.param-name");
+  await nm.fill("D7");
+  await page.keyboard.press("Enter");
+  await expect(toastWith("dimension name")).toBeVisible();
+  expect(await page.evaluate(() => window.__store.doc.params.map((p) => p.name))).toEqual(["w", "h", "p3"]);
+});
+
+test("Dimension names: a dimension can use another that comes later, and an angle dimension's degrees feed a length", async () => {
+  const doc = parametric();
+  const cons = doc.sketches[0].cons;
+  cons.find((c) => c.id === "d1").name = "d1"; cons.find((c) => c.id === "d2").name = "d2";
+  cons.find((c) => c.id === "d1").expr = "d2*2"; // d1 is listed first but needs d2, which needs h, which needs w
+  await loadDoc(page, doc);
+  await setParam("w", "60");
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(60 * 30 * 15, 0); // d2 = h = 30, d1 = 60
+  // an angle dimension (90°) named d3 feeds a length: d2 = d3/3 = 30 mm
+  const withAngle = parametric();
+  for (const c of withAngle.sketches[0].cons) if (c.t === "dim") c.name = c.id;
+  withAngle.sketches[0].cons.push({ id: "dA", t: "dim", k: "ang", e1: "e0", e2: "e1", s1: 1, s2: 1, v: 90, off: [5, 5], name: "d3" });
+  withAngle.sketches[0].cons.find((c) => c.id === "d2").expr = "d3/3";
+  await loadDoc(page, withAngle);
+  expect((await bodies(page))[0].volume).toBeCloseTo(40 * 30 * 15, 0);
+});
+
+test("Dimension names: a loop between dimensions is put back and reported, not multiplied", async () => {
+  await clearToasts();
+  const doc = parametric();
+  const [d1, d2] = doc.sketches[0].cons.filter((c) => c.t === "dim");
+  d1.expr = "d2*2"; d2.expr = "d1*2";
+  await loadDoc(page, doc);
+  const state = () => page.evaluate(() => ({ v: window.__store.doc.sketches[0].cons.filter((c) => c.t === "dim").map((c) => c.v), n: window.__store.undoStack.length }));
+  expect((await state()).v).toEqual([40, 20]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(12000, 0);
+  await page.evaluate(() => window.__store.update((d) => { d.bodies[0].name = "Plate 2"; }, "Rename")); // an unrelated update runs it again
+  await waitIdle(page);
+  expect((await state()).v).toEqual([40, 20]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(12000, 0);
+  // editing a parameter in the list reports the two dimensions that could not take a value
+  await page.locator("#browser .param").nth(1).locator("input.param-expr").fill("w/2+0");
+  await page.keyboard.press("Enter");
+  await expect(toastWith("can't take that value")).toBeVisible();
+  expect((await state()).v).toEqual([40, 20]);
+});
+
+test("Dimension names: a deleted dimension's name is not given to a new one, and a parameter's name is not taken", async () => {
+  await loadDoc(page, parametric());
+  const names = () => page.evaluate(() => window.__store.doc.sketches[0].cons.filter((c) => c.t === "dim").map((c) => c.name));
+  const dim = (id, p2) => ({ id, t: "dim", k: "dist", p1: "p0", p2, o: "v", v: 20, off: [-5, 10] });
+  await page.evaluate((x) => window.__store.update((d) => { d.sketches[0].cons.push(x); }, "Add dimension"), dim("x3", "p3"));
+  expect(await names()).toEqual(["d1", "d2", "d3"]);
+  await page.evaluate(() => window.__store.update((d) => { d.bodies[0].node.exprs = { dist: "d3/2" }; }, "Bind distance"));
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume).toBeCloseTo(40 * 20 * 10, 0);
+  await page.evaluate(() => window.__store.update((d) => { d.sketches[0].cons = d.sketches[0].cons.filter((c) => c.id !== "x3"); }, "Delete dimension"));
+  await page.evaluate((x) => window.__store.update((d) => { d.sketches[0].cons.push(x); }, "Add dimension"), dim("y4", "p3"));
+  const after = await names();
+  expect(after.slice(0, 2)).toEqual(["d1", "d2"]);
+  expect(after[2]).not.toBe("d3");
+  // an older file with a parameter named d1: the dimension gets the next name, and d1 still means the parameter
+  const old = parametric();
+  old.params.push({ id: "q9", name: "d1", expr: "40", value: 40 });
+  for (const c of old.sketches[0].cons) delete c.name;
+  old.sketches[0].cons.find((c) => c.id === "d1").expr = "d1/2"; // the width: 20, from the parameter d1
+  old.sketches[0].cons.find((c) => c.id === "d2").expr = "5"; // a plain 5 (no name in it)
+  await loadDoc(page, old);
+  expect(await names()).toEqual(["d2", "d3"]);
+  expect(await page.evaluate(() => window.__store.doc.sketches[0].cons.find((c) => c.id === "d1").v)).toBe(20);
+});
+
+test("CSV: the Parameters list saves name,expression,unit, and an import changes values in one undo step", async () => {
+  await clearToasts();
+  await loadDoc(page, parametric());
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#browser .param-csv-out")]);
+  expect(dl.suggestedFilename()).toBe("Parametric-plate-parameters.csv");
+  const chunks = [];
+  for await (const c of await dl.createReadStream()) chunks.push(c);
+  expect(Buffer.concat(chunks).toString("utf8")).toBe("name,expression,unit\nw,40,\nh,w/2,\n");
+  // import: w changes, k is new, "bad name" and a row with no value are skipped
+  const csv = "name,expression,unit\nW,60,\nk,5,\nbad name,3,\nn2,\n";
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#browser .param-csv-in")]);
+  await chooser.setFiles({ name: "p.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  await expect(toastWith("Imported 2 parameters, 2 rows skipped")).toBeVisible();
+  await waitIdle(page);
+  expect(await page.evaluate(() => window.__store.doc.params.map((p) => [p.name, p.expr]))).toEqual([["w", "60"], ["h", "w/2"], ["k", "5"]]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(60 * 30 * 15, 0);
+  await undoOnce();
+  expect(await page.evaluate(() => window.__store.doc.params.map((p) => [p.name, p.expr]))).toEqual([["w", "40"], ["h", "w/2"]]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(12000, 0);
+  // a semicolon file with a quoted field and no header row; a file with nothing usable changes nothing and adds no undo step
+  const undoBefore = await page.evaluate(() => window.__store.undoStack.length);
+  const [c2] = await Promise.all([page.waitForEvent("filechooser"), page.click("#browser .param-csv-in")]);
+  await c2.setFiles({ name: "p.csv", mimeType: "text/csv", buffer: Buffer.from("1bad;3\n;\n") });
+  await expect(toastWith("Imported 0 parameters, 1 row skipped")).toBeVisible();
+  expect(await page.evaluate(() => window.__store.undoStack.length)).toBe(undoBefore);
+  const [c3] = await Promise.all([page.waitForEvent("filechooser"), page.click("#browser .param-csv-in")]);
+  await c3.setFiles({ name: "p.csv", mimeType: "text/csv", buffer: Buffer.from('"q1";"2*3";IN\n') });
+  await expect(toastWith("Imported 1 parameter")).toBeVisible();
+  expect(await page.evaluate(() => window.__store.doc.params.slice(2).map((p) => [p.name, p.expr, p.unit]))).toEqual([["q1", "2*3", "in"]]);
+});
+
+test("CSV: a file with a BOM, CRLF line ends, a quoted comma and a ; with a decimal comma reads, and saves back out the same", async () => {
+  await clearToasts();
+  await loadDoc(page, parametric());
+  const importText = async (text) => {
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#browser .param-csv-in")]);
+    await chooser.setFiles({ name: "p.csv", mimeType: "text/csv", buffer: Buffer.from(text, "utf8") });
+  };
+  await importText('\uFEFFname,expression,unit\r\nw,60,\r\nk,"max(1,2)",\r\n');
+  await expect(toastWith("Imported 2 parameters, 1 with errors")).toBeVisible(); // the kernel has no max(): k shows an error, and says so
+  expect(await page.evaluate(() => window.__store.doc.params.map((p) => [p.name, p.expr]))).toEqual([["w", "60"], ["h", "w/2"], ["k", "max(1,2)"]]);
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#browser .param-csv-out")]);
+  const chunks = [];
+  for await (const c of await dl.createReadStream()) chunks.push(c);
+  expect(Buffer.concat(chunks).toString("utf8")).toBe('name,expression,unit\nw,60,\nh,w/2,\nk,"max(1,2)",\n');
+  await waitIdle(page);
+  // one ; and one , in the file: it is a ; file (a decimal comma)
+  await importText("w;12,5\n");
+  await expect.poll(() => page.evaluate(() => window.__store.doc.params[0].expr)).toBe("12,5");
+});
+
+test("CSV: the buttons in the Beginner inspector save the same file, and an import there is one undo step", async () => {
+  await clearToasts();
+  const doc = JSON.parse(readFileSync(new URL("./projects/parametric-beginner.json", import.meta.url), "utf8"));
+  await loadDoc(page, doc);
+  await page.evaluate(() => window.__app.select(["b1"]));
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#insp-params .param-csv-out")]);
+  const chunks = [];
+  for await (const c of await dl.createReadStream()) chunks.push(c);
+  expect(Buffer.concat(chunks).toString("utf8")).toBe("name,expression,unit\n" + doc.params.map((p) => `${p.name},${p.expr},${p.unit || ""}\n`).join(""));
+  const before = await page.evaluate(() => JSON.stringify(window.__store.doc.params));
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#insp-params .param-csv-in")]);
+  await chooser.setFiles({ name: "p.csv", mimeType: "text/csv", buffer: Buffer.from("w,50\nk,3\n") });
+  await expect(toastWith("Imported 2 parameters")).toBeVisible();
+  expect(await page.evaluate(() => window.__store.doc.params.map((p) => p.name))).toEqual(["w", "h", "k"]);
+  await undoOnce();
+  expect(await page.evaluate(() => JSON.stringify(window.__store.doc.params))).toBe(before);
+});
+
+test("CSV: an import that leaves a parameter with an error says how many", async () => {
+  await clearToasts();
+  await loadDoc(page, parametric());
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#browser .param-csv-in")]);
+  await chooser.setFiles({ name: "p.csv", mimeType: "text/csv", buffer: Buffer.from("w,k*2\nk,5\n") }); // w comes before k, so k is not known to it yet
+  await expect(toastWith("Imported 2 parameters, 2 with errors")).toBeVisible(); // w, and h which uses it
+});
+
+test("Tutorials: the Parameters tutorial exists and ticks its steps off for a matching design", async () => {
+  await loadDoc(page, newDoc("Untitled", "advanced"));
+  const r = await page.evaluate(() => {
+    const t = window.__app.tutorials, tut = t.list.find((x) => x.id === "a-params"), T = t.T;
+    const run = () => tut.steps.map((s) => (s.check ? !!s.check(T) : null));
+    const out = { count: t.list.length, adv: t.list.filter((x) => x.mode === "advanced").length, steps: tut.steps.length, level: tut.level, item: tut.item };
+    out.empty = run();
+    return out;
+  });
+  expect(r.steps).toBeGreaterThanOrEqual(7);
+  expect(r.count).toBe(19);
+  expect(r.adv).toBe(10);
+  expect(r.level).toBe("Proficient");
+  expect(r.item).toBe("Bracket");
+  expect(r.empty.slice(0, 6)).toEqual([false, false, false, false, false, false]);
+  // build the finished design the steps describe: sketch rectangle, w/h/t, bound dimensions, extrude by t, then w = 80
+  const doc = parametric();
+  doc.name = "Lopez, Maria, Bracket";
+  doc.params.push({ id: "q3", name: "t", expr: "8", value: NaN });
+  doc.bodies[0].node.exprs = { dist: "t" };
+  await loadDoc(page, doc);
+  const checks = () => page.evaluate(() => { const t = window.__app.tutorials, T = t.T; return t.list.find((x) => x.id === "a-params").steps.map((s) => (s.check ? !!s.check(T) : null)); });
+  expect((await checks()).slice(0, 5)).toEqual([true, true, false, true, true]); // w = 40 here, so "add w = 60" is not met yet
+  await setParam("w", "60");
+  expect((await checks()).slice(0, 6)).toEqual([true, true, true, true, true, false]);
+  await setParam("w", "80");
+  expect((await checks()).slice(0, 6)).toEqual([true, true, false, true, true, true]);
+  expect((await bodies(page))[0].volume).toBeCloseTo(80 * 40 * 8, 0);
+});
+
+test("About says nineteen tutorials and lists what the community build adds", async () => {
+  await page.click("#btn-about");
+  const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
+  await expect(about).toContainText("nineteen step-by-step projects (nine in Beginner, ten in Advanced");
+  await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
+  await page.keyboard.press("Escape");
+  await expect(about).toBeHidden();
 });

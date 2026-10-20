@@ -1487,4 +1487,75 @@ export const TUTORIALS = [
       exportStep(),
     ],
   },
+  {
+    id: "a-params", mode: "advanced", level: "Proficient", minutes: "8-10", item: "Bracket",
+    title: "Parametric bracket",
+    blurb: "Name your numbers, use them in dimensions and an extrude, then change one number and watch the whole bracket follow.",
+    learn: ["Parameters", "Expressions", "Sketch dimensions", "Extrude by a parameter", "CSV"],
+    steps: [
+      nameStep("Bracket", "Lopez, Maria, Bracket"),
+      {
+        title: "Sketch a rectangle", tool: "Sketch → Rectangle", icon: "sketch", show: { sel: "#ad-sketch" },
+        how: [
+          "Click <b>Sketch</b>, then <b>XY · Top</b> in the panel.",
+          "Click <b>Rectangle</b> (or press <b>R</b>). Click the origin dot, then click out to the right and up to make any size you like. You will set the real size with parameters in a moment.",
+        ],
+        when: "A parametric design starts like any other: a sketch. What changes is that the numbers come from names you choose.",
+        check: (t) => t.sketchLines(4),
+      },
+      {
+        title: "Add two parameters", tool: "Parameters list (+)", icon: "text", show: { sel: "#browser .param-add" },
+        how: [
+          "In the browser on the left, find <b>Parameters</b> and click <b>+</b>. Rename <b>p1</b> to <b>w</b> and type <b>60</b> as its value.",
+          "Click <b>+</b> again. Name it <b>h</b> and type <b>w/2</b> as its value. It shows <b>30 mm</b>.",
+        ],
+        when: "A parameter is a named number. A value can be a sum or a fraction of other parameters, so <b>h</b> stays half of <b>w</b> without you doing any sums.",
+        tip: "A name uses letters, digits and _ and starts with a letter. Names like d1, d2 are kept for the sketch's own dimensions.",
+        check: (t) => { const p = t.doc().params || [], w = p.find((q) => q.name.toLowerCase() === "w"), h = p.find((q) => q.name.toLowerCase() === "h"); return !!w && !!h && t.near(w.value, 60, 0.01) && t.near(h.value, 30, 0.01); },
+      },
+      {
+        title: "Size the rectangle with the names", tool: "Select, then click an edge", icon: "dim", show: { sel: "#sk-select" },
+        how: [
+          "You are still in the Rectangle tool: press <b>Esc</b> (or click <b>Select</b>).",
+          "Click the <b>bottom edge</b> of the rectangle. A box opens for its length: type <b>w</b> and press <b>Enter</b>.",
+          "Click the <b>left edge</b>, type <b>h</b> and press <b>Enter</b>.",
+          "The labels now read like <b>d1 = w = 60</b>: the dimension's own name, the expression, then the size.",
+        ],
+        when: "Typing a name instead of a number ties the dimension to the parameter. When a corner sits on the origin and both sizes are set, the sketch has nothing left to move: the toolbar note says <b>Fully constrained</b> and the browser shows a ✓.",
+        tip: "Every dimension has a name (d1, d2…). You can use those in any dimension, feature value or shape size too, for example <b>d1/2</b>.",
+        check: (t) => { const c = t.sketches().flatMap((s) => s.cons || []).filter((x) => x.t === "dim"); return c.some((x) => /^w$/i.test(x.expr || "")) && c.some((x) => /^h$/i.test(x.expr || "")); },
+      },
+      {
+        title: "Extrude by a parameter", tool: "Parameters + Extrude", icon: "extrude", show: { sel: "#sk-extrude, #ad-extrude" },
+        how: [
+          "In <b>Parameters</b>, click <b>+</b>, name it <b>t</b> and type <b>8</b>.",
+          "Press <b>E</b>. The rectangle is picked.",
+          TABS,
+          "Type <b>t</b> for the Distance (the box turns italic). Click <b>OK</b>.",
+        ],
+        when: "Features take names too, not just sketches. The thickness of the bracket now lives in one place.",
+        check: (t) => t.bodies().some((b) => b.node.exprs && b.node.exprs.dist),
+      },
+      {
+        title: "Change one number", tool: "Parameters list", icon: "text", show: { sel: "#browser .param-expr" },
+        how: [
+          "In <b>Parameters</b>, click the value box of <b>w</b>, type <b>80</b> and press <b>Enter</b>.",
+          "The rectangle is wider, <b>h</b> follows to 40, and the bracket rebuilds. Press <b>Ctrl+Z</b> to take it back, or <b>Ctrl+Y</b> to redo.",
+        ],
+        when: "This is what parametric means: change the number once and everything that depends on it follows. Try it again with <b>t</b>.",
+        check: (t) => { const w = (t.doc().params || []).find((q) => q.name.toLowerCase() === "w"); return !!w && t.near(w.value, 80, 0.01); },
+      },
+      {
+        title: "Export the parameters", tool: "Parameters → CSV", icon: "import", show: { sel: "#browser .param-csv-out" },
+        how: [
+          "Next to <b>Parameters</b>, click <b>CSV ↓</b>. The names and values are saved as a small spreadsheet file.",
+          "<b>CSV ↑</b> reads a file like it back in: names that exist take the new value, new names are added.",
+        ],
+        when: "Optional. A spreadsheet is a handy way to keep sets of sizes (small, medium, large) and to try values on a copy of your design.",
+        tip: "Importing is one step in Undo, so you can always take it back.",
+      },
+      saveStep(),
+      exportStep(),
+    ],
+  },
 ];

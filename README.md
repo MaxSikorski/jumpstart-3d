@@ -45,7 +45,7 @@ That is all. You do not need anything else in this repository.
 - Chisel: clay-style sculpting, with Puppet Animator
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Eighteen step-by-step tutorials with built-in animations
+- Nineteen step-by-step tutorials with built-in animations
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
@@ -62,6 +62,9 @@ That is all. You do not need anything else in this repository.
   count, spacing or angle, and editing the source hole updates every copy.
   Patterns of separate bodies, Beginner patterns and path patterns still make
   plain copies
+- Proof it is parametric: a fully-constrained mark on every sketch, dimension
+  names `d1`, `d2`… you can use in any dimension, feature value or shape
+  size, parameters importable and exportable as CSV, and a Parameters tutorial
 - Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
   with a live triangle count) for smoother curves in the view and in mesh
   exports
@@ -211,6 +214,11 @@ UPSTREAM-README.md         the author's README from the source release
 - Imported SVG drawings are stripped of scripts, embedded HTML and event
   handlers before the app reads their geometry, so a booby-trapped file cannot
   run code in the page
+- Proof it is parametric: every sketch shows a ✓ when fully constrained (or
+  how many degrees of freedom are left, as a plain count, so an estimate),
+  every dimension has a name (`d1`, `d2`…) that any dimension, feature value
+  or shape size can use (`d1/2`), the Parameters list exports and imports as
+  CSV (one undo step), and a Parameters tutorial walks through it
 - Named parameters: a Parameters section at the top of the Advanced browser
   (add, rename, edit, delete, undo). Give a parameter a name and a value or
   expression (`40`, `w/2`, `1in`), then type the name or an expression in any
