@@ -29,6 +29,7 @@ import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
+import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -928,3 +929,6 @@ else boot();
 // Our addition: the app and its document store on window, as the author's app/test/dbg.js
 // exposed them for his Playwright scripts. The regression tests in test/ drive both builds through these.
 window.__app = app; window.__store = store; window.__findBody = findBody;
+
+// jumpstart-3d: scripting bridge. window.JS3D, documented in BRIDGE.md; does nothing until a script calls it.
+initBridge(app);

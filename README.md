@@ -175,13 +175,16 @@ src/flexigen.html, src/meshstep.html, src/chisel.html
                     the helper pages, built; their source is in tools/
 src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
+src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
 LICENSES/, THIRD-PARTY-NOTICES.md
                     licenses of everything in third_party/ and of the fonts
 build.mjs           the build (the author's dist.sh and standalone.py, in Node)
 tools/              helper page sources and the scripts that rebuild them
-                    (see tools/README-helpers.md); og-card/ renders the link-preview image
+                    (see tools/README-helpers.md); og-card/ renders the link-preview image;
+                    bridge-demo.js is a script to paste into the browser console
+BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website, committed so GitHub Pages can serve it
 jumpstart_3d_v2.0.htm      the untouched upstream file this version came from
 UPSTREAM-README.md         the author's README from the source release
@@ -245,6 +248,14 @@ UPSTREAM-README.md         the author's README from the source release
   patterns of several bodies left separate (they are separate bodies) and path
   patterns. A trailing uneven Scale turns the body into a mesh, as it does for
   any feature it cannot replay
+- Scripting bridge: `window.JS3D` lets a script, the browser console or a
+  tool server build and edit Beginner shapes (add, move, turn, resize, scale,
+  group, holes, parameters), read each body's size and volume, undo, take a
+  screenshot, export STL, OBJ, 3MF, STEP or the project file, and open a project
+  file, with the same bytes the Export menu gives. It does nothing until it is
+  called, and works in the single file too. `BRIDGE.md` lists every call and
+  documents the project `.json` format; `tools/bridge-demo.js` is an example
+  you can paste into the console
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 
