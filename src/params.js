@@ -1,9 +1,10 @@
 // jumpstart-3d: named parameters. doc.params is [{ id, name, expr, unit?, value }] (value: cached
 // result in mm, NaN when the expression fails). A sketch dimension can hold `expr` text that
 // uses parameter names; applyParams() re-evaluates everything and re-solves the sketches whose
-// dimensions changed. Called from store.js after every update and on load.
+// dimensions or feature values changed. Called from store.js after every update and on load.
 import { parseLength, uid } from "./util.js";
 import { solveSketch, normalizeSketch } from "./constraints.js";
+import { getUnit } from "./units.js";
 
 export const PARAM_ERROR = "Unknown name or not a valid expression";
 const UNIT_WORDS = ["mm", "cm", "m", "in", "ft", "deg"];
@@ -30,8 +31,38 @@ export function evalExpr(text, params, { unit = "mm", angle = false } = {}) {
   return parseLength(s, angle || named ? "mm" : unit);
 }
 
-// a dimension whose expression now gives a different good value takes it and its sketch is solved again.
-// Returns how many bound dimensions were skipped because the value is not usable (they keep their last value).
+// Feature values bound to an expression live next to the value: owner.exprs = { dist: "w/2" } (+ owner.exprUnits
+// when typed in inches). Owners are extrude/revolve nodes (dist, dist2, angle) and fillet, chamfer, hole and shell
+// mods (r, d, dia, depth, th), including bool-mod tools and group children. fn(owner, key) per bound value.
+export function forEachFeatureExpr(doc, fn) {
+  const visit = (n) => {
+    for (const k of Object.keys(n.exprs || {})) fn(n, k);
+    if (n.src) visit(n.src); // Mirror with Join and Split by another body keep a copy of the body's node
+    for (const m of n.mods || []) { visit(m); if (m.t === "bool" && m.tool) visit(m.tool); }
+    for (const c of n.children || []) visit(c.node);
+  };
+  for (const b of doc.bodies) visit(b.node);
+}
+// the dialogs' own limits
+const FEATURE_MIN = { dist2: 0, angle: 0.1, r: 0.001, d: 0.001, dia: 0.01, depth: 0.01, th: 0.01 };
+const featureOk = (k, v) => isFinite(v) && (k === "dist" ? Math.abs(v) > 1e-6 : v >= FEATURE_MIN[k] && (k !== "angle" || v <= 360));
+
+// A feature value typed as an expression keeps its text in o.exprs[key] (and the unit it was typed in in o.exprUnits)
+export function setExpr(o, key, text, angle) {
+  const put = (map, val) => { if (val) (o[map] = o[map] || {})[key] = val; else if (o[map]) { delete o[map][key]; if (!Object.keys(o[map]).length) delete o[map]; } };
+  put("exprs", text);
+  put("exprUnits", text && !angle && getUnit() !== "mm" ? getUnit() : null);
+}
+export const exprOf = (o, key) => (o.exprs && o.exprs[key]) || null;
+// the exprs/exprUnits of o for keys, stored under the names in `as`
+export const exprsOf = (o, keys, as = keys) => {
+  const r = {};
+  for (const m of ["exprs", "exprUnits"]) keys.forEach((k, i) => { if (o[m] && o[m][k]) (r[m] = r[m] || {})[as[i]] = o[m][k]; });
+  return r;
+};
+
+// a dimension or feature value whose expression now gives a different good value takes it and its sketch is solved again.
+// Returns how many bound values were skipped because the value is not usable (they keep their last value).
 export function applyParams(doc) {
   // each parameter sees only the ones above it
   doc.params.forEach((p, i) => { p.value = evalExpr(p.expr, doc.params.slice(0, i), { unit: p.unit }); });
@@ -49,6 +80,13 @@ export function applyParams(doc) {
     }
     if (changed) { solveSketch(sk); normalizeSketch(sk); }
   }
+  forEachFeatureExpr(doc, (o, k) => {
+    const v = evalExpr(o.exprs[k], doc.params, { unit: o.exprUnits && o.exprUnits[k], angle: k === "angle" });
+    if (!featureOk(k, v)) { skipped++; return; }
+    if (Math.abs(v - o[k]) <= 1e-9) return;
+    o[k] = v;
+    if (o.sets && o.sets.length && (k === "r" || k === "d")) o.sets[0].r = v; // the kernel reads sets when there are any
+  });
   return skipped;
 }
 
@@ -59,7 +97,7 @@ export function paramNameOk(name, params, selfId) {
   return null;
 }
 
-// rename, and follow the old name in later parameters and in every dimension
+// rename, and follow the old name in later parameters and in every dimension and feature value
 export function renameParam(doc, id, newName) {
   const i = doc.params.findIndex((p) => p.id === id);
   const re = wordRe(doc.params[i].name);
@@ -67,10 +105,11 @@ export function renameParam(doc, id, newName) {
   const swap = (s) => s.replace(re, () => newName);
   for (const p of doc.params.slice(i + 1)) p.expr = swap(p.expr);
   for (const sk of doc.sketches) for (const c of sk.cons || []) if (c.t === "dim" && c.expr) c.expr = swap(c.expr);
+  forEachFeatureExpr(doc, (o, k) => { o.exprs[k] = swap(o.exprs[k]); });
 }
 
-// delete a parameter; dimensions that used its name keep their value but lose the expression
-// (later parameters are left alone and show an error). Returns how many dimensions were unbound.
+// delete a parameter; dimensions and feature values that used its name keep their value but lose the expression
+// (later parameters are left alone and show an error). Returns how many were unbound.
 export function removeParam(doc, id) {
   const name = doc.params.find((p) => p.id === id).name;
   doc.params = doc.params.filter((p) => p.id !== id);
@@ -78,6 +117,13 @@ export function removeParam(doc, id) {
   for (const sk of doc.sketches) for (const c of sk.cons || []) {
     if (c.t === "dim" && c.expr && wordRe(name, "i").test(c.expr)) { delete c.expr; delete c.unit; n++; }
   }
+  forEachFeatureExpr(doc, (o, k) => {
+    if (!wordRe(name, "i").test(o.exprs[k])) return;
+    delete o.exprs[k];
+    if (o.exprUnits) { delete o.exprUnits[k]; if (!Object.keys(o.exprUnits).length) delete o.exprUnits; }
+    if (!Object.keys(o.exprs).length) delete o.exprs;
+    n++;
+  });
   return n;
 }
 

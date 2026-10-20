@@ -298,5 +298,16 @@
     "3mf": "ba2b353f078e47dca1bf5f834a0c83c391720cc32f7df6adb09ec142e2d733d1",
     "step": "3fa1d6418420ec2e37ffad48464d62417ad9ed6aff3d5384966bef5d632bbd15",
     "dxf": "be99f22067dece7c20e85a786ef9b651f1cc954d3afcfec86f5f9c08c8a7598a"
+  },
+  "parametric-features.json": {
+    "volumes": {
+      "b1 Plate": 11563
+    },
+    "stlTriangles": 332,
+    "stl": "abcf2fe47baf139a96aa39087140d70d3937cfa39508bee915739c20e9e0cab5",
+    "obj": "6a7179290fb702ef0351063f6a68108f9cac31c5eec8f635bf501cac0e1da125",
+    "3mf": "56d869c032d2834dd32cb2223e7af32aa870d8d5a8689416820518eb784bf437",
+    "step": "d27a2040335e805e21b39386a861931064044e1417e6f5b9d3e02e8a160fad7b",
+    "dxf": "f5a3b603c5149eb2c2b0b881504efbfdafd6babc23799b732fdda0e249398d73"
   }
 }

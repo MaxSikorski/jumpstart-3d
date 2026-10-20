@@ -51,8 +51,9 @@ That is all. You do not need anything else in this repository.
 - Layer-by-layer print preview, section analysis, multi-filament colors
 - Export to STL, OBJ, 3MF, STEP and DXF
 - Named parameters in Advanced mode: a Parameters list in the sidebar,
-  and sketch dimensions that take a name or an expression (`w`, `w/2`) and
-  follow it when the value changes
+  and sketch dimensions and feature values (extrude distance, revolve angle,
+  fillet and chamfer size, hole diameter and depth, shell thickness) that take
+  a name or an expression (`w`, `w/2`) and follow it when the value changes
 - Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
   with a live triangle count) for smoother curves in the view and in mesh
   exports
@@ -148,7 +149,7 @@ src/occt-gz.wasm    OpenCascade kernel, gzipped
 src/flexigen.html, src/meshstep.html, src/chisel.html
                     the helper pages, built; their source is in tools/
 src/meshdetail.js   our Mesh detail setting
-src/params.js       our named parameters (evaluator and the sketch dimension hook)
+src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
 LICENSES/, THIRD-PARTY-NOTICES.md
@@ -191,10 +192,13 @@ UPSTREAM-README.md         the author's README from the source release
 - Named parameters: a Parameters section at the top of the Advanced browser
   (add, rename, edit, delete, undo). Give a parameter a name and a value or
   expression (`40`, `w/2`, `1in`), then type the name or an expression in any
-  sketch dimension; the sketch and everything built on it follow when the
-  parameter changes. Parameters are saved in the project file; older files
-  open unchanged. Feature values, Beginner shapes and an editable Pattern are
-  next (`IMPROVEMENT_PLAN.md`, Phase P)
+  sketch dimension or in a feature's value box (extrude distance, revolve
+  angle, fillet and chamfer size, hole diameter and depth, shell thickness);
+  the sketch, the feature and everything built on it follow when the
+  parameter changes. A value tied to a name shows its expression and an `fx`
+  look in the dialog, and the timeline reads `Extrude (dist = t)`. Parameters
+  are saved in the project file; older files open unchanged. Beginner shapes
+  and an editable Pattern are next (`IMPROVEMENT_PLAN.md`, Phase P)
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 

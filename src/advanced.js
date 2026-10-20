@@ -9,7 +9,7 @@ import { planeMatrix } from "./scene.js";
 import { thickLines } from "./thickline.js";
 import { SKETCH_TOOLS, normalizeSketch, arcFrom3, addImportedCurves } from "./sketcher.js";
 import { parseSVG, parseDXF, curvesBounds } from "./importers.js";
-import { paramNameOk, renameParam, newParam, removeParam, applyParams, PARAM_ERROR } from "./params.js";
+import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, exprOf, exprsOf, PARAM_ERROR } from "./params.js";
 import { traceImage, curvesFor } from "./trace.js";
 import { subjectMask, inflate, maskBox } from "./puffy.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
@@ -748,9 +748,9 @@ export function initAdvanced(app) {
   }
   function featureNode(st) {
     const base = { t: st.kind, sketch: st.sketchId, profiles: [...st.profiles.values()].map((p) => p.ref) };
-    if (st.kind === "extrude") Object.assign(base, { dist: st.dist, mode: st.mode, dist2: st.dist2 });
+    if (st.kind === "extrude") Object.assign(base, { dist: st.dist, mode: st.mode, dist2: st.dist2 }, exprsOf(st, st.mode === "two" ? ["dist", "dist2"] : ["dist"])); // jumpstart-3d: parameters
     else if (st.kind === "sweep") Object.assign(base, { path: st.path, orient: st.orient, dist: st.sdist, taper: st.taper, twist: st.twist, chain: st.chain });
-    else Object.assign(base, { axis: st.axis, angle: st.angle });
+    else Object.assign(base, { axis: st.axis, angle: st.angle }, exprsOf(st, ["angle"])); // jumpstart-3d: parameters
     return base;
   }
 
@@ -848,7 +848,7 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const node = editing.mod ? b.node.mods.find((m) => m.id === editing.mod).tool : b.node;
-      Object.assign(st, { sketchId: node.sketch, dist: node.dist ?? 10, mode: node.mode || "one", dist2: node.dist2 ?? 5, angle: node.angle ?? 360, axis: node.axis || null, path: node.path || null, orient: node.orient || "perp", sdist: kind === "sweep" && node.dist != null ? node.dist : 1, taper: node.taper ?? 0, twist: node.twist ?? 0, chain: node.chain !== false });
+      Object.assign(st, { sketchId: node.sketch, dist: node.dist ?? 10, mode: node.mode || "one", dist2: node.dist2 ?? 5, angle: node.angle ?? 360, axis: node.axis || null, path: node.path || null, orient: node.orient || "perp", sdist: kind === "sweep" && node.dist != null ? node.dist : 1, taper: node.taper ?? 0, twist: node.twist ?? 0, chain: node.chain !== false }, exprsOf(node, ["dist", "dist2", "angle"])); // jumpstart-3d: parameters
       st.op = editing.mod ? b.node.mods.find((m) => m.id === editing.mod).op : "new";
       const sk = findSk(store.doc, st.sketchId);
       if (sk) {
@@ -927,14 +927,14 @@ export function initAdvanced(app) {
           const sk = findSk(store.doc, st.sketchId);
           const axes = axesInPlane(sk);
           body.append(row("…or use", seg(axes.map((k) => [k, k + " axis"]), WORLD_AXES[st.axis] ? st.axis : null, (v) => { st.axis = v; st.axisLine = null; st.pickAxis = false; refresh(); }, "rv-axes")));
-          body.append(row("Angle", app.numField({ value: st.angle, id: "rv-angle", min: 0.1, max: 360, step: 15, live: true, onCommit: (v) => { st.angle = v; refresh(false); } }), "rv-angle"));
+          body.append(row("Angle", app.numField({ value: st.angle, id: "rv-angle", min: 0.1, max: 360, step: 15, live: true, expr: exprOf(st, "angle"), angle: true, onCommit: (v, t) => { st.angle = v; setExpr(st, "angle", t, true); refresh(false); } }), "rv-angle")); // jumpstart-3d: parameters
         } else {
           body.append(row("Extent", seg([["dist", "Distance"], ["to", "To object"]], st.extent, (v) => { st.extent = v; if (v === "dist") { st.toRef = null; st.pickTo = false; } else { st.mode = "one"; st.pickTo = !st.toRef; } refresh(); }, "ex-extent")));
           if (st.extent === "to") body.append(row("Object", pickbox(!st.toRef, st.toRef ? el("span", {}, el("b", {}, st.toRef.label || "Surface")) : "Click a face or plane", st.toRef ? () => { st.toRef = null; st.pickTo = true; refresh(); } : null, () => { st.pickTo = true; def.render(); }), "ex-object"));
           else body.append(row("Direction", seg([["one", "One side"], ["sym", "Symmetric"], ["two", "Two sides"]], st.mode, (v) => { st.mode = v; refresh(); }, "ex-mode")));
           const dl = st.mode === "sym" ? "Total distance" : st.mode === "two" ? "Side 1" : "Distance";
-          body.append(row(dl, (def.distInput = app.numField({ value: st.dist, id: "ex-dist", step: 1, live: true, onCommit: (v) => { st.dist = v; const was = st.extent === "to"; st.extent = "dist"; st.toRef = null; refresh(was); } })), "ex-dist"));
-          if (st.mode === "two") body.append(row("Side 2", app.numField({ value: st.dist2, id: "ex-dist2", min: 0, step: 1, live: true, onCommit: (v) => { st.dist2 = v; refresh(false); } }), "ex-dist2"));
+          body.append(row(dl, (def.distInput = app.numField({ value: st.dist, id: "ex-dist", step: 1, live: true, expr: exprOf(st, "dist"), onCommit: (v, t) => { st.dist = v; setExpr(st, "dist", t); const was = st.extent === "to"; st.extent = "dist"; st.toRef = null; refresh(was); } })), "ex-dist"));
+          if (st.mode === "two") body.append(row("Side 2", app.numField({ value: st.dist2, id: "ex-dist2", min: 0, step: 1, live: true, expr: exprOf(st, "dist2"), onCommit: (v, t) => { st.dist2 = v; setExpr(st, "dist2", t); refresh(false); } }), "ex-dist2")); // jumpstart-3d: parameters
         }
         if (!editing || editing.mod) {
           const ops = editing ? [["join", "Join"], ["cut", "Cut"], ["intersect", "Intersect"]] : [["auto", "Automatic"], ["new", "New body"], ["join", "Join"], ["cut", "Cut"], ["intersect", "Intersect"]];
@@ -1052,6 +1052,7 @@ export function initAdvanced(app) {
           if (st.mode === "sym") s = Math.abs(s) * 2;
           st.extent = "dist"; st.toRef = null;
           st.dist = s || (st.dist > 0 ? g : -g);
+          setExpr(st, "dist", null); // jumpstart-3d: parameters
           def.distInput && def.distInput.setValue(st.dist);
           refresh(false);
         },
@@ -1067,6 +1068,7 @@ export function initAdvanced(app) {
       const d = +new THREE.Vector3(...r.o).sub(new THREE.Vector3(...sk.plane.o)).dot(sn).toFixed(6);
       if (Math.abs(d) < 1e-6) { app.toast("That surface is on the same plane as the profile."); return; }
       Object.assign(st, { extent: "to", toRef: r, pickTo: false, mode: "one", dist: d, hoverPlane: null, hoverPlaneKey: "" });
+      setExpr(st, "dist", null); // jumpstart-3d: parameters
       def.distInput && def.distInput.setValue(d);
       refresh();
     }
@@ -1237,6 +1239,7 @@ export function initAdvanced(app) {
       const sets = m.sets && m.sets.length ? m.sets : [{ edges: m.edges, r: kind === "fillet" ? m.r : m.d }];
       st.sets = sets.map((x) => ({ items: [], keep: x.edges || [], value: x.r, value2: x.r2 ?? x.r, rt: x.rt || "const" }));
       st.chain = m.chain !== false;
+      Object.assign(st.sets[0], exprsOf(m, [kind === "fillet" ? "r" : "d"], ["r"])); // jumpstart-3d: parameters
       st.lockedBody = b.id;
     } else st.sets = [newSet(kind === "fillet" ? 2 : 1)];
     const cur = () => st.sets[Math.min(st.active, st.sets.length - 1)];
@@ -1258,11 +1261,13 @@ export function initAdvanced(app) {
           for (const g of sigs) { if (!per.has(g.body)) per.set(g.body, []); per.get(g.body).push(g.info); }
           for (const [body, edges] of per) {
             if (!byBody.has(body)) byBody.set(body, []);
-            byBody.get(body).push({ edges, r: s.value, ...(isF() && s.rt === "variable" ? { r2: s.value2, rt: "variable" } : isF() && s.rt === "chord" ? { rt: "chord" } : {}) });
+            byBody.get(body).push({ edges, r: s.value, ...(s === st.sets[0] && { exprs: s.exprs, exprUnits: s.exprUnits }), ...(isF() && s.rt === "variable" ? { r2: s.value2, rt: "variable" } : isF() && s.rt === "chord" ? { rt: "chord" } : {}) }); // jumpstart-3d: parameters
           }
         }
         const modOf = (sets) => {
-          const m = { t: st.kind, edges: sets[0].edges, chain: st.chain ? undefined : false };
+          const fx = exprsOf(sets[0], ["r"], [isF() ? "r" : "d"]); // jumpstart-3d: parameters
+          sets = sets.map(({ exprs, exprUnits, ...x }) => x);
+          const m = { t: st.kind, edges: sets[0].edges, chain: st.chain ? undefined : false, ...fx };
           if (st.kind === "fillet") m.r = sets[0].r; else m.d = sets[0].r;
           if (sets.length > 1 || sets[0].rt) m.sets = sets;
           return m;
@@ -1288,7 +1293,7 @@ export function initAdvanced(app) {
         const m = /about ([\d.]+) mm/.exec(msg);
         if (!m || box.querySelector("button")) return;
         const v = +m[1];
-        box.append(el("button", { class: "btn", style: { marginTop: "6px" }, onclick: () => { cur().value = v; if (cur().value2 > v && cur().rt === "variable") cur().value2 = v; refresh(); } }, `Use ${fmt(v, 2)} mm`));
+        box.append(el("button", { class: "btn", style: { marginTop: "6px" }, onclick: () => { cur().value = v; setExpr(cur(), "r", null); if (cur().value2 > v && cur().rt === "variable") cur().value2 = v; refresh(); } }, `Use ${fmt(v, 2)} mm`)); // jumpstart-3d: parameters
       },
       typeInto: () => (count(cur()) ? def.valInput : null),
       hint: () => editing && !cur().items.length ? "Drag the arrow or type a size, or click edges to pick a new set." : count(cur()) ? "Drag the arrow or type a size. Click edges or faces to add them; click again to remove. + adds a set with its own size." : "Click edges, or a face to take all its edges. Click again to remove.",
@@ -1309,7 +1314,7 @@ export function initAdvanced(app) {
         const s = cur();
         if (isF()) body.append(row("Radius type", seg([["const", "Constant"], ["chord", "Chord length"], ["variable", "Variable"]], s.rt, (v) => { s.rt = v; refresh(); }, "ed-rtype")));
         const lab = !isF() ? "Distance" : s.rt === "chord" ? "Chord length" : s.rt === "variable" ? "Start radius" : "Radius";
-        body.append(row(lab, (def.valInput = app.numField({ value: s.value, id: "ed-val", min: 0.001, step: 0.5, live: true, onCommit: (v) => { s.value = v; refresh(false); } })), "ed-val"));
+        body.append(row(lab, (def.valInput = app.numField({ value: s.value, id: "ed-val", min: 0.001, step: 0.5, live: true, ...(s === st.sets[0] && { expr: exprOf(s, "r") }), onCommit: (v, t) => { s.value = v; setExpr(s, "r", t); refresh(false); } })), "ed-val")); // jumpstart-3d: parameters
         if (isF() && s.rt === "variable") body.append(row("End radius", app.numField({ value: s.value2, id: "ed-val2", min: 0.001, step: 0.5, live: true, onCommit: (v) => { s.value2 = v; refresh(false); } }), "ed-val2"));
         body.append(el("label", { class: "check", title: "Picking an edge also takes the edges that run smoothly on from it" }, el("input", { type: "checkbox", id: "ed-chain", checked: st.chain, onchange: (e) => { st.chain = e.target.checked; } }), "Tangent chain"));
         if (isF() && s.rt === "chord") body.append(el("div", { class: "hint", style: { padding: 0 } }, "Chord length is the straight distance across the rounded edge."));
@@ -1324,6 +1329,7 @@ export function initAdvanced(app) {
           const g = app.gridStep();
           const step = g >= 1 ? 0.5 : g > 0 ? g : 0.01;
           cur().value = Math.max(step, round(sv, step));
+          setExpr(cur(), "r", null); // jumpstart-3d: parameters
           def.valInput && def.valInput.setValue(cur().value);
           refresh(false);
         },
@@ -1497,11 +1503,12 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const m = b.node.mods.find((x) => x.id === editing.mod);
-      Object.assign(st, { kind: m.tapped ? "tapped" : m.kind, dia: m.dia, through: !!m.through, depth: m.depth || 10, cbDia: m.cbDia || 9, cbDepth: m.cbDepth || 3, csDia: m.csDia || 10, csAngle: m.csAngle || 90, body: b.id, size: m.size || "", pitch: m.pitch || 0.5, clear: m.clear || 0, tip: !!m.tip });
+      Object.assign(st, { kind: m.tapped ? "tapped" : m.kind, dia: m.dia, through: !!m.through, depth: m.depth || 10, cbDia: m.cbDia || 9, cbDepth: m.cbDepth || 3, csDia: m.csDia || 10, csAngle: m.csAngle || 90, body: b.id, size: m.size || "", pitch: m.pitch || 0.5, clear: m.clear || 0, tip: !!m.tip }, exprsOf(m, ["dia", "depth"])); // jumpstart-3d: parameters
       const M = M4(b.m);
       st.at = (m.at || [{ p: m.p, n: m.n }]).map((s) => ({ ...s, world: new THREE.Vector3(...s.p).applyMatrix4(M) }));
     }
     function applySize(k) {
+      setExpr(st, "dia", null); // jumpstart-3d: parameters
       if (st.kind === "tapped") { const t = TAP[k]; if (!t) return; st.pitch = t[1]; st.dia = +(t[0] - 1.0825 * t[1]).toFixed(3); return; }
       if (!CLEAR[k]) return;
       st.dia = CLEAR[k];
@@ -1516,10 +1523,10 @@ export function initAdvanced(app) {
       canOk: () => def.valid(),
       apply(doc) {
         const tapped = st.kind === "tapped";
-        const params = { kind: tapped ? "simple" : st.kind, dia: st.dia, through: st.through, depth: st.depth, cbDia: st.cbDia, cbDepth: st.cbDepth, csDia: st.csDia, csAngle: st.csAngle, size: st.size, tapped, pitch: tapped ? st.pitch : 0, clear: tapped ? st.clear : 0, tip: !st.through && st.tip, at: st.at.map((s) => ({ p: s.p, n: s.n })) };
+        const params = { kind: tapped ? "simple" : st.kind, dia: st.dia, through: st.through, depth: st.depth, cbDia: st.cbDia, cbDepth: st.cbDepth, csDia: st.csDia, csAngle: st.csAngle, size: st.size, tapped, pitch: tapped ? st.pitch : 0, clear: tapped ? st.clear : 0, tip: !st.through && st.tip, at: st.at.map((s) => ({ p: s.p, n: s.n })), ...exprsOf(st, st.through ? ["dia"] : ["dia", "depth"]) }; // jumpstart-3d: parameters
         const b = findBody(doc, st.body);
         if (!b) throw new Error("Click a flat face to place the hole.");
-        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, params); return; }
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); delete m.exprs; delete m.exprUnits; Object.assign(m, params); return; } // jumpstart-3d: parameters
         b.node.mods = b.node.mods || [];
         b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "hole", ...params });
       },
@@ -1540,15 +1547,15 @@ export function initAdvanced(app) {
         const ssel = el("select", { class: "num", id: "hole-size", "aria-label": "Screw size" }, el("option", { value: "" }, "Custom"), ...groups);
         ssel.onchange = () => { st.size = ssel.value; if (st.size) applySize(st.size); refresh(); };
         body.append(row(st.kind === "tapped" ? "Thread" : "Screw size", ssel, "hole-size"));
-        const custom = (f) => (v) => { f(v); st.size = ""; const s2 = document.getElementById("hole-size"); if (s2) s2.value = ""; refresh(false); };
-        body.append(row(st.kind === "tapped" ? "Tap drill" : "Diameter", app.numField({ value: st.dia, id: "hole-dia", min: 0.01, step: 0.1, live: true, onCommit: custom((v) => (st.dia = v)) }), "hole-dia"));
+        const custom = (f) => (v, t) => { f(v, t); st.size = ""; const s2 = document.getElementById("hole-size"); if (s2) s2.value = ""; refresh(false); }; // jumpstart-3d: parameters
+        body.append(row(st.kind === "tapped" ? "Tap drill" : "Diameter", app.numField({ value: st.dia, id: "hole-dia", min: 0.01, step: 0.1, live: true, expr: exprOf(st, "dia"), onCommit: custom((v, t) => { st.dia = v; setExpr(st, "dia", t); }) }), "hole-dia")); // jumpstart-3d: parameters
         if (st.kind === "tapped") {
           body.append(pitchRow(st.pitch, custom((v) => (st.pitch = v)), "hole-pitch", true));
           body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; refresh(false); }, "hole-clear"), "hole-clear"));
         }
         body.append(row("Extent", seg([[true, "Through all"], [false, "Depth"]], st.through, (v) => { st.through = v; refresh(); }, "hole-ext")));
         if (!st.through) {
-          body.append(row("Depth", app.numField({ value: st.depth, id: "hole-depth", min: 0.01, step: 1, live: true, onCommit: (v) => { st.depth = v; refresh(false); } }), "hole-depth"));
+          body.append(row("Depth", app.numField({ value: st.depth, id: "hole-depth", min: 0.01, step: 1, live: true, expr: exprOf(st, "depth"), onCommit: (v, t) => { st.depth = v; setExpr(st, "depth", t); refresh(false); } }), "hole-depth")); // jumpstart-3d: parameters
           body.append(row("Bottom", seg([[false, "Flat"], [true, "118° drill"]], st.tip, (v) => { st.tip = v; refresh(); }, "hole-tip")));
         }
         if (st.kind === "cbore") {
@@ -3970,7 +3977,7 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const m = b.node.mods.find((x) => x.id === editing.mod);
-      Object.assign(st, { th: m.th, body: b.id, keepFaces: m.faces, dir: m.dir || "in", chain: !!m.chain, closed: !(m.faces || []).length });
+      Object.assign(st, { th: m.th, body: b.id, keepFaces: m.faces, dir: m.dir || "in", chain: !!m.chain, closed: !(m.faces || []).length }, exprsOf(m, ["th"])); // jumpstart-3d: parameters
     }
     let hover = null;
     const pickable = (b) => !b.hole && !b.locked && (!st.body || b.id === st.body || (st.closed && !editing));
@@ -3982,8 +3989,8 @@ export function initAdvanced(app) {
         const b = findBody(doc, st.body);
         if (!b) return;
         const faces = st.closed ? [] : st.faces.length ? st.faces.map((f) => ({ c: f.c })) : st.keepFaces || [];
-        const props = { th: st.th, faces, dir: st.dir === "in" ? undefined : st.dir, chain: st.chain && !st.closed ? true : undefined };
-        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, props); return; }
+        const props = { th: st.th, faces, dir: st.dir === "in" ? undefined : st.dir, chain: st.chain && !st.closed ? true : undefined, ...exprsOf(st, ["th"]) }; // jumpstart-3d: parameters
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); delete m.exprs; delete m.exprUnits; Object.assign(m, props); return; } // jumpstart-3d: parameters
         b.node.mods = b.node.mods || [];
         b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "shell", ...props });
       },
@@ -3995,7 +4002,7 @@ export function initAdvanced(app) {
         else body.append(pickbox(true, st.faces.length ? el("span", {}, el("b", {}, st.faces.length), ` face${st.faces.length > 1 ? "s" : ""} to remove`) : editing && (st.keepFaces || []).length ? "Keeps the original faces" : "Select faces to remove", st.faces.length ? () => { st.faces = []; if (!editing) st.body = null; refresh(); } : null));
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "sh-closed", checked: st.closed, onchange: (e) => { st.closed = e.target.checked; if (!editing) { st.faces = []; st.body = st.closed ? st.body : null; } refresh(); } }), "No openings (hollow inside)"));
         if (!st.closed) body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "sh-chain", checked: st.chain, onchange: (e) => { st.chain = e.target.checked; refresh(false); } }), "Tangent chain (take smoothly joined faces too)"));
-        body.append(row("Thickness", app.numField({ value: st.th, id: "sh-th", min: 0.01, step: 0.5, live: true, onCommit: (v) => { st.th = v; refresh(false); } }), "sh-th"));
+        body.append(row("Thickness", app.numField({ value: st.th, id: "sh-th", min: 0.01, step: 0.5, live: true, expr: exprOf(st, "th"), onCommit: (v, t) => { st.th = v; setExpr(st, "th", t); refresh(false); } }), "sh-th")); // jumpstart-3d: parameters
         body.append(row("Direction", seg([["in", "Inside"], ["out", "Outside"], ["both", "Both"]], st.dir, (v) => { st.dir = v; refresh(); }, "sh-dir")));
         body.append(el("div", { class: "hint", style: { padding: 0 } }, st.dir === "in" ? "The outside stays the same size; the wall grows inward." : st.dir === "out" ? "The inside keeps the body's shape; the wall grows outward." : "The wall is centered on the surface."));
       },
@@ -5342,7 +5349,7 @@ export function initAdvanced(app) {
     // re-running applyParams on the new doc changes nothing; it only reports dimensions that could not take the value
     const editParams = (fn, label) => {
       const next = store.update(fn, label), n = next ? applyParams(next) : 0;
-      if (n) app.toast(`${n} dimension(s) can't take that value`);
+      if (n) app.toast(`${n} dimension(s) or feature value(s) can't take that value`);
     };
     tree.append(el("div", { class: "folder" }, `Parameters (${params.length})`,
       el("button", { class: "param-add", id: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+")));
@@ -5364,7 +5371,7 @@ export function initAdvanced(app) {
       const ok = isFinite(p.value);
       tree.append(el("div", { class: "param" }, nm, ex,
         el("span", { class: "pv" + (ok ? "" : " bad"), title: ok ? "" : PARAM_ERROR }, ok ? `${showLen(p.value, 3)} ${getUnit()}` : "error"),
-        el("button", { class: "eye", title: "Delete parameter", "aria-label": "Delete " + p.name, html: ICON.del, onclick: () => { let n = 0; store.update((d) => { n = removeParam(d, p.id); }, "Delete parameter"); if (n) app.toast(`${p.name} removed; ${n} dimension(s) keep their value`); } })));
+        el("button", { class: "eye", title: "Delete parameter", "aria-label": "Delete " + p.name, html: ICON.del, onclick: () => { let n = 0; store.update((d) => { n = removeParam(d, p.id); }, "Delete parameter"); if (n) app.toast(`${p.name} removed; ${n} dimension(s) or feature value(s) keep their value`); } })));
     }
     const planes = doc.planes || [];
     if (planes.length) {
