@@ -1,8 +1,9 @@
-// JumpStart 3D scripting bridge: a demo you can paste into the browser console.
+// JumpStart 3D scripting bridge: a demo to run from the app or paste into the browser console.
 //
-// Open the app, open the console (Chrome and Edge: F12 or Ctrl+Shift+J, Mac: Cmd+Option+J; Firefox:
-// Ctrl+Shift+K; Safari: enable the Develop menu, then Cmd+Option+C), paste this whole file and press Enter.
-// You will see the box with its hole appear in the 3D view, and the console prints a summary.
+// Easiest: save this file, open the app, Open/Export › Run script…, pick it. The box with its hole appears
+// in the 3D view and a message shows the summary. Or open the console (Chrome and Edge: F12 or Ctrl+Shift+J,
+// Mac: Cmd+Option+J; Firefox: Ctrl+Shift+K; Safari: enable the Develop menu, then Cmd+Option+C), paste this
+// whole file and press Enter; the console prints the summary.
 //
 // It uses only window.JS3D (see BRIDGE.md). Run it on a fresh page: it starts a new design, so the one
 // you had open stays in "Your designs" but is no longer on screen.

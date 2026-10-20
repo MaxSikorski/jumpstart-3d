@@ -176,6 +176,7 @@ src/flexigen.html, src/meshstep.html, src/chisel.html
 src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
+src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
 LICENSES/, THIRD-PARTY-NOTICES.md
@@ -183,7 +184,7 @@ LICENSES/, THIRD-PARTY-NOTICES.md
 build.mjs           the build (the author's dist.sh and standalone.py, in Node)
 tools/              helper page sources and the scripts that rebuild them
                     (see tools/README-helpers.md); og-card/ renders the link-preview image;
-                    bridge-demo.js is a script to paste into the browser console
+                    bridge-demo.js is a script for Open/Export › Run script… (or the console)
 BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website, committed so GitHub Pages can serve it
 jumpstart_3d_v2.0.htm      the untouched upstream file this version came from
@@ -256,6 +257,8 @@ UPSTREAM-README.md         the author's README from the source release
   called, and works in the single file too. `BRIDGE.md` lists every call and
   documents the project `.json` format; `tools/bridge-demo.js` is an example
   you can paste into the console
+- Open/Export › Run script…: pick a `.js` file and it runs with `JS3D` in
+  scope, no console needed; the result or the error shows as a message
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 
