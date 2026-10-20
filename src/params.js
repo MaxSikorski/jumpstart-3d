@@ -33,7 +33,8 @@ export function evalExpr(text, params, { unit = "mm", angle = false } = {}) {
 
 // Feature values bound to an expression live next to the value: owner.exprs = { dist: "w/2" } (+ owner.exprUnits
 // when typed in inches). Owners are extrude/revolve nodes (dist, dist2, angle) and fillet, chamfer, hole and shell
-// mods (r, d, dia, depth, th), including bool-mod tools and group children. fn(owner, key) per bound value.
+// mods (r, d, dia, depth, th), including bool-mod tools and group children, and Beginner shapes (prim nodes: w, d, h,
+// stored in node.p). fn(owner, key) per bound value.
 export function forEachFeatureExpr(doc, fn) {
   const visit = (n) => {
     for (const k of Object.keys(n.exprs || {})) fn(n, k);
@@ -45,7 +46,7 @@ export function forEachFeatureExpr(doc, fn) {
 }
 // the dialogs' own limits
 const FEATURE_MIN = { dist2: 0, angle: 0.1, r: 0.001, d: 0.001, dia: 0.01, depth: 0.01, th: 0.01 };
-const featureOk = (k, v) => isFinite(v) && (k === "dist" ? Math.abs(v) > 1e-6 : v >= FEATURE_MIN[k] && (k !== "angle" || v <= 360));
+const featureOk = (o, k, v) => isFinite(v) && (k === "dist" ? Math.abs(v) > 1e-6 : v >= (o.t === "prim" ? 0.01 : FEATURE_MIN[k]) && (k !== "angle" || v <= 360));
 
 // A feature value typed as an expression keeps its text in o.exprs[key] (and the unit it was typed in in o.exprUnits)
 export function setExpr(o, key, text, angle) {
@@ -82,9 +83,11 @@ export function applyParams(doc) {
   }
   forEachFeatureExpr(doc, (o, k) => {
     const v = evalExpr(o.exprs[k], doc.params, { unit: o.exprUnits && o.exprUnits[k], angle: k === "angle" });
-    if (!featureOk(k, v)) { skipped++; return; }
-    if (Math.abs(v - o[k]) <= 1e-9) return;
-    o[k] = v;
+    if (!featureOk(o, k, v)) { skipped++; return; }
+    const at = o.t === "prim" ? o.p : o; // a Beginner shape keeps its sizes in p
+    if (Math.abs(v - at[k]) <= 1e-9) return;
+    at[k] = v;
+    if (o.kind === "torus" && k === "w") at.d = v;
     if (o.sets && o.sets.length && (k === "r" || k === "d")) o.sets[0].r = v; // the kernel reads sets when there are any
   });
   return skipped;

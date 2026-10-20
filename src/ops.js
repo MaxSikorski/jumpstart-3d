@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { store, IDENTITY, nextSeq, findBody, primName } from "./store.js";
 import { uid, clone, nextColor } from "./util.js";
+import { setExpr } from "./params.js"; // jumpstart-3d: parameters
 
 export const M4 = (arr) => new THREE.Matrix4().fromArray(arr);
 export const arr = (m) => m.toArray();
@@ -152,7 +153,7 @@ export function scaleChildren(node, k, o) {
     c.m = m;
     const nd = c.node;
     const plain = nd.t === "prim" && !(nd.mods && nd.mods.length) && !["torus", "text"].includes(nd.kind);
-    if (plain) { nd.p = { ...nd.p, w: nd.p.w * kc[0], d: nd.p.d * kc[1], h: nd.p.h * kc[2] }; if (nd.kind === "tube" && nd.p.wall) nd.p.wall *= Math.min(kc[0], kc[1]); }
+    if (plain) { nd.p = { ...nd.p, w: nd.p.w * kc[0], d: nd.p.d * kc[1], h: nd.p.h * kc[2] }; if (nd.kind === "tube" && nd.p.wall) nd.p.wall *= Math.min(kc[0], kc[1]); ["w", "d", "h"].forEach((key, i) => { if (Math.abs(kc[i] - 1) > 1e-9) setExpr(nd, key, null); }); } // jumpstart-3d: parameters. a stretched size stops following its parameter
     else {
       nd.mods = nd.mods || [];
       const last = nd.mods[nd.mods.length - 1];

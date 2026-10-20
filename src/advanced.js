@@ -4930,7 +4930,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ Primitive
   function primCmd(kind, editingId = null) {
     const existing = editingId ? findBody(store.doc, editingId) : null;
-    const st = { kind: existing ? existing.node.kind : kind, p: existing ? { ...existing.node.p } : { ...PRIM_DEFAULTS[kind] }, m: existing ? existing.m.slice() : null, id: existing ? existing.id : uid("b"), placed: !!existing };
+    const st = { kind: existing ? existing.node.kind : kind, p: existing ? { ...existing.node.p } : { ...PRIM_DEFAULTS[kind] }, m: existing ? existing.m.slice() : null, id: existing ? existing.id : uid("b"), placed: !!existing, ...(existing && exprsOf(existing.node, ["w", "d", "h"])) }; // jumpstart-3d: parameters
     if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 5), round(t.y, 5), 0)); }
     const def = {
       title: (existing ? "Edit " : "") + primName(st.kind),
@@ -4939,6 +4939,7 @@ export function initAdvanced(app) {
         if (!b) { b = makePrimBody(doc, st.kind, st.m, { color: BODY_COLORS[doc.bodies.length % BODY_COLORS.length] }); b.id = st.id; doc.bodies.push(b); }
         b.node.p = { ...st.p };
         if (st.kind === "torus") b.node.p.d = b.node.p.w;
+        delete b.node.exprs; delete b.node.exprUnits; Object.assign(b.node, exprsOf(st, ["w", "d", "h"])); // jumpstart-3d: parameters
         b.m = st.m.slice();
       },
       ok() { commit(def, existing ? "Edit " + primName(st.kind).toLowerCase() : "Add " + primName(st.kind).toLowerCase()); },
@@ -4947,7 +4948,7 @@ export function initAdvanced(app) {
       build(body) {
         const dims = st.kind === "torus" ? [["Diameter", "w"], ["Tube", "tube"]] : st.kind === "sphere" ? [["X", "w"], ["Y", "d"], ["Z", "h"]] : [["Width", "w"], ["Depth", "d"], ["Height", "h"]];
         const r3 = el("div", { class: "row3" });
-        for (const [l, k] of dims) r3.append(el("label", {}, l, app.numField({ value: st.p[k], id: "pr-" + k, min: 0.01, step: 1, live: true, onCommit: (v) => { st.p[k] = v; schedulePreview(def); } })));
+        for (const [l, k] of dims) r3.append(el("label", {}, l, app.numField({ value: st.p[k], id: "pr-" + k, min: 0.01, step: 1, live: true, ...(k !== "tube" && { expr: exprOf(st, k) }), onCommit: (v, t) => { st.p[k] = v; setExpr(st, k, t); schedulePreview(def); } }))); // jumpstart-3d: parameters
         body.append(el("div", { class: "subhead" }, "Size"), r3);
         const extra = { cone: [["Top ratio", "top", 0, 1]], pyramid: [["Sides", "sides", 3, 12]], prism: [["Sides", "sides", 3, 24]], tube: [["Wall", "wall", 0.1, 1e9]], box: [["Fillet all", "r", 0, 1e9], ["Chamfer all", "c", 0, 1e9]], cylinder: [["Fillet ends", "r", 0, 1e9]] }[st.kind] || [];
         for (const [l, k, mn, mx] of extra) body.append(row(l, app.numField({ value: st.p[k] ?? 0, id: "pr-x-" + k, min: mn, max: mx, step: k === "top" ? 0.1 : 1, live: true, onCommit: (v) => { st.p[k] = v; schedulePreview(def); } }), "pr-x-" + k));
@@ -5308,6 +5309,38 @@ export function initAdvanced(app) {
     app.toast(lock ? "Locked: it can't be moved, changed or deleted." : "Unlocked");
   }
 
+  // jumpstart-3d: parameters. The Parameters folder (heading with + and one row each); the Advanced browser and the Beginner inspector both show it.
+  function paramRows(tree) {
+    const params = store.view.params || [];
+    // re-running applyParams on the new doc changes nothing; it only reports dimensions that could not take the value
+    const editParams = (fn, label) => {
+      const next = store.update(fn, label), n = next ? applyParams(next) : 0;
+      if (n) app.toast(`${n} dimension(s), size(s) or feature value(s) can't take that value`);
+    };
+    tree.append(el("div", { class: "folder" }, `Parameters (${params.length})`,
+      el("button", { class: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+")));
+    if (!params.length) tree.append(el("div", { class: "empty" }, "Add a parameter, then type its name in a dimension or a size box."));
+    for (const p of params) {
+      const nm = el("input", { class: "num param-name", value: p.name, title: "Name", "aria-label": "Parameter name" });
+      const ex = el("input", { class: "num param-expr", value: p.expr, title: "Value or expression", "aria-label": `Value of ${p.name}` });
+      for (const inp of [nm, ex]) inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") inp.blur(); if (e.key === "Escape") { inp.value = inp === nm ? p.name : p.expr; inp.blur(); } };
+      nm.onchange = () => {
+        const name = nm.value.trim(), err = paramNameOk(name, params, p.id);
+        if (err) { app.toast(err); nm.value = p.name; return; }
+        if (name !== p.name) editParams((d) => { renameParam(d, p.id, name); }, "Rename parameter");
+      };
+      ex.onchange = () => editParams((d) => {
+        const q = d.params.find((x) => x.id === p.id);
+        q.expr = ex.value.trim();
+        if (getUnit() !== "mm") q.unit = getUnit(); else delete q.unit;
+      }, "Edit parameter");
+      const ok = isFinite(p.value);
+      tree.append(el("div", { class: "param" }, nm, ex,
+        el("span", { class: "pv" + (ok ? "" : " bad"), title: ok ? "" : PARAM_ERROR }, ok ? `${showLen(p.value, 3)} ${getUnit()}` : "error"),
+        el("button", { class: "eye", title: "Delete parameter", "aria-label": "Delete " + p.name, html: ICON.del, onclick: () => { let n = 0; store.update((d) => { n = removeParam(d, p.id); }, "Delete parameter"); if (n) app.toast(`${p.name} removed; ${n} dimension(s), size(s) or feature value(s) keep their value`); } })));
+    }
+  }
+
   // ------------------------------------------------------------------ browser
   let selSketch = null;
   function renderBrowser() {
@@ -5344,35 +5377,7 @@ export function initAdvanced(app) {
       n.ondblclick = () => app.enterSketch(s.id);
       tree.append(n);
     }
-    // jumpstart-3d: parameters
-    const params = doc.params || [];
-    // re-running applyParams on the new doc changes nothing; it only reports dimensions that could not take the value
-    const editParams = (fn, label) => {
-      const next = store.update(fn, label), n = next ? applyParams(next) : 0;
-      if (n) app.toast(`${n} dimension(s) or feature value(s) can't take that value`);
-    };
-    tree.append(el("div", { class: "folder" }, `Parameters (${params.length})`,
-      el("button", { class: "param-add", id: "param-add", title: "Add a parameter", "aria-label": "Add a parameter", onclick: (e) => { e.stopPropagation(); editParams((d) => { newParam(d); }, "Add parameter"); } }, "+")));
-    if (!params.length) tree.append(el("div", { class: "empty" }, "Add a parameter, then type its name in a dimension."));
-    for (const p of params) {
-      const nm = el("input", { class: "num param-name", value: p.name, title: "Name", "aria-label": "Parameter name" });
-      const ex = el("input", { class: "num param-expr", value: p.expr, title: "Value or expression", "aria-label": `Value of ${p.name}` });
-      for (const inp of [nm, ex]) inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") inp.blur(); if (e.key === "Escape") { inp.value = inp === nm ? p.name : p.expr; inp.blur(); } };
-      nm.onchange = () => {
-        const name = nm.value.trim(), err = paramNameOk(name, params, p.id);
-        if (err) { app.toast(err); nm.value = p.name; return; }
-        if (name !== p.name) editParams((d) => { renameParam(d, p.id, name); }, "Rename parameter");
-      };
-      ex.onchange = () => editParams((d) => {
-        const q = d.params.find((x) => x.id === p.id);
-        q.expr = ex.value.trim();
-        if (getUnit() !== "mm") q.unit = getUnit(); else delete q.unit;
-      }, "Edit parameter");
-      const ok = isFinite(p.value);
-      tree.append(el("div", { class: "param" }, nm, ex,
-        el("span", { class: "pv" + (ok ? "" : " bad"), title: ok ? "" : PARAM_ERROR }, ok ? `${showLen(p.value, 3)} ${getUnit()}` : "error"),
-        el("button", { class: "eye", title: "Delete parameter", "aria-label": "Delete " + p.name, html: ICON.del, onclick: () => { let n = 0; store.update((d) => { n = removeParam(d, p.id); }, "Delete parameter"); if (n) app.toast(`${p.name} removed; ${n} dimension(s) or feature value(s) keep their value`); } })));
-    }
+    paramRows(tree); // jumpstart-3d: parameters
     const planes = doc.planes || [];
     if (planes.length) {
       tree.append(el("div", { class: "folder" }, `Construction (${planes.length})`));
@@ -5690,5 +5695,6 @@ export function initAdvanced(app) {
       renderPalette();
     },
     showBuildErrors,
+    paramRows, // jumpstart-3d: parameters
   };
 }

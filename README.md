@@ -50,9 +50,10 @@ That is all. You do not need anything else in this repository.
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
 - Export to STL, OBJ, 3MF, STEP and DXF
-- Named parameters in Advanced mode: a Parameters list in the sidebar,
-  and sketch dimensions and feature values (extrude distance, revolve angle,
-  fillet and chamfer size, hole diameter and depth, shell thickness) that take
+- Named parameters: a Parameters list in the Advanced sidebar and in the
+  Beginner shape panel, and sketch dimensions, feature values (extrude
+  distance, revolve angle, fillet and chamfer size, hole diameter and depth,
+  shell thickness) and Beginner shape sizes (Width, Depth, Height) that take
   a name or an expression (`w`, `w/2`) and follow it when the value changes
 - Mesh detail setting (Normal, Fine, Extra fine, or a custom level up to 32×
   with a live triangle count) for smoother curves in the view and in mesh
@@ -210,9 +211,12 @@ UPSTREAM-README.md         the author's README from the source release
   angle, fillet and chamfer size, hole diameter and depth, shell thickness);
   the sketch, the feature and everything built on it follow when the
   parameter changes. A value tied to a name shows its expression and an `fx`
-  look in the dialog, and the timeline reads `Extrude (dist = t)`. Parameters
-  are saved in the project file; older files open unchanged. Beginner shapes
-  and an editable Pattern are next (`IMPROVEMENT_PLAN.md`, Phase P)
+  look in the dialog, and the timeline reads `Extrude (dist = t)`. A
+  Beginner shape's Width, Depth and Height boxes take them too, and the shape
+  panel lists the parameters under its other settings; typing a plain number,
+  or resizing on the canvas, frees that size again. Parameters are saved in
+  the project file; older files open unchanged. An editable Pattern is next
+  (`IMPROVEMENT_PLAN.md`, Phase P)
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 
