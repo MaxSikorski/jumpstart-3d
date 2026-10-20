@@ -4,7 +4,10 @@
   "description": "MCP server that lets an AI agent edit a design in JumpStart 3D, in the open browser tab or in a headless browser",
   "private": true,
   "type": "module",
-  "bin": { "jumpstart-mcp": "./server.mjs" },
+  "bin": {
+    "jumpstart-mcp": "./server.mjs",
+    "jumpstart": "./cli.mjs"
+  },
   "scripts": {
     "pretest": "node ../build.mjs",
     "test": "node --test test/*.test.mjs"

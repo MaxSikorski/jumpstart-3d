@@ -1,0 +1,12 @@
+{
+  "name": "maxsikorski",
+  "owner": { "name": "Max Sikorski", "url": "https://github.com/MaxSikorski" },
+  "description": "JumpStart 3D community build: tools for AI agents",
+  "plugins": [
+    {
+      "name": "jumpstart-3d",
+      "source": "./mcp",
+      "description": "Drive JumpStart 3D from your agent: build shapes, cut holes, look at the view, export STL, STEP, OBJ and 3MF."
+    }
+  ]
+}

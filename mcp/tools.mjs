@@ -19,8 +19,8 @@ const size = z.union([z.array(z.number()).length(3), z.record(z.union([z.number(
   .describe("Shape size in mm: [w, d, h] or an object such as {w, d, h}. Other kinds have other keys (see list_kinds for each kind's defaults).");
 const exportKind = z.enum(["stl", "obj", "3mf", "step", "json"]);
 
-const where = (p) => resolve(p.startsWith("~/") ? join(homedir(), p.slice(2)) : p); // relative paths are relative to the folder the server was started in
-async function save(path, bytes) {
+export const where = (p) => resolve(p.startsWith("~/") ? join(homedir(), p.slice(2)) : p); // relative paths are relative to the folder the server was started in
+export async function save(path, bytes) {
   const file = where(path);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, bytes);

@@ -69,6 +69,21 @@ That is all. You do not need anything else in this repository.
   with a live triangle count) for smoother curves in the view and in mesh
   exports
 
+## Use it with an AI agent
+
+If you use Claude Code, two commands let your agent build and edit designs in JumpStart 3D, look at the result and export
+STL, STEP, OBJ or 3MF files:
+
+```
+claude plugin marketplace add MaxSikorski/jumpstart-3d
+claude plugin install jumpstart-3d@maxsikorski
+```
+
+To have the agent edit the design you have open, turn on **Connect to AI agent** in the theme menu (the half-moon button); it is
+off unless you turn it on. Without that, the agent works in its own invisible browser (run `npx playwright@1.62.1 install chromium` once).
+Other agents, the command line (`jumpstart run`, `export`, `shot`, `status`) and the safety notes are in
+[mcp/README.md](mcp/README.md).
+
 ## See it in action
 
 The author's own tour of version 2.0:
@@ -154,7 +169,7 @@ npx serve docs
 
 The tests drive the real app in a headless browser: both builds, Beginner and
 Advanced, the kernel, the helpers and the exports. Once, after `npm install`,
-fetch the browser with `npx playwright install chromium`. Then, after a build:
+fetch the browser with `npx playwright@1.62.1 install chromium`. Then, after a build:
 
 ```
 npm test
@@ -177,7 +192,10 @@ src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
-mcp/                our MCP server for AI agents (see mcp/README.md); its tests run with `npm run test:mcp`
+mcp/                our MCP server for AI agents, its Claude Code plugin and skill, and the `jumpstart`
+                    command line (see mcp/README.md); it has its own package.json, so `npm ci` inside
+                    mcp/ once; its tests run with `npm run test:mcp`
+.claude-plugin/     marketplace.json, so `claude plugin marketplace add` finds the plugin in mcp/
 third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
                     Flatbush, Flatqueue, the OpenCascade loader
 LICENSES/, THIRD-PARTY-NOTICES.md
@@ -265,6 +283,9 @@ UPSTREAM-README.md         the author's README from the source release
   open (theme menu › Connect to AI agent, off unless you turn it on) or in a
   headless browser. `mcp/README.md` has the install lines, the tool list and
   what an agent can and cannot do
+- A Claude Code plugin (two install commands) with a skill that teaches an agent
+  to use those tools, and a `jumpstart` command line that runs a script or makes
+  an export or a picture without an agent
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds, and runs on every pull request
 
