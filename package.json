@@ -8,6 +8,7 @@
     "test": "playwright test",
     "test:site": "playwright test --project=site",
     "test:single": "playwright test --project=single",
+    "test:mobile": "playwright test --project=mobile",
     "test:update": "UPDATE_GOLDEN=1 playwright test --project=site",
     "test:mcp": "cd mcp && npm test"
   },

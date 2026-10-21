@@ -323,6 +323,8 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
+`npm test` also walks a first part on a simulated phone (box, hole, group, STL) over a slow connection and fails if it takes longer than its budget.
+
 `node tools/measure-load.mjs` times a page load on a simulated 10 Mbit connection; `test/README.md` explains the numbers.
 
 ### Where things are
