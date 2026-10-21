@@ -240,7 +240,8 @@ export function initProjects(app) {
       el("div", { class: "mbody" }, el("p", { class: "hint", style: { margin: "0 0 12px", color: "var(--ink-3)" } }, where),
         el("div", { class: "backup-row" }, // jumpstart-3d: backup
           el("button", { class: "btn", id: "btn-backup", title: "Save every design in this browser into one file", onclick: () => backupAll() }, "Back up all designs…"),
-          el("button", { class: "btn", id: "btn-restore", title: "Add the designs from a backup file; nothing here is deleted or overwritten", onclick: () => pick.click() }, "Restore from backup…")), grid));
+          el("button", { class: "btn", id: "btn-restore", title: "Add the designs from a backup file; nothing here is deleted or overwritten", onclick: () => pick.click() }, "Restore from backup…"),
+          el("button", { class: "btn", id: "btn-restore-folder", title: "Add the designs from the project files in a folder; nothing here is deleted or overwritten", onclick: () => folderPick.click() }, "Restore from a folder…")), grid));
     back.append(modal);
     document.body.append(back);
     const close = () => back.remove();
@@ -521,7 +522,8 @@ export function initProjects(app) {
   // jumpstart-3d: backup and restore. "Back up all designs…" in Your designs saves every design in
   // this browser into one JSON file; "Restore from backup…" adds back what is missing. It never
   // deletes or overwrites a design. Docs are copied verbatim from storage; autosave checkpoints
-  // (IndexedDB) and settings are not part of it.
+  // (IndexedDB) and settings are not part of it. "Restore from a folder…" adds the designs from the
+  // project files in a folder through the same loop.
   const n = (k) => `${k} design${k === 1 ? "" : "s"}`;
   async function backupAll() {
     const saved = await saveNow();
@@ -548,12 +550,16 @@ export function initProjects(app) {
     try { j = JSON.parse(await file.text()); } catch (e) { j = null; }
     if (j && j.app === "jumpstart-3d" && j.backup > 1) { app.toast("This backup is from a newer version of the app; update first.", "err"); return; }
     if (!j || j.app !== "jumpstart-3d" || j.backup !== 1 || !Array.isArray(j.designs)) { app.toast("That isn't a JumpStart 3D backup file.", "err"); return; }
+    return restoreDesigns(j.designs);
+  }
+  // list: an array or an async generator of { entry, doc, ver }. none: the toast when it holds no design at all.
+  async function restoreDesigns(list, none) {
     // same design apart from save time and the bodies' internal keys
     const same = (a, b) => { const f = ({ _updated, bodies, ...r }) => JSON.stringify({ ...r, bodies: (bodies || []).map(({ _key, ...x }) => x) }); return f(a) === f(b); };
     let idx = await ps.list(), added = 0, here = 0, copies = 0, full = 0, bad = 0; // jumpstart-3d: designs storage
     const docs = new Map(); // each stored design is read once
     const docOf = async (id) => { if (!docs.has(id)) docs.set(id, await getDoc(id)); return docs.get(id); };
-    for (const d of j.designs) {
+    for await (const d of list) {
       const doc = d && d.doc, entry = d && d.entry;
       if (!doc || !entry || !entry.id || !Array.isArray(doc.bodies) || !Array.isArray(doc.sketches)) { bad++; continue; }
       const have = await docOf(entry.id);
@@ -571,6 +577,7 @@ export function initProjects(app) {
       idx = idx.filter((x) => x.id !== id).concat(ent);
       if (copy) copies++; else added++;
     }
+    if (none && !(added + here + copies + full + bad)) { app.toast(none, "err"); return; }
     app.toast(`Restored ${n(added)}, ${here} already here` + (copies ? (copies === 1 ? ', 1 kept as a "(restored)" copy' : `, ${copies} kept as "(restored)" copies`) : "") + (full ? `, ${full} did not fit: free space or delete designs first` : "") + (bad ? `, ${bad} unreadable` : ""), full || bad ? "err" : undefined);
     document.querySelectorAll('.modal-back:has([aria-label="Your designs"])').forEach((m) => m.remove());
     mirror.soon(); // jumpstart-3d: copies in a folder
@@ -580,6 +587,26 @@ export function initProjects(app) {
   pick.type = "file"; pick.id = "file-backup"; pick.accept = ".json,application/json"; pick.hidden = true;
   document.body.append(pick);
   pick.onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) restoreBackup(f); };
+  // jumpstart-3d: restore from a folder. Newest file first, so of two files with one id the newest keeps it.
+  // Top level only, .json only, files that claim app "jumpstart-3d" only; backup files are left to Restore from backup.
+  // One file is read at a time.
+  function restoreFolder(files) {
+    async function* read() {
+      const all = [...files].filter((f) => (f.webkitRelativePath || "").split("/").length <= 2 && /\.json$/i.test(f.name)).sort((a, b) => b.lastModified - a.lastModified);
+      for (const f of all) {
+        let j;
+        try { j = JSON.parse(await f.text()); } catch (e) { continue; }
+        if (!j || j.app !== "jumpstart-3d" || j.backup) continue;
+        const doc = j.doc, id = doc && (doc.id || (/-(d[a-z0-9]{7,})\.json$/i.exec(f.name) || [])[1]), updated = f.lastModified || Date.now();
+        yield { entry: { id, name: doc && doc.name || "Untitled", ver: doc && doc.ver || 0, mode: doc && doc.mode, updated, thumb: null }, doc: doc && { ...doc, id, _updated: updated }, ver: doc && doc.ver };
+      }
+    }
+    return restoreDesigns(read(), "No JumpStart 3D designs found in that folder.");
+  }
+  const folderPick = document.createElement("input"); // jumpstart-3d: backup
+  folderPick.type = "file"; folderPick.id = "file-folder"; folderPick.webkitdirectory = true; folderPick.hidden = true;
+  document.body.append(folderPick);
+  folderPick.onchange = (e) => { const l = [...e.target.files]; e.target.value = ""; restoreFolder(l); };
   const menu = $("menu-export");
   $("btn-export").onclick = () => {
     menu.hidden = !menu.hidden;
@@ -649,7 +676,7 @@ export function initProjects(app) {
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
     stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
-    backupAll, restoreBackup, // jumpstart-3d: backup
+    backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
     get started() { return started; }, _store: ps, _folder: mirror, // jumpstart-3d: designs storage, copies in a folder (tests read these)
   };
 }
