@@ -32,6 +32,7 @@ import { initMeshDetail } from "./meshdetail.js";
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
+import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -78,34 +79,18 @@ function boot() {
     vp.overlay.add(app.originMarker);
   }
   app.cube = new ViewCube(vpEl, vp, (name) => vp.setView(name, name === "home" ? app.scene.allBox() : null));
+  const load = initLoadUI(app); // jumpstart-3d: load
   const kernel = (app.kernel = new KernelClient({
     ...engineSources(),
-    onProgress: (m) => {
-      if (m.phase === "compile") { $("loading-msg").textContent = "Compiling the kernel…"; $("loading-bar").style.width = "96%"; return; }
-      const total = WASM_PARTS.reduce((s, p) => s + (p.size || 0), 0) || m.size || 1;
-      app._got = app._got || {};
-      app._got[m.part] = m.got;
-      const got = Object.values(app._got).reduce((a, b) => a + b, 0);
-      $("loading-bar").style.width = Math.min(94, (got / total) * 94) + "%";
-    },
-    onReady: () => {
-      // let the splash be seen for a moment, then fade it away
-      const wait = Math.max(0, 1700 - performance.now()) + 2000; // at least ~1.7 s after the page started, plus 2 s
-      $("loading-bar").style.width = "100%";
-      $("loading-msg").textContent = "Ready";
-      setTimeout(() => { $("loading").classList.add("done"); setTimeout(() => { $("loading").hidden = true; }, 450); }, wait);
-      app.status();
-    },
+    onProgress: (m) => load.progress(m, WASM_PARTS.reduce((s, p) => s + (p.size || 0), 0)), // jumpstart-3d: load
+    onReady: () => { load.ready(); app.status(); }, // jumpstart-3d: load. no hold: the splash is already gone
     onResults: () => {
       app.scene.refresh(); app.status(); app.onBuilt && app.onBuilt();
       app.advanced && app.advanced.showBuildErrors();
       // frame the design once its first meshes arrive
       if (app.needFit && !app.scene.busy()) { app.needFit = false; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }
     },
-    onFail: (msg) => {
-      $("loading-msg").textContent = "The geometry engine couldn't start: " + msg + ". Reload the page to try again.";
-      $("loading-bar").style.background = "var(--danger)";
-    },
+    onFail: (msg) => load.fail(msg), // jumpstart-3d: load
   }));
   kernel.onBusy = () => app.status();
   kernel.start();
@@ -282,6 +267,7 @@ app.bricks = initBricks(app);
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
   });
+  load.hideSplash(); // jumpstart-3d: load. the workspace is built: let the mouse in
 }
 
 // ------------------------------------------------------------------ modes

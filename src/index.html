@@ -559,6 +559,14 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .toasts { position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 20; pointer-events: none; }
 .toast { background: var(--block); color: var(--block-ink); padding: 8px 14px; border-radius: 6px; font-size: 12.5px; box-shadow: 0 6px 18px rgba(0,0,0,.2); max-width: min(520px, 90vw); }
 .toast.err { background: #7d1f17; }
+/* jumpstart-3d: load. the engine's progress note over the 3D view; the splash keeps only the logo */
+.engine { position: absolute; top: 10px; left: 10px; max-width: calc(100% - 130px); z-index: 20; pointer-events: none; padding: 6px 12px 8px; border-radius: 6px; background: var(--block); color: var(--block-ink); font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.2); animation: engine-in .2s .4s both; }
+.engine small { display: block; opacity: .75; font-size: 11px; }
+.engine i { display: block; height: 3px; margin-top: 5px; border-radius: 2px; background: var(--accent); width: 0; transition: width .2s; }
+.engine.err { background: #7d1f17; }
+.engine.err small, .engine.err i { display: none; }
+@keyframes engine-in { from { opacity: 0; } }
+#loading .sp-bar, #loading .sp-msg { display: none; }
 
 /* loading */
 /* ---------------------------------------------------------------- splash */
@@ -1167,6 +1175,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
       </div>
       <div id="timeline" class="timeline" hidden></div>
       <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+      <!-- jumpstart-3d: load --><div class="engine" id="engine" hidden><span id="engine-msg">Loading the geometry engine…</span><small>Shapes appear when it's ready.</small><i id="engine-bar"></i></div>
       <button class="panel-tab" id="shapes-tab" hidden aria-expanded="true" aria-controls="shapes" title="Hide the objects panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 5 5-5 5"/></svg></button>
     </section>
     <aside class="side right" id="shapes"></aside>
