@@ -28,14 +28,14 @@ function recordStorageAtStart(page) {
     try {
       const token = localStorage.getItem(marker);
       localStorage.removeItem(marker);
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
-      window.__storageAtStart = { token, keys };
+      const keys = [], values = {};
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); keys.push(k); values[k] = localStorage.getItem(k); }
+      window.__storageAtStart = { token, keys, values };
     } catch (e) { window.__storageAtStart = { error: e.name }; }
   }, MARKER);
 }
 
-// On the Linux CI runner, Chromium now and then opens the next document of a file:// page with an empty storage area (seen 2026-10-21, not tied to how soon the reload comes). The app never touches the marker key, so a document that starts without it lost the storage to the browser, not to an app mistake; only then is the store put back and the navigation repeated. Writes the app makes while the old page unloads (the save at beforeunload, autosave on pagehide) are not in the snapshot, so a test about unsaved work surviving a reload must not use reload().
+// On the Linux CI runner, Chromium now and then opens the next document of a file:// page with an empty storage area (seen 2026-10-21, not tied to how soon the reload comes). The app never touches the marker key, so a document that starts without it lost the storage to the browser, not to an app mistake; only then is the store put back and the navigation repeated (if every saved localStorage key is there with its saved value, the helper just logs `storage-kept` and carries on). Writes the app makes while the old page unloads (the save at beforeunload, autosave on pagehide) are not in the snapshot, so a test about unsaved work surviving a reload must not use reload().
 async function navigateKeepingStorage(page, go) {
   await recordStorageAtStart(page);
   const { saved, age } = await page.evaluate((marker) => {
@@ -50,9 +50,16 @@ async function navigateKeepingStorage(page, go) {
     const at = await page.evaluate(() => window.__storageAtStart);
     if (at && at.token === token) return;
     const where = `${test.info().titlePath.slice(1).join(" > ")} [${test.info().project.name}]`;
-    const report = (description) => { console.log("storage-lost: " + description); test.info().annotations.push({ type: "storage-lost", description }); };
+    const report = (description, type = "storage-lost") => { console.log(type + ": " + description); test.info().annotations.push({ type, description }); };
+    const names = Object.keys(saved);
+    // Marker gone but every saved localStorage key is there with its saved value: nothing was lost, so there is nothing to put back and no reason to open another document (it would, for one, send one more hello to the agent mock).
+    if (at && at.values && names.every((k) => at.values[k] === saved[k])) {
+      report(`${where} navigation ${attempt + 1}: marker gone but all ${names.length} saved localStorage keys present (marker seen at start: ${at.token})`, "storage-kept");
+      await page.evaluate((marker) => localStorage.removeItem(marker), MARKER); // in case the old page's marker write landed after the new page started
+      return;
+    }
     if (attempt === RETRIES) { report(`${where} giving up after ${RETRIES} retries`); return; }
-    const names = Object.keys(saved), present = at && at.keys ? names.filter((k) => at.keys.includes(k)).length : 0;
+    const present = at && at.keys ? names.filter((k) => at.keys.includes(k)).length : 0;
     report(`${where} attempt ${attempt + 1}/${RETRIES}, keys at start: [${at && at.keys ? at.keys.join(", ") : "unreadable: " + (at && at.error)}], ${present}/${names.length} of the saved keys present, page open ${age} ms before the reload`);
     await page.evaluate((saved) => {
       localStorage.clear();
