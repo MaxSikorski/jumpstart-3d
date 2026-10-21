@@ -1,0 +1,2 @@
+# Raw copies of consumer inputs and outputs: trailing whitespace is part of the evidence.
+test/fixtures/judge/* -whitespace

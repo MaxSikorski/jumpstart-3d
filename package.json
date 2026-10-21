@@ -11,6 +11,9 @@
     "test:mobile": "playwright test --project=mobile",
     "test:update": "UPDATE_GOLDEN=1 playwright test --project=site",
     "test:mcp": "cd mcp && npm test",
+    "test:judge": "node tools/judge-exports.mjs",
+    "test:judge:unit": "node --test test/judge.test.mjs",
+    "test:judge:integration": "node --test test/judge.integration.test.mjs",
     "test:chat-judge": "node build.mjs && node --test test/bench/*.test.mjs && playwright test test/chatjudge.spec.mjs",
     "bench:chat": "node build.mjs && node tools/chat-bench.mjs"
   },

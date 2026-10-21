@@ -1,0 +1,8 @@
+PROBE_JSON {"label": "freecad_version", "version": ["1", "1", "4", "20260928 (Git shallow)", "Unknown", "2026/09/28 13:46:34", "(HEAD detached at 4fd3bf320)", "4fd3bf320d9566a27e60069fc8387448aaa3a094"]}
+PROBE_JSON {"bytes": 6868, "label": "step_create_export", "seconds": 0.001533730000005562}
+PROBE_JSON {"isClosed": true, "isValid": true, "label": "step_import_validate", "seconds": 0.004041465000000244, "solid_count": 1, "volume_mm3": 7999.999999999998}
+PROBE_JSON {"boundary_edges": 0, "countNonManifolds": {"error": "'Mesh.MeshObject' object has no attribute 'countNonManifolds'"}, "edges_with_more_than_two_faces": 0, "facets": 12, "hasNonManifolds": false, "hasNonUniformOrientedFacets": false, "isSolid": true, "isValid": {"error": "'Mesh.MeshObject' object has no attribute 'isValid'"}, "label": "good_mesh", "points": 8, "seconds": 0.00120850300000086, "volume_mm3": 8000.0}
+PROBE_JSON {"boundary_edges": 4, "countNonManifolds": {"error": "'Mesh.MeshObject' object has no attribute 'countNonManifolds'"}, "edges_with_more_than_two_faces": 0, "facets": 10, "hasNonManifolds": false, "hasNonUniformOrientedFacets": false, "isSolid": false, "isValid": {"error": "'Mesh.MeshObject' object has no attribute 'isValid'"}, "label": "bad_mesh", "points": 8, "seconds": 0.0006770969999934096, "volume_mm3": 5333.33349609375}
+Checking topology......
+						(8 %)							(16 %)							(25 %)							(33 %)							(41 %)							(50 %)							(58 %)							(66 %)							(75 %)							(83 %)							(91 %)							(100 %)									Checking topology......
+						(10 %)							(20 %)							(30 %)							(40 %)							(50 %)							(60 %)							(70 %)							(80 %)							(90 %)							(100 %)									[FreeCAD Console mode <Use Ctrl-D (i.e. EOF) to exit.>]
