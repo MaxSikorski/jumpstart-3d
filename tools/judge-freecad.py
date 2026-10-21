@@ -149,7 +149,7 @@ def check_meshes(item, Mesh, details):
         measured, raw_reasons, components = original_topology(triangles)
         details['meshes'].append(measured)
         mesh = Mesh.Mesh(triangles)
-        measured.update(freecad_facets=mesh.CountFacets, isSolid=mesh.isSolid(), hasNonManifolds=mesh.hasNonManifolds(), hasNonUniformOrientedFacets=mesh.hasNonUniformOrientedFacets())
+        measured.update(freecad_facets=mesh.CountFacets, freecad_points=mesh.CountPoints, isSolid=mesh.isSolid(), hasNonManifolds=mesh.hasNonManifolds(), hasNonUniformOrientedFacets=mesh.hasNonUniformOrientedFacets())
         reasons.extend(raw_reasons)
         if mesh.CountFacets != len(triangles):
             reasons.append('FreeCAD changed facet count')
@@ -159,10 +159,15 @@ def check_meshes(item, Mesh, details):
             if measured[key]:
                 reasons.append('FreeCAD ' + key + '=true')
         measured['self_intersections'] = []
+        measured['self_intersection_triangles'] = []
         for component in components:
             submesh = Mesh.Mesh([triangles[i] for i in component])
             require(submesh.CountFacets == len(component), 'FreeCAD changed component facet count')
-            measured['self_intersections'].append(submesh.hasSelfIntersections())
+            crossing = submesh.hasSelfIntersections()
+            measured['self_intersections'].append(crossing)
+            if crossing and hasattr(submesh, 'getSelfIntersections'):
+                # The first few crossing pairs, as indexes into the original triangle list, so a reviewer can inspect them.
+                measured['self_intersection_triangles'].append([[component[i], component[j]] for i, j in submesh.getSelfIntersections()[:5]])
         if any(measured['self_intersections']):
             reasons.append('FreeCAD self-intersection within an edge-connected component')
     require(not reasons, '; '.join(reasons))

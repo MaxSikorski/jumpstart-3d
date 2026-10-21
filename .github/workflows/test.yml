@@ -63,6 +63,23 @@ jobs:
           retention-days: 7
       # J1-TEMP end.
       - run: npm run test:judge:unit
+      # J1-TEMP: which placement flags let the multi-object 3MFs slice; removed after the answer.
+      - name: Slicer flag experiments
+        if: ${{ !cancelled() }}
+        run: |
+          out="$RUNNER_TEMP/exp"; mkdir -p "$out"
+          variants=("--center 0,0 --dont-arrange --no-ensure-on-bed" "--center 0,0 --dont-arrange" "--center 0,0 --dont-arrange --ensure-on-bed" "--center 0,0" "--ensure-on-bed" "--no-ensure-on-bed" "--merge")
+          for name in advanced-bricks nameplate advanced-pattern-mod fasteners; do
+            for flags in "${variants[@]}"; do
+              rm -f "$out/x.gcode"
+              set +e
+              "$PRUSA_SLICER" --threads 1 --load tools/judge-prusa.ini $flags --export-gcode --output "$out/x.gcode" "test-results/judge/site/$name.3mf" > "$out/o.txt" 2> "$out/e.txt"
+              code=$?
+              set -e
+              echo "EXPERIMENT $name flags=[$flags] exit=$code layers=$(grep -c '^;LAYER_CHANGE$' "$out/x.gcode" 2>/dev/null || echo none) stderr=$(tr '\n' '~' < "$out/e.txt" | cut -c1-160) conflicts=$(grep -c 'path conflicts' "$out/o.txt")"
+            done
+          done
+      # J1-TEMP end.
       - name: Native negative controls
         timeout-minutes: 5
         run: npm run test:judge:integration

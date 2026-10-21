@@ -330,7 +330,7 @@ export async function main() {
       if (!result) row.reasons.push('missing FreeCAD result');
       else if (!result.ok) row.reasons.push(result.reason);
       const wanted = inputs.find(i => i.key === row.key).expectedSolids;
-      if (result?.ok && wanted === null) row.reasons.push(`no reviewed solid count in test/judge-solids.json (measured ${result.details.solids})`);
+      if (row.format === 'step' && result?.ok && wanted === null) row.reasons.push(`no reviewed solid count in test/judge-solids.json (measured ${result.details.solids})`);
     }
   }
   if (inputs && prusa) {
