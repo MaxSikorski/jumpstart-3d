@@ -79,6 +79,35 @@ def three_mf_triangles(filename, expected_objects):
     return meshes
 
 
+def split_three_mf(filename, target_dir, stem, expected_triangles):
+    # One 3MF per build object, all else copied unchanged, for the slicer; the unsplit file stays the one that is judged.
+    core = '{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}'
+    ET.register_namespace('', core[1:-1])
+    with zipfile.ZipFile(filename) as archive:
+        names = archive.namelist()
+        parts = {name: archive.read(name) for name in names}
+    count = len(ET.fromstring(parts['3D/3dmodel.model']).find(core + 'build'))
+    Path(target_dir).mkdir(parents=True, exist_ok=True)
+    written = []
+    for index in range(count):
+        model = ET.fromstring(parts['3D/3dmodel.model'])
+        build, resources = model.find(core + 'build'), model.find(core + 'resources')
+        keep = list(build)[index]
+        for item in list(build):
+            if item is not keep:
+                build.remove(item)
+        for resource in list(resources):
+            if resource.tag == core + 'object' and resource.get('id') != keep.get('objectid'):
+                resources.remove(resource)
+        target = Path(target_dir) / f'{stem}.object{index + 1}.3mf'
+        with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as out:
+            for name in names:
+                out.writestr(name, ET.tostring(model, encoding='utf-8', xml_declaration=True) if name == '3D/3dmodel.model' else parts[name])
+        require(three_mf_triangles(str(target), 1)[0] == expected_triangles[index], '3MF split changed an object')
+        written.append(str(target))
+    return written
+
+
 def original_topology(triangles):
     require(triangles, 'empty triangles')
     points, faces, index, unique_faces = [], [], {}, set()
@@ -143,6 +172,8 @@ def original_topology(triangles):
 
 def check_meshes(item, Mesh, details):
     meshes = [stl_triangles(item['path'])] if item['format'] == 'stl' else three_mf_triangles(item['path'], item['expectedObjects'])
+    if item['format'] == '3mf' and len(meshes) > 1 and item.get('splitDir'):
+        details['splitFiles'] = split_three_mf(item['path'], item['splitDir'], item['key'].replace('/', '-').rsplit('.', 1)[0], meshes)
     details['meshes'] = []
     reasons = []
     for triangles in meshes:
@@ -166,8 +197,8 @@ def check_meshes(item, Mesh, details):
             crossing = submesh.hasSelfIntersections()
             measured['self_intersections'].append(crossing)
             if crossing and hasattr(submesh, 'getSelfIntersections'):
-                # The first few crossing pairs, as indexes into the original triangle list, so a reviewer can inspect them.
-                measured['self_intersection_triangles'].append([[component[i], component[j]] for i, j in submesh.getSelfIntersections()[:5]])
+                # The first few crossings as FreeCAD reports them (component-local facet indexes), so a reviewer can inspect them.
+                measured['self_intersection_triangles'].append([repr(x)[:240] for x in submesh.getSelfIntersections()[:3]])
         if any(measured['self_intersections']):
             reasons.append('FreeCAD self-intersection within an edge-connected component')
     require(not reasons, '; '.join(reasons))

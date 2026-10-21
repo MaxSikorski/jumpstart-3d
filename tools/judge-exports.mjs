@@ -227,7 +227,7 @@ export function isolatedEnvironment(dir) {
 
 export async function freecadBatch(files, { executable, out, env, runId, deadline = Infinity, startupMs = 60_000, progressMs = 20_000 }) {
   mkdirSync(out, { recursive: true });
-  const request = { schema: 1, runId, files }, requestPath = path.join(out, 'request.json');
+  const request = { schema: 1, runId, files: files.map(f => f.format === '3mf' ? { ...f, splitDir: path.join(out, 'split') } : f) }, requestPath = path.join(out, 'request.json');
   writeFileSync(requestPath, JSON.stringify(request, null, 2) + '\n');
   const processResult = await child(executable, [macro], { env: { ...env, JUDGE_REQUEST: requestPath }, startupMs, progressMs, deadline, log: path.join(out, 'freecad') });
   const protocol = parseFreecad(processResult, request);
@@ -235,23 +235,33 @@ export async function freecadBatch(files, { executable, out, env, runId, deadlin
   return { ...protocol, elapsedMs: processResult.elapsedMs };
 }
 
+// The whole file gets the --info report. A 3MF with several objects is sliced one object at a time (input.slicePaths, written by the FreeCAD macro):
+// PrusaSlicer 2.8.1 crashes (SIGSEGV) after its "gcode path conflicts" error whenever separate objects of one file overlap, as raised text on its plate does.
 export async function sliceFile(input, { executable, out, logs, env, deadline = Infinity }) {
-  const started = performance.now(), reasons = [];
-  const output = path.join(out, `${input.key}.gcode`), log = path.join(logs, input.key);
-  mkdirSync(path.dirname(output), { recursive: true });
-  rmSync(output, { force: true });
+  const started = performance.now(), reasons = [], log = path.join(logs, input.key);
+  mkdirSync(path.dirname(path.join(out, input.key)), { recursive: true });
   const info = await child(executable, ['--threads', '1', '--info', input.path], { env, timeoutMs: 15_000, deadline, log: `${log}.info` });
-  let objects, gcode;
+  let objects, layers = 0, extrusionMoves = 0, sliceExit = 0;
+  const outputs = [], texts = [info.stdout, info.stderr];
   try { requireChild(info); objects = parseInfo(info.stdout + '\n' + info.stderr, input.format === 'stl' ? 1 : input.expectedObjects); } catch (e) { reasons.push(e.message); }
-  const slice = await child(executable, ['--threads', '1', '--load', profile, '--center', '0,0', '--dont-arrange', '--no-ensure-on-bed', '--export-gcode', '--output', output, input.path], { env, timeoutMs: 60_000, deadline, log: `${log}.slice` });
-  try {
-    requireChild(slice);
-    const diagnostics = slicerDiagnostics(slice.stdout + '\n' + slice.stderr);
-    check(diagnostics.length === 0, `slicer diagnostic: ${diagnostics.join(' | ')}`);
-    check(lstatSync(output).isFile() && !lstatSync(output).isSymbolicLink(), 'missing regular G-code output');
-    gcode = parseGcode(readFileSync(output, 'utf8'));
-  } catch (e) { reasons.push(e.code === 'ENOENT' ? 'missing G-code output' : e.message); }
-  return { ok: reasons.length === 0, reasons, objects, infoExit: info.code, sliceExit: slice.code, ...gcode, elapsedMs: performance.now() - started, log, output, warnings: (info.stdout + '\n' + info.stderr + '\n' + slice.stdout + '\n' + slice.stderr).split('\n').filter(l => /warning/i.test(l)) };
+  const parts = input.slicePaths?.length ? input.slicePaths : [input.path], many = parts.length > 1;
+  for (const [i, part] of parts.entries()) {
+    const label = many ? `object ${i + 1}: ` : '', output = path.join(out, `${input.key}${many ? `.object${i + 1}` : ''}.gcode`);
+    rmSync(output, { force: true });
+    outputs.push(output);
+    const slice = await child(executable, ['--threads', '1', '--load', profile, '--center', '0,0', '--dont-arrange', '--export-gcode', '--output', output, part], { env, timeoutMs: 60_000, deadline, log: `${log}${many ? `.object${i + 1}` : ''}.slice` });
+    texts.push(slice.stdout, slice.stderr);
+    sliceExit = slice.code ?? slice.signal ?? sliceExit;
+    try {
+      requireChild(slice);
+      const diagnostics = slicerDiagnostics(slice.stdout + '\n' + slice.stderr);
+      check(diagnostics.length === 0, `slicer diagnostic: ${diagnostics.join(' | ')}`);
+      check(lstatSync(output).isFile() && !lstatSync(output).isSymbolicLink(), 'missing regular G-code output');
+      const gcode = parseGcode(readFileSync(output, 'utf8'));
+      layers += gcode.layers; extrusionMoves += gcode.extrusionMoves;
+    } catch (e) { reasons.push(label + (e.code === 'ENOENT' ? 'missing G-code output' : e.message)); }
+  }
+  return { ok: reasons.length === 0, reasons, objects, infoExit: info.code, sliceExit, layers: layers || undefined, extrusionMoves: extrusionMoves || undefined, sliced: parts.length, elapsedMs: performance.now() - started, log, output: outputs[0], warnings: texts.join('\n').split('\n').filter(l => /warning/i.test(l)) };
 }
 
 export function summaryTable(results) {
@@ -326,6 +336,8 @@ export async function main() {
     for (const row of results) {
       const result = batch.results.get(row.key);
       row.native = result;
+      const split = result?.details?.splitFiles;
+      if (split) inputs.find(i => i.key === row.key).slicePaths = split;
       row.elapsedMs += result?.elapsedMs || 0;
       if (!result) row.reasons.push('missing FreeCAD result');
       else if (!result.ok) row.reasons.push(result.reason);
@@ -335,7 +347,7 @@ export async function main() {
   }
   if (inputs && prusa) {
     const queue = inputs.filter(f => f.format !== 'step');
-    await Promise.all([0, 1].map(async () => {
+    await Promise.all([0, 1, 2].map(async () => {
       while (queue.length) {
         const input = queue.shift(), row = results.find(r => r.key === input.key);
         if (Date.now() >= deadline) { row.reasons.push('total judge deadline exceeded'); continue; }

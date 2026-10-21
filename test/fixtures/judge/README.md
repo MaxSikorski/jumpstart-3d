@@ -11,25 +11,25 @@ These files are outside `test/projects/` and never enter `golden.json`.
   `good.stl`/`bad.stl`, scaled by exactly one half and encoded with Python's
   standard-library `struct`. 3MF packaging used `zipfile` and a fixed timestamp.
   Local checks of the production raw-topology functions confirmed the
-  facet/edge counts in all four files. Native Mesh checks remain pending.
+  facet/edge counts in all four files. The native Mesh and slicer checks of these four files run in CI (`test:judge:integration`).
 
-STEP controls must be authored once with FreeCAD 1.1.4, then retained as raw
-files. `make-step-controls.py` uses `Part.makeBox(10,10,10)` and a shell of
-five of its six faces, without healing. It also makes two separated cubes
-(count 2, volume 2000 mm³) and the same compound plus a loose open shell.
-The latter must fail even though the two valid solids survive. Run the
-following with the extracted console launcher and inspect its output before
-adding the resulting raw files; the test never regenerates them:
+The four STEP controls were authored once by `make-step-controls.py` with FreeCAD
+1.1.4 on the CI runner (the script's output is the only way to get them; this Mac has no
+FreeCAD) and are kept as raw files; the test never regenerates them. The script uses
+`Part.makeBox(10,10,10)` and a shell of five of its six faces, without healing:
+
+- `cube.step`: one closed solid, 1000 mm³ (one `MANIFOLD_SOLID_BREP`).
+- `open-shell.step`: the five faces as an `OPEN_SHELL`, no solid; FreeCAD reports its shell as not closed.
+- `two-cubes.step`: two separated closed cubes, 2000 mm³.
+- `two-cubes-and-shell.step`: that compound plus a loose open shell; it must fail
+  even though the two valid solids survive.
+
+To author them again, run on a machine with the pinned FreeCAD:
 
 ```sh
 JUDGE_FIXTURE_OUTPUT="$PWD/test/fixtures/judge" \
   "$FREECAD_CMD" "$PWD/test/fixtures/judge/make-step-controls.py" </dev/null
 ```
-
-**Pending authoring:** `cube.step`, `open-shell.step`, `two-cubes.step` and
-`two-cubes-and-shell.step` are not yet present. This Mac has no native
-FreeCAD. The integration test will fail if these required inputs are missing;
-it never manufactures a passing replacement or skips a control.
 
 The `probe-*` files are verbatim outputs from supplied probe run
 [39638736662](https://github.com/MaxSikorski/jumpstart-3d/actions/runs/39638736662),

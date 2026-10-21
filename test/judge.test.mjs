@@ -206,6 +206,18 @@ for (const [mode, reason] of [['missing', /missing G-code/], ['nonzero', /exit=9
   if (mode === 'missing') assert.equal(existsSync(path.join(dir, 'output/site/cube.stl.gcode')), false);
 });
 
+test('a multi-object 3MF is sliced object by object and one bad object fails the file', async t => {
+  const dir = temporary(t), executable = path.join(dir, 'prusa-stub');
+  writeFileSync(executable, `#!${process.execPath}\nimport fs from 'node:fs';\nconst a=process.argv.slice(2);\nif(a.includes('--info')){console.log(${JSON.stringify(sampleInfo + sampleInfo)});}else{if(a.at(-1).endsWith('bad.3mf'))process.exit(9);fs.writeFileSync(a[a.indexOf('--output')+1],${JSON.stringify(sampleGcode)});}\n`, { mode: 0o755 });
+  const input = { ...request.files[0], format: '3mf', key: 'site/two.3mf', path: path.join(dir, 'two.3mf'), expectedObjects: 2 };
+  const run = slicePaths => sliceFile({ ...input, slicePaths }, { executable, out: path.join(dir, 'output'), logs: path.join(dir, 'logs'), env: isolatedEnvironment(path.join(dir, 'home')) });
+  const good = await run([path.join(dir, 'a.3mf'), path.join(dir, 'b.3mf')]);
+  assert.equal(good.ok, true, JSON.stringify(good)); assert.equal(good.sliced, 2); assert.equal(good.layers, 2);
+  assert.ok(existsSync(path.join(dir, 'output/site/two.3mf.object2.gcode')));
+  const bad = await run([path.join(dir, 'a.3mf'), path.join(dir, 'bad.3mf')]);
+  assert.equal(bad.ok, false); assert.match(bad.reasons.join('; '), /object 2: child exit=9/);
+});
+
 test('summary has all six build/format rows, failures included', () => {
   const table = summaryTable([{ build: 'site', format: 'stl', ok: false, elapsedMs: 100 }]);
   assert.equal(table.split('\n').length, 9); assert.match(table, /\| Total \| \| 1 \| 0 \| 1 \|/);

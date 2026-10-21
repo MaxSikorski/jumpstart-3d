@@ -33,53 +33,16 @@ jobs:
       - run: npm ci
         working-directory: mcp
       - run: npx playwright install --with-deps chromium
-      - run: node build.mjs && npx playwright test test/golden.spec.mjs # J1-TEMP: golden only while measuring; restore to npm test
+      - run: npm test
         # J1: The collector and judge must identify the same workflow attempt.
         env:
           JUDGE_EXPORTS: '1'
           JUDGE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      # J1: Cache only verified, versioned downloads, never geometry or results. The cache is saved right after
-      # a good install, not at the end of the job, so a failing judge still leaves a warm cache for the next run.
-      - uses: actions/cache/restore@v4
-        id: judge-cache
-        with:
-          path: ~/.cache/js3d-judge
-          key: judge-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-prusa2.8.1-freecad1.1.4
+      # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
       - name: Install export judge consumers
         timeout-minutes: 8
         run: bash tools/install-judge-tools.sh
-      - if: steps.judge-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/js3d-judge
-          key: judge-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-prusa2.8.1-freecad1.1.4
-      # J1-TEMP: authors the STEP controls once; removed after the files are committed.
-      - name: Author STEP controls
-        run: JUDGE_FIXTURE_OUTPUT="$PWD/test/fixtures/judge" "$FREECAD_CMD" "$PWD/test/fixtures/judge/make-step-controls.py" </dev/null
-      - uses: actions/upload-artifact@v7
-        with:
-          name: step-controls
-          path: test/fixtures/judge/*.step
-          retention-days: 7
-      # J1-TEMP end.
       - run: npm run test:judge:unit
-      # J1-TEMP: which placement flags let the multi-object 3MFs slice; removed after the answer.
-      - name: Slicer flag experiments
-        if: ${{ !cancelled() }}
-        run: |
-          out="$RUNNER_TEMP/exp"; mkdir -p "$out"
-          variants=("--center 0,0 --dont-arrange --no-ensure-on-bed" "--center 0,0 --dont-arrange" "--center 0,0 --dont-arrange --ensure-on-bed" "--center 0,0" "--ensure-on-bed" "--no-ensure-on-bed" "--merge")
-          for name in advanced-bricks nameplate advanced-pattern-mod fasteners; do
-            for flags in "${variants[@]}"; do
-              rm -f "$out/x.gcode"
-              set +e
-              "$PRUSA_SLICER" --threads 1 --load tools/judge-prusa.ini $flags --export-gcode --output "$out/x.gcode" "test-results/judge/site/$name.3mf" > "$out/o.txt" 2> "$out/e.txt"
-              code=$?
-              set -e
-              echo "EXPERIMENT $name flags=[$flags] exit=$code layers=$(grep -c '^;LAYER_CHANGE$' "$out/x.gcode" 2>/dev/null || echo none) stderr=$(tr '\n' '~' < "$out/e.txt" | cut -c1-160) conflicts=$(grep -c 'path conflicts' "$out/o.txt")"
-            done
-          done
-      # J1-TEMP end.
       - name: Native negative controls
         timeout-minutes: 5
         run: npm run test:judge:integration
