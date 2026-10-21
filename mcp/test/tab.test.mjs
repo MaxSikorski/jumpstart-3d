@@ -24,8 +24,9 @@ after(async () => {
   if (s) await s.close();
 });
 
+// jumpstart-3d: no service worker in these contexts: each headless start is a fresh browser, and it would fight page.route
 async function newPage(browser, url) {
-  const p = await (await browser.newContext({ viewport: { width: 1000, height: 700 } })).newPage();
+  const p = await (await browser.newContext({ viewport: { width: 1000, height: 700 }, serviceWorkers: "block" })).newPage();
   await p.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
   await p.goto(url);
   await p.waitForFunction(() => window.JS3D && window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
@@ -132,7 +133,7 @@ test("the session stays with its tab: a lost tab means an error after a short wa
 test("the https site can be the page's origin (with the browser's local network permission)", async () => {
   const SITE = "https://maxsikorski.github.io/jumpstart-3d/";
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png" };
-  const context = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+  const context = await browser.newContext({ viewport: { width: 1000, height: 700 }, serviceWorkers: "block" }); // jumpstart-3d: no service worker: it would fight page.route
   await context.grantPermissions(["local-network-access"]);
   await context.route(SITE + "**", async (route) => {
     const name = new URL(route.request().url()).pathname.replace(/^\/jumpstart-3d\//, "") || "index.html";

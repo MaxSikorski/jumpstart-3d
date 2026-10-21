@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
+import { createHash } from "node:crypto"; // jumpstart-3d: offline
 
 const root = new URL(".", import.meta.url).pathname;
 const src = join(root, "src");
@@ -60,6 +61,11 @@ cpSync(join(out, "worker.js"), join(docs, "worker.js"));
 cpSync(wasm, join(docs, "occt-gz.wasm"));
 cpSync(join(src, "og-image.png"), join(docs, "og-image.png")); // link-preview card; the meta tags in index.html point here
 writeFileSync(join(docs, ".nojekyll"), "");
+// jumpstart-3d: offline. the site's service worker; its cache name comes from the files it keeps, so every build gets its own cache. Not in the single file.
+const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm"].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
+const swSource = read(join(src, "sw.js"));
+if (!swSource.includes('const VERSION = "dev";')) throw new Error('src/sw.js is missing the line const VERSION = "dev";');
+writeFileSync(join(docs, "sw.js"), swSource.replace('const VERSION = "dev";', () => `const VERSION = "${swVersion}";`));
 
 // ---------- single file ----------
 mkdirSync(dist, { recursive: true });
@@ -77,3 +83,4 @@ writeFileSync(join(dist, "jumpstart-3d.html"), single);
 const mb = (n) => (n / 1048576).toFixed(2) + " MB";
 console.log("docs/app.js:", mb(app.length), " docs/worker.js:", mb(statSync(join(docs, "worker.js")).size), " docs/occt-gz.wasm:", mb(wasmSize));
 console.log("dist/jumpstart-3d.html:", mb(Buffer.byteLength(single)));
+console.log("docs/sw.js:", swVersion); // jumpstart-3d: offline

@@ -17,7 +17,8 @@ export default defineConfig({
   workers: 1, // every page loads and compiles the 7 MB kernel; one at a time is faster overall
   retries: 0,
   reporter: [["list"], ["html", { open: "never" }]],
-  use: { viewport: { width: 1400, height: 880 }, launchOptions: { args: chromiumArgs }, trace: "retain-on-failure" },
+  // a service worker would answer page.reload() from its cache; test/load.spec.mjs allows one in its own context
+  use: { viewport: { width: 1400, height: 880 }, launchOptions: { args: chromiumArgs }, trace: "retain-on-failure", serviceWorkers: "block" },
   projects: [
     { name: "site", use: { baseURL: `http://127.0.0.1:${base}/` } },
     { name: "single", use: { baseURL: pathToFileURL("dist/jumpstart-3d.html").href } },

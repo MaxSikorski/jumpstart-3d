@@ -31,6 +31,8 @@ Pick one:
 
 That is all. You do not need anything else in this repository.
 
+**Fast after the first visit.** The website shows the workspace right away; the geometry engine (7 MB) downloads in the background, a small note in the corner of the 3D view shows how far it is, and shapes you add appear when it is ready. After that first visit the site keeps a copy on your computer, so it opens at once and works without an internet connection (only the fonts come from the web). When a new version is published it downloads in the background and a message asks you to reload. The downloaded single file is not affected.
+
 **Back up your designs.** Designs live in this browser only. In Your designs, **Back up all designs…** saves them all into one file, and **Restore from backup…** puts them back, on this or another computer; it adds what is missing and never deletes anything. Clearing your browser's site data erases designs, so back up now and then. (Autosave checkpoints are not in the file.)
 
 ## What it does
@@ -248,6 +250,8 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
+`node tools/measure-load.mjs` times a page load on a simulated 10 Mbit connection; `test/README.md` explains the numbers.
+
 ### Where things are
 
 ```
@@ -262,6 +266,8 @@ src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
+src/loadui.js       our loading note over the 3D view, and the start of the offline copy on the website
+src/sw.js           our service worker: the website's offline copy (the site build only)
 mcp/                our MCP server for AI agents, its Claude Code plugin and skill, the `jumpstart`
                     command line and AGENT-SETUP.md, the page an agent reads to set itself up
                     (see mcp/README.md); it has its own package.json, so `npm ci` inside
@@ -276,7 +282,8 @@ LICENSES/, THIRD-PARTY-NOTICES.md
 build.mjs           the build (the author's dist.sh and standalone.py, in Node)
 tools/              helper page sources and the scripts that rebuild them
                     (see tools/README-helpers.md); og-card/ renders the link-preview image;
-                    bridge-demo.js is a script for Open/Export › Run script… (or the console)
+                    bridge-demo.js is a script for Open/Export › Run script… (or the console);
+                    measure-load.mjs times a page load on a simulated slow connection
 BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website, committed so GitHub Pages can serve it
 jumpstart_3d_v2.0.htm      the untouched upstream file this version came from
@@ -287,7 +294,8 @@ UPSTREAM-README.md         the author's README from the source release
 
 - After any change run `node build.mjs`, then `npm test`, then try both
   outputs yourself: the site in a browser and `dist/jumpstart-3d.html` opened
-  from disk.
+  from disk. The local site keeps its service worker, so after a rebuild reload
+  twice: the first reload shows the old build and the "new version" message.
 - Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
   single file is attached to releases instead.
 - Keep "Created by J.Siwek" in the About dialog. Our additions are listed
@@ -296,6 +304,7 @@ UPSTREAM-README.md         the author's README from the source release
 ## What this repository adds on top of the original
 
 - OBJ export in the Open/Export menu
+- No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The

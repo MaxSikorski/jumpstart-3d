@@ -104,6 +104,9 @@ export class KernelClient {
   stalled(batch) {
     // OpenCascade occasionally loops forever on extreme fillets; restart the worker.
     try { this.worker.terminate(); } catch (e) {}
+    // jumpstart-3d: load. a restart drops the old worker's STEP jobs: say so instead of waiting forever
+    for (const w of this.stepWaiters.values()) w.reject(new Error("the geometry engine restarted. Try the export again"));
+    this.stepWaiters.clear();
     const res = batch.map((b) => {
       this.bad.add(b.key);
       return { id: b.id, key: b.key, ok: false, error: "This shape stalled the geometry engine. Undo the last change or adjust its values." };

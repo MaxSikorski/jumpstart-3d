@@ -117,7 +117,7 @@ export class Session {
       }
       this.log(`starting a headless browser on ${url}`);
       browser = await chromium.launch({ args: CHROMIUM_ARGS });
-      const context = await browser.newContext({ viewport: this.viewport });
+      const context = await browser.newContext({ viewport: this.viewport, serviceWorkers: "block" }); // jumpstart-3d: no service worker: each headless start is a fresh browser, and it would fight page.route
       await context.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
       const page = await context.newPage();
       page.on("pageerror", (e) => this.log("page error: " + e.message));
