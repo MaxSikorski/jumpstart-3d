@@ -5,6 +5,7 @@ import { ICON } from "./icons.js";
 import { initRecovery } from "./recovery.js";
 import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs storage
 import { initFolder } from "./folder.js"; // jumpstart-3d: copies in a folder
+import { initRemote } from "./remote.js"; // jumpstart-3d: remote
 
 const LS_PREF = "workplane.pref.v1";
 
@@ -23,6 +24,7 @@ export function initProjects(app) {
   // the version counters and the last-open id stay in localStorage because they are read synchronously.
   const ps = openProjectStore();
   const mirror = initFolder({ ps, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t) }); // jumpstart-3d: copies in a folder
+  const remote = initRemote({ ps, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t), open: (id) => open(id) }); // jumpstart-3d: remote
   let saving = 0, started = false, openGate;
   const startGate = new Promise((r) => { openGate = r; }); // saves wait until start() has loaded the resumed design
   const stateEl = $("savestate");
@@ -246,6 +248,7 @@ export function initProjects(app) {
     document.body.append(back);
     const close = () => back.remove();
     back.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    remote.tabs(modal.querySelector(".mbody"), close); // jumpstart-3d: remote
     await saveNow();
     const fr = await mirror.row(); if (fr) grid.before(fr); // jumpstart-3d: copies in a folder
     const list = await listAll();
@@ -677,7 +680,7 @@ export function initProjects(app) {
     exportSTL,
     stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
-    get started() { return started; }, _store: ps, _folder: mirror, // jumpstart-3d: designs storage, copies in a folder (tests read these)
+    get started() { return started; }, _store: ps, _folder: mirror, _remote: remote, // jumpstart-3d: designs storage, copies in a folder, remote (tests read these)
   };
 }
 void fmt;
