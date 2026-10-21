@@ -70,6 +70,7 @@ That is all. You do not need anything else in this repository.
   count, spacing or angle, and editing the source hole updates every copy.
   Patterns of separate bodies, Beginner patterns and path patterns still make
   plain copies
+- **Bolts, nuts and threaded rods.** Fastener (in Beginner, and in Advanced under Create) makes a hex bolt, a hex nut, a threaded rod or a tap cutter in metric (M2.5 to M12) or inch (#6 to 1/2) sizes, with a print offset so printed parts screw together. The thread is a real thread you can edit later. A tap cutter is a threaded hole shape: put it in a solid and Group them.
 - Proof it is parametric: a fully-constrained mark on every sketch, dimension
   names `d1`, `d2`… you can use in any dimension, feature value or shape
   size, parameters importable and exportable as CSV, and a Parameters tutorial
@@ -80,7 +81,7 @@ That is all. You do not need anything else in this repository.
 ## Chat inside the app
 
 Click the **AI** button in the top bar, pick a model, and type what you want ("a 40 by 30 by 20 block with an 8 mm hole
-through it"). The model edits the design you have open through the same 34 tools the MCP server below has: it adds shapes,
+through it"). The model edits the design you have open through the same 35 tools the MCP server below has: it adds shapes,
 cuts holes, moves and sizes them, looks at the view and offers an export. You can see every step it takes in the chat, and
 undo it like any other edit.
 
@@ -310,14 +311,15 @@ UPSTREAM-README.md         the author's README from the source release
 - OBJ export in the Open/Export menu
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
-- Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit, and browsers where IndexedDB fails keep the old way (`src/projstore.js`)
+- Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit and their old copies are left in place, so an older version of the app still finds them as they were that day; browsers where IndexedDB fails keep the old way (`src/projstore.js`)
 - Save copies into a folder in Your designs (Chrome and Edge): every design kept up to date as a project file in a folder you pick, so clearing the browser's site data no longer loses work (`src/folder.js`)
 - Restore from a folder in Your designs: adds back the designs from the project files in a folder you pick, in any browser on a computer, through the same never-overwrite rules as Restore from backup (`src/projects.js`)
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`
+- Fasteners: a Fastener dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.fastener` / the `add_fastener` tool make a hex bolt, hex nut, threaded rod or tap cutter as ordinary bodies built from the app's own Thread feature. Thread sizes come from the Thread dialog's table; head and nut sizes follow ISO 4017 and 4032 (metric) and ASME B18.2.1, B18.2.2 and B18.6.3 (inch) (`src/fasteners.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
-  design through the same 34 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
+  design through the same 35 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view

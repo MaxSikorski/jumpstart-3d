@@ -1,4 +1,4 @@
-// jumpstart-3d: chat tools. The same 34 tools the MCP server offers (mcp/tools.mjs), described to a model
+// jumpstart-3d: chat tools. The same 35 tools the MCP server offers (mcp/tools.mjs), described to a model
 // and run straight against window.JS3D (see BRIDGE.md). Three rules:
 //  1. Names and descriptions are copied from mcp/tools.mjs; mcp/test/chat.test.mjs fails if they drift.
 //     Six differ on purpose (no server, no file paths): status, screenshot, export_file, save_project, load_project, run_script.
@@ -38,6 +38,9 @@ export const TOOLS = [
   tool("add_shape", "Adds a basic shape and returns its id. The shape's footprint is centred on `at` [x, y] with its base at z. Set hole: true to make a cutter that group_bodies can subtract from another body.",
     { kind: str("box, cylinder, sphere, cone, ... (see list_kinds)"), size: size("Shape size in mm. A 3-number array [w, d, h] also works."), at: vec3("Where to put it, mm. Default [0, 0, 0]"), hole: bool("true makes a cutter"), color: str('"#rrggbb"'), name: str("Name for the body") },
     ["kind"], ({ kind, size, at, hole, color, name }) => J().add(kind, { size, at: given(at), hole, color, name })),
+  tool("add_fastener", "Adds a threaded fastener and returns its id: a hex bolt (length under the head), a hex nut, a threaded rod, or a tap cutter (a threaded rod marked as a hole: put it inside a solid and group_bodies cuts a threaded hole). Sizes M2.5 to M12 (ISO coarse) and #6-32 to 1/2-20 (UNC / UNF). Building takes a few seconds: call wait_ready.",
+    { type: { type: "string", enum: ["bolt", "nut", "rod", "cutter"], description: "bolt, nut, rod (threaded rod) or cutter (tap cutter)" }, size: str("M2.5, M3, M4, M5, M6, M8, M10, M12, or #6-32, #8-32, #10-24, #10-32, 1/4-20, 1/4-28, 5/16-18, 5/16-24, 3/8-16, 3/8-24, 1/2-13, 1/2-20"), length: num("Length in mm (under the head for a bolt). Not used for a nut. At least 3 turns of the thread, at most 150"), clear: num("Print offset in mm, from -1 to 0. Default 0; -0.2 suits most printers"), left: bool("true for a left-hand thread"), at: vec3("Where to put it, mm. Default [0, 0, 0]"), name: str("Name for the body") },
+    ["type", "size"], ({ type, size, length, clear, left, at, name }) => J().fastener({ type, size, length, clear, left, at: given(at), name })),
   tool("remove_bodies", "Deletes bodies. Returns how many.", { ids: ids() }, ["ids"], ({ ids }) => J().remove(ids)),
   tool("duplicate_bodies", "Copies bodies, shifted by offset (mm). Returns the new ids.", { ids: ids(), offset: vec3("Shift in mm, [dx, dy, dz]. Default none") }, ["ids"], ({ ids, offset }) => J().duplicate(ids, given(offset))),
   tool("move_bodies", "Moves bodies by [dx, dy, dz] mm.", { ids: ids(), delta: vec3("[dx, dy, dz] in mm") }, ["ids", "delta"], ({ ids, delta }) => J().move(ids, delta)),

@@ -175,6 +175,7 @@ export function initBeginner(app) {
     btn("ungroup", "Ungroup", "Ungroup (Ctrl+Shift+G)", () => ungroup(), "bb-ungroup", true);
     btn("align", "Align", "Align (A)", () => app.advanced.align(), "bb-align", true);
     btn("pattern", "Pattern", "Make rows or circles of copies", () => app.advanced.pattern(), "bb-pattern", true);
+    btn("thread", "Fastener", "Bolts, nuts, threaded rods and tap cutters, metric and inch", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);

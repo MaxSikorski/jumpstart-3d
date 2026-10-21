@@ -330,5 +330,18 @@
     "obj": "1920166eab405e33ed9bf806c4fa960536fc9af1505a370a0c3bc43cb5d9f087",
     "3mf": "79ec8eb155a3aea05626c8318390f7cb11e2a6e540119239efc4c8c7d20bba08",
     "step": "aa2ba3bd5f828ea03d7c26b65dcc1edef14ed7176e1ab9c58b82618a2394e02a"
+  },
+  "fasteners.json": {
+    "volumes": {
+      "b1 M8×30 bolt": 2095.6,
+      "b2 M8 nut": 727.2,
+      "b3 1/4-20×40 threaded rod": 1064.6,
+      "b4 M8 tapped block": 5341.8
+    },
+    "stlTriangles": 34956,
+    "stl": "8d8ec5641e6dc456499558c0c8924984e9b141fa76878712e19eb378441e8c5e",
+    "obj": "d41ebde2cea28f320dfe1e88dd7eed438c3ff601f31bc401eb337315df3a7a5d",
+    "3mf": "139aab901c259aafeb68418f057daf444508768b954e3a4c72e96b94739bafd8",
+    "step": "80f3692edc5e20443a3610f551bba4121a99e7395a80c535f0bb05c13a07d3aa"
   }
 }
