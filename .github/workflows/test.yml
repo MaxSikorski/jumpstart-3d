@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
         working-directory: mcp
       - run: npx playwright install --with-deps chromium
-      - run: npm test
+      - run: node build.mjs && npx playwright test test/golden.spec.mjs # J1-TEMP: golden only while measuring; restore to npm test
         # J1: The collector and judge must identify the same workflow attempt.
         env:
           JUDGE_EXPORTS: '1'

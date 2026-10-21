@@ -250,5 +250,5 @@ def main():
     emit('COMPLETE', {'runId': request['runId'], 'count': len(request['files']), 'passed': passed, 'failed': len(request['files']) - passed})
 
 
-if __name__ == '__main__':
-    main()
+# FreeCAD's console runs a script file with a name other than __main__, so main() is called unguarded.
+main()
