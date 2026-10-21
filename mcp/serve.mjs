@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { createReadStream, statSync } from "node:fs";
 import { join, resolve, sep, extname } from "node:path";
 
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".json": "application/json" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json" };
 
 // Starts on a free port. Resolves to { url, close() }.
 export function serve(dir) {

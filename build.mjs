@@ -48,6 +48,10 @@ const read = (p) => readFileSync(p, "utf8");
 const shell = read(join(src, "index.html"));
 const appTag = '<script type="module" src="app.js"></script>\n';
 if (!shell.includes(appTag)) throw new Error("src/index.html is missing the app.js script tag");
+// jumpstart-3d: tab icons inline in the single file (the site links them as files)
+const icons = [["favicon.svg", "image/svg+xml"], ["favicon-32.png", "image/png"], ["apple-touch-icon.png", "image/png"]];
+const dataUri = (f, mime) => "data:" + mime + ";base64," + readFileSync(join(src, f)).toString("base64");
+for (const [f] of icons) if (!shell.includes('href="' + f + '"')) throw new Error('src/index.html is missing href="' + f + '"');
 const app = read(join(out, "app.js"));
 const worker = read(join(out, "worker.iife.js"));
 for (const s of [app, worker]) if (/<\/script/i.test(s)) throw new Error("a bundle contains </script>, which would end the inline block");
@@ -60,6 +64,7 @@ writeFileSync(join(docs, "app.js"), app);
 cpSync(join(out, "worker.js"), join(docs, "worker.js"));
 cpSync(wasm, join(docs, "occt-gz.wasm"));
 cpSync(join(src, "og-image.png"), join(docs, "og-image.png")); // link-preview card; the meta tags in index.html point here
+for (const [f] of icons) cpSync(join(src, f), join(docs, f)); // tab icons; index.html links them
 writeFileSync(join(docs, ".nojekyll"), "");
 // jumpstart-3d: offline. the site's service worker; its cache name comes from the files it keeps, so every build gets its own cache. Not in the single file.
 const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm"].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
@@ -71,13 +76,14 @@ writeFileSync(join(docs, "sw.js"), swSource.replace('const VERSION = "dev";', ()
 mkdirSync(dist, { recursive: true });
 const wasmB64 = readFileSync(wasm).toString("base64");
 // Replacement callbacks everywhere: a replacement *string* would interpret "$'" and "$$" inside the code.
-const single = shell.replace(
+let single = shell.replace(
   appTag,
   () =>
     '<script type="text/plain" id="wp-worker-src">' + worker + "</script>\n" +
     '<script type="text/plain" id="wp-occt">' + wasmB64 + "</script>\n" +
     '<script type="module">' + app + "</script>\n"
 );
+for (const [f, mime] of icons) single = single.replace('href="' + f + '"', () => 'href="' + dataUri(f, mime) + '"');
 writeFileSync(join(dist, "jumpstart-3d.html"), single);
 
 const mb = (n) => (n / 1048576).toFixed(2) + " MB";

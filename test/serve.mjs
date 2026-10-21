@@ -5,7 +5,7 @@ import { createReadStream, statSync } from "node:fs";
 import { join, normalize, extname } from "node:path";
 
 const [dir, port] = [process.argv[2], +process.argv[3]];
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".json": "application/json" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json" };
 createServer((req, res) => {
   let path;
   try { path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^(\.\.[/\\])+/, ""); } catch { res.writeHead(400); res.end("bad request"); return; }
