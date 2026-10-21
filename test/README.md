@@ -72,6 +72,133 @@ and commit the new `golden.json` with the change that caused it. (The script
 sets `UPDATE_GOLDEN=1` and records from the site build; in PowerShell run
 `$env:UPDATE_GOLDEN=1; npx playwright test --project=site` instead.)
 
+<!-- J1: Consumer checks require original downloads and separately reviewed expectations. -->
+## Slicer and STEP judge
+
+The existing CI `test` job collects the normal golden run's original STL, 3MF
+and STEP downloads from **both** builds. Playwright streams the downloads;
+there is no object-URL interception or second export pass. `JUDGE_EXPORTS=1`
+requires a nonempty `JUDGE_RUN_ID` and refuses `UPDATE_GOLDEN`.
+
+```sh
+JUDGE_EXPORTS=1 JUDGE_RUN_ID=local npm test
+npm run test:judge:unit
+JUDGE_RUN_ID=local npm run test:judge
+npm run test:judge:integration
+```
+
+Mac contributors can collect exports and run the Node unit tests without
+native consumers. The full consumer judge is **CI-only in J1**: the pinned
+Linux AppImages and console launcher are not a supported Mac installation.
+The existing workflow runs on every PR, push to main and manual dispatch.
+There is no nightly substitute or successful skip for missing tools.
+
+Inputs live in `test-results/judge/site/` and `test-results/judge/single/`.
+Each build clears only its own directory. Only a complete successful golden
+run writes its `manifest.json`: schema, run/build IDs, baseline and project
+digests, exact filenames, raw hashes and byte lengths. A filtered run cannot
+supply a complete manifest. STEP bytes on disk remain unmodified; only the
+golden hash comparison normalizes timestamps and export counters. The judge
+requires exact coverage of discovered projects in both manifests,
+`golden.json` and `judge-solids.json`, and checks all hashes before consuming
+files. CI uses the same `${{ github.run_id }}-${{ github.run_attempt }}` in
+collection and judging.
+
+Pinned consumers are **PrusaSlicer 2.8.1+linux-x64-GTK3-202409181416** and
+**FreeCAD 1.1.4**, on `ubuntu-24.04`. `tools/install-judge-tools.sh` verifies
+both download checksums even after a cache hit, extracts with
+`--appimage-extract` (no FUSE), and supplies `PRUSA_SLICER` and `FREECAD_CMD`
+as executable paths without embedded flags. FreeCAD runs through extracted
+`AppRun --console` with a Python script, since its GUI version flags crashed
+in the probe. The macro runs in FreeCAD's native Python host; it is not a
+standalone Python package. A fresh HOME/config directory prevents inherited
+slicer presets or post-processing scripts.
+
+`tools/judge-prusa.ini` fixes a virtual 1000 × 1000 × 1000 mm build space,
+0.4 mm nozzle, 1.75 mm filament, 0.2 mm layers, two perimeters, three top and
+bottom layers, 10% rectilinear infill, no supports/brim/skirt, and plain-text
+Marlin 2 G-code with relative extrusion. The remaining values are pinned
+consumer defaults; the resolved profile is saved. Whole-design centering
+preserves relative placement; parts are not arranged or grounded separately.
+The profile is an export compatibility check, not a printer recommendation.
+
+FreeCAD checks the **original triangles**, before accepting a slice: exact
+STL layout, finite coordinates/normals, no degenerate/duplicate triangles,
+closed oppositely directed edges, a single face-link cycle at each vertex,
+and native Mesh solidity, non-manifold, orientation and component
+self-intersection checks. 3MF must use the app's direct mesh objects in mm,
+with all visible non-hole bodies represented and only identity transforms.
+Components and other package layouts require an explicit checker extension.
+No repair, tolerance weld, filling or reorientation is allowed. Separate
+closed components may overlap; cross-component collision is outside scope.
+
+Prusa must exit successfully, give complete object reports without reported
+repairs/errors, and produce fresh G-code with at least one exact
+`;LAYER_CHANGE` and an XY extrusion move after it. Exit zero and quiet logs
+are insufficient: the probe's holed STL sliced silently to the same G-code
+as the closed cube. FreeCAD Mesh and original topology supply manifoldness;
+the slicer supplies evidence of an actual toolpath. Two slicer inputs run at
+once, each with one thread, after one native FreeCAD corpus batch.
+
+STEP uses `Part.read`, requires valid positive-volume solids with closed
+shells, and refuses loose faces/wires/shells beside otherwise good solids.
+`test/judge-solids.json` is a separately reviewed positive solid count per
+fixture, not a count of app bodies (text and patterns can contain several
+solids). Every added design needs an actual FreeCAD import count checked
+against raw `MANIFOLD_SOLID_BREP` records and intended pieces, then review.
+`test:update` never approves these counts or external validity. STEP volume
+must be within **0.5% relative** of the sum of visible non-hole bodies'
+golden volumes multiplied by their absolute outer-matrix determinants;
+there is no absolute floor or per-design exception. Mesh volume is not
+compared to B-rep volume.
+
+Each expected file gets a PASS/FAIL line. The six-row build/format table is
+printed and appended to the Actions step summary; seconds in its rows are
+summed per-file work, while wall time is reported separately. Complete
+stdout/stderr, protocol, request, resolved profile and `summary.json` stay
+under `test-results/judge/`; only generated output/log/run directories are
+cleared on judging. Failure artifacts retain all `test-results/` for seven
+days. Installation has an eight-minute step limit, the judge step ten,
+the judge process eight, and the existing job thirty. The FreeCAD batch has
+a 60-second startup and 20-second progress limit; slicer info/slice limits
+are 15/60 seconds. Tool/download/version/protocol/missing-output failures
+fail the existing check. Geometry failures never rewrite the baseline;
+they need separate geometry/export fixes before this gate can be accepted.
+
+`test/fixtures/judge/` contains closed/holed mesh controls and saved probe
+logs. `test:judge:unit` checks manifests, parsers, volumes, process failures,
+timeouts and stale-output rejection without native tools.
+`test:judge:integration` exercises the production checker with actual
+consumers: closed/open STL and 3MF, closed/open-shell STEP, a dropped-solid
+expectation, a two-solid compound, a compound plus loose shell, malformed
+files, and zero-status missing G-code. Expected failures must match their
+specific reasons; missing native tools fail this suite rather than skip it.
+
+The October 21, 2026 probe on Ubuntu 24.04.5 (runner image
+20261018.339.1) measured FreeCAD download/extraction at 2.827/6.801 seconds,
+Prusa download/extraction at 0.563/0.977 seconds, apt update at 4.773 seconds
+and Prusa prerequisites at 15.914 seconds. Its console batch was 0.260 seconds,
+STEP import/check 0.004 seconds, mesh checks about 0.001 seconds each, and
+two default-profile STL slices 0.088/0.093 seconds. The entire probe job took
+42 seconds. Those are tiny-control measurements, not a timing of this
+profile, `--info`, original topology checks, 3MF, or the complete corpus.
+Warm cache preparation and full cold/warm judge costs remain unmeasured;
+the brief's 3–5 added warm minutes is a budget estimate. CI caches only the
+two AppImage downloads using the exact tool-version/OS/architecture key.
+
+First full-run acceptance still needs runner evidence for collected exports,
+the frozen imported solid counts, native controls and all golden files.
+This draft still needs `judge-solids.json` populated from measured imports
+and the four raw STEP controls authored by the supplied FreeCAD script;
+see `fixtures/judge/README.md`. These missing inputs fail the gate.
+Local checks do not establish those outcomes. No physical printing,
+dimensional/fastener fit, filament/color mapping, support or bed readiness,
+OBJ/DXF consumers, arbitrary user files, all parameters/quality settings,
+assembly collisions, GUI FreeCAD workflow, Safari/Firefox/phones or a manual
+double-click of the single-file app is covered. FreeCAD and the app share
+OpenCascade heritage, so this is not a wholly independent geometry kernel.
+<!-- J1 end. -->
+
 ## Measuring load time
 
 `node tools/measure-load.mjs [folder=docs] [runs=3]` serves a built copy of the site like GitHub Pages does (compressed files, ten minutes of caching), slows Chromium to about 10 Mbit with 40 ms delay, and visits twice in the same browser. The table has the median of the runs for each visit: **DOMContentLoaded** is when the app's script has loaded and run, **workspace usable** is when the loading splash no longer blocks the mouse, **kernel ready** is when the geometry engine can build shapes, and **network bytes** is what that visit downloaded from the site (an answer from the service worker or the browser's cache counts as zero; the service worker's own downloads are printed under the table). To compare a change, put the old build in a folder first (`git archive <commit> docs | tar -x -C <folder>`), measure that folder, then run `node build.mjs` and measure `docs`. Within ten minutes of a first visit the browser's own cache can serve a second visit even without a service worker, so the service worker's gain shows after ten minutes and offline.
@@ -80,7 +207,7 @@ sets `UPDATE_GOLDEN=1` and records from the site build; in PowerShell run
 
 Drop a project file in `projects/` (Export > Save Project File, or a
 hand-written document like the existing ones) and re-record. Keep designs
-small: each one is built, exported three times and hashed on every run.
+small: each one is built, exported as STL, OBJ, 3MF and STEP, plus DXF when it has sketches, and hashed on every run.
 A design can carry `params` (`[{ id, name, expr, value }]`, plus `unit: "in"` when typed in inches) and sketch dimensions with an `expr`, as `parametric-plate.json` does. A feature (extrude or revolve node, fillet, chamfer, hole or shell mod) can carry `exprs: { dist: "t" }` (keys `dist`, `dist2`, `angle`, `r`, `d`, `dia`, `depth`, `th`; plus `exprUnits` when typed in inches), as `parametric-features.json` does; leave `exprs` out when nothing is bound. A Beginner shape (`t: "prim"` node, also inside a group) can carry `exprs: { w: "w", d: "w/2", h: "h" }` for its sizes, stored in `p`, as `parametric-beginner.json` does.
 A `pattern` mod (`kind: "rect"` with `ax1`, `n1`, `s1`, optional `ax2`, `n2`, `s2`, `sym`; or `kind: "circ"` with `cax`, `center`, `cn`, `angle`) repeats either earlier mods of the same body named in `feats` (`what: "feats"`) or the whole shape so far (`what: "shape"`). Its vectors are in the body's own coordinates, not the world's, and it can carry `exprs` for `n1`, `s1`, `n2`, `s2`, `cn`, `angle`; see `advanced-pattern-mod.json`. The three older pattern designs are baked copies and stay as they are.
 

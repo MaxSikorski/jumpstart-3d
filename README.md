@@ -258,6 +258,10 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
+<!-- J1: The first full native runner verdict is required before claiming the gate is green. -->
+The CI export judge checks golden STL, 3MF and STEP files with PrusaSlicer and FreeCAD; its checks and pending first-run validation are described in [test/README.md](test/README.md#slicer-and-step-judge).
+<!-- J1 end. -->
+
 `node tools/measure-load.mjs` times a page load on a simulated 10 Mbit connection; `test/README.md` explains the numbers.
 
 ### Where things are
