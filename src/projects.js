@@ -3,9 +3,8 @@ import { store, newDoc, IDENTITY } from "./store.js";
 import { el, uid, debounce, makeZip, fmt } from "./util.js";
 import { ICON } from "./icons.js";
 import { initRecovery } from "./recovery.js";
+import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs storage
 
-const LS_INDEX = "workplane.index.v1";
-const LS_DOC = "workplane.doc.v1.";
 const LS_PREF = "workplane.pref.v1";
 
 const ls = {
@@ -13,13 +12,17 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} },
 };
-const readJSON = (k, d) => { try { const v = ls.get(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 
 export function initProjects(app) {
   const $ = (id) => document.getElementById(id);
   let db = null, userId = null, downloads = null;
   let remoteOk = false;
   let dirty = false;
+  // jumpstart-3d: designs storage. Designs and the list live in projstore.js (IndexedDB, or localStorage where that fails);
+  // the version counters and the last-open id stay in localStorage because they are read synchronously.
+  const ps = openProjectStore();
+  let saving = 0, started = false, openGate;
+  const startGate = new Promise((r) => { openGate = r; }); // saves wait until start() has loaded the resumed design
   const stateEl = $("savestate");
   const setState = (t) => { stateEl.textContent = t; };
 
@@ -37,10 +40,11 @@ export function initProjects(app) {
   const col = () => db.collection(`data/users/${userId}/projects`);
 
   // ---------------------------------------------------------------- index
-  function localIndex() { return readJSON(LS_INDEX, []); }
-  function writeIndex(list) { return ls.set(LS_INDEX, JSON.stringify(list)); }
+  async function getDoc(id) { // jumpstart-3d: designs storage
+    try { const s = await ps.get(id); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+  }
   async function listAll() {
-    const map = new Map(localIndex().map((p) => [p.id, { ...p, where: "local" }]));
+    const map = new Map((await ps.list()).map((p) => [p.id, { ...p, where: "local" }]));
     if (remoteOk) {
       try {
         const snap = await col().orderBy("updated", "desc").limit(200).get();
@@ -55,7 +59,7 @@ export function initProjects(app) {
     return [...map.values()].sort((a, b) => (b.updated || 0) - (a.updated || 0));
   }
   async function loadDoc(id) {
-    let local = readJSON(LS_DOC + id, null);
+    let local = await getDoc(id);
     if (remoteOk) {
       try {
         const s = await col().doc(id).get();
@@ -84,14 +88,9 @@ export function initProjects(app) {
       return c.toDataURL("image/jpeg", 0.72);
     } catch (e) { return null; }
   }
-  function saveLocal(doc, thumb) {
-    const updated = Date.now();
-    const okDoc = ls.set(LS_DOC + doc.id, JSON.stringify({ ...doc, _updated: updated }));
-    const idx = localIndex().filter((p) => p.id !== doc.id);
-    idx.unshift({ id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated, thumb });
-    writeIndex(idx);
-    ls.set(LS_PREF + ".last", doc.id);
-    return okDoc ? updated : null;
+  function record() { // jumpstart-3d: designs storage. what a save stores: id, the document string, the list entry
+    const doc = store.doc, updated = Date.now();
+    return [doc.id, JSON.stringify({ ...doc, _updated: updated }), { id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated, thumb: thumbnail() }];
   }
   async function saveRemote(doc, thumb, updated) {
     if (!remoteOk) return false;
@@ -103,16 +102,24 @@ export function initProjects(app) {
     } catch (e) { remoteNote = e && e.code === "invalid_argument" ? "you can't write here" : "account storage unavailable"; return false; }
   }
   let remoteNote = "";
-  async function saveNow() {
-    const doc = store.doc;
-    const thumb = thumbnail();
-    const updated = saveLocal(doc, thumb);
-    dirty = false;
+  function saveNow() { return save(); }
+  async function save(taken) {
+    saving++; // jumpstart-3d: designs storage (the whole block up to the remote save)
+    let updated = null, doc, thumb;
+    try {
+      await startGate;
+      doc = store.doc;
+      const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
+      thumb = r[2].thumb;
+      dirty = false;
+      if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; }
+      else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
+    } finally { saving--; }
     if (remoteOk) {
       setState("Saving…");
       const ok = await saveRemote(doc, thumb, updated || Date.now());
       setState(ok ? "Saved" : updated ? `Saved in this browser (${remoteNote})` : "Not saved");
-    } else setState(updated ? "Saved in this browser" : "Couldn't save: browser storage is blocked. Export a project file instead.");
+    } else setState(updated ? "Saved in this browser" : "Couldn't save: browser storage is full or blocked. Export a project file instead.");
     return !!updated; // jumpstart-3d: backup (did the write fit?)
   }
   const saveSoon = debounce(saveNow, 1200);
@@ -258,8 +265,7 @@ export function initProjects(app) {
       delBtn.onclick = () => {
         const confirmRow = el("div", { class: "confirm-row" }, "Delete for good?",
           el("button", { class: "btn danger", style: { padding: "3px 8px" }, onclick: async () => {
-            ls.del(LS_DOC + p.id);
-            writeIndex(localIndex().filter((x) => x.id !== p.id));
+            await ps.del(p.id); // jumpstart-3d: designs storage
             if (remoteOk) { try { await col().doc(p.id).delete(); } catch (e) {} }
             card.remove();
             if (p.id === store.doc.id) { close(); createNew(null, store.doc.mode); }
@@ -517,8 +523,8 @@ export function initProjects(app) {
     const saved = await saveNow();
     const designs = [];
     let bad = 0;
-    for (const entry of localIndex()) {
-      const doc = readJSON(LS_DOC + entry.id, null);
+    for (const entry of await ps.list()) { // jumpstart-3d: designs storage
+      const doc = await getDoc(entry.id);
       if (!doc) { bad++; continue; }
       const ver = +ls.get(VER_KEY + entry.id) || 0;
       designs.push(ver ? { entry, doc, ver } : { entry, doc });
@@ -540,26 +546,26 @@ export function initProjects(app) {
     if (!j || j.app !== "jumpstart-3d" || j.backup !== 1 || !Array.isArray(j.designs)) { app.toast("That isn't a JumpStart 3D backup file.", "err"); return; }
     // same design apart from save time and the bodies' internal keys
     const same = (a, b) => { const f = ({ _updated, bodies, ...r }) => JSON.stringify({ ...r, bodies: (bodies || []).map(({ _key, ...x }) => x) }); return f(a) === f(b); };
-    let idx = localIndex(), added = 0, here = 0, copies = 0, full = 0, bad = 0;
-    const written = []; // ids stored by this restore, undone if the index can't be saved
+    let idx = await ps.list(), added = 0, here = 0, copies = 0, full = 0, bad = 0; // jumpstart-3d: designs storage
+    const docs = new Map(); // each stored design is read once
+    const docOf = async (id) => { if (!docs.has(id)) docs.set(id, await getDoc(id)); return docs.get(id); };
     for (const d of j.designs) {
       const doc = d && d.doc, entry = d && d.entry;
       if (!doc || !entry || !entry.id || !Array.isArray(doc.bodies) || !Array.isArray(doc.sketches)) { bad++; continue; }
-      const have = readJSON(LS_DOC + entry.id, null);
+      const have = await docOf(entry.id);
       // already here: the same id, or an earlier "(restored)" copy of it under another id and name
-      if (have && (same(have, doc) || idx.some((x) => { const o = readJSON(LS_DOC + x.id, null); return o && same({ ...o, id: doc.id, name: doc.name }, doc); }))) { here++; continue; }
+      let dup = !!have && same(have, doc);
+      if (have) for (const x of idx) { if (dup) break; const o = await docOf(x.id); dup = !!o && same({ ...o, id: doc.id, name: doc.name }, doc); }
+      if (dup) { here++; continue; }
       const copy = !!have, id = copy ? uid("d") : entry.id;
       const ent = copy ? { ...entry, id, name: (entry.name || doc.name || "Untitled") + " (restored)" } : entry;
-      if (full || !ls.set(LS_DOC + id, JSON.stringify(copy ? { ...doc, id, name: ent.name } : doc))) { full++; continue; }
+      const stored = copy ? { ...doc, id, name: ent.name } : doc;
+      if (full || !await ps.put(id, JSON.stringify(stored), ent)) { full++; continue; }
+      docs.set(id, stored);
       const ver = Math.max(doc.ver || 0, +d.ver || 0, +ls.get(VER_KEY + id) || 0);
       if (ver) ls.set(VER_KEY + id, String(ver));
-      written.push(id);
       idx = idx.filter((x) => x.id !== id).concat(ent);
       if (copy) copies++; else added++;
-    }
-    if (written.length && !writeIndex(idx.sort((a, b) => (b.updated || 0) - (a.updated || 0)))) {
-      for (const id of written) { ls.del(LS_DOC + id); ls.del(VER_KEY + id); } // docs without an index entry would be invisible
-      full += written.length; added = copies = 0;
     }
     app.toast(`Restored ${n(added)}, ${here} already here` + (copies ? (copies === 1 ? ', 1 kept as a "(restored)" copy' : `, ${copies} kept as "(restored)" copies`) : "") + (full ? `, ${full} did not fit: free space or delete designs first` : "") + (bad ? `, ${bad} unreadable` : ""), full || bad ? "err" : undefined);
     document.querySelectorAll('.modal-back:has([aria-label="Your designs"])').forEach((m) => m.remove());
@@ -589,7 +595,7 @@ export function initProjects(app) {
   });
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (dirty) saveNow(); });
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(); ps.putNow(...r); save(r); } }); // jumpstart-3d: designs storage (putNow is the synchronous copy; the save may not finish)
 
   return {
     // a finished render (PNG) goes through the same save path as models
@@ -598,7 +604,7 @@ export function initProjects(app) {
     async start() {
       const capP = capabilities();
       const last = ls.get(LS_PREF + ".last");
-      let doc = last ? readJSON(LS_DOC + last, null) : null;
+      let doc = last ? await getDoc(last) : null; // jumpstart-3d: designs storage
       if (doc) { delete doc._updated; store.load(doc); setState("Saved in this browser"); }
       else {
         // wait briefly for account storage so returning users get their last design
@@ -613,6 +619,7 @@ export function initProjects(app) {
           store.load(newDoc("Untitled", "beginner"));
         }
       }
+      started = true; openGate(); // jumpstart-3d: designs storage (saves wait for this)
       // offer back any work that was never saved (a crash, a closed tab)
       Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => rec.check(), 300));
       capP.then(async () => {
@@ -622,7 +629,7 @@ export function initProjects(app) {
           const s = await col().doc(store.doc.id).get();
           if (s.exists && !store.undoStack.length) {
             const v = s.data();
-            const local = readJSON(LS_DOC + store.doc.id, null);
+            const local = await getDoc(store.doc.id);
             if (v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
           }
           setState("Saved");
@@ -638,6 +645,7 @@ export function initProjects(app) {
     exportSTL,
     stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, // jumpstart-3d: backup
+    get started() { return started; }, _store: ps, // jumpstart-3d: designs storage (tests read these)
   };
 }
 void fmt;

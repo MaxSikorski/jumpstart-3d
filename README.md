@@ -33,7 +33,7 @@ That is all. You do not need anything else in this repository.
 
 **Fast after the first visit.** The website shows the workspace right away; the geometry engine (7 MB) downloads in the background, a small note in the corner of the 3D view shows how far it is, and shapes you add appear when it is ready. After that first visit the site keeps a copy on your computer, so it opens at once and works without an internet connection (only the fonts come from the web). When a new version is published it downloads in the background and a message asks you to reload. The downloaded single file is not affected.
 
-**Back up your designs.** Designs live in this browser only. In Your designs, **Back up all designs…** saves them all into one file, and **Restore from backup…** puts them back, on this or another computer; it adds what is missing and never deletes anything. Clearing your browser's site data erases designs, so back up now and then. (Autosave checkpoints are not in the file.)
+**Back up your designs.** Designs live in this browser only (in its IndexedDB storage, which has room for big designs; browsers that block it fall back to the older, smaller storage). In Your designs, **Back up all designs…** saves them all into one file, and **Restore from backup…** puts them back, on this or another computer; it adds what is missing and never deletes anything. Clearing your browser's site data erases designs, so back up now and then. (Autosave checkpoints are not in the file.)
 
 ## What it does
 
@@ -306,6 +306,7 @@ UPSTREAM-README.md         the author's README from the source release
 - OBJ export in the Open/Export menu
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
+- Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit, and browsers where IndexedDB fails keep the old way (`src/projstore.js`)
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`

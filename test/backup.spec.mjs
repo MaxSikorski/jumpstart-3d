@@ -41,19 +41,28 @@ const restore = (f) => page.setInputFiles("#file-backup", f);
 const openDesigns = () => page.click("#btn-projects");
 const closeDesigns = async () => { if (await page.locator(".modal-back").count()) { await page.click(".modal-back .xbtn"); await expect(page.locator(".modal-back")).toHaveCount(0); } };
 
-// every key that holds a design: the index, the docs, the version counters, the last-open id (never UI settings)
-const snapshot = () => page.evaluate(() => {
-  const out = {};
-  for (const k of Object.keys(localStorage)) if (k.startsWith("workplane.") || k.startsWith("jumpstart3d.ver.")) out[k] = localStorage.getItem(k);
+// every place that holds a design, read through the app's storage hook: the list entries and documents
+// (IndexedDB), the version counters and the last-open id (localStorage), never UI settings
+const snapshot = () => page.evaluate(async () => {
+  const s = window.__app.projects._store;
+  await s.ready;
+  const out = { index: await s.list(), docs: {}, ls: {} };
+  for (const e of out.index) out.docs[e.id] = await s.get(e.id);
+  for (const k of Object.keys(localStorage)) if (k.startsWith("workplane.pref.v1.last") || k.startsWith("jumpstart3d.ver.")) out.ls[k] = localStorage.getItem(k);
   return out;
 });
-const wipe = () => page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith("workplane.") || k.startsWith("jumpstart3d.ver.")) localStorage.removeItem(k); });
-const index = () => page.evaluate(() => JSON.parse(localStorage.getItem("workplane.index.v1") || "[]"));
+const wipe = () => page.evaluate(async () => {
+  const s = window.__app.projects._store;
+  await s.ready;
+  for (const e of await s.list()) await s.del(e.id);
+  for (const k of Object.keys(localStorage)) if (k.startsWith("workplane.pref.v1.last") || k.startsWith("jumpstart3d.ver.") || k === "workplane.rescue.v1") localStorage.removeItem(k);
+});
+const index = () => page.evaluate(async () => window.__app.projects._store.list());
 // what the two seeded designs look like in storage
 const mine = (snap) => ({
-  index: JSON.parse(snap["workplane.index.v1"] || "[]").filter((e) => e.id === A || e.id === B).sort((x, y) => x.id.localeCompare(y.id)),
-  docs: { [A]: snap["workplane.doc.v1." + A], [B]: snap["workplane.doc.v1." + B] },
-  vers: { [A]: snap["jumpstart3d.ver." + A], [B]: snap["jumpstart3d.ver." + B] },
+  index: snap.index.filter((e) => e.id === A || e.id === B).sort((x, y) => x.id.localeCompare(y.id)),
+  docs: { [A]: snap.docs[A], [B]: snap.docs[B] },
+  vers: { [A]: snap.ls["jumpstart3d.ver." + A], [B]: snap.ls["jumpstart3d.ver." + B] },
 });
 
 test("Your designs has Back up and Restore buttons and a hidden file picker", async () => {
@@ -79,11 +88,11 @@ test("Back up all designs downloads one dated file with every design in it", asy
   await page.evaluate(() => window.__app.projects.saveNow());
   await loadDoc(page, newDoc("Backup Beta", "beginner", { bodies: [body("b1", "Cube", box(10, 10, 10)), body("b2", "Bar", box(40, 5, 5))] }));
   await page.evaluate(() => window.__app.projects.saveNow());
-  await page.evaluate(([a, b]) => {
+  await page.evaluate(async ([a, b]) => {
     localStorage.setItem("jumpstart3d.ver." + a, "3");
     localStorage.setItem("jumpstart3d.ver." + b, "2");
-    const keep = JSON.parse(localStorage.getItem("workplane.index.v1")).filter((e) => e.id === a || e.id === b);
-    localStorage.setItem("workplane.index.v1", JSON.stringify(keep));
+    const s = window.__app.projects._store;
+    for (const e of await s.list()) if (e.id !== a && e.id !== b) await s.del(e.id);
   }, [A, B]);
   expect((await index()).map((e) => e.id).sort()).toEqual([A, B]);
 
@@ -144,15 +153,14 @@ test("restoring the same file again adds nothing", async () => {
 
 test("a design that changed since the backup is kept and the old one comes back as a (restored) copy", async () => {
   // edit design A in place (name and a body), in its doc and in the index
-  const edited = await page.evaluate((a) => {
-    const doc = JSON.parse(localStorage.getItem("workplane.doc.v1." + a));
+  const edited = await page.evaluate(async (a) => {
+    const store = window.__app.projects._store;
+    const doc = JSON.parse(await store.get(a));
     doc.name = "Backup Alpha edited";
     doc.bodies[0].name = "Slab edited"; // a real change, not just a rename
     const s = JSON.stringify(doc);
-    localStorage.setItem("workplane.doc.v1." + a, s);
-    const idx = JSON.parse(localStorage.getItem("workplane.index.v1"));
-    idx.find((e) => e.id === a).name = doc.name;
-    localStorage.setItem("workplane.index.v1", JSON.stringify(idx));
+    const entry = (await store.list()).find((e) => e.id === a);
+    await store.put(a, s, { ...entry, name: doc.name });
     return s;
   }, A);
   const idsBefore = (await index()).map((e) => e.id);
@@ -170,9 +178,9 @@ test("a design that changed since the backup is kept and the old one comes back 
   expect(idsBefore).not.toContain(copy.id);
   expect(idx.find((e) => e.id === A).name).toBe("Backup Alpha edited");
   const snap = await snapshot();
-  expect(snap["workplane.doc.v1." + A]).toBe(edited); // untouched
-  expect(snap["workplane.doc.v1." + B]).toBe(orig.docs[B]);
-  const copyDoc = JSON.parse(snap["workplane.doc.v1." + copy.id]);
+  expect(snap.docs[A]).toBe(edited); // untouched
+  expect(snap.docs[B]).toBe(orig.docs[B]);
+  const copyDoc = JSON.parse(snap.docs[copy.id]);
   expect(copyDoc.id).toBe(copy.id);
   expect(copyDoc.name).toBe("Backup Alpha (restored)");
   expect(copyDoc.bodies.map((b) => b.name)).toEqual(["Slab"]);
@@ -180,7 +188,7 @@ test("a design that changed since the backup is kept and the old one comes back 
 
 test("restoring the same file once more does not stack another copy, and the last-open design is left alone", async () => {
   const cards = async () => { await openDesigns(); const c = await page.locator(".projgrid .pcard").count(); await closeDesigns(); return c; };
-  const last = () => page.evaluate(() => localStorage.getItem("workplane.pref.v1.last"));
+  const last = () => page.evaluate(() => localStorage.getItem("workplane.pref.v1.last")); // stays in localStorage
   const idsBefore = (await index()).map((e) => e.id), cardsBefore = await cards(), lastBefore = await last();
   await clearToasts();
   await restore(file("backup.json", backupFile));
@@ -241,13 +249,11 @@ test("a design that does not fit in browser storage is counted, not added", asyn
   d.doc = { ...d.doc, id, name: "Too big" };
   const one = { ...j, designs: [d] };
   const before = await snapshot();
-  await page.evaluate(() => {
-    window.__realSetItem = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (k, v) {
-      if (String(k).startsWith("workplane.doc.v1.")) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
-      return window.__realSetItem.call(this, k, v);
-    };
-  });
+  await page.evaluate((id) => { // the store says "did not fit" for this design, as it does when the browser is full
+    const s = window.__app.projects._store;
+    window.__realPut = s.put;
+    s.put = (i, ...rest) => (i === id ? Promise.resolve(false) : window.__realPut.call(s, i, ...rest));
+  }, id);
   try {
     await clearToasts();
     await restore(file("one.json", one));
@@ -258,38 +264,11 @@ test("a design that does not fit in browser storage is counted, not added", asyn
     const after = await snapshot();
     const ids = (await index()).map((e) => e.id);
     expect(ids).not.toContain(id);
-    expect(ids.sort()).toEqual(JSON.parse(before["workplane.index.v1"]).map((e) => e.id).sort()); // the open design is re-saved, nothing else is added
-    expect(after["workplane.doc.v1." + id]).toBeUndefined();
+    expect(ids.sort()).toEqual(before.index.map((e) => e.id).sort()); // the open design is re-saved, nothing else is added
+    expect(after.docs[id]).toBeUndefined();
+    expect(await page.evaluate((id) => window.__app.projects._store.get(id), id)).toBeNull(); // not stored
+    expect(after.ls["jumpstart3d.ver." + id]).toBeUndefined();
   } finally {
-    await page.evaluate(() => { Storage.prototype.setItem = window.__realSetItem; });
-  }
-});
-
-test("when the index cannot be saved, nothing is left behind and the toast says so", async () => {
-  await closeDesigns();
-  const j = JSON.parse(backupFile);
-  j.designs = ["t_Backup_New1", "t_Backup_New2"].map((id, i) => ({ ...j.designs[i], entry: { ...j.designs[i].entry, id, name: "New " + id }, doc: { ...j.designs[i].doc, id, name: "New " + id }, ver: 4 }));
-  const keys = (snap) => Object.keys(snap).filter((k) => k.startsWith("workplane.doc.v1.") || k.startsWith("jumpstart3d.ver.")).sort();
-  const before = await snapshot();
-  await page.evaluate(() => {
-    window.__realSetItem = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (k, v) {
-      if (k === "workplane.index.v1") throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
-      return window.__realSetItem.call(this, k, v);
-    };
-  });
-  try {
-    await clearToasts();
-    await restore(file("two.json", j));
-    const t = await toast("Restored ");
-    expect(t.text).toContain("did not fit");
-    expect(t.text).toContain("Restored 0 designs");
-    expect(t.err).toBe(true);
-    await closeDesigns();
-    const after = await snapshot();
-    expect(keys(after)).toEqual(keys(before)); // no new doc or version keys
-    expect(after["workplane.index.v1"]).toBe(before["workplane.index.v1"]);
-  } finally {
-    await page.evaluate(() => { Storage.prototype.setItem = window.__realSetItem; });
+    await page.evaluate(() => { window.__app.projects._store.put = window.__realPut; });
   }
 });

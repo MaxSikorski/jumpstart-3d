@@ -72,6 +72,7 @@ export async function boot(page, info) {
   } else await navigateKeepingStorage(page, () => page.goto(url));
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
   await page.waitForSelector("#loading", { state: "hidden", timeout: 20_000 });
+  await page.waitForFunction(() => window.__app.projects.started === true, null, { timeout: 20_000 }); // the saved design is loaded (storage may be slow to open)
 }
 
 export function newDoc(name, mode, extra = {}) {
