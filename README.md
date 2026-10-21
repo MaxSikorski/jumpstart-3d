@@ -31,6 +31,8 @@ Pick one:
 
 That is all. You do not need anything else in this repository.
 
+**Back up your designs.** Designs live in this browser only. In Your designs, **Back up all designs…** saves them all into one file, and **Restore from backup…** puts them back, on this or another computer; it adds what is missing and never deletes anything. Clearing your browser's site data erases designs, so back up now and then. (Autosave checkpoints are not in the file.)
+
 ## What it does
 
 - Beginner mode: drag shapes, group them, cut holes, on a 256 × 256 mm
@@ -294,6 +296,7 @@ UPSTREAM-README.md         the author's README from the source release
 ## What this repository adds on top of the original
 
 - OBJ export in the Open/Export menu
+- Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`

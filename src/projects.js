@@ -38,7 +38,7 @@ export function initProjects(app) {
 
   // ---------------------------------------------------------------- index
   function localIndex() { return readJSON(LS_INDEX, []); }
-  function writeIndex(list) { ls.set(LS_INDEX, JSON.stringify(list)); }
+  function writeIndex(list) { return ls.set(LS_INDEX, JSON.stringify(list)); }
   async function listAll() {
     const map = new Map(localIndex().map((p) => [p.id, { ...p, where: "local" }]));
     if (remoteOk) {
@@ -113,6 +113,7 @@ export function initProjects(app) {
       const ok = await saveRemote(doc, thumb, updated || Date.now());
       setState(ok ? "Saved" : updated ? `Saved in this browser (${remoteNote})` : "Not saved");
     } else setState(updated ? "Saved in this browser" : "Couldn't save: browser storage is blocked. Export a project file instead.");
+    return !!updated; // jumpstart-3d: backup (did the write fit?)
   }
   const saveSoon = debounce(saveNow, 1200);
 
@@ -223,10 +224,13 @@ export function initProjects(app) {
   async function openModal() {
     const back = el("div", { class: "modal-back", onclick: (e) => { if (e.target === back) close(); } });
     const grid = el("div", { class: "projgrid" }, el("div", { class: "empty" }, "Loading…"));
-    const where = (remoteOk ? "Designs are saved to your account and in this browser." : "Designs are saved in this browser. Export a project file to keep a copy elsewhere.") + " Each design opens in the mode you last used it in; switch any time with the Beginner / Advanced buttons.";
+    const where = (remoteOk ? "Designs are saved to your account and in this browser." : "Designs are saved in this browser. Export a project file to keep a copy elsewhere, or back up every design into one file below.") + " Each design opens in the mode you last used it in; switch any time with the Beginner / Advanced buttons.";
     const modal = el("div", { class: "modal", role: "dialog", "aria-label": "Your designs" },
       el("header", {}, el("h2", {}, "Your designs"), el("button", { class: "btn", id: "btn-sample", title: "Open an example design to explore (a copy you can change)", onclick: () => { close(); createNew(app.mode === "advanced" ? sampleAdvanced() : sampleBeginner()); } }, "Open a sample"), el("button", { class: "btn", id: "btn-tut-from-designs", title: "Step-by-step projects", onclick: () => { close(); app.tutorials && app.tutorials.open(); } }, "Tutorials"), el("button", { class: "btn", id: "btn-autosaves", title: "Copies kept while you work, for getting back lost changes", onclick: () => { close(); rec.openHistory(); } }, "Autosaves…"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => close() })),
-      el("div", { class: "mbody" }, el("p", { class: "hint", style: { margin: "0 0 12px", color: "var(--ink-3)" } }, where), grid));
+      el("div", { class: "mbody" }, el("p", { class: "hint", style: { margin: "0 0 12px", color: "var(--ink-3)" } }, where),
+        el("div", { class: "backup-row" }, // jumpstart-3d: backup
+          el("button", { class: "btn", id: "btn-backup", title: "Save every design in this browser into one file", onclick: () => backupAll() }, "Back up all designs…"),
+          el("button", { class: "btn", id: "btn-restore", title: "Add the designs from a backup file; nothing here is deleted or overwritten", onclick: () => pick.click() }, "Restore from backup…")), grid));
     back.append(modal);
     document.body.append(back);
     const close = () => back.remove();
@@ -292,12 +296,13 @@ export function initProjects(app) {
         a.download = filename;
         document.body.append(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 60000); // Safari asks first: keep the file around until it is saved
-        return;
+        return true;
       }
       app.toast("Saving files isn't available in this view.", "err"); return;
     }
     try {
       await downloads.save({ filename, data });
+      return true;
     } catch (e) {
       if (e && e.code === "declined") return;
       app.toast("Couldn't save the file: " + ((e && e.message) || "unavailable"), "err");
@@ -488,6 +493,7 @@ export function initProjects(app) {
     r.onload = () => {
       try {
         const j = JSON.parse(r.result);
+        if (j.backup) { app.toast("That is a backup file: use Your designs › Restore from backup…", "err"); return; } // jumpstart-3d: backup
         const doc = j.doc || j;
         if (!Array.isArray(doc.bodies) || !Array.isArray(doc.sketches)) throw new Error("not a JumpStart 3D project");
         doc.id = uid("d");
@@ -502,6 +508,67 @@ export function initProjects(app) {
     };
     r.readAsText(file);
   }
+  // jumpstart-3d: backup and restore. "Back up all designs…" in Your designs saves every design in
+  // this browser into one JSON file; "Restore from backup…" adds back what is missing. It never
+  // deletes or overwrites a design. Docs are copied verbatim from storage; autosave checkpoints
+  // (IndexedDB) and settings are not part of it.
+  const n = (k) => `${k} design${k === 1 ? "" : "s"}`;
+  async function backupAll() {
+    const saved = await saveNow();
+    const designs = [];
+    let bad = 0;
+    for (const entry of localIndex()) {
+      const doc = readJSON(LS_DOC + entry.id, null);
+      if (!doc) { bad++; continue; }
+      const ver = +ls.get(VER_KEY + entry.id) || 0;
+      designs.push(ver ? { entry, doc, ver } : { entry, doc });
+    }
+    if (!saved) { // storage is full: the open design's latest edits come from memory instead
+      const doc = { ...store.doc, _updated: Date.now() }, ver = verOf(doc), i = designs.findIndex((d) => d.entry.id === doc.id);
+      const entry = i < 0 ? { id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated: doc._updated, thumb: null } : designs[i].entry;
+      designs.splice(i < 0 ? designs.length : i, i < 0 ? 0 : 1, ver ? { entry, doc, ver } : { entry, doc });
+    }
+    if (!designs.length) { app.toast(bad ? `${n(bad)} could not be read` : "Nothing to back up yet", "err"); return; }
+    const now = new Date();
+    if (!await offer(`jumpstart-3d-backup-${now.toLocaleDateString("en-CA")}.json`, JSON.stringify({ app: "jumpstart-3d", backup: 1, when: now.toISOString(), last: ls.get(LS_PREF + ".last"), designs }))) return;
+    app.toast(`Backed up ${n(designs.length)}` + (bad ? `, ${n(bad)} could not be read` : ""), bad ? "err" : undefined);
+  }
+  async function restoreBackup(file) {
+    let j;
+    try { j = JSON.parse(await file.text()); } catch (e) { j = null; }
+    if (j && j.app === "jumpstart-3d" && j.backup > 1) { app.toast("This backup is from a newer version of the app; update first.", "err"); return; }
+    if (!j || j.app !== "jumpstart-3d" || j.backup !== 1 || !Array.isArray(j.designs)) { app.toast("That isn't a JumpStart 3D backup file.", "err"); return; }
+    // same design apart from save time and the bodies' internal keys
+    const same = (a, b) => { const f = ({ _updated, bodies, ...r }) => JSON.stringify({ ...r, bodies: (bodies || []).map(({ _key, ...x }) => x) }); return f(a) === f(b); };
+    let idx = localIndex(), added = 0, here = 0, copies = 0, full = 0, bad = 0;
+    const written = []; // ids stored by this restore, undone if the index can't be saved
+    for (const d of j.designs) {
+      const doc = d && d.doc, entry = d && d.entry;
+      if (!doc || !entry || !entry.id || !Array.isArray(doc.bodies) || !Array.isArray(doc.sketches)) { bad++; continue; }
+      const have = readJSON(LS_DOC + entry.id, null);
+      // already here: the same id, or an earlier "(restored)" copy of it under another id and name
+      if (have && (same(have, doc) || idx.some((x) => { const o = readJSON(LS_DOC + x.id, null); return o && same({ ...o, id: doc.id, name: doc.name }, doc); }))) { here++; continue; }
+      const copy = !!have, id = copy ? uid("d") : entry.id;
+      const ent = copy ? { ...entry, id, name: (entry.name || doc.name || "Untitled") + " (restored)" } : entry;
+      if (full || !ls.set(LS_DOC + id, JSON.stringify(copy ? { ...doc, id, name: ent.name } : doc))) { full++; continue; }
+      const ver = Math.max(doc.ver || 0, +d.ver || 0, +ls.get(VER_KEY + id) || 0);
+      if (ver) ls.set(VER_KEY + id, String(ver));
+      written.push(id);
+      idx = idx.filter((x) => x.id !== id).concat(ent);
+      if (copy) copies++; else added++;
+    }
+    if (written.length && !writeIndex(idx.sort((a, b) => (b.updated || 0) - (a.updated || 0)))) {
+      for (const id of written) { ls.del(LS_DOC + id); ls.del(VER_KEY + id); } // docs without an index entry would be invisible
+      full += written.length; added = copies = 0;
+    }
+    app.toast(`Restored ${n(added)}, ${here} already here` + (copies ? (copies === 1 ? ', 1 kept as a "(restored)" copy' : `, ${copies} kept as "(restored)" copies`) : "") + (full ? `, ${full} did not fit: free space or delete designs first` : "") + (bad ? `, ${bad} unreadable` : ""), full || bad ? "err" : undefined);
+    document.querySelectorAll('.modal-back:has([aria-label="Your designs"])').forEach((m) => m.remove());
+    openModal();
+  }
+  const pick = document.createElement("input");
+  pick.type = "file"; pick.id = "file-backup"; pick.accept = ".json,application/json"; pick.hidden = true;
+  document.body.append(pick);
+  pick.onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) restoreBackup(f); };
   const menu = $("menu-export");
   $("btn-export").onclick = () => {
     menu.hidden = !menu.hidden;
@@ -570,6 +637,7 @@ export function initProjects(app) {
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
     stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
+    backupAll, restoreBackup, // jumpstart-3d: backup
   };
 }
 void fmt;
