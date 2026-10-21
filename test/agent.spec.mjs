@@ -154,7 +154,8 @@ test("the menu row turns the setting on and off, and the setting survives a relo
   // reload: the page reconnects by itself
   await page.reload();
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
-  await expect.poll(() => mock.hellos.length).toBe(2);
+  try { await expect.poll(() => mock.hellos.length).toBe(2); }
+  catch (e) { console.log("DIAG reload-reconnect", JSON.stringify({ opens: mock.opens, closes: mock.closes, state: await state(), ready: await page.evaluate(() => window.__app.kernel.ready), hidden: await page.evaluate(() => [document.getElementById("loading").hidden, document.getElementById("engine").hidden]), errors: errors.slice(-6) })); throw e; } // DIAG temporary
   expect(await state()).toMatchObject({ on: true, state: "connected" });
   await openMenu();
   await expect(row()).toHaveAttribute("aria-checked", "true");
