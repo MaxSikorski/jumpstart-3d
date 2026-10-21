@@ -353,5 +353,16 @@
     "obj": "2f46e946071facf533649cb0b5bd3a47a896ab1229b8b0795f46a33e8863af04",
     "3mf": "5121baaad2aee62c08b7d51ba2852268afaf74aa8159e5bdc702aae0391fa781",
     "step": "c7ec77361b653f3c2c9c92c8a20d3499ece57c1dce71432fe9413994dd8bdce9"
+  },
+  "holepattern-shapes.json": {
+    "volumes": {
+      "b1wno12c726 Plate": 240697.5
+    },
+    "stlTriangles": 3048,
+    "stl": "7e12fd1a1ac2fe9b2d42d1a64565a37adaaf75b527459cd233091d6b119bc51a",
+    "obj": "0bd174bcda1cc8e6b59c65f278dade6f9effc145937c53121162fe9cae13ee7e",
+    "3mf": "033546ad958158fb85e4d07ab75c24c85829df8047023288734ca15dcbd7b05a",
+    "step": "f9b3c9463efa4876989a7537045e6ba5ce34e83dcac8d7eb8869ced93c0d00e5",
+    "dxf": "d0749316c3de165b27dbd5f10d18dfe0a58691d79e5a1dd860e73cdb594b57ac"
   }
 }

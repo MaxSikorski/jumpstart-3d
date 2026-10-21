@@ -57,7 +57,7 @@ test("add_shape, wait_ready and list_bodies give a block of 24000 mm3", async ()
   assert.equal(list[0].id, id);
   assert.ok(Math.abs(list[0].volume - 24000) < 0.5, "volume " + list[0].volume);
   const st = data(await call(s.client, "status"));
-  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.3"]);
+  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.4"]);
   assert.match(st.app, /^\d/);
 });
 
@@ -167,6 +167,22 @@ test("add_hole_pattern drills a grid of six holes and refuses too many", async (
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /Too many holes \(400/);
   assert.deepEqual(data(await call(s.client, "get_body", { id: big })).node.mods || [], []);
+});
+
+test("add_hole_pattern with shape hex cuts six hexagons as a sketch and one Extrude cut; a slot needs a length", async () => {
+  await call(s.client, "new_design");
+  const body = data(await call(s.client, "add_shape", { kind: "box", size: { w: 60, d: 40, h: 6 } }));
+  const out = data(await call(s.client, "add_hole_pattern", { body, face: "+z", layout: "grid", cols: 3, rows: 2, pitch: 12, shape: "hex", width: 6 }));
+  assert.equal(out.holes, 6);
+  assert.equal(typeof out.sketch, "string");
+  assert.deepEqual(data(await call(s.client, "wait_ready")), { ready: true });
+  const [plate] = data(await call(s.client, "list_bodies"));
+  assert.equal(plate.error, null);
+  const want = 14400 - 6 * 31.177 * 6;
+  assert.ok(Math.abs(plate.volume - want) / want < 0.01, "volume " + plate.volume);
+  const bad = await call(s.client, "add_hole_pattern", { body, face: "+z", layout: "grid", cols: 2, rows: 1, pitch: 20, shape: "slot", width: 4 });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /hole\.length must be/);
 });
 
 test("a bad JS3D_WS_PORT or JS3D_MODE exits with code 2 and a plain message", () => {

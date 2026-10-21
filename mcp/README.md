@@ -173,7 +173,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `list_bodies`, `get_body` | Read bodies: place, box, volume, errors; one in full |
 | `add_shape`, `remove_bodies`, `duplicate_bodies` | Make, delete, copy shapes |
 | `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
-| `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3). Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
+| `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
 | `move_bodies`, `move_to`, `rotate_bodies`, `resize_shape`, `scale_bodies` | Place and size them |
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
