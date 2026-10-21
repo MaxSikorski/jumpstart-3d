@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 34 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 35 tools is a lot for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -172,6 +172,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `list_kinds` | The 20 shape kinds and their default sizes |
 | `list_bodies`, `get_body` | Read bodies: place, box, volume, errors; one in full |
 | `add_shape`, `remove_bodies`, `duplicate_bodies` | Make, delete, copy shapes |
+| `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
 | `move_bodies`, `move_to`, `rotate_bodies`, `resize_shape`, `scale_bodies` | Place and size them |
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |

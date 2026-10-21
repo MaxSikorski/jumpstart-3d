@@ -9,6 +9,7 @@
 //   Reading    version, appVersion, kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
+//              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
 //              remove(ids) (alias delete) -> count, duplicate(ids, offset) -> new ids
 //              move(ids, [dx,dy,dz]), moveTo(id, [x,y,z]), rotate(ids, axis, degrees, {about})
 //              resize(id, {w,d,h,...}) plain shapes only, scale(ids, k, {about}) any shape
@@ -184,7 +185,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.1",
+    version: "1.2", // jumpstart-3d: fasteners
     appVersion: VERSION,
     internals: { app, store },
 
@@ -211,6 +212,7 @@ export function initBridge(app) {
       }, "Add " + primName(kind).toLowerCase());
       return id;
     },
+    fastener(opts = {}) { edit(); return app.advanced.addFastener(opts); }, // jumpstart-3d: fasteners
     remove(ids) {
       edit();
       ids = idList(ids);

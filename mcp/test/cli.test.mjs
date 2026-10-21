@@ -63,7 +63,7 @@ test("status prints the app and JS3D versions as JSON", () => {
   assert.equal(r.status, 0, r.stderr);
   const st = JSON.parse(r.stdout);
   assert.match(st.app, /^\d/);
-  assert.equal(st.js3d, "1.1");
+  assert.equal(st.js3d, "1.2");
   assert.equal(st.bodies, 0);
   assert.equal(typeof st.design, "string");
   assert.match(st.url, /^http:\/\/127\.0\.0\.1:\d+\//);

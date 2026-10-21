@@ -78,7 +78,7 @@ const ollama = {
     const body = {
       model: cfg.model,
       stream: false, // Ollama streams by default
-      options: { num_ctx: 32768 }, // the default context (4k on a small GPU) is cut silently and is too small for 34 tools
+      options: { num_ctx: 32768 }, // the default context (4k on a small GPU) is cut silently and is too small for 35 tools
       messages: wireMessages(system, messages, {
         family: this.family,
         assistant: (m) => ({ role: "assistant", content: m.text, ...(m.toolCalls.length ? { tool_calls: m.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) } : {}) }),

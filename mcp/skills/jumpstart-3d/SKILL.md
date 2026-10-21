@@ -16,6 +16,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
 - Shapes are built in the background. `volume` and `bbox` in `list_bodies` are null until you call `wait_ready`. `screenshot` and `export_file` wait by themselves.
 - A hole is a cutter, not a part. It is see-through, is left out of exports, and does nothing until `group_bodies` combines it with a solid.
 - A group's own position stays `[0, 0, 0]`; read `bbox` to see where it is.
+- `add_fastener` makes a whole bolt, nut, threaded rod or tap cutter with a real thread (metric M2.5 to M12, inch #6 to 1/2). A bolt's `length` is under the head. A tap cutter is a hole: put it inside a solid and `group_bodies` both, and it cuts a threaded hole. Threads take a few seconds to build, so call `wait_ready`. More than 150 thread turns is refused.
 
 ## The loop
 

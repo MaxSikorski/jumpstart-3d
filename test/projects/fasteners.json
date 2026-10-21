@@ -1,0 +1,399 @@
+{
+ "v": 1,
+ "id": "g_fasteners",
+ "name": "Fasteners",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 11,
+ "grid": 1,
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "M8×30 bolt",
+   "seq": 1,
+   "color": "#9fb1c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "group",
+    "children": [
+     {
+      "node": {
+       "t": "prim",
+       "kind": "prism",
+       "p": {
+        "w": 15.011,
+        "d": 15.011,
+        "h": 5.3,
+        "sides": 6,
+        "r": 0,
+        "c": 0
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "hole": false,
+      "name": "head"
+     },
+     {
+      "node": {
+       "t": "prim",
+       "kind": "cylinder",
+       "p": {
+        "w": 8,
+        "d": 8,
+        "h": 30,
+        "r": 0,
+        "c": 0
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       5.3,
+       1
+      ],
+      "hole": false,
+      "name": "shank"
+     }
+    ],
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 2,
+      "t": "thread",
+      "face": {
+       "c": [
+        0,
+        0,
+        20.3
+       ],
+       "t": "CYLINDRE"
+      },
+      "pitch": 1.25,
+      "length": 0,
+      "flip": false,
+      "left": false,
+      "clear": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "b2",
+   "name": "M8 nut",
+   "seq": 3,
+   "color": "#9fb1c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    25,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "prism",
+    "p": {
+     "w": 15.011,
+     "d": 15.011,
+     "h": 6.8,
+     "sides": 6,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f2",
+      "seq": 4,
+      "t": "hole",
+      "kind": "simple",
+      "dia": 6.647,
+      "through": true,
+      "depth": 7.8,
+      "tapped": false,
+      "pitch": 0,
+      "clear": 0,
+      "tip": false,
+      "size": "",
+      "at": [
+       {
+        "p": [
+         0,
+         0,
+         6.8
+        ],
+        "n": [
+         0,
+         0,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "id": "f3",
+      "seq": 5,
+      "t": "thread",
+      "face": {
+       "c": [
+        0,
+        0,
+        3.4
+       ],
+       "t": "CYLINDRE"
+      },
+      "pitch": 1.25,
+      "length": 0,
+      "flip": false,
+      "left": false,
+      "clear": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "b3",
+   "name": "1/4-20×40 threaded rod",
+   "seq": 6,
+   "color": "#9fb1c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    50,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "cylinder",
+    "p": {
+     "w": 6.35,
+     "d": 6.35,
+     "h": 40,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "f4",
+      "seq": 7,
+      "t": "thread",
+      "face": {
+       "c": [
+        0,
+        0,
+        20
+       ],
+       "t": "CYLINDRE"
+      },
+      "pitch": 1.27,
+      "length": 0,
+      "flip": false,
+      "left": false,
+      "clear": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "b4",
+   "name": "M8 tapped block",
+   "seq": 11,
+   "color": "#e4572e",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "group",
+    "children": [
+     {
+      "node": {
+       "t": "prim",
+       "kind": "box",
+       "p": {
+        "w": 20,
+        "d": 20,
+        "h": 15,
+        "r": 0,
+        "c": 0
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       80,
+       0,
+       0,
+       1
+      ],
+      "hole": false,
+      "name": "Block",
+      "color": "#e4572e"
+     },
+     {
+      "node": {
+       "t": "prim",
+       "kind": "cylinder",
+       "p": {
+        "w": 8,
+        "d": 8,
+        "h": 20,
+        "r": 0,
+        "c": 0
+       },
+       "mods": [
+        {
+         "id": "f5",
+         "seq": 10,
+         "t": "thread",
+         "face": {
+          "c": [
+           0,
+           0,
+           10
+          ],
+          "t": "CYLINDRE"
+         },
+         "pitch": 1.25,
+         "length": 0,
+         "flip": false,
+         "left": false,
+         "clear": 0
+        }
+       ]
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       80,
+       0,
+       -2.5,
+       1
+      ],
+      "hole": true,
+      "name": "M8×20 tap cutter",
+      "color": "#9fb1c4"
+     }
+    ],
+    "mods": []
+   }
+  }
+ ],
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "params": []
+}

@@ -68,7 +68,7 @@ JS3D.get(id).volume;        // 24000
 
 | Call | Returns |
 |---|---|
-| `JS3D.version` | `"1.1"`. The last number goes up when calls are added; the first changes when a call changes shape. |
+| `JS3D.version` | `"1.2"`. The last number goes up when calls are added; the first changes when a call changes shape. |
 | `JS3D.appVersion` | The app's version, such as `"2.0"`. |
 | `JS3D.kinds()` | `[{ kind, defaults }]`: the 20 shape kinds `add` accepts and their default sizes (`box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, `arrow`). |
 | `JS3D.list()` | The top-level bodies: `[{ id, name, kind, hole, hidden, locked, color, position, bbox, volume, error, children? }]`. `kind` is the shape kind for a basic shape and `"group"`, `"extrude"`, `"revolve"`... for the rest. `bbox` is the world box `{ min: [x,y,z], max: [x,y,z] }` and `volume` is in mm³; both are `null` until built (and while an error is shown). `error` is the geometry engine's message or `null`. `children` is the number of parts in a group. |
@@ -91,6 +91,7 @@ idle and every visible body has been built (or has an error). It checks every
 | Call | What it does |
 |---|---|
 | `JS3D.add(kind, opts)` → id | Adds a shape. `opts`: `size` (`{w, d, h, ...}` or `[w, d, h]`; keys other than the ones `kinds()` lists for that kind are refused; `w`, `d`, `h` and `size` must be at least 0.01; `sides` and `points` whole numbers of at least 3), `at` (`[x, y, z]`, default `[0, 0, 0]`), `hole` (true makes it a hole), `color` (`"#rrggbb"`), `name`. An unknown kind throws and lists the valid ones. Undo label `Add box` (and so on). |
+| `JS3D.fastener(opts)` → id | Adds a threaded fastener as one body. `opts`: `type` (`"bolt"`, `"nut"`, `"rod"` or `"cutter"`), `size` (metric `M2.5 M3 M4 M5 M6 M8 M10 M12`, or inch `#6-32 #8-32 #10-24 #10-32 1/4-20 1/4-28 5/16-18 5/16-24 3/8-16 3/8-24 1/2-13 1/2-20`), `length` (mm; for a bolt it is the length under the head; not used for a nut; at least 3 thread turns, at most 150), `clear` (print offset in mm, `-1` to `0`, default `0`; `-0.2` suits most printers), `left` (true for a left-hand thread), `at` (`[x, y, z]`, default `[0, 0, 0]`; the base of the part sits at z), `name`. A bolt is a group of a hex head and a shank with a Thread feature; a nut is a hex prism with a hole and a Thread feature; a rod is a cylinder with a Thread feature; a cutter is a rod that is a hole and is built wider instead of thinner: its diameter grows by four times the print offset, so the hole it cuts is as loose as a nut with that offset, and the Thread print offset tool leaves it alone. Grouping it with a solid cuts a threaded hole. Building takes a few seconds: `await JS3D.ready()`. Bad input throws a plain message (`unknown size "M7"; sizes: ...`). Undo label `Add M8×30 bolt` (and so on). |
 | `JS3D.remove(ids)` → count | Deletes bodies and returns how many. `JS3D.delete` is the same call. Sketches only they used go too. |
 | `JS3D.duplicate(ids, offset)` → new ids | Copies bodies, moved by `offset` (default `[0,0,0]`). |
 | `JS3D.move(ids, [dx, dy, dz])` | Moves by that much along the world axes. |
@@ -163,7 +164,7 @@ To save an export from the console, wrap the bytes in a download:
 
 Nothing connects unless asked: the page makes no connection until `connect` is called or the **Connect to AI agent** row in the theme menu (◐) is turned on. That row is remembered in this browser (`jumpstart.agent`, "on" or "off", off by default) and connects to the default address when the page loads. There is no web address parameter.
 
-The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.1","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
+The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.2","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
 
 ### What the bridge does not do
 
@@ -177,7 +178,7 @@ The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","versi
 ## Part 2: The project file format
 
 A project is one JSON document. This part was written by looking at real files:
-the 31 designs in `test/projects/`, designs built with `JS3D` and saved with
+the 32 designs in `test/projects/`, designs built with `JS3D` and saved with
 `JS3D.save()`, and what the app does with each file after `JS3D.load` and a
 save. Each table says what was seen; **not checked** marks what was not.
 
@@ -189,7 +190,7 @@ save. Each table says what was seen; **not checked** marks what was not.
 
 The Export menu and `JS3D.save()` write this envelope (the menu indents with one
 space). Opening a file accepts either the envelope or the bare `doc`: the app
-reads `file.doc` if there is one, else the whole file. All 31 designs in
+reads `file.doc` if there is one, else the whole file. All 32 designs in
 `test/projects/` are bare docs. `version` is always 1 in what the app writes;
 nothing reads it (not checked beyond the code that writes and opens files).
 
