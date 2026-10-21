@@ -5,7 +5,7 @@ name: test
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, judge1] # J1-TEMP: judge1 only while the judge is being measured
   workflow_dispatch:
 
 permissions:
