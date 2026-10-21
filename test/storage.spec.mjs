@@ -132,6 +132,7 @@ test("a design saved while IndexedDB was unusable is there again when it works",
     }, 25);
   });
   await boot(p2, info);
+  await p2.waitForFunction(() => window.__app.projects._store.kind, null, { timeout: 15_000 }); // "started" does not mean the store has settled on a driver
   expect(await kind(p2)).toBe("local");
   const waited = await p2.evaluate(() => window.__readyAt - window.__openAt);
   expect(waited).toBeGreaterThan(2800); // it waited for the database, then gave up

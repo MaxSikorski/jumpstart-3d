@@ -58,7 +58,11 @@ const record = (page) => page.evaluate(([db]) => new Promise((res, rej) => {
 // the folder the fake picker hands out: file name -> text
 const readFolder = (page) => page.evaluate(async () => {
   const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("mirror", { create: true }), out = {};
-  for await (const [name, h] of dir.entries()) if (h.kind === "file") out[name] = await (await h.getFile()).text();
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind !== "file") continue;
+    // an entry listed here can be swapped away while the app is still writing its copies; skip it and let expect.poll look again
+    try { out[name] = await (await h.getFile()).text(); } catch (e) { if (e.name !== "NotFoundError") throw e; }
+  }
   return out;
 });
 const putInFolder = (page, name, text) => page.evaluate(async ([name, text]) => {
