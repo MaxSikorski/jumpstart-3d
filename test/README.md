@@ -17,7 +17,7 @@ The config sets `serviceWorkers: "block"` for every spec, because a service work
 
 ## What runs
 
-- `smoke.spec.mjs`: the app boots with the kernel ready and no console errors;
+- `smoke.spec.mjs`: the app boots with the kernel ready and no console errors; the tab icons are files on the site and data URIs in the single file;
   the About dialog keeps the author's credit; dragging a shape tile makes a
   body; a fillet and a chamfer build (the kernel works), once from a document
   and once through the Fillet tool with a click on the edge; Mesh detail

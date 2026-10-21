@@ -26,6 +26,22 @@ test("boots with the kernel ready and no errors", async () => {
   await expect(page).toHaveTitle(/JumpStart 3D/); // boot() already waited for the kernel and the loading screen; afterEach checks the errors
 });
 
+test("icon links: files on the site, data URIs in the single file", async ({}, info) => {
+  const hrefs = await page.$$eval('link[rel~="icon"], link[rel="apple-touch-icon"]', (ls) => ls.map((l) => l.getAttribute("href")));
+  expect(hrefs.length).toBe(3);
+  const singleTypes = [/^data:image\/svg\+xml;base64,/, /^data:image\/png;base64,/, /^data:image\/png;base64,/]; // document order: svg, 32 px png, apple-touch png
+  for (const [i, href] of hrefs.entries()) {
+    if (info.project.name === "single") { expect(href).toMatch(singleTypes[i]); continue; }
+    expect(href).not.toMatch(/^(data:|https?:)/);
+    const r = await page.request.get(new URL(href, info.project.use.baseURL).href);
+    expect(r.status()).toBe(200);
+    expect(r.headers()["content-type"]).toBe(href.endsWith(".svg") ? "image/svg+xml" : "image/png");
+    const body = await r.body();
+    expect(body.length).toBeGreaterThan(100);
+    if (href.endsWith(".png")) { const side = href === "favicon-32.png" ? 32 : 180; expect([body.readUInt32BE(16), body.readUInt32BE(20)]).toEqual([side, side]); }
+  }
+});
+
 test("About keeps the author's credit and says 2.0", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
