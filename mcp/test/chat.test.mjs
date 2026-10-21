@@ -24,7 +24,7 @@ const props = (schema) => Object.keys((schema && schema.properties) || {}).sort(
 const required = (schema) => [...((schema && schema.required) || [])].sort();
 
 test("the chat has the same tools as the server, in the same order", () => {
-  assert.ok(chat.length >= 37);
+  assert.ok(chat.length >= 38);
   assert.deepEqual(chat.map((t) => t.name), server.map((t) => t.name));
   for (const t of chat) {
     assert.equal(typeof t.description, "string", t.name);

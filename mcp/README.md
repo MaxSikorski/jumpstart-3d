@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 37 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 38 tools is a lot for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -175,6 +175,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
 | `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
 | `add_gear` | A spur gear, a straight bevel gear (meshes at 90° with a bevel gear of `mate` teeth) or a straight rack from a `module` (mm) and `teeth`, with involute teeth at 20°, a print clearance, and an optional `bore` (with a DIN 6885 `keyway` on spur gears). Spur 12 to 200 teeth, bevel 12 to 90, rack 2 to 100. Takes a moment to build: call `wait_ready` |
+| `add_name_plate` | A name plate or tag sized to one line of `text` (at most 40 characters, bold fonts with English and Western European letters): a rounded or pill plate with an optional hanging hole or two screw holes, and the letters either `raised` as a second body in its own colour (keep it separate from the plate: grouping fuses the colours) or `cut` into the plate. Returns `{plate, textBody, size}`. Call `wait_ready` after |
 | `move_bodies`, `move_to`, `rotate_bodies`, `resize_shape`, `scale_bodies` | Place and size them |
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |

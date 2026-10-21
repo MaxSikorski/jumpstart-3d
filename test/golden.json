@@ -377,5 +377,18 @@
     "3mf": "1968ac17d92b990d18b57cc37250e8edd28e4b625c9f3de5fcf619908bdce6a1",
     "step": "5189b11c0822425f5aa87dbbac671fe52c149ba32afb13f20b2f6b0df8f76376",
     "dxf": "9f3251cd1b6006553eb9cabce2ac7658b47fd911dd78cedb79c385e9786ec2c9"
+  },
+  "nameplate.json": {
+    "volumes": {
+      "b81pgymqqrt Name plate Max": 2042,
+      "b81pgytbv5u Name plate Max text": 166.2,
+      "b81ph4om7n1a Name plate Workshop 12": 4466.4
+    },
+    "stlTriangles": 6064,
+    "stl": "83d8c797bcfc3319e402a76cff5cab9e676606f6c747eeef9857ebd80416da7e",
+    "obj": "0d3a2bcf3c81eb8ef7e802a2c815f2e564fab4b0f4080413332fc41f7b54fbcd",
+    "3mf": "d470ed5130a094c6a43bf16156affe415143d327fc213b29296cec421194a01a",
+    "step": "c49042144963bbfd239e25226deeebe26878bea526d38bff91e7cb9c4dc217ad",
+    "dxf": "d52d8151c6b8e838cadcf6f8e7c103d09d7194667c0a37b82814ded1a61ac621"
   }
 }

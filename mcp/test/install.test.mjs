@@ -40,7 +40,7 @@ test("the copy's server answers status without starting a browser", async () => 
   await client.connect(transport);
   try {
     const { tools } = await client.listTools();
-    assert.ok(tools.length >= 37);
+    assert.ok(tools.length >= 38);
     const r = await client.callTool({ name: "status", arguments: {} });
     assert.equal(r.isError, undefined);
     assert.equal(JSON.parse(r.content[0].text).page, "none");
