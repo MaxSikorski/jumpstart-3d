@@ -4,6 +4,8 @@ Playwright drives the real app in headless Chromium: the site build in `docs/`,
 served locally, and the single file `dist/jumpstart-3d.html`, opened from disk
 the way users open it. `npm test` rebuilds both first.
 
+On the single file, tests wait a second before reloading or re-opening a page right after a localStorage write, because Chromium on the Linux runner otherwise starts the new document with empty storage (seen on CI on 2026-10-21; `settle()` in `test/helpers.mjs`).
+
 ```
 npm test              both builds
 npm run test:site     docs/ only (fastest while working)

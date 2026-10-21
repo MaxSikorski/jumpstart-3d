@@ -15,8 +15,12 @@ export function watchErrors(page) {
   return errors;
 }
 
+// Before a reload that follows a localStorage write: on the Linux CI runner, Chromium opens the next document of a file:// page with an empty storage area when the reload comes within ~100 ms of the write (measured 2026-10-21; whole store gone, not one key). 1000 ms keeps the tests out of that window.
+export async function settle(page) { await page.waitForTimeout(1000); }
+
 // Open the build under test (the project's baseURL) and wait for the geometry kernel.
 export async function boot(page, info) {
+  if (page.url() !== "about:blank") await settle(page);
   await page.goto(info.project.use.baseURL);
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
   await page.waitForSelector("#loading", { state: "hidden", timeout: 20_000 });

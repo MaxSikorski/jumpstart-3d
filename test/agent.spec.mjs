@@ -4,7 +4,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { WebSocketServer } from "ws";
-import { boot, watchErrors } from "./helpers.mjs";
+import { boot, settle, watchErrors } from "./helpers.mjs";
 
 const DEMO = readFileSync(new URL("../tools/bridge-demo.js", import.meta.url), "utf8");
 const BOX_WITH_HOLE = 40 * 30 * 20 - Math.PI * 4 * 4 * 20;
@@ -152,10 +152,10 @@ test("the menu row turns the setting on and off, and the setting survives a relo
   expect(await state()).toMatchObject({ on: true, url: "ws://127.0.0.1:8822", state: "connected" });
 
   // reload: the page reconnects by itself
+  await settle(page);
   await page.reload();
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
-  try { await expect.poll(() => mock.hellos.length).toBe(2); }
-  catch (e) { console.log("DIAG reload-reconnect", JSON.stringify({ opens: mock.opens, closes: mock.closes, state: await state(), ready: await page.evaluate(() => window.__app.kernel.ready), hidden: await page.evaluate(() => [document.getElementById("loading").hidden, document.getElementById("engine").hidden]), errors: errors.slice(-6) })); throw e; } // DIAG temporary
+  await expect.poll(() => mock.hellos.length).toBe(2);
   expect(await state()).toMatchObject({ on: true, state: "connected" });
   await openMenu();
   await expect(row()).toHaveAttribute("aria-checked", "true");
@@ -166,6 +166,7 @@ test("the menu row turns the setting on and off, and the setting survives a relo
   expect(await page.evaluate(() => localStorage.getItem("jumpstart.agent"))).toBe("off");
   await expect.poll(() => mock.closes).toBe(2);
   const opens = mock.opens;
+  await settle(page);
   await page.reload(); // off stays off
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
   await page.waitForTimeout(1500);
