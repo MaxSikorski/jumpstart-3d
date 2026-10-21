@@ -83,15 +83,15 @@ requires a nonempty `JUDGE_RUN_ID` and refuses `UPDATE_GOLDEN`.
 ```sh
 JUDGE_EXPORTS=1 JUDGE_RUN_ID=local npm test
 npm run test:judge:unit
-JUDGE_RUN_ID=local npm run test:judge
-npm run test:judge:integration
+JUDGE_RUN_ID=local npm run test:judge   # needs the Linux consumers below
+npm run test:judge:integration          # same
 ```
 
 Mac contributors can collect exports and run the Node unit tests without
-native consumers. The full consumer judge is **CI-only in J1**: the pinned
-Linux AppImages and console launcher are not a supported Mac installation.
-The existing workflow runs on every PR, push to main and manual dispatch.
-There is no nightly substitute or successful skip for missing tools.
+native consumers. The full consumer judge is **CI-only**: the pinned Linux
+AppImages and console launcher are not a supported Mac installation. The
+existing workflow runs on every PR, push to main and manual dispatch; there is
+no nightly substitute and no successful skip for missing tools.
 
 Inputs live in `test-results/judge/site/` and `test-results/judge/single/`.
 Each build clears only its own directory. Only a complete successful golden
@@ -99,104 +99,109 @@ run writes its `manifest.json`: schema, run/build IDs, baseline and project
 digests, exact filenames, raw hashes and byte lengths. A filtered run cannot
 supply a complete manifest. STEP bytes on disk remain unmodified; only the
 golden hash comparison normalizes timestamps and export counters. The judge
-requires exact coverage of discovered projects in both manifests,
+requires exact coverage of the discovered projects in both manifests,
 `golden.json` and `judge-solids.json`, and checks all hashes before consuming
 files. CI uses the same `${{ github.run_id }}-${{ github.run_attempt }}` in
 collection and judging.
 
 Pinned consumers are **PrusaSlicer 2.8.1+linux-x64-GTK3-202409181416** and
-**FreeCAD 1.1.4**, on `ubuntu-24.04`. `tools/install-judge-tools.sh` verifies
-both download checksums even after a cache hit, extracts with
-`--appimage-extract` (no FUSE), and supplies `PRUSA_SLICER` and `FREECAD_CMD`
-as executable paths without embedded flags. FreeCAD runs through extracted
-`AppRun --console` with a Python script, since its GUI version flags crashed
-in the probe. The macro runs in FreeCAD's native Python host; it is not a
-standalone Python package. A fresh HOME/config directory prevents inherited
-slicer presets or post-processing scripts.
+**FreeCAD 1.1.4**, on `ubuntu-24.04`. `tools/install-judge-tools.sh` downloads
+both release AppImages, verifies their SHA-256, extracts them with
+`--appimage-extract` (no FUSE) and sets `PRUSA_SLICER` and `FREECAD_CMD` to
+executable paths without flags. FreeCAD runs through the extracted
+`AppRun --console` with a Python script, since its GUI version flags crash
+headlessly, and (unlike a standalone Python) runs a script file under a name
+other than `__main__`. A fresh HOME/config directory keeps inherited slicer
+presets and post-processing scripts out. There is no cache: both downloads
+take 3 and 12 seconds including extraction, and a cache restore cost as much
+(measured: install 27 s without, 27 to 32 s with a warm cache).
 
-`tools/judge-prusa.ini` fixes a virtual 1000 × 1000 × 1000 mm build space,
+`tools/judge-prusa.ini` fixes a virtual 1000 x 1000 x 1000 mm build space,
 0.4 mm nozzle, 1.75 mm filament, 0.2 mm layers, two perimeters, three top and
 bottom layers, 10% rectilinear infill, no supports/brim/skirt, and plain-text
-Marlin 2 G-code with relative extrusion. The remaining values are pinned
-consumer defaults; the resolved profile is saved. Whole-design centering
-preserves relative placement; parts are not arranged or grounded separately.
-The profile is an export compatibility check, not a printer recommendation.
+Marlin 2 G-code with relative extrusion (PrusaSlicer refuses relative
+extrusion without `G92 E0` in the layer G-code). The remaining values are the
+version's built-in defaults; the resolved profile is saved. The profile is an
+export compatibility check, not a printer recommendation.
 
 FreeCAD checks the **original triangles**, before accepting a slice: exact
 STL layout, finite coordinates/normals, no degenerate/duplicate triangles,
 closed oppositely directed edges, a single face-link cycle at each vertex,
-and native Mesh solidity, non-manifold, orientation and component
+and FreeCAD Mesh solidity, non-manifold, orientation and component
 self-intersection checks. 3MF must use the app's direct mesh objects in mm,
-with all visible non-hole bodies represented and only identity transforms.
-Components and other package layouts require an explicit checker extension.
-No repair, tolerance weld, filling or reorientation is allowed. Separate
-closed components may overlap; cross-component collision is outside scope.
+with all visible non-hole bodies represented and only identity transforms;
+components and other package layouts need an explicit checker extension.
+No repair, fill or reorientation is allowed. FreeCAD's Mesh checks treat
+vertices a fraction of a micrometre apart as one point, so such a pair (a
+sliver triangle) can fail `isSolid` or self-intersection even though the
+exact edges close.
 
-Prusa must exit successfully, give complete object reports without reported
-repairs/errors, and produce fresh G-code with at least one exact
-`;LAYER_CHANGE` and an XY extrusion move after it. Exit zero and quiet logs
-are insufficient: the probe's holed STL sliced silently to the same G-code
-as the closed cube. FreeCAD Mesh and original topology supply manifoldness;
-the slicer supplies evidence of an actual toolpath. Two slicer inputs run at
-once, each with one thread, after one native FreeCAD corpus batch.
+Prusa must exit successfully on `--info` (complete object reports, `manifold
+= yes`, no repair counters) and on the slice, with no repair/error text, and
+produce fresh G-code with a `;LAYER_CHANGE` and an XY extrusion move after
+it. Exit zero and quiet logs are not enough: the probe's holed STL sliced
+silently to the same G-code as the closed cube, so manifoldness comes from
+FreeCAD and the original-triangle checks, and the slicer supplies evidence of
+a real toolpath. Three slicer inputs run at once, one thread each, after one
+FreeCAD batch for the whole corpus. A 3MF with several objects is sliced one
+object at a time (the macro writes one single-object copy per build item;
+`--info` still reads the original file): PrusaSlicer 2.8.1 reports "gcode path
+conflicts" and then crashes (SIGSEGV) whenever separate objects of one file
+overlap, as raised text does on its plate, and refuses an object that floats
+above the bed, which is how bricks, name plates and patterns are exported.
 
 STEP uses `Part.read`, requires valid positive-volume solids with closed
 shells, and refuses loose faces/wires/shells beside otherwise good solids.
-`test/judge-solids.json` is a separately reviewed positive solid count per
-fixture, not a count of app bodies (text and patterns can contain several
-solids). Every added design needs an actual FreeCAD import count checked
-against raw `MANIFOLD_SOLID_BREP` records and intended pieces, then review.
-`test:update` never approves these counts or external validity. STEP volume
-must be within **0.5% relative** of the sum of visible non-hole bodies'
-golden volumes multiplied by their absolute outer-matrix determinants;
-there is no absolute floor or per-design exception. Mesh volume is not
-compared to B-rep volume.
+`test/judge-solids.json` is a separately reviewed solid count per fixture,
+not a count of app bodies: text letters, patterns and groups give several
+solids, and each count was checked against the raw `MANIFOLD_SOLID_BREP`
+records and the design (3D sketch tube 2 pipes; pattern-mod 7 = bar + ring of
+6; text "Hi" 3 = H, i stem, i dot; name plates 5 = plate, 3 letters, plate
+with cut text). Every added design needs an actual FreeCAD import count
+checked the same way. `test:update` never approves these counts or external
+validity. While `judge-solids.json` is missing or incomplete the judge still
+runs every check and prints a `MEASURED` line per file and a
+`JUDGE_SOLIDS_MEASURED` object to copy, but fails those STEP files. STEP
+volume must be within **0.5% relative** of the sum of visible non-hole
+bodies' golden volumes multiplied by their absolute outer-matrix
+determinants; there is no absolute floor or per-design exception (all 36 are
+within 0.01%). Mesh volume is not compared to B-rep volume.
 
-Each expected file gets a PASS/FAIL line. The six-row build/format table is
-printed and appended to the Actions step summary; seconds in its rows are
-summed per-file work, while wall time is reported separately. Complete
-stdout/stderr, protocol, request, resolved profile and `summary.json` stay
-under `test-results/judge/`; only generated output/log/run directories are
-cleared on judging. Failure artifacts retain all `test-results/` for seven
-days. Installation has an eight-minute step limit, the judge step ten,
-the judge process eight, and the existing job thirty. The FreeCAD batch has
-a 60-second startup and 20-second progress limit; slicer info/slice limits
-are 15/60 seconds. Tool/download/version/protocol/missing-output failures
-fail the existing check. Geometry failures never rewrite the baseline;
-they need separate geometry/export fixes before this gate can be accepted.
+Each expected file gets a PASS/FAIL line, then `MEASURED` lines, then a
+six-row build/format table that is also appended to the Actions step summary
+(seconds in its rows are summed per-file work; wall time is reported
+separately). Complete stdout/stderr, protocol, request, resolved profile,
+`measurements.json` and `summary.json` stay under `test-results/judge/`;
+failure artifacts keep all `test-results/` for seven days. Limits: install 8
+minutes, controls 5, judge 10 (process deadline 8), job 30. The FreeCAD batch
+has a 60-second startup and 20-second progress limit; slicer info/slice limits
+are 15/60 seconds. Tool, download, version, protocol and missing-output
+failures fail the existing check. Geometry failures never rewrite the
+baseline; they need a separate geometry/export fix.
 
-`test/fixtures/judge/` contains closed/holed mesh controls and saved probe
-logs. `test:judge:unit` checks manifests, parsers, volumes, process failures,
-timeouts and stale-output rejection without native tools.
-`test:judge:integration` exercises the production checker with actual
-consumers: closed/open STL and 3MF, closed/open-shell STEP, a dropped-solid
-expectation, a two-solid compound, a compound plus loose shell, malformed
-files, and zero-status missing G-code. Expected failures must match their
-specific reasons; missing native tools fail this suite rather than skip it.
+`test/fixtures/judge/` holds closed and holed mesh controls, four STEP
+controls and saved probe logs. `test:judge:unit` checks manifests, parsers,
+volumes, process failures, timeouts, per-object slicing and stale-output
+rejection without native tools. `test:judge:integration` runs the production
+checker with the real consumers: closed/open STL and 3MF, closed/open-shell
+STEP, a dropped-solid expectation, a two-solid compound, a compound plus a
+loose shell, malformed files, and zero-status missing G-code. Expected
+failures must match their specific reasons; missing tools fail this suite
+rather than skip it.
 
-The October 21, 2026 probe on Ubuntu 24.04.5 (runner image
-20261018.339.1) measured FreeCAD download/extraction at 2.827/6.801 seconds,
-Prusa download/extraction at 0.563/0.977 seconds, apt update at 4.773 seconds
-and Prusa prerequisites at 15.914 seconds. Its console batch was 0.260 seconds,
-STEP import/check 0.004 seconds, mesh checks about 0.001 seconds each, and
-two default-profile STL slices 0.088/0.093 seconds. The entire probe job took
-42 seconds. Those are tiny-control measurements, not a timing of this
-profile, `--info`, original topology checks, 3MF, or the complete corpus.
-Warm cache preparation and full cold/warm judge costs remain unmeasured;
-the brief's 3–5 added warm minutes is a budget estimate. CI caches only the
-two AppImage downloads using the exact tool-version/OS/architecture key.
+Measured on `ubuntu-24.04` (runner image 20261012.334.1), 36 designs, 216
+files (144 slices, 72 STEP imports): install 27 s (apt libraries 11 s,
+PrusaSlicer 3 s, FreeCAD 12 s), unit tests 2 s, native controls 2 s, judge
+113 s (the one FreeCAD batch for all 216 files 28 s, then the slices). That is
+about 2.4 minutes added to the job. One STEP import with checks takes up to
+1.2 s, one mesh check up to 1.9 s, and one slice (info plus G-code) up to 9.7 s;
+the 144 slices add up to 251 s, three at a time.
 
-First full-run acceptance still needs runner evidence for collected exports,
-the frozen imported solid counts, native controls and all golden files.
-This draft still needs `judge-solids.json` populated from measured imports
-and the four raw STEP controls authored by the supplied FreeCAD script;
-see `fixtures/judge/README.md`. These missing inputs fail the gate.
-Local checks do not establish those outcomes. No physical printing,
-dimensional/fastener fit, filament/color mapping, support or bed readiness,
-OBJ/DXF consumers, arbitrary user files, all parameters/quality settings,
-assembly collisions, GUI FreeCAD workflow, Safari/Firefox/phones or a manual
-double-click of the single-file app is covered. FreeCAD and the app share
-OpenCascade heritage, so this is not a wholly independent geometry kernel.
+Not covered: physical prints or fit, filament and colour mapping, support or
+bed readiness, OBJ/DXF consumers, arbitrary user files, other parameters,
+assembly collisions, GUI FreeCAD, Safari/Firefox/phones, and the manual
+double-click of the single-file app. FreeCAD and the app share OpenCascade
+heritage, so this is not a wholly independent geometry kernel.
 <!-- J1 end. -->
 
 ## Measuring load time

@@ -5,7 +5,7 @@ name: test
 on:
   pull_request:
   push:
-    branches: [main, judge1] # J1-TEMP: judge1 only while the judge is being measured
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -53,20 +53,6 @@ jobs:
         env:
           JUDGE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run test:judge
-      # J1-TEMP: the measured values of the first runs; removed once the manifest is frozen.
-      - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: judge-measurements
-          path: |
-            test-results/judge/summary.json
-            test-results/judge/measurements.json
-            test-results/judge/run/
-            test-results/judge/logs/
-            test-results/judge/install/
-            test-results/judge-self-test/
-          retention-days: 7
-      # J1-TEMP end.
       # J1 end.
       - run: npm run test:mcp
       - if: failure()
