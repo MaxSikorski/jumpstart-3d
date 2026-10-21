@@ -54,6 +54,12 @@ jobs:
           JUDGE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run test:judge
       # J1 end.
+      # lets someone who reported an issue try a pull request's single file before a release exists
+      - uses: actions/upload-artifact@v7
+        with:
+          name: jumpstart-3d-single-file
+          path: dist/jumpstart-3d.html
+          retention-days: 14
       - run: npm run test:mcp
       - if: failure()
         uses: actions/upload-artifact@v7
