@@ -71,6 +71,7 @@ That is all. You do not need anything else in this repository.
   Patterns of separate bodies, Beginner patterns and path patterns still make
   plain copies
 - **Bolts, nuts and threaded rods.** Fastener (in Beginner, and in Advanced under Create) makes a hex bolt, a hex nut, a threaded rod or a tap cutter in metric (M2.5 to M12) or inch (#6 to 1/2) sizes, with a print offset so printed parts screw together. The thread is a real thread you can edit later. A tap cutter is a threaded hole shape: put it in a solid and Group them.
+- **Hole patterns.** Hole pattern (Advanced › Create › Advanced Create) drills rows, staggered rows or a circle of round holes into a flat face you click: plain, counterbore, countersink or tapped, with standard screw sizes, an edge margin and an angle. Holes that would not fit are left out. The result is one Hole feature you can edit later.
 - Proof it is parametric: a fully-constrained mark on every sketch, dimension
   names `d1`, `d2`… you can use in any dimension, feature value or shape
   size, parameters importable and exportable as CSV, and a Parameters tutorial
@@ -81,7 +82,7 @@ That is all. You do not need anything else in this repository.
 ## Chat inside the app
 
 Click the **AI** button in the top bar, pick a model, and type what you want ("a 40 by 30 by 20 block with an 8 mm hole
-through it"). The model edits the design you have open through the same 35 tools the MCP server below has: it adds shapes,
+through it"). The model edits the design you have open through the same 36 tools the MCP server below has: it adds shapes,
 cuts holes, moves and sizes them, looks at the view and offers an export. You can see every step it takes in the chat, and
 undo it like any other edit.
 
@@ -318,8 +319,9 @@ UPSTREAM-README.md         the author's README from the source release
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`
 - Fasteners: a Fastener dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.fastener` / the `add_fastener` tool make a hex bolt, hex nut, threaded rod or tap cutter as ordinary bodies built from the app's own Thread feature. Thread sizes come from the Thread dialog's table; head and nut sizes follow ISO 4017 and 4032 (metric) and ASME B18.2.1, B18.2.2 and B18.6.3 (inch) (`src/fasteners.js`)
+- Hole patterns: a Hole pattern dialog (Advanced › Create › Advanced Create) and `JS3D.holePattern` / the `add_hole_pattern` tool lay out a grid, a staggered grid or a circle of round holes on a flat face and write them as one ordinary Hole feature (every position in one `hole` mod, so it edits in the Hole dialog and undoes in one step). The face's own edges set the grid's directions, and holes that would not fit inside the face and its margin are left out (`src/holepattern.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
-  design through the same 35 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
+  design through the same 36 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view

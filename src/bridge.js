@@ -10,6 +10,7 @@
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
+//              holePattern({body, face, layout, hole}) -> {id, holes, dropped}   round holes in a grid or circle on a flat face
 //              remove(ids) (alias delete) -> count, duplicate(ids, offset) -> new ids
 //              move(ids, [dx,dy,dz]), moveTo(id, [x,y,z]), rotate(ids, axis, degrees, {about})
 //              resize(id, {w,d,h,...}) plain shapes only, scale(ids, k, {about}) any shape
@@ -185,7 +186,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.2", // jumpstart-3d: fasteners
+    version: "1.3", // jumpstart-3d: hole pattern
     appVersion: VERSION,
     internals: { app, store },
 
@@ -213,6 +214,7 @@ export function initBridge(app) {
       return id;
     },
     fastener(opts = {}) { edit(); return app.advanced.addFastener(opts); }, // jumpstart-3d: fasteners
+    async holePattern(opts) { edit(); need((opts ?? {}).body); await ready(); return app.advanced.addHolePattern(opts); }, // jumpstart-3d: hole pattern
     remove(ids) {
       edit();
       ids = idList(ids);

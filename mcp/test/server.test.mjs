@@ -24,7 +24,7 @@ test("--help prints the environment variables and exits 0", () => {
 test("the tools are listed, with the contract names", async () => {
   const { tools } = await s.client.listTools();
   const names = tools.map((t) => t.name);
-  for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
+  for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "add_hole_pattern", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
     "scale_bodies", "set_hole", "set_color", "rename_body", "set_hidden", "group_bodies", "ungroup_body", "list_params", "set_param", "remove_param", "bind_size", "undo", "redo",
     "select_bodies", "fit_view", "set_mode", "screenshot", "export_file", "save_project", "load_project", "new_design", "run_script"]) assert.ok(names.includes(n), "missing tool " + n);
   assert.ok(tools.every((t) => t.description && t.description.length > 10), "every tool is described");
@@ -32,7 +32,7 @@ test("the tools are listed, with the contract names", async () => {
 
 test("no tool's input schema has a $ref or a tuple (items array): Gemini-family clients and small local servers reject them", async () => {
   const { tools } = await s.client.listTools();
-  assert.ok(tools.length >= 35);
+  assert.ok(tools.length >= 36);
   for (const t of tools) {
     const json = JSON.stringify(t.inputSchema);
     assert.ok(!json.includes('"$ref"'), t.name + " has a $ref: " + json);
@@ -57,7 +57,7 @@ test("add_shape, wait_ready and list_bodies give a block of 24000 mm3", async ()
   assert.equal(list[0].id, id);
   assert.ok(Math.abs(list[0].volume - 24000) < 0.5, "volume " + list[0].volume);
   const st = data(await call(s.client, "status"));
-  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.2"]);
+  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.3"]);
   assert.match(st.app, /^\d/);
 });
 
@@ -147,6 +147,26 @@ test("add_fastener makes a threaded rod and refuses a bad size", async () => {
   const bad = await call(s.client, "add_fastener", { type: "rod", size: "M7", length: 30 });
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /^unknown size "M7"/);
+});
+
+test("add_hole_pattern drills a grid of six holes and refuses too many", async () => {
+  await call(s.client, "new_design");
+  const body = data(await call(s.client, "add_shape", { kind: "box", size: { w: 60, d: 40, h: 6 } }));
+  const out = data(await call(s.client, "add_hole_pattern", { body, face: "+z", layout: "grid", cols: 3, rows: 2, pitch: 10, dia: 4 }));
+  assert.equal(out.holes, 6);
+  assert.equal(out.dropped, 0);
+  assert.deepEqual(data(await call(s.client, "wait_ready")), { ready: true });
+  const [plate] = data(await call(s.client, "list_bodies"));
+  assert.equal(plate.error, null);
+  const want = 14400 - 6 * Math.PI * 2 * 2 * 6;
+  assert.ok(Math.abs(plate.volume - want) / want < 0.01, "volume " + plate.volume);
+  // a big plate, so all 400 holes would fit: the limit is what refuses them
+  await call(s.client, "new_design");
+  const big = data(await call(s.client, "add_shape", { kind: "box", size: { w: 300, d: 300, h: 6 } }));
+  const bad = await call(s.client, "add_hole_pattern", { body: big, face: "+z", layout: "grid", cols: 20, rows: 20, pitch: 10, dia: 3 });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /Too many holes \(400/);
+  assert.deepEqual(data(await call(s.client, "get_body", { id: big })).node.mods || [], []);
 });
 
 test("a bad JS3D_WS_PORT or JS3D_MODE exits with code 2 and a plain message", () => {
