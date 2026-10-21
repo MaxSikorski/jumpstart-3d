@@ -112,6 +112,9 @@ def original_topology(triangles):
     require(triangles, 'empty triangles')
     points, faces, index, unique_faces = [], [], {}, set()
     edges, links = {}, {}
+    # A zero-area triangle is reported but left out of the rest of the topology (its two collapsed edges would otherwise
+    # cancel against the neighbours), so every other defect is still found. kept is the list the later checks use.
+    degenerate, kept = 0, []
     for triangle in triangles:
         face = []
         for point in triangle:
@@ -125,7 +128,11 @@ def original_topology(triangles):
         ab = [b[i] - a[i] for i in range(3)]
         ac = [c[i] - a[i] for i in range(3)]
         cross = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]]
-        require(all(math.isfinite(x) for x in cross) and any(x != 0 for x in cross), 'zero-area/nonfinite triangle')
+        require(all(math.isfinite(x) for x in cross), 'nonfinite triangle')
+        if not any(x != 0 for x in cross):
+            degenerate += 1
+            continue
+        kept.append(triangle)
         key = tuple(sorted(face))
         require(key not in unique_faces, 'duplicate triangle')
         unique_faces.add(key)
@@ -167,7 +174,10 @@ def original_topology(triangles):
         components.append(component)
     details = {'facets': len(faces), 'vertices': len(points), 'open_edges': open_edges, 'nonmanifold_edges': nonmanifold_edges, 'winding_edges': winding_edges, 'nonmanifold_vertices': bad_vertices, 'components': len(components)}
     reasons = [f'{k}={details[k]}' for k in ('open_edges', 'nonmanifold_edges', 'winding_edges', 'nonmanifold_vertices') if details[k]]
-    return details, reasons, components
+    details['degenerate_triangles'] = degenerate
+    if degenerate:
+        reasons.insert(0, f'{degenerate} zero-area triangle(s)')
+    return details, reasons, components, kept
 
 
 def check_meshes(item, Mesh, details):
@@ -176,9 +186,10 @@ def check_meshes(item, Mesh, details):
         details['splitFiles'] = split_three_mf(item['path'], item['splitDir'], item['key'].replace('/', '-').rsplit('.', 1)[0], meshes)
     details['meshes'] = []
     details['warnings'] = []
+    details['crossings'] = []
     reasons = []
     for triangles in meshes:
-        measured, raw_reasons, components = original_topology(triangles)
+        measured, raw_reasons, components, triangles = original_topology(triangles)
         details['meshes'].append(measured)
         mesh = Mesh.Mesh(triangles)
         measured.update(freecad_facets=mesh.CountFacets, freecad_points=mesh.CountPoints, isSolid=mesh.isSolid(), hasNonManifolds=mesh.hasNonManifolds(), hasNonUniformOrientedFacets=mesh.hasNonUniformOrientedFacets())
@@ -186,7 +197,7 @@ def check_meshes(item, Mesh, details):
         if mesh.CountFacets != len(triangles):
             reasons.append('FreeCAD changed facet count')
         if not measured['isSolid']:
-            if raw_reasons:
+            if any(measured[k] for k in ('open_edges', 'nonmanifold_edges', 'winding_edges', 'nonmanifold_vertices')):
                 reasons.append('FreeCAD isSolid=false')
             else:
                 # The exact edges close; FreeCAD merges vertices about 1e-4 mm apart. The slicer's manifold verdict is judged separately.
@@ -195,22 +206,19 @@ def check_meshes(item, Mesh, details):
             if measured[key]:
                 reasons.append('FreeCAD ' + key + '=true')
         measured['self_intersections'] = []
-        measured['self_intersection_triangles'] = []
-        for component in components:
+        for number, component in enumerate(components):
             submesh = Mesh.Mesh([triangles[i] for i in component])
             require(submesh.CountFacets == len(component), 'FreeCAD changed component facet count')
             crossing = submesh.hasSelfIntersections()
             measured['self_intersections'].append(crossing)
             if crossing:
-                # Each crossing is (facet, facet, segment start, segment end); component-local facet indexes. Crossings of 0.01 mm or less
-                # come from the same near-duplicate vertices and only warn.
+                # Each crossing is (facet, facet, segment start, segment end). The measurements are only reported here; the Node side
+                # decides (tools/judge-exports.mjs, classifyCrossings) so that an empty or nonfinite report can never pass.
                 found = submesh.getSelfIntersections() if hasattr(submesh, 'getSelfIntersections') else None
-                longest = max(((c[2] - c[3]).Length for c in found), default=0.0) if found is not None else float('inf')
-                measured['self_intersection_triangles'].append({'count': None if found is None else len(found), 'longest_mm': longest, 'first': [repr(x)[:240] for x in (found or [])[:3]]})
-                if longest > 0.01:
-                    reasons.append(f'FreeCAD self-intersection longer than 0.01 mm ({longest:.4f} mm) within an edge-connected component')
-                else:
-                    details['warnings'].append(f'FreeCAD self-intersection of at most {longest:.6f} mm (near-duplicate vertices)')
+                lengths = [(c[2] - c[3]).Length for c in found] if found is not None else []
+                finite_lengths = all(math.isfinite(x) for x in lengths)
+                details['crossings'].append({'mesh': len(details['meshes']) - 1, 'component': number, 'count': None if found is None else len(found), 'longest_mm': max(lengths) if lengths and finite_lengths else None, 'finite': finite_lengths, 'first': [repr(x)[:240] for x in (found or [])[:3]]})
+    details['failures'] = reasons
     require(not reasons, '; '.join(reasons))
     details['rawTopology'] = 'OK'
 

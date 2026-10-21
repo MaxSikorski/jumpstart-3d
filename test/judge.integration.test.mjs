@@ -22,14 +22,20 @@ test('pinned native consumers accept closed controls and reject damaged inputs',
     ['cube.step', false, /solid count 1, expected 2/, 2, 2000, 'dropped-body'],
     ['two-cubes.step', true, null, 2, 2000],
     ['two-cubes-and-shell.step', false, /open or missing STEP shell|non-solid STEP leaf/, 2, 2000],
+    ['degenerate-cube.stl', false, /1 zero-area triangle\(s\)/],
+    ['degenerate-open-cube.stl', false, /1 zero-area triangle\(s\)/],
     ['truncated.stl', false, /binary STL length\/count mismatch/],
     ['corrupt.3mf', false, /BadZipFile/],
   ];
   writeFileSync(path.join(out, 'truncated.stl'), readFileSync(path.join(fixtures, 'cube.stl')).subarray(0, 100));
   writeFileSync(path.join(out, 'corrupt.3mf'), 'not a ZIP');
+  // A zero-area triangle appended to a closed and to an open cube: the degeneracy is reported but must not hide the open edges.
+  const degenerate = name => { const b = Buffer.concat([readFileSync(path.join(fixtures, name)), Buffer.alloc(50)]); b.writeUInt32LE(b.readUInt32LE(80) + 1, 80); b.writeFloatLE(1, b.length - 50 + 12 + 24); return b; };
+  writeFileSync(path.join(out, 'degenerate-cube.stl'), degenerate('cube.stl'));
+  writeFileSync(path.join(out, 'degenerate-open-cube.stl'), degenerate('open-cube.stl'));
   const files = cases.map(([name, , , expectedSolids = 1, expectedVolume = 1000, alias]) => {
     const format = name.split('.').pop(), fixture = (alias || name.slice(0, -(format.length + 1))) + `-${format}.json`;
-    const item = { runId, build: 'controls', fixture, format, expectedSolids, expectedVolume, expectedObjects: 1, path: path.join(['truncated.stl', 'corrupt.3mf'].includes(name) ? out : fixtures, name) };
+    const item = { runId, build: 'controls', fixture, format, expectedSolids, expectedVolume, expectedObjects: 1, path: path.join(['truncated.stl', 'corrupt.3mf', 'degenerate-cube.stl', 'degenerate-open-cube.stl'].includes(name) ? out : fixtures, name) };
     return { ...item, key: fileKey(item) };
   });
   const batch = await freecadBatch(files, { executable, out: path.join(out, 'native'), env, runId, deadline });
@@ -38,6 +44,8 @@ test('pinned native consumers accept closed controls and reject damaged inputs',
     const result = batch.results.get(files[i].key);
     assert.equal(result?.ok, expected, JSON.stringify(result));
     if (reason) assert.match(result.reason, reason);
+    if (name === 'degenerate-cube.stl') assert.deepEqual(result.details.failures, ['1 zero-area triangle(s)']);
+    if (name === 'degenerate-open-cube.stl') { assert.ok(result.details.failures.some(f => /1 zero-area/.test(f))); assert.ok(result.details.failures.some(f => /open_edges=4/.test(f))); }
     if (name.startsWith('open-cube')) {
       assert.equal(result.details.meshes[0].isSolid, false);
       assert.equal(result.details.meshes[0].open_edges, 4);

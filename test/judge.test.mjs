@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
-import { BUILDS, FORMATS, ROOT, fileKey, worldExpectation, validateInputs, parseInfo, slicerDiagnostics, parseGcode, parseFreecad, child, requireChild, resolveExecutable, isolatedEnvironment, sliceFile, summaryTable, measurements, applyKnown } from '../tools/judge-exports.mjs';
+import { BUILDS, FORMATS, ROOT, fileKey, worldExpectation, validateInputs, parseInfo, slicerDiagnostics, parseGcode, parseFreecad, child, requireChild, resolveExecutable, isolatedEnvironment, sliceFile, summaryTable, measurements, applyKnown, classifyCrossings, nativeVerdict, readKnown } from '../tools/judge-exports.mjs';
 import { sha256, normalizeStep, IDENTITY } from './helpers.mjs';
 
 const fixtures = path.join(ROOT, 'test/fixtures/judge');
@@ -219,7 +219,7 @@ test('a multi-object 3MF is sliced object by object and one bad object fails the
 });
 
 test('known defects: a failing listed file warns, a passing listed file fails, unlisted and unmatched failures stay failures', () => {
-  const row = (fixture, format, reasons, warnings) => ({ fixture, format, reasons, native: { details: { warnings } } });
+  const row = (fixture, format, reasons, warnings = []) => ({ fixture, format, reasons, warnings: [...warnings] });
   const known = { 'a.stl': { match: 'zero-area', defect: 'two degenerate triangles', followUp: 'drop them' } };
   const run = rows => ({ rows, problems: applyKnown(rows, known) });
   let { rows } = run([row('a.json', 'stl', ['ValueError: zero-area triangle']), row('a.json', '3mf', ['open edges']), row('b.json', 'stl', [], ['near-duplicate vertices'])]);
@@ -232,6 +232,42 @@ test('known defects: a failing listed file warns, a passing listed file fails, u
   assert.deepEqual(rows[0].reasons, ['ValueError: zero-area triangle', 'info open_edges=4']);
   assert.match(applyKnown([row('b.json', 'stl', [])], known)[0], /not a golden file/);
   assert.match(applyKnown([row('a.json', 'stl', [])], { 'a.stl': { match: 'x' } })[0], /needs match, defect and followUp/);
+});
+
+test('crossings: only a finite, nonempty, short measurement may warn; the 0.01 mm limit is inclusive', () => {
+  const c = (longest_mm, extra = {}) => ({ mesh: 0, component: 1, count: 3, finite: true, longest_mm, ...extra });
+  assert.equal(classifyCrossings([c(0.01)]).failures.length, 0);
+  assert.equal(classifyCrossings([c(0.01)]).warnings.length, 1);
+  assert.match(classifyCrossings([c(0.0100001)]).failures[0], /longer than 0.01 mm/);
+  assert.match(classifyCrossings([c(0.9)]).failures[0], /0.9000 mm/);
+  for (const bad of [c(null, { count: 0 }), c(null, { count: null }), c(null), c(NaN), c(Infinity), c(0.001, { finite: false }), c(0.001, { count: undefined }), c('nan')]) {
+    assert.match(classifyCrossings([bad]).failures[0], /without a usable measurement/, JSON.stringify(bad));
+    assert.equal(classifyCrossings([bad]).warnings.length, 0);
+  }
+  assert.deepEqual(classifyCrossings(), { failures: [], warnings: [] });
+});
+
+test('a malformed or missing judge-known.json is detected before verdicts', t => {
+  const root = temporary(t); mkdirSync(path.join(root, 'test'), { recursive: true });
+  assert.deepEqual(readKnown(root), {});
+  writeFileSync(path.join(root, 'test/judge-known.json'), '{ not json');
+  assert.throws(() => readKnown(root), /JSON/);
+});
+
+test('a known crossing does not clear an unrelated failure of the same file', () => {
+  const known = { 'fasteners.stl': { match: 'self-intersection longer than', defect: 'a 0.9 mm crossing', followUp: 'investigate' } };
+  const native = details => ({ ok: !details.failures, reason: 'x', details });
+  const row = result => ({ fixture: 'fasteners.json', format: 'stl', native: result, reasons: nativeVerdict(result).failures, warnings: nativeVerdict(result).warnings });
+  const crossing = { mesh: 0, component: 2, count: 4, finite: true, longest_mm: 0.88 };
+  const only = row(native({ crossings: [crossing] }));
+  assert.deepEqual(applyKnown([only], known), []); assert.equal(only.reasons.length, 0); assert.match(only.warnings.join(' '), /known defect/);
+  const both = row(native({ failures: ['FreeCAD hasNonManifolds=true'], crossings: [crossing] }));
+  assert.equal(both.reasons.length, 2);
+  applyKnown([both], known);
+  assert.deepEqual(both.reasons, ['FreeCAD hasNonManifolds=true', both.reasons[1]]); assert.match(both.reasons[1], /longer than/);
+  assert.equal(both.known, undefined);
+  const unmeasured = row(native({ crossings: [{ mesh: 0, component: 0, count: 0, finite: true, longest_mm: null }] }));
+  applyKnown([unmeasured], known); assert.match(unmeasured.reasons[0], /without a usable measurement/);
 });
 
 test('summary has all six build/format rows, failures included', () => {

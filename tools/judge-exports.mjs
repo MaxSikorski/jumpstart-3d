@@ -275,8 +275,32 @@ export function summaryTable(results) {
   return lines.join('\n');
 }
 
+// A FreeCAD self-crossing of at most 0.01 mm only comes from near-duplicate vertices and warns; a longer one fails. An empty, missing or nonfinite
+// measurement never passes. Each failure is its own list entry, so a known-defect exemption can only clear the failure it names.
+export const CROSSING_LIMIT_MM = 0.01;
+export function classifyCrossings(crossings = []) {
+  const failures = [], warnings = [];
+  for (const c of crossings) {
+    const where = `mesh ${c.mesh ?? 0} component ${c.component}`;
+    if (!Number.isFinite(c.count) || c.count <= 0 || c.finite !== true || !Number.isFinite(c.longest_mm)) failures.push(`FreeCAD self-intersection without a usable measurement (${where})`);
+    else if (c.longest_mm > CROSSING_LIMIT_MM) failures.push(`FreeCAD self-intersection longer than ${CROSSING_LIMIT_MM} mm (${c.longest_mm.toFixed(4)} mm, ${where})`);
+    else warnings.push(`FreeCAD self-intersection of at most ${c.longest_mm.toFixed(6)} mm (${where}; near-duplicate vertices)`);
+  }
+  return { failures, warnings };
+}
+export function nativeVerdict(result) {
+  if (!result) return { failures: ['missing FreeCAD result'], warnings: [] };
+  const details = result.details || {}, crossing = classifyCrossings(details.crossings);
+  const failures = result.ok ? [] : (Array.isArray(details.failures) && details.failures.length ? [...details.failures] : [result.reason]);
+  return { failures: [...failures, ...crossing.failures], warnings: [...(details.warnings || []), ...crossing.warnings] };
+}
+
 // test/judge-known.json lists files that fail for a named defect that has a follow-up. A listed file that fails only for that defect passes with a warning;
 // a listed file that passes fails the judge, so the list can only shrink. entry: { match (regex every failure reason must match), defect, followUp }.
+export function readKnown(root = ROOT) {
+  const file = path.join(root, 'test/judge-known.json');
+  return existsSync(file) ? json(file) : {};
+}
 export function knownName(row) { return row.fixture.replace(/\.json$/, '') + '.' + row.format; }
 export function applyKnown(results, known) {
   const problems = [], names = new Set(results.map(knownName));
@@ -285,7 +309,7 @@ export function applyKnown(results, known) {
     if (!names.has(name)) problems.push(`judge-known.json: ${name} is not a golden file; remove it`);
   }
   for (const row of results) {
-    row.warnings = [...(row.native?.details?.warnings || [])];
+    row.warnings ||= [];
     const name = knownName(row), entry = known[name];
     if (!entry || problems.length) continue;
     if (row.reasons.length === 0) { row.reasons.push(`${name} is listed in test/judge-known.json but passes; remove it from judge-known.json`); continue; }
@@ -361,8 +385,9 @@ export async function main() {
       const split = result?.details?.splitFiles;
       if (split) inputs.find(i => i.key === row.key).slicePaths = split;
       row.elapsedMs += result?.elapsedMs || 0;
-      if (!result) row.reasons.push('missing FreeCAD result');
-      else if (!result.ok) row.reasons.push(result.reason);
+      const verdict = nativeVerdict(result);
+      row.reasons.push(...verdict.failures);
+      row.warnings = verdict.warnings;
       const wanted = inputs.find(i => i.key === row.key).expectedSolids;
       if (row.format === 'step' && result?.ok && wanted === null) row.reasons.push(`no reviewed solid count in test/judge-solids.json (measured ${result.details.solids})`);
     }
@@ -382,14 +407,13 @@ export async function main() {
     }));
   }
   if (Date.now() >= deadline) errors.push('total judge deadline exceeded');
+  let known = {};
+  try { known = readKnown(); } catch (e) { errors.push(`judge-known.json: ${e.message}`); }
   for (const row of results) {
     row.reasons.push(...errors);
     if (!row.native) row.reasons.push('native check unavailable');
     if (row.format !== 'step' && !row.slicer) row.reasons.push('slicer check unavailable');
   }
-  const knownFile = path.join(ROOT, 'test/judge-known.json');
-  let known = {};
-  try { if (existsSync(knownFile)) known = json(knownFile); } catch (e) { errors.push(`judge-known.json: ${e.message}`); }
   const knownProblems = applyKnown(results, known);
   for (const problem of knownProblems) console.log(`FAIL ${problem}`);
   for (const row of results) {
@@ -411,7 +435,7 @@ export async function main() {
   console.log(`\n${table}\nWarnings: ${warningCount}; known defects (test/judge-known.json, must only shrink): ${knownCount} files\nWall seconds: ${(elapsedMs / 1000).toFixed(2)} (deadline: 480)`);
   writeFileSync(path.join(base, 'summary.json'), JSON.stringify({ runId, versions, profileSha256: sha256(readFileSync(profile)), designs: files.length, elapsedMs, errors, knownProblems, warningCount, knownCount, results }, null, 2) + '\n');
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\nExport judge: ${runId}; ${files.length} designs; wall ${(elapsedMs / 1000).toFixed(2)} s; ${warningCount} warnings; ${knownCount} known-defect files.\n\n${table}\n`);
-  return results.length > 0 && results.every(r => r.ok) && knownProblems.length === 0 ? 0 : 1;
+  return results.length > 0 && results.every(r => r.ok) && knownProblems.length === 0 && errors.length === 0 ? 0 : 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

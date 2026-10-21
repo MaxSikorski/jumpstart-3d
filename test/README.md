@@ -179,9 +179,9 @@ FreeCAD says `isSolid=false` but every edge closes exactly and the slicer
 calls the mesh manifold, or FreeCAD reports a self-crossing of at most 0.01 mm,
 the cause is a vertex pair about 1e-4 mm apart (FreeCAD's merge tolerance) and
 the file gets a **WARN** line instead of a failure. A crossing longer than
-0.01 mm, an open edge, a degenerate triangle or any slicer failure still fails.
+0.01 mm (or one FreeCAD cannot measure), an open edge, a degenerate triangle or any slicer failure still fails. A zero-area triangle is reported but left out of the other checks, so it cannot hide another defect.
 `test/judge-known.json` lists the files that fail for a named defect with a
-follow-up (`match` is a regex every failure reason must match, plus `defect` and
+follow-up (`match` is a regex that each single failure must match, plus `defect` and
 `followUp`): such a file passes with a WARN line naming the entry, and a listed
 file that passes fails the judge with "remove it from judge-known.json", so the
 list can only shrink. There is no other skip list. The summary prints the
