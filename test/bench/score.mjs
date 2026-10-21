@@ -177,7 +177,7 @@ export const exitCode = (report, interrupted = false) => interrupted ? 130 : upd
 
 export function formatReport(report) {
   updateSummary(report);
-  const cell = (v) => String(v ?? "—").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+  const cell = (v) => String(v ?? "—").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
   const lines = [`# ${report.mode === "mock" ? "Chat geometry scorer regression (mock)" : "Chat geometry benchmark (Ollama)"}`, "",
     `Build: ${report.build}; app: ${report.appVersion ?? "unavailable"}; bridge: ${report.bridgeVersion ?? "unavailable"}; coverage: ${report.coverage.selected}/50${report.coverage.selected < 50 ? " (subset)" : ""}.`,
     `Model: ${cell(report.model)}; digest: ${cell(report.modelDigest)}; Ollama: ${cell(report.ollamaVersion)}; context: 32768; scripts/vision: off; mesh: Normal; token usage: not_collected.`,

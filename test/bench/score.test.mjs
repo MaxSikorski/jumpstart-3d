@@ -288,3 +288,8 @@ test("Ctrl-C during preflight exits 130 with unstarted rows saved", async () => 
     assert.ok(r.cases.every((c) => c.messages[0] === "chat judge: interrupted before case ran"));
   } finally { child?.kill(); await server.close(); for (const dir of dirs) await rm(dir, { recursive: true, force: true }); }
 });
+
+test("a table cell escapes backslashes before pipes",()=>{
+  const r=newReport();r.model="a\\b|c";
+  assert.match(formatReport(r),/Model: a\\\\b\\\|c;/);
+});
