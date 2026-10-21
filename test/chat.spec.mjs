@@ -3,7 +3,7 @@
 // without a real model. The single build is opened from disk (origin null), so the mock sends CORS headers on everything.
 // Each test opens its own page: the chat reads its stored settings once, when the app starts.
 import { test, expect } from "@playwright/test";
-import { boot, settle, watchErrors } from "./helpers.mjs";
+import { boot, reload, watchErrors } from "./helpers.mjs";
 import { startMock } from "./mockmodel.mjs";
 
 const BOX_WITH_HOLE = 40 * 30 * 20 - Math.PI * 4 * 4 * 20;
@@ -156,8 +156,7 @@ test("settings persist per provider; a key is stored only when Remember is ticke
   expect(await page.inputValue("#chat-model")).toBe("m1");
   expect(await page.inputValue("#chat-key")).toBe("k1");
 
-  await settle(page);
-  await page.reload();
+  await reload(page);
   await page.click("#btn-chat");
   expect(await page.inputValue("#chat-provider")).toBe("anthropic");
   expect(await page.inputValue("#chat-url")).toBe(mock.url + "/v1");
@@ -168,8 +167,7 @@ test("settings persist per provider; a key is stored only when Remember is ticke
   await page.check("#chat-remember");
   await page.fill("#chat-key", "k1");
   expect((await parsed()).per.anthropic.key).toBe("k1");
-  await settle(page);
-  await page.reload();
+  await reload(page);
   await page.click("#btn-chat");
   expect(await page.inputValue("#chat-key")).toBe("k1");
   expect(await page.isChecked("#chat-remember")).toBe(true);

@@ -4,7 +4,7 @@ Playwright drives the real app in headless Chromium: the site build in `docs/`,
 served locally, and the single file `dist/jumpstart-3d.html`, opened from disk
 the way users open it. `npm test` rebuilds both first.
 
-On the single file, tests wait a second before reloading or re-opening a page right after a localStorage write, because Chromium on the Linux runner otherwise starts the new document with empty storage (seen on CI on 2026-10-21; `settle()` in `test/helpers.mjs`).
+On the single file, Chromium on the Linux CI runner now and then starts a reloaded page with empty storage (seen on CI from 2026-10-21, never locally, not tied to how soon the reload comes). Tests that reload after saving something use `reload()` or `boot()` from `test/helpers.mjs`: a marker key written just before the reload tells the browser losing everything apart from the app getting its own key wrong. On a loss the helper puts the storage back exactly as it was and reloads again, up to three times, and prints a `storage-lost` line in the log; a key the app wrote or read wrong still fails the test.
 
 ```
 npm test              both builds
