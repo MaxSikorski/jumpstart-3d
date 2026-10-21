@@ -5,3 +5,4 @@ node_modules/
 /mesh-to-step-helper.html
 /test-results/
 /playwright-report/
+/chat-bench-results/

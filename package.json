@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "pretest": "node build.mjs",
+    "pretest": "node build.mjs && node --test test/bench/*.test.mjs",
     "test": "playwright test",
     "test:site": "playwright test --project=site",
     "test:single": "playwright test --project=single",
     "test:update": "UPDATE_GOLDEN=1 playwright test --project=site",
-    "test:mcp": "cd mcp && npm test"
+    "test:mcp": "cd mcp && npm test",
+    "test:chat-judge": "node build.mjs && node --test test/bench/*.test.mjs && playwright test test/chatjudge.spec.mjs",
+    "bench:chat": "node build.mjs && node tools/chat-bench.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
