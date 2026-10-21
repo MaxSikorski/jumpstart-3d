@@ -141,6 +141,14 @@ function idbDriver(db) {
       tx.objectStore("entries").delete(id);
       return committed(tx);
     },
+    async getMeta(key) { const v = await req(db.transaction("meta").objectStore("meta").get(key)); return v === undefined ? null : v; },
+    setMeta(key, value) { // null removes the key
+      try {
+        const tx = db.transaction("meta", "readwrite");
+        if (value == null) tx.objectStore("meta").delete(key); else tx.objectStore("meta").put(value, key);
+        return committed(tx);
+      } catch (e) { return Promise.resolve(false); }
+    },
     putNow: rescueWrite,
   };
 }
@@ -166,6 +174,8 @@ const localDriver = {
     ls.set(LS_INDEX, JSON.stringify(readJSON(LS_INDEX, []).filter((p) => p.id !== id)));
     return true;
   },
+  async getMeta() { return null; },
+  async setMeta() { return false; },
   putNow: (id, docString, entry) => localPut(id, docString, entry),
 };
 
@@ -202,6 +212,8 @@ export function openProjectStore() {
     get: run("get", null),
     put: run("put", false),
     del: run("del", false),
+    getMeta: run("getMeta", null), // small records kept beside the designs (IndexedDB only; the older storage has no place for them)
+    setMeta: run("setMeta", false),
     // for the tab closing: no waiting, no promise
     putNow: (id, docString, entry) => (driver ? driver.putNow : rescueWrite)(id, docString, entry),
   };

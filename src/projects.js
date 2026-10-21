@@ -4,6 +4,7 @@ import { el, uid, debounce, makeZip, fmt } from "./util.js";
 import { ICON } from "./icons.js";
 import { initRecovery } from "./recovery.js";
 import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs storage
+import { initFolder } from "./folder.js"; // jumpstart-3d: copies in a folder
 
 const LS_PREF = "workplane.pref.v1";
 
@@ -21,6 +22,7 @@ export function initProjects(app) {
   // jumpstart-3d: designs storage. Designs and the list live in projstore.js (IndexedDB, or localStorage where that fails);
   // the version counters and the last-open id stay in localStorage because they are read synchronously.
   const ps = openProjectStore();
+  const mirror = initFolder({ ps, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t) }); // jumpstart-3d: copies in a folder
   let saving = 0, started = false, openGate;
   const startGate = new Promise((r) => { openGate = r; }); // saves wait until start() has loaded the resumed design
   const stateEl = $("savestate");
@@ -112,7 +114,7 @@ export function initProjects(app) {
       const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
       dirty = false;
-      if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; }
+      if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
     if (remoteOk) {
@@ -142,6 +144,7 @@ export function initProjects(app) {
   async function saveVersion() {
     const v = bumpVersion();
     await saveNow();
+    mirror.now(); // jumpstart-3d: copies in a folder (not awaited)
     app.toast(`Saved as "${versionName(store.doc, v)}"`);
     app.onSaved && app.onSaved(v);
     return v;
@@ -243,6 +246,7 @@ export function initProjects(app) {
     const close = () => back.remove();
     back.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
     await saveNow();
+    const fr = await mirror.row(); if (fr) grid.before(fr); // jumpstart-3d: copies in a folder
     const list = await listAll();
     grid.innerHTML = "";
     grid.append(el("div", { class: "newcards" },
@@ -569,6 +573,7 @@ export function initProjects(app) {
     }
     app.toast(`Restored ${n(added)}, ${here} already here` + (copies ? (copies === 1 ? ', 1 kept as a "(restored)" copy' : `, ${copies} kept as "(restored)" copies`) : "") + (full ? `, ${full} did not fit: free space or delete designs first` : "") + (bad ? `, ${bad} unreadable` : ""), full || bad ? "err" : undefined);
     document.querySelectorAll('.modal-back:has([aria-label="Your designs"])').forEach((m) => m.remove());
+    mirror.soon(); // jumpstart-3d: copies in a folder
     openModal();
   }
   const pick = document.createElement("input");
@@ -645,7 +650,7 @@ export function initProjects(app) {
     exportSTL,
     stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, // jumpstart-3d: backup
-    get started() { return started; }, _store: ps, // jumpstart-3d: designs storage (tests read these)
+    get started() { return started; }, _store: ps, _folder: mirror, // jumpstart-3d: designs storage, copies in a folder (tests read these)
   };
 }
 void fmt;

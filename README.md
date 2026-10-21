@@ -35,6 +35,8 @@ That is all. You do not need anything else in this repository.
 
 **Back up your designs.** Designs live in this browser only (in its IndexedDB storage, which has room for big designs; browsers that block it fall back to the older, smaller storage). In Your designs, **Back up all designs…** saves them all into one file, and **Restore from backup…** puts them back, on this or another computer; it adds what is missing and never deletes anything. Clearing your browser's site data erases designs, so back up now and then. (Autosave checkpoints are not in the file.)
 
+**Keep copies in a folder (Chrome and Edge on a computer).** In Your designs, **Save copies into a folder…** lets you pick a folder. From then on every design is also saved there as a project file, a few seconds after you stop editing and at once when you press Save, and those copies survive clearing the browser's site data. After the browser restarts it asks again: open Your designs and click **Allow**. Deleting a design leaves its file in the folder; to bring one back, open its file with Open a project file. Other browsers don't show this option.
+
 ## What it does
 
 - Beginner mode: drag shapes, group them, cut holes, on a 256 × 256 mm
@@ -307,6 +309,7 @@ UPSTREAM-README.md         the author's README from the source release
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
 - Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit, and browsers where IndexedDB fails keep the old way (`src/projstore.js`)
+- Save copies into a folder in Your designs (Chrome and Edge): every design kept up to date as a project file in a folder you pick, so clearing the browser's site data no longer loses work (`src/folder.js`)
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`
