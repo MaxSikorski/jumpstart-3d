@@ -1,6 +1,6 @@
 {
   "name": "jumpstart-3d",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Build and edit 3D parts in JumpStart 3D from your agent: add shapes, cut holes, look at the view, export STL, STEP, OBJ and 3MF.",
   "author": {
     "name": "Max Sikorski",

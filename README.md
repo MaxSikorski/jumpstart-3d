@@ -69,6 +69,40 @@ That is all. You do not need anything else in this repository.
   with a live triangle count) for smoother curves in the view and in mesh
   exports
 
+## Chat inside the app
+
+Click the **AI** button in the top bar, pick a model, and type what you want ("a 40 by 30 by 20 block with an 8 mm hole
+through it"). The model edits the design you have open through the same 34 tools the MCP server below has: it adds shapes,
+cuts holes, moves and sizes them, looks at the view and offers an export. You can see every step it takes in the chat, and
+undo it like any other edit.
+
+| Provider | Address filled in for you | Key |
+|---|---|---|
+| Ollama | `http://localhost:11434` | not needed |
+| LM Studio | `http://localhost:1234/v1` | not needed |
+| OpenAI-style (OpenAI, OpenRouter, Groq, oMLX…) | `https://api.openai.com/v1` (change it for the others) | yes |
+| Anthropic | `https://api.anthropic.com/v1` | yes |
+
+Use **List models** to fill the model box from the server. Tick **Model can see images** if your model can (it then gets
+screenshots of the view). For a local model pick one that supports tools, 9B or larger works best.
+
+A local server has to allow the page to talk to it, once:
+
+- **Ollama:** run it with `OLLAMA_ORIGINS="*"` and restart it. On macOS: `launchctl setenv OLLAMA_ORIGINS "*"`, then quit
+  and reopen the Ollama app. On Linux: `systemctl edit ollama.service` and add `Environment="OLLAMA_ORIGINS=*"` under
+  `[Service]`. On Windows: add the user environment variable `OLLAMA_ORIGINS` with the value `*`. The single file (opened
+  from disk) needs the same setting.
+- **LM Studio:** Developer › Server Settings › turn on **Enable CORS** (or start it with `lms server start --cors`), then
+  start the server.
+
+If Chrome asks whether the site may reach devices on your local network, allow it. Safari may block the website from reaching
+`localhost`; use the single file there.
+
+Your key stays in this browser and is saved only if you tick **Remember key in this browser**. Nothing is sent until you
+press Send, and the model can only use the tools. **Allow scripts** is off unless you tick it: with it on, the model can run
+any JavaScript in the page (the same trust as Open/Export › Run script…). The MCP route below stays for agents that run
+outside the browser, such as Claude Code.
+
 ## Use it with an AI agent
 
 Give any AI agent that can read a web page and run commands this one line, and it sets the server up for itself (it asks you
@@ -263,6 +297,8 @@ UPSTREAM-README.md         the author's README from the source release
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`
+- Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
+  design through the same 34 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view
