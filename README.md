@@ -258,7 +258,7 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
-On every pull request, CI also slices the golden STL and 3MF files with PrusaSlicer and checks their STEP files in FreeCAD, rejecting mesh repairs, invalid or open geometry, missing solids and volume changes; see `test/README.md`.
+On every pull request, CI also slices the golden STL and 3MF files with PrusaSlicer and checks their STEP files in FreeCAD, rejecting mesh repairs, invalid or open geometry, missing solids and volume changes; `test/judge-known.json` lists the few known defects and must only shrink; see `test/README.md`.
 
 `node tools/measure-load.mjs` times a page load on a simulated 10 Mbit connection; `test/README.md` explains the numbers.
 

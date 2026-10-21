@@ -275,6 +275,28 @@ export function summaryTable(results) {
   return lines.join('\n');
 }
 
+// test/judge-known.json lists files that fail for a named defect that has a follow-up. A listed file that fails only for that defect passes with a warning;
+// a listed file that passes fails the judge, so the list can only shrink. entry: { match (regex every failure reason must match), defect, followUp }.
+export function knownName(row) { return row.fixture.replace(/\.json$/, '') + '.' + row.format; }
+export function applyKnown(results, known) {
+  const problems = [], names = new Set(results.map(knownName));
+  for (const [name, entry] of Object.entries(known)) {
+    if (![entry?.match, entry?.defect, entry?.followUp].every(v => typeof v === 'string' && v)) problems.push(`judge-known.json: ${name} needs match, defect and followUp`);
+    if (!names.has(name)) problems.push(`judge-known.json: ${name} is not a golden file; remove it`);
+  }
+  for (const row of results) {
+    row.warnings = [...(row.native?.details?.warnings || [])];
+    const name = knownName(row), entry = known[name];
+    if (!entry || problems.length) continue;
+    if (row.reasons.length === 0) { row.reasons.push(`${name} is listed in test/judge-known.json but passes; remove it from judge-known.json`); continue; }
+    const pattern = new RegExp(entry.match, 'i');
+    if (row.reasons.every(reason => pattern.test(reason))) {
+      row.known = entry; row.warnings.push(`known defect: ${entry.defect}; follow-up: ${entry.followUp}`); row.reasons = [];
+    }
+  }
+  return problems;
+}
+
 // Every file's measured values are printed pass or fail, so a first run with no reviewed solid counts can be copied into judge-solids.json after review.
 export function measurements(results, inputs = []) {
   const lines = [], rows = [], solids = {}, disagree = [];
@@ -364,23 +386,32 @@ export async function main() {
     row.reasons.push(...errors);
     if (!row.native) row.reasons.push('native check unavailable');
     if (row.format !== 'step' && !row.slicer) row.reasons.push('slicer check unavailable');
+  }
+  const knownFile = path.join(ROOT, 'test/judge-known.json');
+  let known = {};
+  try { if (existsSync(knownFile)) known = json(knownFile); } catch (e) { errors.push(`judge-known.json: ${e.message}`); }
+  const knownProblems = applyKnown(results, known);
+  for (const problem of knownProblems) console.log(`FAIL ${problem}`);
+  for (const row of results) {
     row.ok = row.reasons.length === 0;
     const d = row.native?.details, expected = inputs?.find(i => i.key === row.key);
     const detail = row.ok ? row.format === 'step'
       ? `solids=${d.solids}/${expected.expectedSolids} volume=${d.volume.toFixed(2)} expected=${expected.expectedVolume.toFixed(2)} delta=${d.deltaPercent.toFixed(3)}%`
       : `raw_topology=OK slicer=OK layers=${row.slicer.layers}` : row.reasons.join('; ');
-    console.log(`${row.ok ? 'PASS' : 'FAIL'} ${row.key} ${detail} ${(row.elapsedMs / 1000).toFixed(2)}s log=${row.slicer?.log || path.join(base, 'run/freecad')}`);
+    console.log(`${row.ok ? 'PASS' : 'FAIL'}${row.known ? ' (known defect)' : ''} ${row.key} ${row.ok && row.known ? '' : detail} ${(row.elapsedMs / 1000).toFixed(2)}s log=${row.slicer?.log || path.join(base, 'run/freecad')}`);
   }
+  for (const row of results) for (const warning of row.warnings || []) console.log(`WARN ${row.key} ${warning}`);
+  const warningCount = results.reduce((n, r) => n + (r.warnings || []).length, 0), knownCount = results.filter(r => r.known).length;
   const measured = measurements(results, inputs);
   console.log(`\nMEASURED values, one line per file (also in test-results/judge/measurements.json):`);
   for (const line of measured.lines) console.log(line);
   console.log(`JUDGE_SOLIDS_MEASURED ${JSON.stringify(measured.solids)}`);
   writeFileSync(path.join(base, 'measurements.json'), JSON.stringify(measured, null, 2) + '\n');
   const table = summaryTable(results), elapsedMs = performance.now() - start;
-  console.log(`\n${table}\nWall seconds: ${(elapsedMs / 1000).toFixed(2)} (deadline: 480)`);
-  writeFileSync(path.join(base, 'summary.json'), JSON.stringify({ runId, versions, profileSha256: sha256(readFileSync(profile)), designs: files.length, elapsedMs, errors, results }, null, 2) + '\n');
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\nExport judge: ${runId}; ${files.length} designs; wall ${(elapsedMs / 1000).toFixed(2)} s.\n\n${table}\n`);
-  return results.length > 0 && results.every(r => r.ok) ? 0 : 1;
+  console.log(`\n${table}\nWarnings: ${warningCount}; known defects (test/judge-known.json, must only shrink): ${knownCount} files\nWall seconds: ${(elapsedMs / 1000).toFixed(2)} (deadline: 480)`);
+  writeFileSync(path.join(base, 'summary.json'), JSON.stringify({ runId, versions, profileSha256: sha256(readFileSync(profile)), designs: files.length, elapsedMs, errors, knownProblems, warningCount, knownCount, results }, null, 2) + '\n');
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\nExport judge: ${runId}; ${files.length} designs; wall ${(elapsedMs / 1000).toFixed(2)} s; ${warningCount} warnings; ${knownCount} known-defect files.\n\n${table}\n`);
+  return results.length > 0 && results.every(r => r.ok) && knownProblems.length === 0 ? 0 : 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

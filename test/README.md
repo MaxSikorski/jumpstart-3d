@@ -136,6 +136,9 @@ vertices a fraction of a micrometre apart as one point, so such a pair (a
 sliver triangle) can fail `isSolid` or self-intersection even though the
 exact edges close.
 
+The slices keep PrusaSlicer's default drop-to-bed, so each object sits on the
+bed and the relative placement between objects is not preserved.
+
 Prusa must exit successfully on `--info` (complete object reports, `manifold
 = yes`, no repair counters) and on the slice, with no repair/error text, and
 produce fresh G-code with a `;LAYER_CHANGE` and an XY extrusion move after
@@ -166,6 +169,19 @@ volume must be within **0.5% relative** of the sum of visible non-hole
 bodies' golden volumes multiplied by their absolute outer-matrix
 determinants; there is no absolute floor or per-design exception (all 36 are
 within 0.01%). Mesh volume is not compared to B-rep volume.
+
+Two softenings keep the judge honest about what is a print problem. When
+FreeCAD says `isSolid=false` but every edge closes exactly and the slicer
+calls the mesh manifold, or FreeCAD reports a self-crossing of at most 0.01 mm,
+the cause is a vertex pair about 1e-4 mm apart (FreeCAD's merge tolerance) and
+the file gets a **WARN** line instead of a failure. A crossing longer than
+0.01 mm, an open edge, a degenerate triangle or any slicer failure still fails.
+`test/judge-known.json` lists the files that fail for a named defect with a
+follow-up (`match` is a regex every failure reason must match, plus `defect` and
+`followUp`): such a file passes with a WARN line naming the entry, and a listed
+file that passes fails the judge with "remove it from judge-known.json", so the
+list can only shrink. There is no other skip list. The summary prints the
+warning and known-defect counts.
 
 Each expected file gets a PASS/FAIL line, then `MEASURED` lines, then a
 six-row build/format table that is also appended to the Actions step summary

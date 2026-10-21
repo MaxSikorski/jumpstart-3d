@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
-import { BUILDS, FORMATS, ROOT, fileKey, worldExpectation, validateInputs, parseInfo, slicerDiagnostics, parseGcode, parseFreecad, child, requireChild, resolveExecutable, isolatedEnvironment, sliceFile, summaryTable, measurements } from '../tools/judge-exports.mjs';
+import { BUILDS, FORMATS, ROOT, fileKey, worldExpectation, validateInputs, parseInfo, slicerDiagnostics, parseGcode, parseFreecad, child, requireChild, resolveExecutable, isolatedEnvironment, sliceFile, summaryTable, measurements, applyKnown } from '../tools/judge-exports.mjs';
 import { sha256, normalizeStep, IDENTITY } from './helpers.mjs';
 
 const fixtures = path.join(ROOT, 'test/fixtures/judge');
@@ -216,6 +216,22 @@ test('a multi-object 3MF is sliced object by object and one bad object fails the
   assert.ok(existsSync(path.join(dir, 'output/site/two.3mf.object2.gcode')));
   const bad = await run([path.join(dir, 'a.3mf'), path.join(dir, 'bad.3mf')]);
   assert.equal(bad.ok, false); assert.match(bad.reasons.join('; '), /object 2: child exit=9/);
+});
+
+test('known defects: a failing listed file warns, a passing listed file fails, unlisted and unmatched failures stay failures', () => {
+  const row = (fixture, format, reasons, warnings) => ({ fixture, format, reasons, native: { details: { warnings } } });
+  const known = { 'a.stl': { match: 'zero-area', defect: 'two degenerate triangles', followUp: 'drop them' } };
+  const run = rows => ({ rows, problems: applyKnown(rows, known) });
+  let { rows } = run([row('a.json', 'stl', ['ValueError: zero-area triangle']), row('a.json', '3mf', ['open edges']), row('b.json', 'stl', [], ['near-duplicate vertices'])]);
+  assert.equal(rows[0].reasons.length, 0); assert.match(rows[0].warnings[0], /known defect: two degenerate triangles; follow-up: drop them/);
+  assert.deepEqual(rows[1].reasons, ['open edges']);
+  assert.deepEqual(rows[2].warnings, ['near-duplicate vertices']);
+  ({ rows } = run([row('a.json', 'stl', [])]));
+  assert.match(rows[0].reasons[0], /remove it from judge-known.json/);
+  ({ rows } = run([row('a.json', 'stl', ['ValueError: zero-area triangle', 'info open_edges=4'])]));
+  assert.deepEqual(rows[0].reasons, ['ValueError: zero-area triangle', 'info open_edges=4']);
+  assert.match(applyKnown([row('b.json', 'stl', [])], known)[0], /not a golden file/);
+  assert.match(applyKnown([row('a.json', 'stl', [])], { 'a.stl': { match: 'x' } })[0], /needs match, defect and followUp/);
 });
 
 test('summary has all six build/format rows, failures included', () => {

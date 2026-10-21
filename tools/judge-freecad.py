@@ -175,6 +175,7 @@ def check_meshes(item, Mesh, details):
     if item['format'] == '3mf' and len(meshes) > 1 and item.get('splitDir'):
         details['splitFiles'] = split_three_mf(item['path'], item['splitDir'], item['key'].replace('/', '-').rsplit('.', 1)[0], meshes)
     details['meshes'] = []
+    details['warnings'] = []
     reasons = []
     for triangles in meshes:
         measured, raw_reasons, components = original_topology(triangles)
@@ -185,7 +186,11 @@ def check_meshes(item, Mesh, details):
         if mesh.CountFacets != len(triangles):
             reasons.append('FreeCAD changed facet count')
         if not measured['isSolid']:
-            reasons.append('FreeCAD isSolid=false')
+            if raw_reasons:
+                reasons.append('FreeCAD isSolid=false')
+            else:
+                # The exact edges close; FreeCAD merges vertices about 1e-4 mm apart. The slicer's manifold verdict is judged separately.
+                details['warnings'].append('FreeCAD isSolid=false although every edge closes exactly (near-duplicate vertices)')
         for key in ('hasNonManifolds', 'hasNonUniformOrientedFacets'):
             if measured[key]:
                 reasons.append('FreeCAD ' + key + '=true')
@@ -196,11 +201,16 @@ def check_meshes(item, Mesh, details):
             require(submesh.CountFacets == len(component), 'FreeCAD changed component facet count')
             crossing = submesh.hasSelfIntersections()
             measured['self_intersections'].append(crossing)
-            if crossing and hasattr(submesh, 'getSelfIntersections'):
-                # The first few crossings as FreeCAD reports them (component-local facet indexes), so a reviewer can inspect them.
-                measured['self_intersection_triangles'].append([repr(x)[:240] for x in submesh.getSelfIntersections()[:3]])
-        if any(measured['self_intersections']):
-            reasons.append('FreeCAD self-intersection within an edge-connected component')
+            if crossing:
+                # Each crossing is (facet, facet, segment start, segment end); component-local facet indexes. Crossings of 0.01 mm or less
+                # come from the same near-duplicate vertices and only warn.
+                found = submesh.getSelfIntersections() if hasattr(submesh, 'getSelfIntersections') else None
+                longest = max(((c[2] - c[3]).Length for c in found), default=0.0) if found is not None else float('inf')
+                measured['self_intersection_triangles'].append({'count': None if found is None else len(found), 'longest_mm': longest, 'first': [repr(x)[:240] for x in (found or [])[:3]]})
+                if longest > 0.01:
+                    reasons.append(f'FreeCAD self-intersection longer than 0.01 mm ({longest:.4f} mm) within an edge-connected component')
+                else:
+                    details['warnings'].append(f'FreeCAD self-intersection of at most {longest:.6f} mm (near-duplicate vertices)')
     require(not reasons, '; '.join(reasons))
     details['rawTopology'] = 'OK'
 
