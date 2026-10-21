@@ -39,6 +39,71 @@ That is all. You do not need anything else in this repository.
 
 **Restore from a folder.** In Your designs, **Restore from a folder…** adds back every design from the project files in a folder you pick, such as the copies folder above, in any browser on a computer; like Restore from backup it never deletes or overwrites anything. Your browser may ask whether to "upload" the files: nothing leaves your computer. Backup files and subfolders are skipped; use Restore from backup for a backup file.
 
+**Keep designs on your own server (WebDAV).** If you run Nextcloud, a NAS or a web server with WebDAV, the **Your server** tab in Your designs keeps designs in a folder there, so every computer and browser you use can open them. Type the folder's address, your user name and password (on Nextcloud, an app password from Settings › Security) and click **Connect**; tick **Remember the password in this browser** to skip it next time. **Save the open design to the server** puts the design you have open there as a project file, the same kind Save copies into a folder writes. **Open** brings a server design into this browser: if you have not changed your copy since you last saved or opened it, the server's newer copy replaces it; if both changed, the server's opens as "… (from server)" and yours stays. Saving never overwrites a server copy that changed elsewhere without asking. Deleting a design in This browser leaves its server file. Your server must allow this page to talk to it: see Setting up your server below.
+
+### Setting up your server
+
+The Your server tab speaks WebDAV (not S3 or Windows shares, see the end of this section).
+
+The usual home setup does not work by itself: the website you open is on https (GitHub Pages), and a NAS at home usually speaks plain http, which browsers refuse to mix with an https page ("mixed content"). There are two fixes: give the NAS a certificate and use its https:// address, or put the page on the NAS itself, next to the folder (see TrueNAS below), so the page and the folder share one address and nothing needs permission.
+
+A browser only lets a web page talk to another address when that address agrees, so the server has to answer the page's "may I?" question (a request called OPTIONS) and add a few headers to every answer, errors included:
+
+- `Access-Control-Allow-Origin`: `*`, or the address the page is opened from.
+- `Access-Control-Allow-Methods`: `GET, PUT, DELETE, PROPFIND, MKCOL, OPTIONS`.
+- `Access-Control-Allow-Headers`: `Authorization, Depth, Content-Type, If-Match`.
+- The OPTIONS question has to be answered with a success (204 is usual) without asking for a password, because the browser sends it before it sends the password.
+
+If Chrome asks whether the page may reach devices on your local network, allow it. If the folder is missing the tab says so and offers a **Create the folder** button (it never creates one by itself, so a typo in the address makes nothing). **Test connection** checks the address, user name and password without saving anything. The recipes below are not yet tried by us: tell us in an issue if one works, or what it needed.
+
+**nginx** (needs the third-party `nginx-dav-ext-module`; the stock module cannot list a folder or answer OPTIONS):
+
+```nginx
+location /dav/ {
+    root /srv;
+    dav_methods PUT DELETE MKCOL;
+    dav_ext_methods PROPFIND OPTIONS;
+    client_max_body_size 64m;
+    add_header Access-Control-Allow-Origin "*" always;
+    add_header Access-Control-Allow-Methods "GET, PUT, DELETE, PROPFIND, MKCOL, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Authorization, Depth, Content-Type, If-Match" always;
+    if ($request_method = OPTIONS) { return 204; }
+    auth_basic "JumpStart 3D";
+    auth_basic_user_file /etc/nginx/dav.htpasswd;
+}
+```
+
+**Apache** (`mod_dav`, `mod_dav_fs` and `mod_headers` switched on):
+
+```apache
+<Location "/dav/">
+    Dav On
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, PUT, DELETE, PROPFIND, MKCOL, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Authorization, Depth, Content-Type, If-Match"
+    AuthType Basic
+    AuthName "JumpStart 3D"
+    AuthUserFile /etc/apache2/dav.passwd
+    <LimitExcept OPTIONS>
+        Require valid-user
+    </LimitExcept>
+</Location>
+```
+
+**TrueNAS** (not yet tried by us). TrueNAS CORE 13 has a built-in WebDAV service (Services › WebDAV: HTTP on port 8080, or HTTPS on 8081 with a certificate) and WebDAV shares (Sharing › WebDAV Shares; each share points at a folder on a dataset). The address of a share is `http(s)://<your NAS>:<port>/<share name>/`, and the share name is case-sensitive. The service has one password, for the user `webdav`. Set its authentication to **Basic**: this page sends the password as a Basic login, so Digest will not work. TrueNAS SCALE removed the built-in service in 23.10 (Cobia); install the WebDAV app from its catalog (or Nextcloud) instead, and use the address the app shows. Neither lets you add the headers above, so use the no-headers route: put the page inside the share. Copy the single file `jumpstart-3d.html` (or the contents of `docs/`) into the WebDAV share, open it in the browser at the share's address (the browser asks for the webdav password once), and in Your server type the share's address, or just `./designs/` for a folder next to the page, then the user `webdav` and its password. The page opened from the share over plain http works because the page and the folder share one address, so no headers and no https are needed. A `storage.json` next to the page with `{ "webdav": "designs/" }` fills the address in for everyone who opens it, an iPad included.
+
+**Nextcloud.** The address is `https://<your host>/remote.php/dav/files/<your user>/<folder>/`. Use an app password (Settings › Security), which also works when two-factor login is on. Nextcloud sends none of the headers above for WebDAV by itself, so put a reverse proxy in front that adds them and answers OPTIONS before Nextcloud sees it (the nginx lines above show the idea; the proxy also needs a body-size limit like `client_max_body_size 64m;`, because nginx's 1 MB default refuses bigger designs). Nextcloud slows down repeated failed logins, so check the password before clicking Connect again and again. A Synology or other NAS is the same story: it needs a proxy you control in front of it.
+
+#### Self-hosting the page with a storage.json
+
+If you put the website on your own server (copy the contents of `docs/`), you can spare your users typing the address: put a file `storage.json` next to `index.html` containing `{ "webdav": "https://your.server/dav/jumpstart/" }` (or a short address such as `"designs/"`, taken from where the page is). The page reads it the first time Your server is opened and only fills in the address field. Passwords never go in it. An address someone has already typed and connected with wins over the file. `docs/` in this repository is rebuilt from scratch every time, so the file lives on your server only, not here.
+
+The single file (`jumpstart-3d.html`) opened from your disk cannot read `storage.json`, so type the address. A page opened from disk has no web address of its own, so the server has to allow every origin (`*`). The saved password sits in the browser's storage for local files, which other local pages might be able to read: use an app password you can revoke.
+
+#### Why not S3 or Windows shares
+
+An S3 bucket needs a secret key that a web page would have to hold in the open, and browsers cannot speak the Windows file-sharing protocol (SMB) at all. WebDAV works with a user name and a password and runs on most NAS boxes and cloud drives.
+
 ## What it does
 
 - Beginner mode: drag shapes, group them, cut holes, on a 256 × 256 mm
@@ -258,6 +323,7 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
+`npm test` also walks a first part on a simulated phone (box, hole, group, STL) over a slow connection and fails if it takes longer than its budget.
 Chat geometry benchmark: `npm run test:chat-judge` checks five scripted cases on both builds (the mock tests the scorer, not how well a model understands a request), while `npm run bench:chat` scores 50 requests on demand against a locally installed Ollama `qwen3:14b` with scripts and vision off, writing local reports to `chat-bench-results/`; see [setup, CORS and commands](test/README.md#chat-geometry-benchmark).
 
 `node tools/measure-load.mjs` times a page load on a simulated 10 Mbit connection; `test/README.md` explains the numbers.
@@ -278,6 +344,7 @@ src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
 src/loadui.js       our loading note over the 3D view, and the start of the offline copy on the website
 src/sw.js           our service worker: the website's offline copy (the site build only)
+src/remote.js       our Your server tab in Your designs (designs on a WebDAV server)
 mcp/                our MCP server for AI agents, its Claude Code plugin and skill, the `jumpstart`
                     command line and AGENT-SETUP.md, the page an agent reads to set itself up
                     (see mcp/README.md); it has its own package.json, so `npm ci` inside
@@ -319,6 +386,7 @@ UPSTREAM-README.md         the author's README from the source release
 - Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit and their old copies are left in place, so an older version of the app still finds them as they were that day; browsers where IndexedDB fails keep the old way (`src/projstore.js`)
 - Save copies into a folder in Your designs (Chrome and Edge): every design kept up to date as a project file in a folder you pick, so clearing the browser's site data no longer loses work (`src/folder.js`)
 - Restore from a folder in Your designs: adds back the designs from the project files in a folder you pick, in any browser on a computer, through the same never-overwrite rules as Restore from backup (`src/projects.js`)
+- A Your server tab in Your designs: list, open, save and delete designs in a folder on your own WebDAV server (Nextcloud, a NAS, Apache or nginx) as the same project files the folder copies use, never overwriting a copy changed elsewhere without asking (`src/remote.js`)
 - Link previews: when the site address is shared on Discord, Reddit, iMessage,
   Slack or X, it shows a title, a description and a 1200×630 card image. The
   tags live in `src/index.html`; the card is rendered from `tools/og-card/`
