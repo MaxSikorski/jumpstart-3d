@@ -177,6 +177,7 @@ export function initBeginner(app) {
     btn("pattern", "Pattern", "Make rows or circles of copies", () => app.advanced.pattern(), "bb-pattern", true);
     btn("thread", "Fastener", "Bolts, nuts, threaded rods and tap cutters, metric and inch", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners
     btn("gear", "Gear", "Spur gears, bevel gears and racks by module and tooth count", () => app.advanced.gear(), "bb-gear", true); // jumpstart-3d: gears
+    btn("tag", "Name plate", "A tag or name plate sized to its text, with raised or cut-in letters", () => app.advanced.namePlate(), "bb-nameplate", true); // jumpstart-3d: name plates
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);

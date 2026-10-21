@@ -74,7 +74,7 @@ test("connect sends a hello; list, export and errors round-trip; disconnect clos
   try {
     await page.evaluate((p) => JS3D.connect("ws://127.0.0.1:" + p), srv.port);
     await expect.poll(() => srv.hellos.length).toBe(1);
-    expect(srv.hellos[0]).toMatchObject({ hello: "jumpstart-3d", version: "1.5", url: await page.evaluate(() => location.href) });
+    expect(srv.hellos[0]).toMatchObject({ hello: "jumpstart-3d", version: "1.6", url: await page.evaluate(() => location.href) });
     expect(srv.hellos[0].app).toMatch(/^\d/);
     expect(await state()).toEqual({ on: true, url: `ws://127.0.0.1:${srv.port}`, state: "connected" });
 
