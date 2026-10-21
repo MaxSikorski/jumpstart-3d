@@ -324,6 +324,7 @@ npm test
 hashes after an intended geometry change.
 
 `npm test` also walks a first part on a simulated phone (box, hole, group, STL) over a slow connection and fails if it takes longer than its budget.
+Chat geometry benchmark: `npm run test:chat-judge` checks five scripted cases on both builds (the mock tests the scorer, not how well a model understands a request), while `npm run bench:chat` scores 50 requests on demand against a locally installed Ollama `qwen3:14b` with scripts and vision off, writing local reports to `chat-bench-results/`; see [setup, CORS and commands](test/README.md#chat-geometry-benchmark).
 
 `node tools/measure-load.mjs` times a page load on a simulated 10 Mbit connection; `test/README.md` explains the numbers.
 
