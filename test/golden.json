@@ -364,5 +364,18 @@
     "3mf": "033546ad958158fb85e4d07ab75c24c85829df8047023288734ca15dcbd7b05a",
     "step": "f9b3c9463efa4876989a7537045e6ba5ce34e83dcac8d7eb8869ced93c0d00e5",
     "dxf": "d0749316c3de165b27dbd5f10d18dfe0a58691d79e5a1dd860e73cdb594b57ac"
+  },
+  "gears.json": {
+    "volumes": {
+      "b5574g3rttig Spur gear 18 teeth m2": 7418,
+      "b55753zj9b1ej Bevel gear 16 teeth m2": 3440.7,
+      "b55758qaph1h2 Rack 10 teeth m2": 3673.8
+    },
+    "stlTriangles": 3564,
+    "stl": "f552a86eb656dd37ea41a298e55f18f9ad8249a903d109d9135121d8d33a973b",
+    "obj": "9a87cfcfca3762adf7d6fc2e84bbfd84510e50f60d6f20e3882ae168a663c7bf",
+    "3mf": "1968ac17d92b990d18b57cc37250e8edd28e4b625c9f3de5fcf619908bdce6a1",
+    "step": "5189b11c0822425f5aa87dbbac671fe52c149ba32afb13f20b2f6b0df8f76376",
+    "dxf": "9f3251cd1b6006553eb9cabce2ac7658b47fd911dd78cedb79c385e9786ec2c9"
   }
 }

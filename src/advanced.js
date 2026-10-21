@@ -26,6 +26,7 @@ import { sketchesDXF } from "./dxf.js";
 import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
+import { initGears } from "./gears.js"; // jumpstart-3d: gears
 import { initPrintSim } from "./printsim.js";
 
 const BODY_COLORS = ["#9fb1c4", "#c9a27a", "#8fb79a", "#b49ac8", "#c98f8f", "#8fb8c9"];
@@ -5256,6 +5257,7 @@ export function initAdvanced(app) {
         { id: "ad-thread", label: "Thread", title: "Modeled metric (ISO) and inch (UNC / UNF) threads on round faces", icon: "thread", fn: () => threadCmd() },
         { id: "ad-thread-offset", label: "Thread print offset…", title: "Loosen printed threads", icon: "thread", fn: () => threadOffsetCmd() },
         { id: "ad-fastener", label: "Fastener", title: "Bolts, nuts, threaded rods and tap cutters, metric and inch", icon: "thread", fn: () => fasteners.cmd() }, // jumpstart-3d: fasteners
+        { id: "ad-gear", label: "Gear", title: "Spur gears, bevel gears and racks by module and tooth count", icon: "gear", fn: () => gears.cmd() }, // jumpstart-3d: gears
       ] },
       { id: "ad-prims", label: "Primitives", title: "Box, cylinder, sphere, torus, prism and more", icon: "box", dropdown: [
         { id: "ad-box", label: "Box", icon: "box", fn: () => primCmd("box") },
@@ -5681,6 +5683,7 @@ export function initAdvanced(app) {
   const { pipeCmd, coilCmd } = initPipeCoil(app, { vp, scene, openCmd, closeCmd, commit, schedulePreview, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawDot, clearOv, row, seg, pickbox, pickSketchCurve, pathPts, deleteFeature, frameFrom });
   const fasteners = initFasteners(app, { openCmd, commit, row, seg, offsetSelect, STD }); // jumpstart-3d: fasteners
   const holePattern = initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv, offsetSelect, pitchRow, planeFromFace, CLEAR, CBORE, CSINK, TAP, isInchKey }); // jumpstart-3d: hole pattern
+  const gears = initGears(app, { openCmd, commit, row, seg }); // jumpstart-3d: gears
   // section analysis: lives on after its dialog closes; a chip in the view shows it is on
   const section = (app.section = initSection(app, vp, scene));
   const secChip = el("div", { class: "section-chip", id: "section-chip", hidden: true },
@@ -5804,5 +5807,6 @@ export function initAdvanced(app) {
     paramRows, // jumpstart-3d: parameters
     fastener: () => fasteners.cmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
+    gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
   };
 }
