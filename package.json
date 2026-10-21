@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "pretest": "node build.mjs",
+    "pretest": "node build.mjs && node --test test/bench/*.test.mjs",
     "test": "playwright test",
     "test:site": "playwright test --project=site",
     "test:single": "playwright test --project=single",
@@ -13,7 +13,9 @@
     "test:mcp": "cd mcp && npm test",
     "test:judge": "node tools/judge-exports.mjs",
     "test:judge:unit": "node --test test/judge.test.mjs",
-    "test:judge:integration": "node --test test/judge.integration.test.mjs"
+    "test:judge:integration": "node --test test/judge.integration.test.mjs",
+    "test:chat-judge": "node build.mjs && node --test test/bench/*.test.mjs && playwright test test/chatjudge.spec.mjs",
+    "bench:chat": "node build.mjs && node tools/chat-bench.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

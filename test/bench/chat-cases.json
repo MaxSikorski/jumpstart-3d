@@ -1,0 +1,1161 @@
+{
+  "version": 1,
+  "preamble": "Use millimetres, with width along x, depth along y and height along z. Unless I specify otherwise, centre the footprint at x=0, y=0 and put its base at z=0. Leave one visible solid and no spare shapes.",
+  "tolerance": {
+    "volumeAbsMm3": 1,
+    "volumeRel": 0.001,
+    "bboxAbsMm": 0.1
+  },
+  "cases": [
+    {
+      "id": "J3-001",
+      "family": "box",
+      "request": "Make a plain rectangular block 40 wide, 30 deep and 20 high, with sharp edges.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 24000.000000,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            15.000000,
+            20.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "40 × 30 × 20; volume = 24000.000000 mm³"
+    },
+    {
+      "id": "J3-002",
+      "family": "cylinder",
+      "request": "Make a solid round cylinder 20 in diameter and 10 high, standing upright.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 3141.592654,
+        "bboxMm": {
+          "min": [
+            -10.000000,
+            -10.000000,
+            0.000000
+          ],
+          "max": [
+            10.000000,
+            10.000000,
+            10.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "π × 20² × 10 / 4; volume = 3141.592654 mm³"
+    },
+    {
+      "id": "J3-003",
+      "family": "central-bore",
+      "request": "Make a sharp-edged block 40 wide, 30 deep and 20 high, with one round 8-diameter hole straight through from top to bottom at x=0, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 22994.690351,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            15.000000,
+            20.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "40 × 30 × 20 − π × 8² × 20 / 4; volume = 22994.690351 mm³"
+    },
+    {
+      "id": "J3-004",
+      "family": "offset-bore",
+      "request": "Make a sharp-edged plate 60 wide, 40 deep and 4 thick, with one round 6-diameter hole straight through from top to bottom at x=15, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 9486.902664,
+        "bboxMm": {
+          "min": [
+            -30.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            20.000000,
+            4.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "60 × 40 × 4 − π × 6² × 4 / 4; volume = 9486.902664 mm³"
+    },
+    {
+      "id": "J3-005",
+      "family": "two-bores",
+      "request": "Make a sharp-edged plate 60 wide, 40 deep and 5 thick, with two separate round 8-diameter holes straight through from top to bottom, centred at x=-15 and x=15, both at y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 11497.345175,
+        "bboxMm": {
+          "min": [
+            -30.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            20.000000,
+            5.000000
+          ]
+        },
+        "holes": 2
+      },
+      "calculation": "60 × 40 × 5 − 2 × π × 8² × 5 / 4; volume = 11497.345175 mm³"
+    },
+    {
+      "id": "J3-006",
+      "family": "four-bores",
+      "request": "Make a sharp-edged plate 80 wide, 60 deep and 6 thick, with four separate round 6-diameter holes straight through from top to bottom, one at each combination of x=-25 or 25 and y=-15 or 15.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 28121.415987,
+        "bboxMm": {
+          "min": [
+            -40.000000,
+            -30.000000,
+            0.000000
+          ],
+          "max": [
+            40.000000,
+            30.000000,
+            6.000000
+          ]
+        },
+        "holes": 4
+      },
+      "calculation": "80 × 60 × 6 − 4 × π × 6² × 6 / 4; volume = 28121.415987 mm³"
+    },
+    {
+      "id": "J3-007",
+      "family": "tube",
+      "request": "Make a round tube standing upright, outside diameter 30, inside diameter 20 and height 25, open all the way through at both ends.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 9817.477042,
+        "bboxMm": {
+          "min": [
+            -15.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            15.000000,
+            15.000000,
+            25.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "π × (30² − 20²) × 25 / 4; volume = 9817.477042 mm³"
+    },
+    {
+      "id": "J3-008",
+      "family": "side-bore",
+      "request": "Make a sharp-edged block 40 wide, 30 deep and 20 high, with one round 8-diameter hole straight through along x, from the left face to the right face, with its axis at y=0, z=10.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 21989.380702,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            15.000000,
+            20.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "40 × 30 × 20 − π × 8² × 40 / 4; volume = 21989.380702 mm³"
+    },
+    {
+      "id": "J3-009",
+      "family": "boss",
+      "request": "Join a sharp-edged plate 40 wide, 30 deep and 5 thick to a central upright solid round boss 20 in diameter and 10 high. Put the boss's base at z=4 so it overlaps the plate by 1; leave one fused solid.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 8827.433388,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            15.000000,
+            14.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "40 × 30 × 5 + π × 20² × (10 − 1) / 4; top = 5 − 1 + 10; volume = 8827.433388 mm³"
+    },
+    {
+      "id": "J3-010",
+      "family": "scale-move",
+      "request": "Make a sharp-edged cube with side 20, double every dimension about the centre of its bottom face so the base stays at z=0, then move it 10 along x and -5 along y.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 64000.000000,
+        "bboxMm": {
+          "min": [
+            -10.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            15.000000,
+            40.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "S = 20 × 2 = 40; volume = 40³; x = 10 ± 20, y = -5 ± 20, z = 0..40; volume = 64000.000000 mm³"
+    },
+    {
+      "id": "J3-011",
+      "family": "box",
+      "request": "Make a plain rectangular block 20 wide, 20 deep and 20 high, with sharp edges.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 8000.000000,
+        "bboxMm": {
+          "min": [
+            -10.000000,
+            -10.000000,
+            0.000000
+          ],
+          "max": [
+            10.000000,
+            10.000000,
+            20.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "20 × 20 × 20; volume = 8000.000000 mm³"
+    },
+    {
+      "id": "J3-012",
+      "family": "box",
+      "request": "Make a plain rectangular block 50 wide, 25 deep and 8 high, with sharp edges.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 10000.000000,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -12.500000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            12.500000,
+            8.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "50 × 25 × 8; volume = 10000.000000 mm³"
+    },
+    {
+      "id": "J3-013",
+      "family": "box",
+      "request": "Make a plain rectangular block 32 wide, 18 deep and 12 high, with sharp edges.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 6912.000000,
+        "bboxMm": {
+          "min": [
+            -16.000000,
+            -9.000000,
+            0.000000
+          ],
+          "max": [
+            16.000000,
+            9.000000,
+            12.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "32 × 18 × 12; volume = 6912.000000 mm³"
+    },
+    {
+      "id": "J3-014",
+      "family": "box",
+      "request": "Make a plain rectangular block 100 wide, 60 deep and 2 high, with sharp edges.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 12000.000000,
+        "bboxMm": {
+          "min": [
+            -50.000000,
+            -30.000000,
+            0.000000
+          ],
+          "max": [
+            50.000000,
+            30.000000,
+            2.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "100 × 60 × 2; volume = 12000.000000 mm³"
+    },
+    {
+      "id": "J3-015",
+      "family": "cylinder",
+      "request": "Make a solid round cylinder 10 in diameter and 5 high, standing upright.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 392.699082,
+        "bboxMm": {
+          "min": [
+            -5.000000,
+            -5.000000,
+            0.000000
+          ],
+          "max": [
+            5.000000,
+            5.000000,
+            5.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "π × 10² × 5 / 4; volume = 392.699082 mm³"
+    },
+    {
+      "id": "J3-016",
+      "family": "cylinder",
+      "request": "Make a solid round cylinder 30 in diameter and 12 high, standing upright.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 8482.300165,
+        "bboxMm": {
+          "min": [
+            -15.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            15.000000,
+            15.000000,
+            12.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "π × 30² × 12 / 4; volume = 8482.300165 mm³"
+    },
+    {
+      "id": "J3-017",
+      "family": "cylinder",
+      "request": "Make a solid round cylinder 16 in diameter and 40 high, standing upright.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 8042.477193,
+        "bboxMm": {
+          "min": [
+            -8.000000,
+            -8.000000,
+            0.000000
+          ],
+          "max": [
+            8.000000,
+            8.000000,
+            40.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "π × 16² × 40 / 4; volume = 8042.477193 mm³"
+    },
+    {
+      "id": "J3-018",
+      "family": "cylinder",
+      "request": "Make a solid round cylinder 50 in diameter and 3 high, standing upright.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 5890.486225,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            25.000000,
+            3.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "π × 50² × 3 / 4; volume = 5890.486225 mm³"
+    },
+    {
+      "id": "J3-019",
+      "family": "central-bore",
+      "request": "Make a sharp-edged block 30 wide, 20 deep and 10 high, with one round 6-diameter hole straight through from top to bottom at x=0, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 5717.256661,
+        "bboxMm": {
+          "min": [
+            -15.000000,
+            -10.000000,
+            0.000000
+          ],
+          "max": [
+            15.000000,
+            10.000000,
+            10.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "30 × 20 × 10 − π × 6² × 10 / 4; volume = 5717.256661 mm³"
+    },
+    {
+      "id": "J3-020",
+      "family": "central-bore",
+      "request": "Make a sharp-edged block 50 wide, 40 deep and 8 high, with one round 10-diameter hole straight through from top to bottom at x=0, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 15371.681469,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            20.000000,
+            8.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "50 × 40 × 8 − π × 10² × 8 / 4; volume = 15371.681469 mm³"
+    },
+    {
+      "id": "J3-021",
+      "family": "central-bore",
+      "request": "Make a sharp-edged block 24 wide, 24 deep and 12 high, with one round 4-diameter hole straight through from top to bottom at x=0, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 6761.203553,
+        "bboxMm": {
+          "min": [
+            -12.000000,
+            -12.000000,
+            0.000000
+          ],
+          "max": [
+            12.000000,
+            12.000000,
+            12.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "24 × 24 × 12 − π × 4² × 12 / 4; volume = 6761.203553 mm³"
+    },
+    {
+      "id": "J3-022",
+      "family": "central-bore",
+      "request": "Make a sharp-edged block 70 wide, 50 deep and 6 high, with one round 12-diameter hole straight through from top to bottom at x=0, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 20321.415987,
+        "bboxMm": {
+          "min": [
+            -35.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            35.000000,
+            25.000000,
+            6.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "70 × 50 × 6 − π × 12² × 6 / 4; volume = 20321.415987 mm³"
+    },
+    {
+      "id": "J3-023",
+      "family": "offset-bore",
+      "request": "Make a sharp-edged plate 50 wide, 30 deep and 3 thick, with one round 4-diameter hole straight through from top to bottom at x=10, y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 4462.300888,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            15.000000,
+            3.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "50 × 30 × 3 − π × 4² × 3 / 4; volume = 4462.300888 mm³"
+    },
+    {
+      "id": "J3-024",
+      "family": "offset-bore",
+      "request": "Make a sharp-edged plate 70 wide, 50 deep and 6 thick, with one round 8-diameter hole straight through from top to bottom at x=-15, y=5.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 20698.407105,
+        "bboxMm": {
+          "min": [
+            -35.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            35.000000,
+            25.000000,
+            6.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "70 × 50 × 6 − π × 8² × 6 / 4; volume = 20698.407105 mm³"
+    },
+    {
+      "id": "J3-025",
+      "family": "offset-bore",
+      "request": "Make a sharp-edged plate 40 wide, 40 deep and 4 thick, with one round 6-diameter hole straight through from top to bottom at x=8, y=-8.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 6286.902664,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            20.000000,
+            4.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "40 × 40 × 4 − π × 6² × 4 / 4; volume = 6286.902664 mm³"
+    },
+    {
+      "id": "J3-026",
+      "family": "offset-bore",
+      "request": "Make a sharp-edged plate 90 wide, 60 deep and 5 thick, with one round 10-diameter hole straight through from top to bottom at x=20, y=10.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 26607.300918,
+        "bboxMm": {
+          "min": [
+            -45.000000,
+            -30.000000,
+            0.000000
+          ],
+          "max": [
+            45.000000,
+            30.000000,
+            5.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "90 × 60 × 5 − π × 10² × 5 / 4; volume = 26607.300918 mm³"
+    },
+    {
+      "id": "J3-027",
+      "family": "two-bores",
+      "request": "Make a sharp-edged plate 50 wide, 30 deep and 4 thick, with two separate round 6-diameter holes straight through from top to bottom, centred at x=-12 and x=12, both at y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 5773.805329,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            15.000000,
+            4.000000
+          ]
+        },
+        "holes": 2
+      },
+      "calculation": "50 × 30 × 4 − 2 × π × 6² × 4 / 4; volume = 5773.805329 mm³"
+    },
+    {
+      "id": "J3-028",
+      "family": "two-bores",
+      "request": "Make a sharp-edged plate 80 wide, 40 deep and 6 thick, with two separate round 10-diameter holes straight through from top to bottom, centred at x=-20 and x=20, both at y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 18257.522204,
+        "bboxMm": {
+          "min": [
+            -40.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            40.000000,
+            20.000000,
+            6.000000
+          ]
+        },
+        "holes": 2
+      },
+      "calculation": "80 × 40 × 6 − 2 × π × 10² × 6 / 4; volume = 18257.522204 mm³"
+    },
+    {
+      "id": "J3-029",
+      "family": "two-bores",
+      "request": "Make a sharp-edged plate 40 wide, 30 deep and 3 thick, with two separate round 4-diameter holes straight through from top to bottom, centred at x=-10 and x=10, both at y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 3524.601776,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            15.000000,
+            3.000000
+          ]
+        },
+        "holes": 2
+      },
+      "calculation": "40 × 30 × 3 − 2 × π × 4² × 3 / 4; volume = 3524.601776 mm³"
+    },
+    {
+      "id": "J3-030",
+      "family": "two-bores",
+      "request": "Make a sharp-edged plate 100 wide, 60 deep and 8 thick, with two separate round 12-diameter holes straight through from top to bottom, centred at x=-25 and x=25, both at y=0.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 46190.442632,
+        "bboxMm": {
+          "min": [
+            -50.000000,
+            -30.000000,
+            0.000000
+          ],
+          "max": [
+            50.000000,
+            30.000000,
+            8.000000
+          ]
+        },
+        "holes": 2
+      },
+      "calculation": "100 × 60 × 8 − 2 × π × 12² × 8 / 4; volume = 46190.442632 mm³"
+    },
+    {
+      "id": "J3-031",
+      "family": "four-bores",
+      "request": "Make a sharp-edged plate 60 wide, 50 deep and 4 thick, with four separate round 4-diameter holes straight through from top to bottom, one at each combination of x=-20 or 20 and y=-15 or 15.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 11798.938070,
+        "bboxMm": {
+          "min": [
+            -30.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            25.000000,
+            4.000000
+          ]
+        },
+        "holes": 4
+      },
+      "calculation": "60 × 50 × 4 − 4 × π × 4² × 4 / 4; volume = 11798.938070 mm³"
+    },
+    {
+      "id": "J3-032",
+      "family": "four-bores",
+      "request": "Make a sharp-edged plate 100 wide, 70 deep and 8 thick, with four separate round 8-diameter holes straight through from top to bottom, one at each combination of x=-35 or 35 and y=-20 or 20.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 54391.504561,
+        "bboxMm": {
+          "min": [
+            -50.000000,
+            -35.000000,
+            0.000000
+          ],
+          "max": [
+            50.000000,
+            35.000000,
+            8.000000
+          ]
+        },
+        "holes": 4
+      },
+      "calculation": "100 × 70 × 8 − 4 × π × 8² × 8 / 4; volume = 54391.504561 mm³"
+    },
+    {
+      "id": "J3-033",
+      "family": "four-bores",
+      "request": "Make a sharp-edged plate 70 wide, 50 deep and 5 thick, with four separate round 6-diameter holes straight through from top to bottom, one at each combination of x=-20 or 20 and y=-15 or 15.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 16934.513322,
+        "bboxMm": {
+          "min": [
+            -35.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            35.000000,
+            25.000000,
+            5.000000
+          ]
+        },
+        "holes": 4
+      },
+      "calculation": "70 × 50 × 5 − 4 × π × 6² × 5 / 4; volume = 16934.513322 mm³"
+    },
+    {
+      "id": "J3-034",
+      "family": "four-bores",
+      "request": "Make a sharp-edged plate 120 wide, 80 deep and 6 thick, with four separate round 10-diameter holes straight through from top to bottom, one at each combination of x=-40 or 40 and y=-25 or 25.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 55715.044408,
+        "bboxMm": {
+          "min": [
+            -60.000000,
+            -40.000000,
+            0.000000
+          ],
+          "max": [
+            60.000000,
+            40.000000,
+            6.000000
+          ]
+        },
+        "holes": 4
+      },
+      "calculation": "120 × 80 × 6 − 4 × π × 10² × 6 / 4; volume = 55715.044408 mm³"
+    },
+    {
+      "id": "J3-035",
+      "family": "tube",
+      "request": "Make a round tube standing upright, outside diameter 20, inside diameter 10 and height 10, open all the way through at both ends.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 2356.194490,
+        "bboxMm": {
+          "min": [
+            -10.000000,
+            -10.000000,
+            0.000000
+          ],
+          "max": [
+            10.000000,
+            10.000000,
+            10.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "π × (20² − 10²) × 10 / 4; volume = 2356.194490 mm³"
+    },
+    {
+      "id": "J3-036",
+      "family": "tube",
+      "request": "Make a round tube standing upright, outside diameter 40, inside diameter 30 and height 5, open all the way through at both ends.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 2748.893572,
+        "bboxMm": {
+          "min": [
+            -20.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            20.000000,
+            20.000000,
+            5.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "π × (40² − 30²) × 5 / 4; volume = 2748.893572 mm³"
+    },
+    {
+      "id": "J3-037",
+      "family": "tube",
+      "request": "Make a round tube standing upright, outside diameter 50, inside diameter 20 and height 12, open all the way through at both ends.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 19792.033718,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            25.000000,
+            12.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "π × (50² − 20²) × 12 / 4; volume = 19792.033718 mm³"
+    },
+    {
+      "id": "J3-038",
+      "family": "tube",
+      "request": "Make a round tube standing upright, outside diameter 24, inside diameter 12 and height 30, open all the way through at both ends.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 10178.760198,
+        "bboxMm": {
+          "min": [
+            -12.000000,
+            -12.000000,
+            0.000000
+          ],
+          "max": [
+            12.000000,
+            12.000000,
+            30.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "π × (24² − 12²) × 30 / 4; volume = 10178.760198 mm³"
+    },
+    {
+      "id": "J3-039",
+      "family": "side-bore",
+      "request": "Make a sharp-edged block 30 wide, 24 deep and 16 high, with one round 6-diameter hole straight through along x, from the left face to the right face, with its axis at y=0, z=8.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 10671.769984,
+        "bboxMm": {
+          "min": [
+            -15.000000,
+            -12.000000,
+            0.000000
+          ],
+          "max": [
+            15.000000,
+            12.000000,
+            16.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "30 × 24 × 16 − π × 6² × 30 / 4; volume = 10671.769984 mm³"
+    },
+    {
+      "id": "J3-040",
+      "family": "side-bore",
+      "request": "Make a sharp-edged block 60 wide, 40 deep and 20 high, with one round 10-diameter hole straight through along x, from the left face to the right face, with its axis at y=0, z=10.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 43287.611020,
+        "bboxMm": {
+          "min": [
+            -30.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            20.000000,
+            20.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "60 × 40 × 20 − π × 10² × 60 / 4; volume = 43287.611020 mm³"
+    },
+    {
+      "id": "J3-041",
+      "family": "side-bore",
+      "request": "Make a sharp-edged block 24 wide, 20 deep and 12 high, with one round 4-diameter hole straight through along x, from the left face to the right face, with its axis at y=0, z=6.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 5458.407105,
+        "bboxMm": {
+          "min": [
+            -12.000000,
+            -10.000000,
+            0.000000
+          ],
+          "max": [
+            12.000000,
+            10.000000,
+            12.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "24 × 20 × 12 − π × 4² × 24 / 4; volume = 5458.407105 mm³"
+    },
+    {
+      "id": "J3-042",
+      "family": "side-bore",
+      "request": "Make a sharp-edged block 80 wide, 50 deep and 30 high, with one round 12-diameter hole straight through along x, from the left face to the right face, with its axis at y=0, z=15.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 110952.213158,
+        "bboxMm": {
+          "min": [
+            -40.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            40.000000,
+            25.000000,
+            30.000000
+          ]
+        },
+        "holes": 1
+      },
+      "calculation": "80 × 50 × 30 − π × 12² × 80 / 4; volume = 110952.213158 mm³"
+    },
+    {
+      "id": "J3-043",
+      "family": "boss",
+      "request": "Join a sharp-edged plate 30 wide, 30 deep and 4 thick to a central upright solid round boss 12 in diameter and 8 high. Put the boss's base at z=3 so it overlaps the plate by 1; leave one fused solid.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 4391.681349,
+        "bboxMm": {
+          "min": [
+            -15.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            15.000000,
+            15.000000,
+            11.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "30 × 30 × 4 + π × 12² × (8 − 1) / 4; top = 4 − 1 + 8; volume = 4391.681349 mm³"
+    },
+    {
+      "id": "J3-044",
+      "family": "boss",
+      "request": "Join a sharp-edged plate 60 wide, 40 deep and 6 thick to a central upright solid round boss 24 in diameter and 12 high. Put the boss's base at z=5 so it overlaps the plate by 1; leave one fused solid.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 19376.282763,
+        "bboxMm": {
+          "min": [
+            -30.000000,
+            -20.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            20.000000,
+            17.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "60 × 40 × 6 + π × 24² × (12 − 1) / 4; top = 6 − 1 + 12; volume = 19376.282763 mm³"
+    },
+    {
+      "id": "J3-045",
+      "family": "boss",
+      "request": "Join a sharp-edged plate 50 wide, 30 deep and 5 thick to a central upright solid round boss 18 in diameter and 10 high. Put the boss's base at z=4 so it overlaps the plate by 1; leave one fused solid.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 9790.221044,
+        "bboxMm": {
+          "min": [
+            -25.000000,
+            -15.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            15.000000,
+            14.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "50 × 30 × 5 + π × 18² × (10 − 1) / 4; top = 5 − 1 + 10; volume = 9790.221044 mm³"
+    },
+    {
+      "id": "J3-046",
+      "family": "boss",
+      "request": "Join a sharp-edged plate 80 wide, 60 deep and 8 thick to a central upright solid round boss 30 in diameter and 16 high. Put the boss's base at z=7 so it overlaps the plate by 1; leave one fused solid.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 49002.875206,
+        "bboxMm": {
+          "min": [
+            -40.000000,
+            -30.000000,
+            0.000000
+          ],
+          "max": [
+            40.000000,
+            30.000000,
+            23.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "80 × 60 × 8 + π × 30² × (16 − 1) / 4; top = 8 − 1 + 16; volume = 49002.875206 mm³"
+    },
+    {
+      "id": "J3-047",
+      "family": "scale-move",
+      "request": "Make a sharp-edged cube with side 10, multiply every dimension by 2 about the centre of its bottom face so the base stays at z=0, then move it 20 along x and 10 along y.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 8000.000000,
+        "bboxMm": {
+          "min": [
+            10.000000,
+            0.000000,
+            0.000000
+          ],
+          "max": [
+            30.000000,
+            20.000000,
+            20.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "S = 10 × 2 = 20; volume = 20³; x = 20 ± 10, y = 10 ± 10, z = 0..20; volume = 8000.000000 mm³"
+    },
+    {
+      "id": "J3-048",
+      "family": "scale-move",
+      "request": "Make a sharp-edged cube with side 30, multiply every dimension by 0.5 about the centre of its bottom face so the base stays at z=0, then move it -15 along x and 5 along y.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 3375.000000,
+        "bboxMm": {
+          "min": [
+            -22.500000,
+            -2.500000,
+            0.000000
+          ],
+          "max": [
+            -7.500000,
+            12.500000,
+            15.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "S = 30 × 0.5 = 15; volume = 15³; x = -15 ± 7.5, y = 5 ± 7.5, z = 0..15; volume = 3375.000000 mm³"
+    },
+    {
+      "id": "J3-049",
+      "family": "scale-move",
+      "request": "Make a sharp-edged cube with side 12, multiply every dimension by 3 about the centre of its bottom face so the base stays at z=0, then move it 0 along x and 20 along y.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 46656.000000,
+        "bboxMm": {
+          "min": [
+            -18.000000,
+            2.000000,
+            0.000000
+          ],
+          "max": [
+            18.000000,
+            38.000000,
+            36.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "S = 12 × 3 = 36; volume = 36³; x = 0 ± 18, y = 20 ± 18, z = 0..36; volume = 46656.000000 mm³"
+    },
+    {
+      "id": "J3-050",
+      "family": "scale-move",
+      "request": "Make a sharp-edged cube with side 25, multiply every dimension by 1.2 about the centre of its bottom face so the base stays at z=0, then move it 10 along x and -10 along y.",
+      "expected": {
+        "bodies": 1,
+        "volumeMm3": 27000.000000,
+        "bboxMm": {
+          "min": [
+            -5.000000,
+            -25.000000,
+            0.000000
+          ],
+          "max": [
+            25.000000,
+            5.000000,
+            30.000000
+          ]
+        },
+        "holes": 0
+      },
+      "calculation": "S = 25 × 1.2 = 30; volume = 30³; x = 10 ± 15, y = -10 ± 15, z = 0..30; volume = 27000.000000 mm³"
+    }
+  ]
+}
