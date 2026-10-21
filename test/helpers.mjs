@@ -1,6 +1,7 @@
 // Shared helpers: boot the app, load a design, wait for the kernel, capture exports.
 // The app exposes window.__app and window.__store (the author's app/test/dbg.js did the same).
 import { createHash } from "node:crypto";
+import { test } from "@playwright/test";
 
 export const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -15,9 +16,60 @@ export function watchErrors(page) {
   return errors;
 }
 
+const MARKER = "__js3d.test.reload";
+const RETRIES = 3;
+const recorded = new WeakSet();
+
+// The marker is removed before the app runs, so the app never sees it.
+function recordStorageAtStart(page) {
+  if (recorded.has(page)) return;
+  recorded.add(page);
+  return page.addInitScript((marker) => {
+    try {
+      const token = localStorage.getItem(marker);
+      localStorage.removeItem(marker);
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+      window.__storageAtStart = { token, keys };
+    } catch (e) { window.__storageAtStart = { error: e.name }; }
+  }, MARKER);
+}
+
+// On the Linux CI runner, Chromium now and then opens the next document of a file:// page with an empty storage area (seen 2026-10-21, not tied to how soon the reload comes). The app never touches the marker key, so a document that starts without it lost the storage to the browser, not to an app mistake; only then is the store put back and the navigation repeated. Writes the app makes while the old page unloads (the save at beforeunload, autosave on pagehide) are not in the snapshot, so a test about unsaved work surviving a reload must not use reload().
+async function navigateKeepingStorage(page, go) {
+  await recordStorageAtStart(page);
+  const { saved, age } = await page.evaluate((marker) => {
+    const saved = {};
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k !== marker) saved[k] = localStorage.getItem(k); }
+    return { saved, age: Math.round(performance.now()) };
+  }, MARKER);
+  for (let attempt = 0; ; attempt++) {
+    const token = `${Date.now()}-${attempt}`;
+    await page.evaluate(([marker, token]) => localStorage.setItem(marker, token), [MARKER, token]);
+    await go();
+    const at = await page.evaluate(() => window.__storageAtStart);
+    if (at && at.token === token) return;
+    const where = `${test.info().titlePath.slice(1).join(" > ")} [${test.info().project.name}]`;
+    const report = (description) => { console.log("storage-lost: " + description); test.info().annotations.push({ type: "storage-lost", description }); };
+    if (attempt === RETRIES) { report(`${where} giving up after ${RETRIES} retries`); return; }
+    const names = Object.keys(saved), present = at && at.keys ? names.filter((k) => at.keys.includes(k)).length : 0;
+    report(`${where} attempt ${attempt + 1}/${RETRIES}, keys at start: [${at && at.keys ? at.keys.join(", ") : "unreadable: " + (at && at.error)}], ${present}/${names.length} of the saved keys present, page open ${age} ms before the reload`);
+    await page.evaluate((saved) => {
+      localStorage.clear();
+      for (const [k, v] of Object.entries(saved)) localStorage.setItem(k, v);
+    }, saved);
+  }
+}
+
+export async function reload(page) { await navigateKeepingStorage(page, () => page.reload()); }
+
 // Open the build under test (the project's baseURL) and wait for the geometry kernel.
 export async function boot(page, info) {
-  await page.goto(info.project.use.baseURL);
+  const url = info.project.use.baseURL;
+  if (page.url() === "about:blank") {
+    await recordStorageAtStart(page);
+    await page.goto(url);
+  } else await navigateKeepingStorage(page, () => page.goto(url));
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
   await page.waitForSelector("#loading", { state: "hidden", timeout: 20_000 });
 }
