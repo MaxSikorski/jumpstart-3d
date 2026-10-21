@@ -179,7 +179,7 @@ export function initChat(app) {
     controller = new AbortController();
     const { signal } = controller;
     busy(true);
-    // the model sees the 35 tools; run_script is left out unless the person allowed scripts
+    // the model sees the 36 tools; run_script is left out unless the person allowed scripts
     const tools = TOOLS.filter((t) => s.scripts || t.name !== "run_script").map(({ name, description, parameters }) => ({ name, description, parameters }));
     const ctx = { scripts: s.scripts, vision: s.vision, download };
     let calls = 0;

@@ -68,7 +68,7 @@ JS3D.get(id).volume;        // 24000
 
 | Call | Returns |
 |---|---|
-| `JS3D.version` | `"1.2"`. The last number goes up when calls are added; the first changes when a call changes shape. |
+| `JS3D.version` | `"1.3"`. The last number goes up when calls are added; the first changes when a call changes shape. |
 | `JS3D.appVersion` | The app's version, such as `"2.0"`. |
 | `JS3D.kinds()` | `[{ kind, defaults }]`: the 20 shape kinds `add` accepts and their default sizes (`box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, `arrow`). |
 | `JS3D.list()` | The top-level bodies: `[{ id, name, kind, hole, hidden, locked, color, position, bbox, volume, error, children? }]`. `kind` is the shape kind for a basic shape and `"group"`, `"extrude"`, `"revolve"`... for the rest. `bbox` is the world box `{ min: [x,y,z], max: [x,y,z] }` and `volume` is in mm³; both are `null` until built (and while an error is shown). `error` is the geometry engine's message or `null`. `children` is the number of parts in a group. |
@@ -92,6 +92,7 @@ idle and every visible body has been built (or has an error). It checks every
 |---|---|
 | `JS3D.add(kind, opts)` → id | Adds a shape. `opts`: `size` (`{w, d, h, ...}` or `[w, d, h]`; keys other than the ones `kinds()` lists for that kind are refused; `w`, `d`, `h` and `size` must be at least 0.01; `sides` and `points` whole numbers of at least 3), `at` (`[x, y, z]`, default `[0, 0, 0]`), `hole` (true makes it a hole), `color` (`"#rrggbb"`), `name`. An unknown kind throws and lists the valid ones. Undo label `Add box` (and so on). |
 | `JS3D.fastener(opts)` → id | Adds a threaded fastener as one body. `opts`: `type` (`"bolt"`, `"nut"`, `"rod"` or `"cutter"`), `size` (metric `M2.5 M3 M4 M5 M6 M8 M10 M12`, or inch `#6-32 #8-32 #10-24 #10-32 1/4-20 1/4-28 5/16-18 5/16-24 3/8-16 3/8-24 1/2-13 1/2-20`), `length` (mm; for a bolt it is the length under the head; not used for a nut; at least 3 thread turns, at most 150), `clear` (print offset in mm, `-1` to `0`, default `0`; `-0.2` suits most printers), `left` (true for a left-hand thread), `at` (`[x, y, z]`, default `[0, 0, 0]`; the base of the part sits at z), `name`. A bolt is a group of a hex head and a shank with a Thread feature; a nut is a hex prism with a hole and a Thread feature; a rod is a cylinder with a Thread feature; a cutter is a rod that is a hole and is built wider instead of thinner: its diameter grows by four times the print offset, so the hole it cuts is as loose as a nut with that offset, and the Thread print offset tool leaves it alone. Grouping it with a solid cuts a threaded hole. Building takes a few seconds: `await JS3D.ready()`. Bad input throws a plain message (`unknown size "M7"; sizes: ...`). Undo label `Add M8×30 bolt` (and so on). |
+| `await JS3D.holePattern({ body, face, layout, hole })` → `{ id, holes, dropped }` | Drills round holes into one flat face of a body, as ONE Hole feature (a single `hole` mod with every position, so the Hole dialog edits it). Async: it waits for the shapes to be built first. `face` is the world direction the face looks: `"+x"`, `"-x"`, `"+y"`, `"-y"`, `"+z"` or `"-z"`; it picks the body's flat face within 1° of that direction that lies farthest along it (on a tie the larger one). Sloped faces can only be reached in the dialog. Columns run along the face's longest straight edge (on a box top, the longer side), rows across it; `angle` and `start` are measured from that edge, turning counter-clockwise seen from outside the face. `layout`: `{ type: "grid", cols, rows, pitch, margin = 0, stagger = false, angle = 0 }` (`cols` and `rows` whole numbers 1 to 200; `pitch` a number for both directions or `[column pitch, row pitch]`, leave it out to spread the holes over the face; `stagger` shifts every other row by half a column pitch and makes it one hole shorter; `angle` turns the grid on the face, degrees) or `{ type: "circle", count, radius, start = 0, center, margin = 0 }` (`count` 2 to 200; `start` the first hole's angle from the face's first axis; `center` a world `[x, y, z]` moved onto the face, default the middle of the face). `margin` is the space between a hole's edge and the face's outline (outer edges and any holes already in it). Holes that would not fit are left out: `holes` counts the ones made, `dropped` the ones left out. `hole`: `{ kind = "simple", size, dia, depth, tip, cbDia, cbDepth, csDia, csAngle, pitch, clear }` with `kind` `"simple"`, `"cbore"`, `"csink"` or `"tapped"`; `size` (such as `"M3"` or `"#8"`) fills the diameter and the bore, sink or thread the way the Hole dialog does, and numbers you give override it; leave `depth` out for a through hole; `clear` (tapped only) defaults to the design's Thread print offset. At most 200 plain holes, 130 counterbores or countersinks, 8 tapped (a tapped hole takes about 2 seconds to build, measured in a 6 mm plate; thicker plates take longer). Errors are plain and nothing is added: `face must be "+x", ...`, `<name> has no flat face facing +z`, `layout.type must be "grid" or "circle"`, `unknown size "M7"; sizes: ...`, `Pitch must be at least the hole's width (3 mm).`, `Too many holes (225; the most is 200 for plain holes). ...`, `No holes fit on this face with these settings.` Undo label `Hole pattern (12 holes)`. |
 | `JS3D.remove(ids)` → count | Deletes bodies and returns how many. `JS3D.delete` is the same call. Sketches only they used go too. |
 | `JS3D.duplicate(ids, offset)` → new ids | Copies bodies, moved by `offset` (default `[0,0,0]`). |
 | `JS3D.move(ids, [dx, dy, dz])` | Moves by that much along the world axes. |
@@ -164,7 +165,7 @@ To save an export from the console, wrap the bytes in a download:
 
 Nothing connects unless asked: the page makes no connection until `connect` is called or the **Connect to AI agent** row in the theme menu (◐) is turned on. That row is remembered in this browser (`jumpstart.agent`, "on" or "off", off by default) and connects to the default address when the page loads. There is no web address parameter.
 
-The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.2","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
+The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.3","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
 
 ### What the bridge does not do
 
@@ -178,7 +179,7 @@ The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","versi
 ## Part 2: The project file format
 
 A project is one JSON document. This part was written by looking at real files:
-the 32 designs in `test/projects/`, designs built with `JS3D` and saved with
+the 33 designs in `test/projects/`, designs built with `JS3D` and saved with
 `JS3D.save()`, and what the app does with each file after `JS3D.load` and a
 save. Each table says what was seen; **not checked** marks what was not.
 
@@ -190,7 +191,7 @@ save. Each table says what was seen; **not checked** marks what was not.
 
 The Export menu and `JS3D.save()` write this envelope (the menu indents with one
 space). Opening a file accepts either the envelope or the bare `doc`: the app
-reads `file.doc` if there is one, else the whole file. All 32 designs in
+reads `file.doc` if there is one, else the whole file. All 33 designs in
 `test/projects/` are bare docs. `version` is always 1 in what the app writes;
 nothing reads it (not checked beyond the code that writes and opens files).
 

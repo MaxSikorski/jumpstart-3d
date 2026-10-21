@@ -343,5 +343,15 @@
     "obj": "d41ebde2cea28f320dfe1e88dd7eed438c3ff601f31bc401eb337315df3a7a5d",
     "3mf": "139aab901c259aafeb68418f057daf444508768b954e3a4c72e96b94739bafd8",
     "step": "80f3692edc5e20443a3610f551bba4121a99e7395a80c535f0bb05c13a07d3aa"
+  },
+  "holepattern.json": {
+    "volumes": {
+      "b1 Plate": 74370.7
+    },
+    "stlTriangles": 8684,
+    "stl": "c7ab9df05b16cfa057783f574bb42eea0b758aaabb350c9f3bb063c55743e918",
+    "obj": "2f46e946071facf533649cb0b5bd3a47a896ab1229b8b0795f46a33e8863af04",
+    "3mf": "5121baaad2aee62c08b7d51ba2852268afaf74aa8159e5bdc702aae0391fa781",
+    "step": "c7ec77361b653f3c2c9c92c8a20d3499ece57c1dce71432fe9413994dd8bdce9"
   }
 }
