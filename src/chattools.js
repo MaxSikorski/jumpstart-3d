@@ -1,4 +1,4 @@
-// jumpstart-3d: chat tools. The same 36 tools the MCP server offers (mcp/tools.mjs), described to a model
+// jumpstart-3d: chat tools. The same 37 tools the MCP server offers (mcp/tools.mjs), described to a model
 // and run straight against window.JS3D (see BRIDGE.md). Three rules:
 //  1. Names and descriptions are copied from mcp/tools.mjs; mcp/test/chat.test.mjs fails if they drift.
 //     Six differ on purpose (no server, no file paths): status, screenshot, export_file, save_project, load_project, run_script.
@@ -53,6 +53,9 @@ export const TOOLS = [
       layout: layout === "circle" ? { type: "circle", count, radius, start, center: given(center), margin } : { type: "grid", cols, rows, pitch: rowPitch != null ? [pitch, rowPitch] : pitch, margin, stagger, angle },
       hole: { shape, kind, size, dia, depth, width, length },
     })),
+  tool("add_gear", "Adds a gear and returns its id: a spur gear, a straight bevel gear (meshes at 90 degrees with a bevel gear of mate teeth) or a straight rack. Involute teeth, 20 degree pressure angle, metric module in mm (for an inch diametral pitch DP use 25.4 / DP). A gear lies flat with its axis along z through at and tooth 0 pointing along +x; a rack runs along +x from at with its pitch line through at and its teeth pointing +y. Two spur gears of one module mesh with centres module * (teeth1 + teeth2) / 2 apart; when teeth2 is even, turn the second one by 180 / teeth2 degrees about its own axis. clear (default 0.1 mm) thins every tooth so printed gears turn freely. Spur 12 to 200 teeth, bevel 12 to 90, rack 2 to 100; call wait_ready after.",
+    { kind: { type: "string", enum: ["spur", "bevel", "rack"], description: "Default spur" }, module: num("Tooth size in mm, 0.3 to 10; pitch diameter = module x teeth"), teeth: num("Spur 12 to 200, bevel 12 to 90, rack 2 to 100"), width: num("Thickness in mm. Default 6; a bevel gear at most a third of the way to its cone's tip"), mate: num("Bevel only: the partner bevel gear's teeth. Default the same as teeth"), base: num("Rack only: height of the solid strip under the teeth, mm. Default 5"), bore: num("Spur and bevel: shaft hole diameter, mm. Default 0, none"), keyway: bool("Spur with a 6 to 58 mm bore: add a DIN 6885 keyway"), clear: num("Print clearance, mm, taken off every tooth. Default 0.1"), at: vec3("Where to put it, mm. Default [0, 0, 0]"), name: str("Name for the body") },
+    ["module", "teeth"], ({ kind, module: mod, teeth, width, mate, base, bore, keyway, clear, at, name }) => J().gear({ kind, module: mod, teeth, width, mate, base, bore, keyway, clear, at: given(at), name })),
   tool("remove_bodies", "Deletes bodies. Returns how many.", { ids: ids() }, ["ids"], ({ ids }) => J().remove(ids)),
   tool("duplicate_bodies", "Copies bodies, shifted by offset (mm). Returns the new ids.", { ids: ids(), offset: vec3("Shift in mm, [dx, dy, dz]. Default none") }, ["ids"], ({ ids, offset }) => J().duplicate(ids, given(offset))),
   tool("move_bodies", "Moves bodies by [dx, dy, dz] mm.", { ids: ids(), delta: vec3("[dx, dy, dz] in mm") }, ["ids", "delta"], ({ ids, delta }) => J().move(ids, delta)),

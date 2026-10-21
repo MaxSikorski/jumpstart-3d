@@ -24,7 +24,7 @@ test("--help prints the environment variables and exits 0", () => {
 test("the tools are listed, with the contract names", async () => {
   const { tools } = await s.client.listTools();
   const names = tools.map((t) => t.name);
-  for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "add_hole_pattern", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
+  for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "add_hole_pattern", "add_gear", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
     "scale_bodies", "set_hole", "set_color", "rename_body", "set_hidden", "group_bodies", "ungroup_body", "list_params", "set_param", "remove_param", "bind_size", "undo", "redo",
     "select_bodies", "fit_view", "set_mode", "screenshot", "export_file", "save_project", "load_project", "new_design", "run_script"]) assert.ok(names.includes(n), "missing tool " + n);
   assert.ok(tools.every((t) => t.description && t.description.length > 10), "every tool is described");
@@ -32,7 +32,7 @@ test("the tools are listed, with the contract names", async () => {
 
 test("no tool's input schema has a $ref or a tuple (items array): Gemini-family clients and small local servers reject them", async () => {
   const { tools } = await s.client.listTools();
-  assert.ok(tools.length >= 36);
+  assert.ok(tools.length >= 37);
   for (const t of tools) {
     const json = JSON.stringify(t.inputSchema);
     assert.ok(!json.includes('"$ref"'), t.name + " has a $ref: " + json);
@@ -57,7 +57,7 @@ test("add_shape, wait_ready and list_bodies give a block of 24000 mm3", async ()
   assert.equal(list[0].id, id);
   assert.ok(Math.abs(list[0].volume - 24000) < 0.5, "volume " + list[0].volume);
   const st = data(await call(s.client, "status"));
-  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.4"]);
+  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.5"]);
   assert.match(st.app, /^\d/);
 });
 
@@ -183,6 +183,24 @@ test("add_hole_pattern with shape hex cuts six hexagons as a sketch and one Extr
   const bad = await call(s.client, "add_hole_pattern", { body, face: "+z", layout: "grid", cols: 2, rows: 1, pitch: 20, shape: "slot", width: 4 });
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /hole\.length must be/);
+});
+
+test("add_gear makes a 20-tooth spur gear, refuses a kind the schema does not list and a module the bridge refuses", async () => {
+  await call(s.client, "new_design");
+  const id = data(await call(s.client, "add_gear", { module: 2, teeth: 20, width: 6 }));
+  assert.equal(typeof id, "string");
+  assert.deepEqual(data(await call(s.client, "wait_ready")), { ready: true });
+  const [gear] = data(await call(s.client, "list_bodies"));
+  assert.equal(gear.name, "Spur gear 20 teeth m2");
+  assert.equal(gear.error, null);
+  assert.ok(gear.volume > Math.PI * 17.5 ** 2 * 6 && gear.volume < Math.PI * 22 ** 2 * 6, "volume " + gear.volume);
+  // the tool's schema lists the three kinds, so the server's own validation answers before the page does (its wording is the SDK's, so only the value is checked)
+  const bad = await call(s.client, "add_gear", { kind: "helical", module: 2, teeth: 20 });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /helical/);
+  const bad2 = await call(s.client, "add_gear", { module: 11, teeth: 20 });
+  assert.equal(bad2.isError, true);
+  assert.match(bad2.content[0].text, /^module must be a number from 0\.3 to 10 \(mm\)/);
 });
 
 test("a bad JS3D_WS_PORT or JS3D_MODE exits with code 2 and a plain message", () => {

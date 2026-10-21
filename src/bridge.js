@@ -10,6 +10,7 @@
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
+//              gear({kind, module, teeth, width, mate, base, bore, keyway, clear, at, name}) -> id   a spur gear, bevel gear or rack
 //              holePattern({body, face, layout, hole}) -> {id, holes, dropped, sketch?}   round, square, hex or slot holes in a grid or circle on a flat face
 //              remove(ids) (alias delete) -> count, duplicate(ids, offset) -> new ids
 //              move(ids, [dx,dy,dz]), moveTo(id, [x,y,z]), rotate(ids, axis, degrees, {about})
@@ -186,7 +187,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.4", // jumpstart-3d: hole pattern
+    version: "1.5", // jumpstart-3d: gears
     appVersion: VERSION,
     internals: { app, store },
 
@@ -215,6 +216,7 @@ export function initBridge(app) {
     },
     fastener(opts = {}) { edit(); return app.advanced.addFastener(opts); }, // jumpstart-3d: fasteners
     async holePattern(opts) { edit(); need((opts ?? {}).body); await ready(); return app.advanced.addHolePattern(opts); }, // jumpstart-3d: hole pattern
+    gear(opts = {}) { edit(); return app.advanced.addGear(opts); }, // jumpstart-3d: gears
     remove(ids) {
       edit();
       ids = idList(ids);
