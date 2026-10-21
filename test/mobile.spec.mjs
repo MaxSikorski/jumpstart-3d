@@ -79,8 +79,24 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
 
-    await page.locator("#bb-multi").tap(); // far along the toolbar; tap() scrolls it into view
-    await expect(page.locator("#bb-multi")).toHaveAttribute("aria-pressed", "true");
+    // Multi-select sits far along the toolbar. On the CI runner a tap that scrolled the button into view and fired 47 ms later did not toggle it (run 39642886347), so scroll first, wait until the button stops moving, tap, and tap once more if it did not take.
+    const multi = page.locator("#bb-multi");
+    await multi.scrollIntoViewIfNeeded();
+    await page.evaluate(() => new Promise((ok) => {
+      let last = null, still = 0;
+      const check = () => {
+        const x = document.getElementById("bb-multi").getBoundingClientRect().x;
+        still = x === last ? still + 1 : 0;
+        last = x;
+        if (still >= 5) ok(); else requestAnimationFrame(check);
+      };
+      check();
+    }));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await multi.tap();
+      if (await expect(multi).toHaveAttribute("aria-pressed", "true", { timeout: 2_000 }).then(() => true, () => false)) break;
+    }
+    await expect(multi).toHaveAttribute("aria-pressed", "true");
 
     // A point on the box that is visible, on the box and under no Beginner handle (the selected hole's handles are larger in touch mode).
     const point = await page.evaluate(() => {
