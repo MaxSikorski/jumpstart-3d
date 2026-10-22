@@ -60,3 +60,4 @@ The bundled libraries and fonts keep their own licenses, listed in
 - opentype.js 1.3.4 (MIT)
 - Flatbush and Flatqueue (ISC)
 - Poppins, Liberation, IBM Plex and Barlow fonts (SIL Open Font License 1.1)
+
