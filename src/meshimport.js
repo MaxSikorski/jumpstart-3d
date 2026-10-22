@@ -2,6 +2,7 @@
 // duplicates, make every triangle face outwards), simplify very dense meshes while keeping
 // their shape, and pack them for the geometry worker ("assets": see kernel.js).
 import { inflate } from "./inflate.js";
+import { objPositions } from "./objimport.js"; // jumpstart-3d: OBJ import
 
 export const MESH_LIMIT = 20000; // triangles kept for editing (more makes the engine crawl)
 
@@ -179,8 +180,13 @@ export async function parse3MF(buf) {
 
 // ------------------------------------------------------------------ any mesh file
 // -> { mesh, report, format, unitFromFile (true for 3MF: positions already in mm), parts }
-export async function readMeshFile(bytes) {
+export async function readMeshFile(bytes, name = "") { // jumpstart-3d: optional filename for OBJ dispatch
   const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  // jumpstart-3d: OBJ uses the same repair and single-body mesh path as STL.
+  if (/\.obj$/i.test(name)) {
+    const { mesh, report } = repairMesh(objPositions(buf));
+    return { mesh, report, format: "OBJ", unitFromFile: null, parts: 1 };
+  }
   if (isZip(bytes)) {
     const r = await parse3MF(buf);
     const { mesh, report } = repairMesh(r.pos);
