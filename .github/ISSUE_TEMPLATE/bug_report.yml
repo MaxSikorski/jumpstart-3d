@@ -6,13 +6,6 @@ body:
     attributes:
       value: |
         Thanks for reporting. One bug per issue please. If you are not sure it is a bug, report it anyway.
-  - type: textarea
-    id: outcome
-    attributes:
-      label: What should it end up as?
-      description: "Describe the finished result from your side: what you will see or be able to do when this is done."
-    validations:
-      required: true
   - type: dropdown
     id: version
     attributes:
@@ -46,6 +39,13 @@ body:
     id: expected
     attributes:
       label: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What should it end up as?
+      description: "When this is fixed, what will you see or be able to do?"
     validations:
       required: true
   - type: textarea

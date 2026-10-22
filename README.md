@@ -292,7 +292,10 @@ You do not need to write code to help.
 
 ## I want to change it or contribute
 
-Follow [REVIEW.md](REVIEW.md) for the outcome test, review checklist, and five review gates.
+Follow [REVIEW.md](REVIEW.md) for the outcome check, review checklist, and five
+review gates. Contributors write the outcome and test for gate 1; the
+maintainer runs gates 2-3 with AI reviewers (a Codex model and a Claude model);
+CI runs gate 4; the maintainer checks gate 5.
 
 The app is plain JavaScript modules under `src/`, from the author's own
 source release of version 2.1.3 (the untouched 2.0 files are on the

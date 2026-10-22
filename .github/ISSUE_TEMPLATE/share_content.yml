@@ -6,13 +6,6 @@ body:
     attributes:
       value: |
         Thanks for showing the app. We will add a link and a one-line description to [COMMUNITY.md](https://github.com/MaxSikorski/jumpstart-3d/blob/main/COMMUNITY.md). We only link to your work, we do not copy it.
-  - type: textarea
-    id: outcome
-    attributes:
-      label: What should it end up as?
-      description: "Describe the finished result from your side: what you will see or be able to do when this is done."
-    validations:
-      required: true
   - type: input
     id: link
     attributes:

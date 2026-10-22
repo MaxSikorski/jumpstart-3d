@@ -26,7 +26,11 @@ These skips concern where to report findings, not whether to test both builds.
 ## Always check
 
 - The PR quotes the requester's answer to "What should it end up as?" and
-  names the test that proves that result from the user's side.
+  names the test, or the concrete verification for a change with no code, that
+  proves that result from the user's side. If there is no requester answer
+  (for example, a blank issue, a plan item, a dependency update, or a PR with
+  no issue), quote the plan item or state the outcome yourself, labelled
+  "(not from a requester)".
 - Our additions stay separable: use our own modules where possible, otherwise
   short blocks marked `jumpstart-3d:` beside upstream code.
 - "Created by J.Siwek" stays in the About dialog. For upstream updates, check
@@ -51,32 +55,34 @@ failed, was skipped, or remains unverified; never call unrun checks passed.
 
 ## The gates
 
-1. **Outcome test first.** Quote the requester's finished result and write the
-   proving test before implementation. Show that it fails for the missing or
-   broken behaviour, then passes with the change. Keep its name and result in
-   the PR, together with anything it does not cover.
-2. **Codex review.** Give Codex Sol this file and the PR's outcome and diff.
+1. **Outcome check first.** Contributors record the finished result and write
+   the proving test before implementation. Show that it fails for the missing
+   or broken behaviour, then passes with the change. Keep its name and result
+   in the PR, together with anything it does not cover. For a change with no
+   code, the outcome check is a concrete verification recorded as such (for
+   example, the YAML parses and the form keeps its fields, or the page
+   renders), never a faked test. No change skips gates 2-4.
+2. **Codex review.** The maintainer runs this gate with a Codex reviewer (a
+   Codex model). Give the reviewer this file and the PR's outcome and diff.
    Review against this checklist independently of the Claude reviewer.
-3. **Independent Claude review.** Run Claude Opus in parallel with Codex Sol,
-   without sharing either reviewer's findings before both finish. Pass
-   `REVIEW.md` explicitly in the brief: local `/code-review` reads `CLAUDE.md`
-   but does not automatically read this file. Both reviewers use the public
-   rules above. A separate verify pass checks every serious (HIGH or MEDIUM)
-   or disputed finding against the code with `file:line` evidence and breaks
-   ties. Only a genuine remaining disagreement on a HIGH finding stops for
-   the maintainer. Rank verified findings HIGH/MEDIUM/LOW, remove duplicates,
-   fix them as appropriate, and record their disposition.
-4. **CI.** Require the full suite on both builds, including the export judge,
+3. **Independent Claude review.** The maintainer runs this gate with a Claude
+   model, in parallel with the Codex reviewer and without sharing either
+   reviewer's findings before both finish. Pass `REVIEW.md` explicitly in the
+   brief: `/code-review` reads `CLAUDE.md` but does not automatically read
+   this file. Both reviewers use the public rules above. A separate verify
+   pass checks every serious (HIGH or MEDIUM) or disputed finding against the
+   code with `file:line` evidence and breaks ties. Only a genuine remaining
+   disagreement on a HIGH finding stops for the maintainer. Rank verified
+   findings HIGH/MEDIUM/LOW, remove duplicates, fix them as appropriate, and
+   record their disposition.
+4. **CI.** CI runs the full suite on both builds, including the export judge,
    phone budget, and chat scorer. See [test/README.md](test/README.md) for
    commands and limits. A selected test or local build does not replace CI;
    record failures and skipped checks explicitly.
-5. **After release.** Recheck the quoted outcome on the live site after the
-   release reaches it; merging to `main` alone does not release the site.
-   The maintainer also opens the released single file from disk and checks
-   the outcome. Until then, record this gate as pending, not passed.
-
-A change to documentation or templates only (no code, tests or build) may skip
-gates 1 and 3; its Review gates section says so.
+5. **After release.** The maintainer rechecks the quoted outcome on the live
+   site after the release reaches it; merging to `main` alone does not release
+   the site. The maintainer also opens the released single file from disk and
+   checks the outcome. Until then, record this gate as pending, not passed.
 
 Every PR has a **Review gates** section recording gates run, findings with
 severity and evidence, fixes, and what was not tested. Keep review results in
