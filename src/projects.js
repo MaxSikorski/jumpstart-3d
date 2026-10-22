@@ -645,7 +645,7 @@ export function initProjects(app) {
     // jumpstart-3d: report. a copy of the open design for attaching to a bug report: like exportJSON but not a save (no version bump)
     saveCopy(filename) {
       const json = JSON.stringify({ app: "jumpstart-3d", version: 1, doc: store.doc }, null, 1);
-      if (json.length > 25e6) app.toast("This design file is over 25 MB, more than GitHub takes. Put it in a .zip before you attach it.");
+      if (new Blob([json]).size > 25e6) app.toast("This design file is over 25 MB, more than GitHub takes. Put it in a .zip before you attach it.");
       return offer(filename, json);
     },
     async start() {

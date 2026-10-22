@@ -476,7 +476,7 @@ UPSTREAM-README.md         the author's README from the source release
   scope, no console needed; the result or the error shows as a message
 - Open/Export › Report a problem… (and About): opens a new bug report on GitHub
   with the app details already filled in (build, website or file, browser, mode,
-  the last error with paths removed) and what you typed; never your design. You
+  and the last error message only if you tick the box, with names and paths taken out) and what you typed; never your design. You
   can save a copy of the design to attach. The app sends nothing: you press the
   link and then Create on GitHub
 - An MCP server for AI agents (`mcp/`): Claude Code or any MCP client can build
