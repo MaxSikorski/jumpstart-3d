@@ -1,4 +1,4 @@
-# Builds both outputs and runs the Playwright regression tests in 4 parallel parts, then the export judge and the MCP server tests (see test/README.md).
+# Builds both outputs and runs the Playwright regression tests in 4 parallel parts, then the export judge, the chat judge and the MCP server tests (see test/README.md).
 # Runs on every pull request and on pushes to main. Public repository: Actions minutes are free.
 name: test
 
@@ -30,6 +30,8 @@ jobs:
       # J1: The collector and judge must identify the same workflow run; a rerun of single jobs keeps the same commit and run ID.
       JUDGE_EXPORTS: '1'
       JUDGE_RUN_ID: ${{ github.run_id }}
+      # the chat judge shares one 8-minute clock across both builds, so it runs whole in the "chat judge" job
+      JS3D_SKIP_CHATJUDGE: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -43,7 +45,7 @@ jobs:
       # pretest builds both outputs and runs the Node unit tests in every part
       - run: npm test -- --shard=${{ matrix.shard }}/4
       # lets someone who reported an issue try a pull request's single file before a release exists
-      - if: ${{ !cancelled() && matrix.shard == 1 }}
+      - if: ${{ success() && matrix.shard == 1 }}
         uses: actions/upload-artifact@v7
         with:
           name: jumpstart-3d-single-file
@@ -56,7 +58,8 @@ jobs:
           name: judge-exports-${{ matrix.shard }}
           path: test-results/judge/
           if-no-files-found: ignore
-          retention-days: 1
+          # GitHub allows rerunning failed jobs for 30 days; the judge needs the exports of the parts that passed
+          retention-days: 30
           overwrite: true
       - if: failure()
         uses: actions/upload-artifact@v7
@@ -92,8 +95,13 @@ jobs:
       - name: Install export judge consumers
         timeout-minutes: 8
         # J1: The runner's apt mirror sometimes serves a package at a crawl; a new try gets a new connection.
+        # A killed try can leave dpkg half-finished, so each new try repairs that first; apt also retries and gives up on a stalled connection by itself.
         run: |
-          for attempt in 1 2 3; do timeout 150 bash tools/install-judge-tools.sh && exit 0; done
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries >/dev/null
+          for attempt in 1 2 3; do
+            sudo dpkg --configure -a || true
+            timeout 150 bash tools/install-judge-tools.sh && exit 0
+          done
           exit 1
       - run: npm run test:judge:unit
       - name: Native negative controls
@@ -110,6 +118,32 @@ jobs:
         with:
           name: judge-report
           path: test-results/judge/
+          retention-days: 7
+          overwrite: true
+
+  # The chat judge's mock model gets one 8-minute clock shared by the site and the single file (test/chatjudge.spec.mjs), so both builds run in this one job.
+  chat-judge:
+    name: chat judge
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      # builds both outputs, runs the scorer's Node tests, then test/chatjudge.spec.mjs on the site and the single file
+      - run: npm run test:chat-judge
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-chat-judge
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
           overwrite: true
 
@@ -134,7 +168,7 @@ jobs:
 
   # The branch rules on main require a check named exactly "test"; the matrix jobs report under other names.
   test:
-    needs: [playwright, judge, mcp]
+    needs: [playwright, judge, chat-judge, mcp]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
