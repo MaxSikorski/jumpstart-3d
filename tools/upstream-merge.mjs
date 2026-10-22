@@ -41,7 +41,7 @@ export const MAPPING = [
   { from: "app/tools/", to: "tools/", how: "merge", area: "helpers",
     note: "Helper-page sources changed: regenerate src/flexigen.html, src/meshstep.html and src/chisel.html as tools/README-helpers.md says." },
   { from: "third_party/", to: "third_party/", how: "merge", area: "third_party",
-    note: "A bundled library changed: check the licence files, THIRD-PARTY-NOTICES.md and the golden suite." },
+    note: "A bundled library changed: check the licence files, THIRD-PARTY-NOTICES.md and the golden suite. third_party/ is not scanned for network code." },
   { from: "LICENSES/", to: "LICENSES/", how: "merge", area: "licences", note: "Licence texts changed: compare with NOTICE.md and THIRD-PARTY-NOTICES.md." },
   { from: "THIRD-PARTY-NOTICES.md", to: "THIRD-PARTY-NOTICES.md", how: "merge", area: "licences", note: "Third-party notices changed." },
   { from: "README.md", to: "UPSTREAM-README.md", how: "merge", area: "docs", note: "The author's README changed; UPSTREAM-README.md follows it." },
@@ -58,8 +58,8 @@ export const MAPPING = [
 const IGNORE = /(^|\/)(__MACOSX|\.DS_Store|\._[^/]*)(\/|$)/;
 const HELPER_PAGES = new Set(["app/src/chisel.html", "app/src/flexigen.html", "app/src/meshstep.html"]);
 // Code from upstream that reaches the network or the service worker is always listed for a person.
-const XML_NAMESPACE = /https?:\/\/(schemas\.[\w.]+|www\.w3\.org|purl\.org|www\.opengis\.net)[^\s"'<>]*/g; // names, not requests
-const NETWORK = /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|serviceWorker|importScripts|EventSource|https?:\/\//;
+const XML_NAMESPACE = /https?:\/\/(schemas\.openxmlformats\.org|schemas\.microsoft\.com|www\.w3\.org|purl\.org|www\.opengis\.net)[^\s"'<>]*/g; // names, not requests
+const NETWORK = /\bfetch\s*(\?\.)?\s*\(|XMLHttpRequest|WebSocket|sendBeacon|serviceWorker|importScripts|EventSource|\bnew\s+(Shared)?Worker\s*\(|\bimport\s*\(|["'`]\/\/[\w.-]+\.\w|\bwindow\.open\s*\(|\blocation\.href\s*=|https?:\/\//;
 
 const same = (a, b) => a !== null && b !== null && Buffer.compare(a, b) === 0;
 const isBinary = (buf) => buf.subarray(0, 8000).includes(0);
@@ -174,16 +174,25 @@ function hunksOf(buf) {
   return out;
 }
 
-// Lines upstream added in this file (all of them for a new file) that reach the network, found in the merged result.
-function networkHits(e) {
+// Lines upstream added in this file (a real line diff, base to new; every line of a new file) that reach the network,
+// found in the merged result. Each added line is matched once.
+function networkHits(e, scratch) {
   if (!e.result || !(e.area === "src" || e.area === "helpers") || isBinary(e.result)) return [];
-  const had = new Set(e._b ? textLines(e._b).map((l) => l.trim()) : []);
-  const added = new Set(textLines(e._n).map((l) => l.trim()).filter((l) => l && !had.has(l)));
+  const f = { b: join(scratch, "net-base"), n: join(scratch, "net-new") };
+  writeFileSync(f.b, e._b ?? Buffer.alloc(0));
+  writeFileSync(f.n, e._n);
+  const diff = spawnSync("git", ["diff", "--no-index", "--no-color", "--unified=0", f.b, f.n], { encoding: "utf8", maxBuffer: 1 << 30 }).stdout ?? "";
+  const added = new Map();
+  for (const l of diff.split("\n")) {
+    if (l[0] !== "+" || l.startsWith("+++")) continue;
+    const t = l.slice(1).replace(/\r$/, "");
+    added.set(t, (added.get(t) ?? 0) + 1);
+  }
   const hits = [];
   textLines(e.result).forEach((l, i) => {
     const t = l.replace(XML_NAMESPACE, "");
     const m = NETWORK.exec(t);
-    if (m && added.has(l.trim())) hits.push({ file: e.dest, line: i + 1, text: t.slice(Math.max(0, m.index - 30), m.index + 80).trim() });
+    if (m && added.get(l) > 0) { added.set(l, added.get(l) - 1); hits.push({ file: e.dest, line: i + 1, text: t.slice(Math.max(0, m.index - 30), m.index + 80).trim() }); }
   });
   return hits;
 }
@@ -278,7 +287,7 @@ function runIn(scratch, opts) {
       warnings.push(`HIGH: upstream deleted or moved ${e.dest}, which holds the J.Siwek credit.`);
     }
   }
-  const netHits = entries.flatMap(networkHits);
+  const netHits = entries.flatMap((e) => networkHits(e, scratch));
 
   const res = { base: { version: base.version }, new: { version: next.version }, version, branch, ours: { ref: refName, sha: oursSha, checkout: topLevel },
     unchanged, entries, warnings, netHits, skipped: [...base.notes, ...next.notes], dryRun: !!opts.dryRun, reportFile };
@@ -351,21 +360,29 @@ function decide(e, oi, execB, execN, scratch, branch) {
 function pairRenames(entries, scratch, branch) {
   const gone = entries.filter((e) => e.status === "delete-kept");
   const fresh = entries.filter((e) => e.status === "added" && e.dest);
-  const sim = (x, y) => {
-    const a = new Set(textLines(x)), c = new Set(textLines(y));
+  // Only lines with a letter or digit count: braces and blank lines are in every file. Small files are never paired.
+  const MIN_LINES = 5;
+  const meaningful = (buf) => new Set(textLines(buf).map((l) => l.trim()).filter((l) => /[A-Za-z0-9]/.test(l)));
+  const sim = (a, c) => {
     let both = 0;
     for (const l of a) if (c.has(l)) both++;
-    return both / Math.max(1, a.size + c.size - both);
+    return both / (a.size + c.size - both);
   };
   for (const g of gone) {
     if (isBinary(g._b) || isBinary(g._o)) continue;
+    const gl = meaningful(g._b);
+    if (gl.size < MIN_LINES) { g.hint = "no matching new file found"; continue; }
     let best = null, bestScore = 0;
     for (const f of fresh) {
       if (f.renamedFrom || isBinary(f._n)) continue;
-      const score = Math.max(sim(g._b, f._n), basename(f.dest) === basename(g.dest) ? 0.9 : 0);
-      if (score > bestScore) { best = f; bestScore = score; }
+      const fl = meaningful(f._n);
+      if (fl.size < MIN_LINES) continue;
+      const score = sim(gl, fl);
+      // the same file name only helps a file that is already somewhat alike; alone it proves nothing
+      const ok = score >= 0.6 || (basename(f.dest) === basename(g.dest) && score >= 0.3);
+      if (ok && score > bestScore) { best = f; bestScore = score; }
     }
-    if (!best || bestScore < 0.6) { g.hint = "no matching new file found"; continue; }
+    if (!best) { g.hint = "no matching new file found"; continue; }
     const m = mergeFile(scratch, g._o, g._b, best._n, branch);
     best.renamedFrom = g.dest; best.result = m.merged;
     best.status = m.clean ? "renamed-merged" : "conflict";
@@ -391,6 +408,7 @@ export function renderReport(r) {
     if (!e.hunks.length) todo.push(`- **Conflict** ${e.dest}${from}: git reported a conflict but no marker lines were found; open the file and look for \`<<<<<<<\`.`);
     for (const h of e.hunks) todo.push(`- **Conflict** ${e.dest}:${h.line} (to line ${h.endLine})${from}: ours ${h.oursLines} lines, upstream ${h.theirLines} lines. Ours starts \`${h.oursPeek}\`; upstream starts \`${h.theirPeek}\`. ${e.bothAdded ? "Both sides added this file." : "Keep both sides' changes where they do different things."}`);
   }
+  for (const e of r.entries.filter((x) => x.renamedFrom)) todo.push(`- **Upstream seems to have moved ${e.renamedFrom} to ${e.dest}**: our edits were carried over by a merge; check that these really are the same file.`);
   for (const e of by("binary-conflict")) todo.push(`- **Binary file changed on both sides** ${e.dest}: ours kept; pick one by hand.`);
   for (const e of by("ours-special")) todo.push(`- **${e.dest} is ${e.special} in our checkout**: upstream changed ${e.path}; nothing written, decide by hand.`);
   for (const e of by("delete-kept")) todo.push(`- **Upstream deleted ${e.dest}, but we changed it**: the file is kept; decide whether it should go${e.hint ? " (" + e.hint + ")" : ""}.`);

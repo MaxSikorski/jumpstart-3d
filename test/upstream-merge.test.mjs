@@ -56,7 +56,7 @@ function world(w, { base, next, ours, links = {}, modes = {} }) {
 }
 const withTmp = (fn) => () => {
   const w = mkdtempSync(join(tmpdir(), "um-test-"));
-  try { return fn(w); } finally { rmSync(w, { recursive: true, force: true }); spawnSync("git", ["-C", dirname(w), "worktree", "prune"]); }
+  try { return fn(w); } finally { rmSync(w, { recursive: true, force: true }) }
 };
 const status = (r) => Object.fromEntries(r.entries.map((e) => [e.path, e.status]));
 
@@ -144,8 +144,7 @@ test("nothing is written through a symbolic link, and a failed run leaves no bra
   });
   // our own file being a link is reported, not written
   const dry = run({ ...opts, dryRun: true, out: join(w, "out") });
-  assert.equal(status(dry)["app/src/lnk.js"], "report-only".replace("report-only", "added") === "added" ? status(dry)["app/src/lnk.js"] : "");
-  assert.ok(["ours-special", "added"].includes(status(dry)["app/src/lnk.js"]));
+  assert.equal(status(dry)["app/src/lnk.js"], "ours-special");
   // a real run whose folder in our ref is a link refuses, and rolls back what it made
   assert.throws(() => run({ ...opts, out: join(w, "wt") }), /symbolic link/);
   assert.deepEqual(readdirSync(outside), [], "nothing reached the folder the link points to");
@@ -205,6 +204,7 @@ test("a file upstream moved keeps our edits at the new path", withTmp((w) => {
   assert.equal(readFileSync(join(w, "wt/src/sub/old.js"), "utf8"), lines("alpha", "BETA-OURS", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "IOTA-UP", "kappa"));
   assert.ok(!existsSync(join(w, "wt/src/old.js")), "the old path is gone");
   assert.match(r.report, /upstream moved it from src\/old\.js; our edits carried over/);
+  assert.match(r.report, /## Needs a human[\s\S]*Upstream seems to have moved src\/old\.js to src\/sub\/old\.js\*\*: our edits were carried over/);
   assert.deepEqual(r.warnings, []);
 }));
 
@@ -221,19 +221,63 @@ test("a moved file we did not edit is a plain delete plus add; an unmatched dele
   assert.match(r.report, /deleted src\/lone\.js, but we changed it\*\*: the file is kept; decide whether it should go \(no matching new file found\)/);
 }));
 
+test("unrelated files are not paired as a move (a tiny file, or only the same name)", withTmp((w) => {
+  const five = (p) => lines(...[1, 2, 3, 4, 5, 6].map((i) => p + i + "();"));
+  const { opts } = world(w, {
+    base: { "app/src/colors.js": "export default {\n};\n", "app/src/ui/index.js": five("ui") },
+    next: { "app/src/limits.js": "export default {\n};\n", "app/src/io/index.js": five("io") },
+    ours: { "src/colors.js": "export default {\n  a: 1,\n  b: 2,\n};\n", "src/ui/index.js": five("ui").replace("ui1", "ui-OURS") },
+  });
+  const r = run({ ...opts, dryRun: true, out: join(w, "out") });
+  const st = status(r);
+  assert.equal(st["app/src/colors.js"], "delete-kept", "probe A: a tiny file with only braces in common is not a move");
+  assert.equal(st["app/src/limits.js"], "added");
+  assert.equal(st["app/src/ui/index.js"], "delete-kept", "probe B: the same name in another folder, nothing else alike, is not a move");
+  assert.equal(st["app/src/io/index.js"], "added");
+  assert.ok(!existsSync(join(r.treeDir, "src/limits.js")) || !readFileSync(join(r.treeDir, "src/limits.js"), "utf8").includes("a: 1"), "our lines were not grafted onto an unrelated file");
+  assert.doesNotMatch(r.report, /Upstream seems to have moved/);
+}));
+
+test("the same name helps only a file that is already somewhat alike", withTmp((w) => {
+  const old = lines("alpha();", "beta();", "gamma();", "delta();", "epsilon();", "zeta();", "eta();", "theta();", "iota();", "kappa();");
+  const moved = lines("alpha();", "beta();", "gamma();", "delta();", "epsilon();", "n1();", "n2();"); // 5 of 12 lines alike: 0.42
+  const go = (dir, newPath) => {
+    const { opts } = world(join(w, dir), { base: { "app/src/a/util.js": old }, next: { [newPath]: moved }, ours: { "src/a/util.js": old.replace("zeta", "ZETA-OURS") } });
+    return run({ ...opts, dryRun: true, out: join(w, dir, "out") });
+  };
+  assert.equal(status(go("same-name", "app/src/b/util.js"))["app/src/a/util.js"], "renamed-away", "0.42 alike and the same name");
+  assert.equal(status(go("other-name", "app/src/b/other.js"))["app/src/a/util.js"], "delete-kept", "0.42 alike without the name is not enough");
+}));
+
+test("a network line upstream adds a second time is flagged; third_party is not scanned and the report says so", withTmp((w) => {
+  const { opts } = world(w, {
+    base: { "app/src/dup.js": 'a();\nfetch(u);\nb();\n', "third_party/lib/x.js": "x\n" },
+    next: { "app/src/dup.js": 'a();\nfetch(u);\nb();\nfetch(u);\n', "third_party/lib/x.js": "fetch(u);\n" },
+    ours: { "src/dup.js": 'a();\nfetch(u);\nb();\n', "third_party/lib/x.js": "x\n" },
+  });
+  const r = run({ ...opts, dryRun: true, out: join(w, "out") });
+  // one added line, so one hit; of two identical lines the first is shown
+  assert.equal(r.netHits.length, 1);
+  assert.equal(r.netHits[0].file, "src/dup.js");
+  assert.match(r.report, /third_party\/ is not scanned for network code/);
+}));
+
 test("code that reaches the network is listed even when it merges cleanly", withTmp((w) => {
   const a = lines("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten");
   const { opts } = world(w, {
     base: { "app/src/net.js": a, "app/src/vox.js": "x\n" },
     next: { "app/src/net.js": a.replace("ten", 'const r = await fetch(UPDATE_URL, { cache: "no-store" }); // https://example.org/v.json'), "app/src/vox.js": 'x\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n',
-      "app/src/fresh.js": "const ws = new WebSocket(u);\nnavigator.serviceWorker.register(s);\nplain\n", "app/src/comment.js": "// see https://example.org\n" },
+      "app/src/fresh.js": "const ws = new WebSocket(u);\nnavigator.serviceWorker.register(s);\nplain\n", "app/src/comment.js": "// see https://example.org\n",
+      "app/src/more.js": 'const w = new Worker("x.js");\nconst m = await import(u);\nconst r = await fetch?.(u);\nconst s = "//cdn.example.org/lib.js";\nwindow.open(u);\nlocation.href = u;\nconst none = "a // b";\n' },
     ours: { "src/net.js": a.replace("one", "ONE-OURS"), "src/vox.js": "x\n" },
   });
   const r = run({ ...opts, dryRun: true, out: join(w, "out") });
   assert.equal(status(r)["app/src/net.js"], "merged");
-  assert.deepEqual(r.netHits.map((h) => h.file + ":" + h.line), ["src/comment.js:1", "src/fresh.js:1", "src/fresh.js:2", "src/net.js:10"]);
+  assert.deepEqual(r.netHits.map((h) => h.file + ":" + h.line), ["src/comment.js:1", "src/fresh.js:1", "src/fresh.js:2", "src/more.js:1", "src/more.js:2", "src/more.js:3", "src/more.js:4", "src/more.js:5", "src/more.js:6", "src/net.js:10"]);
   assert.match(r.report, /src\/net\.js:10: .*fetch\(UPDATE_URL/);
   assert.doesNotMatch(r.report, /schemas\.openxmlformats/);
+  // a line that already existed elsewhere in the old file is still found when upstream adds it again
+  assert.equal(r.netHits.filter((h) => h.file === "src/net.js").length, 1);
   assert.match(r.report, /read every line/);
 }));
 
