@@ -376,6 +376,7 @@ test("Open follows the last-seen record: the server's newer copy replaces an unt
 
 test("server thumbnails persist across reconnects without downloading designs; older files still open", async () => {
   await saveLocal(design("dtlocal1", "Lid", 30));
+  await page.waitForFunction(() => !window.__app.vp.isMoving()); // the load starts a framing move; a preview taken while it runs differs from the next one
   await openRemote();
   await connect();
   await page.click("#btn-remote-save");

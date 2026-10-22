@@ -220,7 +220,7 @@ export function initProjects(app) {
     ls.set(LS_PREF + ".last", id);
     setState("Saved");
     app.vp.setView("home", app.scene.allBox().isEmpty() ? null : app.scene.allBox());
-    setTimeout(() => { const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900);
+    setTimeout(() => { if (store.doc.id !== d.id) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: not once another design is open
     return true;
   }
   function createNew(doc, mode = "beginner") {
@@ -522,7 +522,7 @@ export function initProjects(app) {
         if (doc.ver) ls.set(VER_KEY + doc.id, String(doc.ver));
         createNew(doc);
         app.toast(`Opened ${doc.name || "project"}`);
-        setTimeout(() => { const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900);
+        setTimeout(() => { if (store.doc.id !== doc.id) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: not once another design is open
       } catch (e) { app.toast("That file isn't a JumpStart 3D project file.", "err"); }
     };
     r.readAsText(file);
