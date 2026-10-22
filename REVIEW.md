@@ -107,7 +107,8 @@ failed, was skipped, or remains unverified; never call unrun checks passed.
    One exception: a pull request to `main` that changes only top-level Markdown
    files (README.md, NOTICE.md, CHANGELOG.md and the like) takes CI's docs-only
    lane, which runs the MCP tests (they read README.md) and skips the browser
-   suites and judges; any other file, or a retarget, runs everything.
+   suites and judges; any other file, or a pull request into another branch,
+   runs everything.
 5. **After release.** The maintainer rechecks the quoted outcome on the live
    site after the release reaches it; merging to `main` alone does not release
    the site. The maintainer also opens the released single file from disk and
