@@ -16,6 +16,7 @@ const ls = {
 };
 
 export function initProjects(app) {
+  let loads = 0; store.on((k) => { if (k === "load") loads++; }); // jumpstart-3d: the delayed framing of a design is dropped once any other load has happened
   const $ = (id) => document.getElementById(id);
   let db = null, userId = null, downloads = null;
   let remoteOk = false;
@@ -220,7 +221,7 @@ export function initProjects(app) {
     ls.set(LS_PREF + ".last", id);
     setState("Saved");
     app.vp.setView("home", app.scene.allBox().isEmpty() ? null : app.scene.allBox());
-    setTimeout(() => { const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900);
+    const gen = loads; setTimeout(() => { if (gen !== loads) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: only the latest load's
     return true;
   }
   function createNew(doc, mode = "beginner") {
@@ -229,7 +230,7 @@ export function initProjects(app) {
     app.exitSketch();
     store.load(doc || newDoc("Untitled", mode));
     saveNow();
-    app.vp.setView("home");
+    const b = app.scene.allBox(); app.vp.setView("home", b.isEmpty() ? null : b); // jumpstart-3d: frame shapes already built, like open()
   }
 
   // ---------------------------------------------------------------- designs modal
@@ -522,7 +523,7 @@ export function initProjects(app) {
         if (doc.ver) ls.set(VER_KEY + doc.id, String(doc.ver));
         createNew(doc);
         app.toast(`Opened ${doc.name || "project"}`);
-        setTimeout(() => { const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900);
+        const gen = loads; setTimeout(() => { if (gen !== loads) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: only the latest load's
       } catch (e) { app.toast("That file isn't a JumpStart 3D project file.", "err"); }
     };
     r.readAsText(file);
