@@ -18,12 +18,14 @@
 // Without --dry-run it creates branch upstream-<version> from --ours-ref in a new
 // worktree and writes the result there, conflict markers included. It never
 // commits or pushes. The report (Markdown, plain English) says what to do next.
+// It refuses to write through a symbolic link, keeps executable bits, follows a
+// file upstream moved (our edits carry to the new path), lists any network code
+// that came in from upstream, and removes its branch and worktree if it fails.
 // Zips are unpacked with the system `unzip` into a temp folder and read as data;
 // nothing from them is ever run.
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,10 +57,13 @@ export const MAPPING = [
 
 const IGNORE = /(^|\/)(__MACOSX|\.DS_Store|\._[^/]*)(\/|$)/;
 const HELPER_PAGES = new Set(["app/src/chisel.html", "app/src/flexigen.html", "app/src/meshstep.html"]);
+// Code from upstream that reaches the network or the service worker is always listed for a person.
+const XML_NAMESPACE = /https?:\/\/(schemas\.[\w.]+|www\.w3\.org|purl\.org|www\.opengis\.net)[^\s"'<>]*/g; // names, not requests
+const NETWORK = /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|serviceWorker|importScripts|EventSource|https?:\/\//;
 
-const sha = (buf) => createHash("sha256").update(buf).digest("hex");
 const same = (a, b) => a !== null && b !== null && Buffer.compare(a, b) === 0;
 const isBinary = (buf) => buf.subarray(0, 8000).includes(0);
+const textLines = (buf) => buf.toString("utf8").split("\n").map((l) => l.replace(/\r$/, ""));
 
 export function ruleFor(path) {
   for (const r of MAPPING) {
@@ -72,7 +77,7 @@ export function ruleFor(path) {
 
 // ---------- reading an upstream source (zip or folder) ----------
 function findRoot(dir) {
-  const has = (d) => existsSync(join(d, "app", "src", "version.js")) || existsSync(join(d, "app", "src"));
+  const has = (d) => existsSync(join(d, "app", "src"));
   if (has(dir)) return dir;
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.isDirectory() && !IGNORE.test(e.name) && has(join(dir, e.name))) return join(dir, e.name);
@@ -81,36 +86,40 @@ function findRoot(dir) {
 }
 
 function walk(root) {
-  const files = new Map();
+  const files = new Map(), skipped = [];
   const rec = (rel) => {
     for (const e of readdirSync(join(root, rel), { withFileTypes: true })) {
       const r = rel ? rel + "/" + e.name : e.name;
       if (IGNORE.test(r)) continue;
       const st = lstatSync(join(root, r));
       if (st.isDirectory()) rec(r);
-      else if (st.isFile()) files.set(r, join(root, r)); // symlinks and other oddities are skipped
+      else if (st.isFile()) files.set(r, { abs: join(root, r), exec: (st.mode & 0o111) !== 0 });
+      else skipped.push(r + (st.isSymbolicLink() ? " (a symbolic link)" : " (not a plain file)")); // never followed
     }
   };
   rec("");
-  return files;
+  return { files, skipped };
 }
 
 function openSource(input, scratch, label) {
   const p = resolve(input);
   if (!existsSync(p)) throw new Error(`${label} not found: ${p}`);
   let dir = p;
+  const notes = [];
   if (lstatSync(p).isFile()) {
     dir = mkdtempSync(join(scratch, label + "-"));
     const r = spawnSync("unzip", ["-q", "-o", p, "-d", dir, "-x", "__MACOSX/*", "*/.DS_Store"], { encoding: "utf8" });
     if (r.status !== 0 && r.status !== 1) throw new Error(`could not unzip ${p}: ${r.stderr || r.error}`); // 1 = warnings only
+    for (const l of (r.stderr ?? "").split("\n").filter((x) => x && !/excluded filename not matched/.test(x))) notes.push(`${label} zip: ${l.trim()}`);
   }
   const root = findRoot(dir);
-  const files = walk(root);
+  const { files, skipped } = walk(root);
   let version = null;
   const v = files.get("app/src/version.js");
-  if (v) version = /VERSION\s*=\s*["']([^"']+)["']/.exec(readFileSync(v, "utf8"))?.[1] ?? null;
+  if (v) version = /VERSION\s*=\s*["']([^"']+)["']/.exec(readFileSync(v.abs, "utf8"))?.[1] ?? null;
   version ??= /(\d+\.\d+(?:\.\d+)*)/.exec(basename(p))?.[1] ?? null;
-  return { files, version, read: (rel) => (files.has(rel) ? readFileSync(files.get(rel)) : null) };
+  for (const s of skipped) notes.push(`${label} source: skipped ${s}`);
+  return { files, version, notes, read: (rel) => (files.has(rel) ? readFileSync(files.get(rel).abs) : null), exec: (rel) => files.get(rel)?.exec ?? null };
 }
 
 // ---------- reading our checkout at a commit ----------
@@ -120,10 +129,14 @@ function git(cwd, args, opts = {}) {
   return r;
 }
 
+// Our file at the commit: { buf, exec } for a plain file, { special } for a symlink or submodule, null when absent.
 function oursReader(checkout, ref) {
   return (path) => {
-    const r = git(checkout, ["cat-file", "blob", `${ref}:${path}`], { binary: true, allowFail: true });
-    return r.status === 0 ? r.stdout : null;
+    const t = git(checkout, ["ls-tree", "-z", ref, "--", path], { allowFail: true }).stdout;
+    const m = /^(\d+) (\w+) ([0-9a-f]+)\t/.exec(t || "");
+    if (!m) return null;
+    if (m[2] !== "blob" || m[1] === "120000") return { special: m[1] === "120000" ? "a symbolic link" : "not a plain file" };
+    return { buf: git(checkout, ["cat-file", "blob", m[3]], { binary: true }).stdout, exec: m[1] === "100755" };
   };
 }
 
@@ -141,9 +154,10 @@ function mergeFile(scratch, oursBuf, baseBuf, theirsBuf, theirsLabel) {
   return { merged: r.stdout, clean: r.status === 0 };
 }
 
-// Conflict hunks as they sit in the merged file: line numbers and a peek at each side.
+// Conflict hunks as they sit in the merged file: line numbers and a peek at each side. Files with CRLF line ends have
+// markers ending in \r; an incomplete marker is skipped, never the rest of the file.
 function hunksOf(buf) {
-  const lines = buf.toString("utf8").split("\n");
+  const lines = textLines(buf);
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].startsWith("<<<<<<< ")) continue;
@@ -152,7 +166,7 @@ function hunksOf(buf) {
       if (mid < 0 && lines[j] === "=======") mid = j;
       else if (lines[j].startsWith(">>>>>>> ")) { end = j; break; }
     }
-    if (end < 0 || mid < 0) break;
+    if (end < 0 || mid < 0) continue;
     const peek = (k, n) => (n ? lines[k].trim().slice(0, 80) : "(nothing: this side removed the lines)");
     out.push({ line: i + 1, endLine: end + 1, oursLines: mid - i - 1, theirLines: end - mid - 1, oursPeek: peek(i + 1, mid - i - 1), theirPeek: peek(mid + 1, end - mid - 1) });
     i = end;
@@ -160,7 +174,41 @@ function hunksOf(buf) {
   return out;
 }
 
-const count = (buf, needle) => (buf.toString("utf8").match(new RegExp(needle, "g")) ?? []).length;
+// Lines upstream added in this file (all of them for a new file) that reach the network, found in the merged result.
+function networkHits(e) {
+  if (!e.result || !(e.area === "src" || e.area === "helpers") || isBinary(e.result)) return [];
+  const had = new Set(e._b ? textLines(e._b).map((l) => l.trim()) : []);
+  const added = new Set(textLines(e._n).map((l) => l.trim()).filter((l) => l && !had.has(l)));
+  const hits = [];
+  textLines(e.result).forEach((l, i) => {
+    const t = l.replace(XML_NAMESPACE, "");
+    const m = NETWORK.exec(t);
+    if (m && added.has(l.trim())) hits.push({ file: e.dest, line: i + 1, text: t.slice(Math.max(0, m.index - 30), m.index + 80).trim() });
+  });
+  return hits;
+}
+
+// ---------- writing safely ----------
+// A destination is built from a fixed prefix and a relative path from the zip, then checked: no "..", and no
+// symbolic link anywhere on the way (a link in our checkout must never carry a write outside the tree).
+function safePath(root, rel) {
+  if (!rel || rel.startsWith("/") || rel.split("/").includes("..")) throw new Error("refusing an odd path: " + rel);
+  let p = root;
+  for (const seg of rel.split("/")) {
+    p = join(p, seg);
+    let st;
+    try { st = lstatSync(p); } catch { break; } // not there yet: nothing further to check
+    if (st.isSymbolicLink()) throw new Error(`refusing to write through a symbolic link: ${rel} (at ${p.slice(root.length + 1)})`);
+  }
+  return join(root, rel);
+}
+function writeOut(root, rel, data, exec) {
+  const f = safePath(root, rel);
+  mkdirSync(dirname(f), { recursive: true });
+  safePath(root, rel); // again, now the folders exist
+  writeFileSync(f, data);
+  if (exec !== undefined) chmodSync(f, exec ? 0o755 : 0o644);
+}
 
 // ---------- the run ----------
 export function run(opts) {
@@ -186,22 +234,37 @@ function runIn(scratch, opts) {
   if (!/^[0-9A-Za-z._-]+$/.test(version)) throw new Error("odd version text: " + version);
   const branch = "upstream-" + version;
 
+  // preflight: everything that can be refused is refused before anything is created
+  let wt = null, outDir = null;
+  if (opts.dryRun) {
+    outDir = resolve(opts.out ?? mkdtempSync(join(tmpdir(), "upstream-merge-")));
+  } else {
+    wt = resolve(opts.out ?? join(dirname(topLevel), basename(topLevel) + "-" + branch));
+    if (existsSync(wt)) throw new Error("the worktree folder already exists: " + wt);
+    if (!existsSync(dirname(wt))) throw new Error("the folder for the worktree does not exist: " + dirname(wt));
+    if (git(topLevel, ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch], { allowFail: true }).status === 0) throw new Error(`branch ${branch} already exists`);
+  }
+  const reportFile = opts.report ?? (opts.dryRun ? join(outDir, "report.md") : join(dirname(wt), branch + "-report.md"));
+  if (!existsSync(dirname(reportFile)) && !(opts.dryRun && dirname(reportFile) === outDir)) throw new Error("the folder for the report does not exist: " + dirname(reportFile));
+
   const paths = [...new Set([...base.files.keys(), ...next.files.keys()])].sort();
   const entries = [];
   let unchanged = 0;
   for (const p of paths) {
-    const b = base.read(p), n = next.read(p);
-    if (same(b, n)) { unchanged++; continue; }
+    const b = base.read(p), n = next.read(p), execB = base.exec(p), execN = next.exec(p);
+    if (same(b, n) && execB === execN) { unchanged++; continue; }
     const rule = ruleFor(p);
-    const e = { path: p, dest: rule.dest, area: rule.area, how: rule.how, note: rule.note, baseSha: b && sha(b).slice(0, 10), newSha: n && sha(n).slice(0, 10), upstream: b === null ? "added" : n === null ? "deleted" : "changed" };
+    const e = { path: p, dest: rule.dest, area: rule.area, note: rule.note, upstream: b === null ? "added" : n === null ? "deleted" : "changed", _b: b, _n: n };
     if (rule.how === "report") {
       e.status = "report-only";
     } else {
-      const o = readOurs(rule.dest);
-      decide(e, o, b, n, scratch, "upstream-" + version);
+      const oi = readOurs(rule.dest);
+      if (oi?.special) { e.status = "ours-special"; e.special = oi.special; }
+      else { e._o = oi?.buf ?? null; decide(e, oi, execB, execN, scratch, branch); }
     }
     entries.push(e);
   }
+  pairRenames(entries, scratch, branch);
 
   // checks across the merged result
   const warnings = [];
@@ -211,62 +274,58 @@ function runIn(scratch, opts) {
     if (e.dest && credit.includes(e.dest) && e.result && !e.result.includes("Created by J.Siwek")) {
       warnings.push(`HIGH: ${e.dest} lost "Created by J.Siwek" in the merge. The credit must stay.`);
     }
-    if (e.status === "merged" || e.status === "conflict") {
-      const before = count(readOurs(e.dest), "jumpstart-3d"), after = count(e.result, "jumpstart-3d");
-      if (after < before) warnings.push(`${e.dest} has fewer "jumpstart-3d" markers after the merge (${before} -> ${after}): one of our additions may be gone.`);
-    }
-    if (e.status === "deleted" || e.status === "delete-kept") {
-      if (credit.includes(e.dest)) warnings.push(`HIGH: upstream deleted ${e.dest}, which holds the J.Siwek credit.`);
+    if ((e.status === "deleted" || e.status === "delete-kept" || e.status === "renamed-away") && credit.includes(e.dest)) {
+      warnings.push(`HIGH: upstream deleted or moved ${e.dest}, which holds the J.Siwek credit.`);
     }
   }
+  const netHits = entries.flatMap(networkHits);
 
   const res = { base: { version: base.version }, new: { version: next.version }, version, branch, ours: { ref: refName, sha: oursSha, checkout: topLevel },
-    unchanged, entries, warnings, dryRun: !!opts.dryRun };
+    unchanged, entries, warnings, netHits, skipped: [...base.notes, ...next.notes], dryRun: !!opts.dryRun, reportFile };
+  if (opts.dryRun) { res.outDir = outDir; res.treeDir = join(outDir, "tree"); } else res.worktree = wt;
+  res.report = renderReport(res);
 
   // ---------- write the result ----------
+  const apply = (root) => {
+    for (const e of entries) {
+      if (e.result) writeOut(root, e.dest, e.result, e.exec);
+      else if (e.status === "deleted" || e.status === "renamed-away") rmSync(safePath(root, e.dest), { force: true });
+    }
+  };
   if (opts.dryRun) {
-    const out = resolve(opts.out ?? mkdtempSync(join(tmpdir(), "upstream-merge-")));
-    mkdirSync(out, { recursive: true });
-    res.treeDir = join(out, "tree");
-    for (const e of entries) {
-      if (e.result) {
-        const f = join(res.treeDir, e.dest);
-        mkdirSync(dirname(f), { recursive: true });
-        writeFileSync(f, e.result);
-      }
-    }
-    res.outDir = out;
+    mkdirSync(outDir, { recursive: true });
+    apply(res.treeDir);
+    writeFileSync(reportFile, res.report);
   } else {
-    const wt = resolve(opts.out ?? join(dirname(topLevel), basename(topLevel) + "-" + branch));
-    if (existsSync(wt)) throw new Error("the worktree folder already exists: " + wt);
     git(topLevel, ["worktree", "add", "--no-track", "-b", branch, wt, oursSha]);
-    for (const e of entries) {
-      if (e.result) {
-        const f = join(wt, e.dest);
-        mkdirSync(dirname(f), { recursive: true });
-        writeFileSync(f, e.result);
-      } else if (e.status === "deleted") {
-        rmSync(join(wt, e.dest), { force: true });
-      }
+    try {
+      apply(wt);
+      writeFileSync(reportFile, res.report);
+    } catch (err) { // leave nothing of this run behind
+      git(topLevel, ["worktree", "remove", "--force", wt], { allowFail: true });
+      rmSync(wt, { recursive: true, force: true });
+      git(topLevel, ["worktree", "prune"], { allowFail: true });
+      git(topLevel, ["branch", "-D", branch], { allowFail: true });
+      throw err;
     }
-    res.worktree = wt;
   }
-  res.report = renderReport(res);
-  const reportFile = opts.report ?? (opts.dryRun ? join(res.outDir, "report.md") : join(dirname(res.worktree), branch + "-report.md"));
-  writeFileSync(reportFile, res.report);
-  res.reportFile = reportFile;
-  for (const e of entries) delete e.result; // keep the returned object small
+  for (const e of entries) { delete e.result; delete e._b; delete e._n; delete e._o; } // keep the returned object small
   return res;
 }
 
-// One file: decide what happens, set e.status and (when a file is to be written) e.result.
-function decide(e, o, b, n, scratch, theirsLabel) {
+// One file: decide what happens, set e.status and (when a file is to be written) e.result and e.exec.
+function decide(e, oi, execB, execN, scratch, branch) {
+  const o = e._o, b = e._b, n = e._n;
+  const theirs = branch;
+  const execOf = () => (o === null ? execN : b === null ? oi.exec : oi.exec === execB ? execN : oi.exec); // three-way on the executable bit
   if (b === null) { // new upstream file
-    if (o === null) { e.status = "added"; e.result = n; return; }
+    if (o === null) { e.status = "added"; e.result = n; e.exec = execN; return; }
     if (same(o, n)) { e.status = "already-identical"; return; }
     if (isBinary(o) || isBinary(n)) { e.status = "binary-conflict"; return; }
-    const m = mergeFile(scratch, o, Buffer.alloc(0), n, theirsLabel);
-    e.status = "conflict"; e.result = m.merged; e.hunks = hunksOf(m.merged); e.bothAdded = true; return;
+    const m = mergeFile(scratch, o, Buffer.alloc(0), n, theirs);
+    e.status = m.clean ? "merged" : "conflict"; e.result = m.merged; e.exec = execOf(); e.bothAdded = true;
+    if (!m.clean) e.hunks = hunksOf(m.merged);
+    return;
   }
   if (n === null) { // deleted upstream
     if (o === null) { e.status = "already-identical"; return; }
@@ -274,16 +333,49 @@ function decide(e, o, b, n, scratch, theirsLabel) {
     return;
   }
   if (o === null) { e.status = "we-removed"; return; } // changed upstream, but we do not have the file
-  if (same(o, n)) { e.status = "already-identical"; return; }
-  if (same(o, b)) { e.status = "took-upstream"; e.result = n; return; } // we never touched it
+  if (same(o, n)) {
+    e.status = "already-identical";
+    if (execB !== execN && oi.exec === execB) { e.status = "mode-only"; e.result = o; e.exec = execN; } // only the executable bit changed upstream
+    return;
+  }
+  if (same(o, b)) { e.status = "took-upstream"; e.result = n; e.exec = execOf(); return; } // we never touched the text
   if (isBinary(o) || isBinary(b) || isBinary(n)) { e.status = "binary-conflict"; return; }
-  const m = mergeFile(scratch, o, b, n, theirsLabel);
-  if (m.clean) { e.status = "merged"; e.result = m.merged; return; }
-  e.status = "conflict"; e.result = m.merged; e.hunks = hunksOf(m.merged);
+  const m = mergeFile(scratch, o, b, n, theirs);
+  e.result = m.merged; e.exec = execOf();
+  if (m.clean) e.status = "merged";
+  else { e.status = "conflict"; e.hunks = hunksOf(m.merged); }
+}
+
+// Upstream renamed a file we had edited: it shows as "deleted" (we changed it) plus "added". Carry our edits to the
+// new path with a merge of base = his old file, ours = our old file, theirs = his new file.
+function pairRenames(entries, scratch, branch) {
+  const gone = entries.filter((e) => e.status === "delete-kept");
+  const fresh = entries.filter((e) => e.status === "added" && e.dest);
+  const sim = (x, y) => {
+    const a = new Set(textLines(x)), c = new Set(textLines(y));
+    let both = 0;
+    for (const l of a) if (c.has(l)) both++;
+    return both / Math.max(1, a.size + c.size - both);
+  };
+  for (const g of gone) {
+    if (isBinary(g._b) || isBinary(g._o)) continue;
+    let best = null, bestScore = 0;
+    for (const f of fresh) {
+      if (f.renamedFrom || isBinary(f._n)) continue;
+      const score = Math.max(sim(g._b, f._n), basename(f.dest) === basename(g.dest) ? 0.9 : 0);
+      if (score > bestScore) { best = f; bestScore = score; }
+    }
+    if (!best || bestScore < 0.6) { g.hint = "no matching new file found"; continue; }
+    const m = mergeFile(scratch, g._o, g._b, best._n, branch);
+    best.renamedFrom = g.dest; best.result = m.merged;
+    best.status = m.clean ? "renamed-merged" : "conflict";
+    if (!m.clean) best.hunks = hunksOf(m.merged);
+    g.status = "renamed-away"; g.renamedTo = best.dest;
+  }
 }
 
 // ---------- the report ----------
-function renderReport(r) {
+export function renderReport(r) {
   const by = (...s) => r.entries.filter((e) => s.includes(e.status));
   const conflicts = by("conflict");
   const L = [];
@@ -295,34 +387,48 @@ function renderReport(r) {
   L.push("## Needs a human", "");
   const todo = [];
   for (const e of conflicts) {
-    for (const h of e.hunks) todo.push(`- **Conflict** ${e.dest}:${h.line} (to line ${h.endLine}): ours ${h.oursLines} lines, upstream ${h.theirLines} lines. Ours starts \`${h.oursPeek}\`; upstream starts \`${h.theirPeek}\`. ${e.bothAdded ? "Both sides added this file." : "Keep both sides' changes where they do different things."}`);
+    const from = e.renamedFrom ? ` (upstream moved ${e.renamedFrom} here)` : "";
+    if (!e.hunks.length) todo.push(`- **Conflict** ${e.dest}${from}: git reported a conflict but no marker lines were found; open the file and look for \`<<<<<<<\`.`);
+    for (const h of e.hunks) todo.push(`- **Conflict** ${e.dest}:${h.line} (to line ${h.endLine})${from}: ours ${h.oursLines} lines, upstream ${h.theirLines} lines. Ours starts \`${h.oursPeek}\`; upstream starts \`${h.theirPeek}\`. ${e.bothAdded ? "Both sides added this file." : "Keep both sides' changes where they do different things."}`);
   }
   for (const e of by("binary-conflict")) todo.push(`- **Binary file changed on both sides** ${e.dest}: ours kept; pick one by hand.`);
-  for (const e of by("delete-kept")) todo.push(`- **Upstream deleted ${e.dest}, but we changed it**: the file is kept; decide whether it should go.`);
+  for (const e of by("ours-special")) todo.push(`- **${e.dest} is ${e.special} in our checkout**: upstream changed ${e.path}; nothing written, decide by hand.`);
+  for (const e of by("delete-kept")) todo.push(`- **Upstream deleted ${e.dest}, but we changed it**: the file is kept; decide whether it should go${e.hint ? " (" + e.hint + ")" : ""}.`);
   for (const e of by("we-removed")) todo.push(`- **Upstream changed ${e.path}, but we have no ${e.dest}** (we removed or moved it): skipped; check whether the change matters.`);
   for (const w of r.warnings) todo.push("- " + w);
+  if (r.netHits.length) {
+    todo.push("- **Network or service-worker code that came in from upstream** (REVIEW.md: no network request without user action; read every line):");
+    const perFile = new Map();
+    for (const h of r.netHits) perFile.set(h.file, [...(perFile.get(h.file) ?? []), h]);
+    for (const [file, hs] of perFile) {
+      for (const h of hs.slice(0, 8)) todo.push(`  - ${file}:${h.line}: \`${h.text}\``);
+      if (hs.length > 8) todo.push(`  - ${file}: and ${hs.length - 8} more`);
+    }
+  }
   const outside = r.entries.filter((e) => e.area !== "src");
   const notes = new Map();
   for (const e of outside) if (e.note) notes.set(e.note, [...(notes.get(e.note) ?? []), e.path]);
   for (const [note, files] of notes) todo.push(`- **Outside src/**: ${note} (${files.join(", ")})`);
   if (r.entries.some((e) => HELPER_PAGES.has(e.path))) todo.push("- **Helper pages**: upstream's built src/{flexigen,meshstep,chisel}.html changed, but ours are rebuilt from tools/*-source.html with our changes. Regenerate them from the merged sources (tools/README-helpers.md) instead of trusting a text merge.");
   if (r.entries.some((e) => e.path === "app/src/version.js")) todo.push("- **Version**: src/version.js follows upstream; keep our BUILD line and the version text in src/index.html's splash, and check the About dialog.");
+  if (r.skipped.length) todo.push(`- **Skipped while reading the sources** (never followed or written): ${r.skipped.join("; ")}`);
   L.push(todo.length ? todo.join("\n") : "Nothing: every change merged cleanly and nothing sits outside src/.", "");
 
   const list = (title, es, fmt) => {
     L.push(`## ${title} (${es.length})`, "");
     L.push(es.length ? es.map(fmt).join("\n") : "None.", "");
   };
-  list("Changed upstream, merged cleanly with our changes", by("merged"), (e) => `- ${e.dest}`);
-  list("Changed upstream, we never touched the file (took his version)", by("took-upstream"), (e) => `- ${e.dest}`);
-  list("Conflicts", conflicts, (e) => `- ${e.dest}: ${e.hunks.length} hunk(s) at line ${e.hunks.map((h) => h.line).join(", ")}`);
+  list("Changed upstream, merged cleanly with our changes", by("merged", "renamed-merged"), (e) => `- ${e.dest}${e.renamedFrom ? ` (upstream moved it from ${e.renamedFrom}; our edits carried over)` : ""}`);
+  list("Changed upstream, we never touched the file (took his version)", by("took-upstream", "mode-only"), (e) => `- ${e.dest}${e.status === "mode-only" ? " (only the executable bit)" : ""}`);
+  list("Conflicts", conflicts, (e) => `- ${e.dest}: ${e.hunks.length} hunk(s)${e.hunks.length ? " at line " + e.hunks.map((h) => h.line).join(", ") : ""}`);
   list("New upstream files", by("added", "already-identical").filter((e) => e.upstream === "added"), (e) => `- ${e.dest ?? e.path}${e.status === "already-identical" ? " (we already have this exact file)" : ""}`);
-  list("Deleted upstream", by("deleted", "delete-kept").concat(r.entries.filter((e) => e.upstream === "deleted" && e.status === "report-only")), (e) => `- ${e.dest ?? e.path}${e.status === "delete-kept" ? " (kept: we changed it)" : e.status === "report-only" ? " (outside src/, not touched)" : " (removed in the merged tree)"}`);
+  list("Deleted upstream", by("deleted", "delete-kept", "renamed-away").concat(r.entries.filter((e) => e.upstream === "deleted" && e.status === "report-only")),
+    (e) => `- ${e.dest ?? e.path}${e.status === "delete-kept" ? " (kept: we changed it)" : e.status === "renamed-away" ? ` (moved to ${e.renamedTo}; our edits carried over)` : e.status === "report-only" ? " (outside src/, not touched)" : " (removed in the merged tree)"}`);
   list("Outside src/ (listed, needs a look)", outside, (e) => `- ${e.path} (${e.upstream}${e.status === "report-only" ? "; left untouched" : "; " + e.status.replace(/-/g, " ")}${e.dest ? " in " + e.dest : ""})`);
 
   L.push("## Next", "");
   L.push("1. Resolve every conflict marker (`<<<<<<< ours` to `>>>>>>> " + r.branch + "`), keeping both sides' changes where they do different things.",
-    "2. Re-apply our marked hooks if the warnings above name a lost one; set the version text and BUILD; keep \"Created by J.Siwek\".",
+    "2. Re-apply our marked `jumpstart-3d:` hooks wherever a conflict touched one; set the version text and BUILD; keep \"Created by J.Siwek\".",
     "3. `node build.mjs`, `npm test` on both builds, `npm run test:update` only for an intended geometry change.",
     "4. Commit on the branch and open the PR (REVIEW.md: upstream merges are checked for the author's changes and our additions).", "");
   return L.join("\n");
