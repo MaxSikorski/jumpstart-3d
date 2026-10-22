@@ -83,24 +83,33 @@ failed, was skipped, or remains unverified; never call unrun checks passed.
 Scale the gates to the risk of the change. The PR's **Review gates** section
 names the tier.
 
-- **Light tier:** a change that is only documentation, only tests, or only
-  tooling (for example `tools/`, `test/`, `*.md`), and touches none of the
-  sensitive paths above. It gets gates 1 and 4 and one Claude review (gate 3).
-  No Codex review (gate 2) and no verify pass. CI is still required.
+- **Light tier:** a change that only touches Markdown docs (not the built
+  `docs/` folder), spec files that add or tighten tests, or tools nothing runs
+  automatically, and touches none of the sensitive paths above. It gets gates 1
+  and 4 and one Claude review (gate 3). No Codex review (gate 2) and no verify
+  pass. CI is still required.
 - **Full tier:** anything that touches `src/` geometry, imports or exports,
   storage, network calls, the service worker or the update check,
   `.github/workflows/`, `mcp/`, release or build scripts, this file, or an
-  upstream merge. It gets every gate: Codex review, Claude review and the
-  verify pass.
-- **When unsure, use the full tier.** A PR that mixes both is full tier.
+  upstream merge. It also covers the files that decide what counts as correct
+  or what CI runs: test oracles and expectation files (`test/golden.json`,
+  `test/judge-*.json`, `test/fixtures/`, `test/helpers.mjs` and any shared
+  test helper that seeds storage), `playwright.config.mjs`, `package.json` and
+  the lockfiles, and any `tools/` file that CI or the build runs
+  (`tools/judge-exports.mjs`, `judge-freecad.py`, `install-judge-tools.sh`,
+  `tools/make_*.py`, `tools/*-source.html`). It gets every gate: Codex review,
+  Claude review and the verify pass.
+- **Behavioural risk overrides the file category:** a change in a light file
+  that alters what a user's design, export, stored data or network traffic does
+  is full tier. Everything that is not light is full. When unsure, use the full
+  tier; a PR that mixes both is full tier.
 
 ## The flake rule
 
-A test that fails and then passes on a rerun with no code change is a flake.
-Record it in the PR (test name, run link, what the failure said). The very
-next piece of work fixes its root cause; the test is never rerun a second time
-across PRs to get past it. A test that fails again after one rerun blocks the
-merge.
+Rerun a failed check once. If it passes with no code change, record it as a
+flake in the PR (test or CI step, run link, failure text). Its root cause is
+the next piece of work, and until then a second appearance blocks the merge. A
+check that fails again after the rerun blocks the merge.
 
 ## The gates
 
@@ -127,8 +136,8 @@ merge.
    breaks ties. Only a genuine remaining disagreement on a HIGH finding stops
    for the maintainer. Rank verified findings HIGH/MEDIUM/LOW, remove
    duplicates, fix them as appropriate, and record their disposition.
-4. **CI.** CI runs the full suite on both builds, including the export judge
-   and phone budget. The chat scorer and the fuzzer run in a nightly workflow
+4. **CI.** CI runs all the per-pull-request checks on both builds, including
+   the export judge and phone budget. The chat scorer and the fuzzer run in a nightly workflow
    (`.github/workflows/nightly.yml`), not on each PR; a red nightly run is
    looked at the next working day and its cause fixed as the next piece of
    work. See [test/README.md](test/README.md) for commands and limits. A
@@ -138,7 +147,7 @@ merge.
    files (README.md, NOTICE.md, CHANGELOG.md and the like) takes CI's docs-only
    lane, which runs the MCP tests (they read README.md) and skips the browser
    suites and judges; any other file, or a pull request into another branch,
-   runs everything.
+   runs all the per-pull-request checks (the nightly checks run separately).
 5. **After release.** The maintainer rechecks the quoted outcome on the live
    site after the release reaches it; merging to `main` alone does not release
    the site. The maintainer also opens the released single file from disk and

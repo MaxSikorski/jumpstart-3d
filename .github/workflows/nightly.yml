@@ -63,9 +63,10 @@ jobs:
           fi
       - if: ${{ steps.have.outputs.present == 'true' }}
         run: npx playwright install chromium
+      # the fuzz script has no pretest: build first (the script itself sets FUZZ_RUNS=50)
       - if: ${{ steps.have.outputs.present == 'true' }}
-        env:
-          FUZZ_RUNS: '50'
+        run: node build.mjs
+      - if: ${{ steps.have.outputs.present == 'true' }}
         run: npm run fuzz
       - if: ${{ failure() && steps.have.outputs.present == 'true' }}
         uses: actions/upload-artifact@v7
