@@ -6,7 +6,8 @@ in the About dialog; this community build keeps that line.
 The author's own places (the repository and the video date from 19 October
 2026):
 
-- The official site: https://sites.google.com/view/jumpstart-3d-creator/home
+- The official site: https://classyapps.org/ (his first site, which the
+  license quote below comes from: https://sites.google.com/view/jumpstart-3d-creator/home)
 - His source repository on GitHub: https://github.com/classyapps2026/jumpstart3d
   (the 2.0 app source and the built single file, under the MIT License; the
   bundled libraries are in his source zip and in this repository)
