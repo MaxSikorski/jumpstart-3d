@@ -161,7 +161,8 @@ export function child(executable, args, { env, timeoutMs, startupMs, progressMs 
       error = reason;
       try { if (process.platform !== 'win32') process.kill(-proc.pid, 'SIGKILL'); else proc.kill('SIGKILL'); } catch (e) { if (e.code !== 'ESRCH') error += `; kill: ${e.message}`; }
     };
-    const arm = ms => { clearTimeout(timer); timer = setTimeout(() => stop(Date.now() >= deadline ? 'total judge deadline exceeded' : 'child timeout/no progress'), Math.max(1, Math.min(ms, deadline - Date.now()))); };
+    // One timer, and its reason is chosen when it is armed: Node can fire a timer a millisecond before Date.now() reaches the deadline, so asking the clock at fire time sometimes named the wrong limit.
+    const arm = ms => { clearTimeout(timer); const left = deadline - Date.now(), reason = left <= ms ? 'total judge deadline exceeded' : 'child timeout/no progress'; timer = setTimeout(() => stop(reason), Math.max(1, Math.min(ms, left))); };
     arm(startupMs ?? timeoutMs);
     proc.stdout.on('data', data => {
       const s = data.toString(); stdout += s; appendFileSync(stdoutFile, data);
