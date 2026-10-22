@@ -206,3 +206,19 @@ test('editing a connected Join to a through Cut splits in one undo', async () =>
   await run(() => JS3D.undo()); await waitIdle(page);
   expect(await run(() => JS3D.doc())).toEqual(before.doc);
 });
+
+test('beginner: a box with a hole through its middle stays one body after Group, as soon as the app is idle', async () => {
+  await loadDoc(page, newDoc("Box with hole", "beginner", { bodies: [
+    box("target", 20, 20, 20),
+    body("hole", "Cylinder hole", prim("cylinder", { w: 8, d: 8, h: 30 }), translated(0, 0, -5), { hole: true }),
+  ] }));
+  await run(() => JS3D.select(["target", "hole"]));
+  const depth = await run(() => __store.undoStack.length);
+  await page.click("#bb-group");
+  await waitIdle(page); // no poll on the undo stack: idle must already mean the Group has landed
+  const made = await bodies(page);
+  expect(made).toHaveLength(1);
+  expect(made[0]).toMatchObject({ hole: false, error: null });
+  expect(made[0].volume).toBeCloseTo(8000 - Math.PI * 16 * 20, 0);
+  expect(await run(() => __store.undoStack.length)).toBe(depth + 1);
+});

@@ -320,7 +320,8 @@ export class SceneSync {
     };
   }
 
-  busy() { return this.doc ? this.doc.bodies.some((b) => this.views.get(b.id)?.pending) : false; }
+  // jumpstart-3d: holdBusy is raised while a Combine or Group is still staging its result (see combinesplit.js)
+  busy() { return this.holdBusy > 0 || (this.doc ? this.doc.bodies.some((b) => this.views.get(b.id)?.pending) : false); }
 
   // ---------------------------------------------------------- selection visuals
   setSelected(ids) { this.state.selected = new Set(ids); this.refresh(); }

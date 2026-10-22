@@ -30,6 +30,9 @@ export async function commitCombine(app, prepare, label, { target, op } = {}) {
       await new Promise(resolve => setTimeout(resolve, 25));
     }
   };
+  // Until the atomic commit lands, store.doc still holds the inputs: tell waiters (tests, JS3D.ready) the app is busy.
+  const scene = app.scene;
+  scene.holdBusy = (scene.holdBusy || 0) + 1;
   try {
     const id = prepare(proposed);
     if (!id) return [];
@@ -79,6 +82,7 @@ export async function commitCombine(app, prepare, label, { target, op } = {}) {
     store.update(doc => Object.assign(doc, proposed), label);
     return ids;
   } finally {
+    scene.holdBusy--;
     if (staged && store.preview === staged) store.setPreview(null);
   }
 }
