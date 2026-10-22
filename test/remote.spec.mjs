@@ -22,7 +22,7 @@ const NOT_A_DESIGN = "“other.json” isn't a JumpStart 3D design file.";
 // ---- the fake WebDAV server
 function makeFake() {
   const s = {};
-  s.reset = () => Object.assign(s, { files: new Map(), folder: true, down: false, etags: true, bump: false, redirect: false, mkcol: 0, prefix: "d", user: "max", pass: "pä55 wörd", log: [], n: 0, storageJson: {}, storageHits: 0 });
+  s.reset = () => Object.assign(s, { files: new Map(), folder: true, down: false, etags: true, bump: false, redirect: false, mkcol: 0, previewGet: 0, previewPut: 0, previewDelete: 0, beforeRequest: null, prefix: "d", user: "max", pass: "pä55 wörd", log: [], n: 0, storageJson: {}, storageHits: 0 });
   s.put = (name, text) => { s.n++; s.files.set(name, { text, etag: '"e' + s.n + '"', mtime: 1_760_000_000_000 + s.n * 60_000 }); };
   const cors = { "Access-Control-Allow-Origin": "*" };
   // prefix "d": Nextcloud (d:), "D": Apache (D: with lp1: for the live properties), "": no prefix
@@ -53,6 +53,10 @@ function makeFake() {
     if (s.redirect) return reply(301, { Location: HOST + "elsewhere/dav/" });
     if (m === "OPTIONS") return reply(204, { "Access-Control-Allow-Methods": "GET, PUT, DELETE, PROPFIND, MKCOL, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Depth, Content-Type, If-Match" });
     if (!authOk) return reply(401, { "WWW-Authenticate": 'Basic realm="fake"' });
+    if (s.beforeRequest) await s.beforeRequest({ method: m, name });
+    if (name.endsWith(".thumb") && m === "DELETE" && s.previewDelete) return reply(s.previewDelete);
+    if (name.endsWith(".thumb") && m === "GET" && s.previewGet) return reply(s.previewGet);
+    if (name.endsWith(".thumb") && m === "PUT" && s.previewPut) return reply(s.previewPut);
     if (!name) {
       if (m === "PROPFIND") return s.folder ? reply(207, {}, multistatus(), "application/xml; charset=utf-8") : reply(404);
       if (m === "MKCOL") { if (s.mkcol) return reply(s.mkcol); if (s.folder) return reply(405); s.folder = true; return reply(201); }
@@ -132,6 +136,8 @@ const openId = () => page.evaluate(() => window.__store.doc.id);
 const saveLocal = async (doc) => { await loadDoc(page, doc); await page.evaluate(() => window.__app.projects.saveNow()); };
 const since = (n, method) => fake.log.slice(n).filter((e) => !method || e.method === method);
 const methodsSince = (n) => fake.log.slice(n).map((e) => e.method);
+const gate = () => { let release; const promise = new Promise((resolve) => { release = resolve; }); return { promise, release }; };
+const background = (name) => card(name).locator(".thumb").evaluate((e) => e.style.backgroundImage);
 const closeDesigns = async () => { if (await page.locator(".modal-back").count()) { await page.click(".modal-back .xbtn"); await expect(page.locator(".modal-back")).toHaveCount(0); } };
 
 async function connectUI({ url = BASE, user = "max", pass = fake.pass, remember = false } = {}) {
@@ -368,6 +374,60 @@ test("Open follows the last-seen record: the server's newer copy replaces an unt
   expect(JSON.parse(await stored("dtremote2")).bodies).toEqual(JSON.parse(mine).bodies);
 });
 
+test("server thumbnails persist across reconnects without downloading designs; older files still open", async () => {
+  await saveLocal(design("dtlocal1", "Lid", 30));
+  await openRemote();
+  await connect();
+  await page.click("#btn-remote-save");
+  await toast("Saved “Lid” to the server.");
+  const thumb = fake.files.get("Lid-dtlocal1.json.thumb")?.text;
+  expect(thumb).toMatch(/^data:image\/jpeg;base64,\S+$/);
+  await page.evaluate(() => window.__app.projects.saveNow());
+  expect(thumb).toBe((await entries()).find((e) => e.id === "dtlocal1").thumb);
+  const background = () => card("Lid").locator(".thumb").evaluate((e) => e.style.backgroundImage);
+  await expect.poll(background).toBe(`url("${thumb}")`);
+  await closeDesigns();
+  await page.evaluate(async () => {
+    window.__app.projects._remote.forget();
+    await window.__app.projects._store.del("dtlocal1");
+  });
+  await boot(page, info0); // discard the remote module's in-memory list
+  fake.put(BRACKET_FILE, projectFile(BRACKET));
+  const n = fake.log.length;
+  await openRemote();
+  await connect();
+  await expect(cards()).toHaveCount(2);
+  await expect.poll(background).toBe(`url("${thumb}")`);
+  expect(since(n, "GET").map((r) => r.name)).toEqual(["Lid-dtlocal1.json.thumb"]);
+  expect(since(n, "GET").every((r) => r.authOk)).toBe(true);
+  expect(await card("Bracket").locator(".thumb").evaluate((e) => e.style.backgroundImage)).toBe("none");
+  await card("Bracket").locator(".open").click();
+  await toast("Opened “Bracket” from the server.");
+  expect(await openId()).toBe("dtremote2");
+});
+
+test("unreadable or refused previews leave designs usable and a failed preview save is reported", async () => {
+  fake.put(BRACKET_FILE, projectFile(BRACKET));
+  fake.put(BRACKET_FILE + ".thumb", "https://untrusted.example/image.jpg");
+  await openRemote();
+  await connect();
+  expect(await card("Bracket").locator(".thumb").evaluate((e) => e.style.backgroundImage)).toBe("none");
+  await page.click("#btn-remote-forget");
+  fake.previewGet = 401;
+  await connect();
+  await expect(cards()).toHaveCount(1);
+  expect(await card("Bracket").locator(".thumb").evaluate((e) => e.style.backgroundImage)).toBe("none");
+  await card("Bracket").locator(".open").click();
+  await toast("Opened “Bracket” from the server.");
+  expect(await openId()).toBe("dtremote2");
+  fake.previewPut = 507;
+  await openRemote();
+  await page.click("#btn-remote-save");
+  await toast("Saved “Bracket” to the server.");
+  await expect(status()).toHaveText("Saved “Bracket” to dav.example.test. The design is saved, but its preview could not be updated.");
+  expect(JSON.parse(fake.files.get(BRACKET_FILE).text).doc.id).toBe("dtremote2");
+});
+
 test("Save puts the open design on the server as the folder's project file, and checks the server's copy before replacing it", async () => {
   await saveLocal(design("dtlocal1", "Lid", 30));
   await openRemote();
@@ -384,18 +444,20 @@ test("Save puts the open design on the server as the folder's project file, and 
   expect(file.text).toBe(JSON.stringify({ app: "jumpstart-3d", version: 1, doc }, null, 1));
   expect(file.text).not.toContain("_updated");
   const puts = since(0, "PUT");
-  expect(puts).toHaveLength(1);
+  expect(puts).toHaveLength(2);
+  expect(puts[1]).toMatchObject({ name: "Lid-dtlocal1.json.thumb", type: "text/plain" });
   expect(puts[0]).toMatchObject({ name: "Lid-dtlocal1.json", type: "application/json" });
   expect(puts[0].ifMatch).toBeUndefined();
   await expect(cards()).toHaveCount(1);
   await expect(card("Lid")).toHaveClass(/current/);
-  // saved again, unchanged: the stamp matches, so no GET, and the PUT carries If-Match
+  // saved again, unchanged: the captured preview is reused, and the design PUT carries If-Match
   const etag = file.etag;
   let n = fake.log.length;
   await clearToasts();
   await page.click("#btn-remote-save");
   await toast("Saved “Lid” to the server.");
-  expect(methodsSince(n)).toEqual(["PROPFIND", "PUT", "PROPFIND"]);
+  expect(methodsSince(n)).toEqual(["PROPFIND", "PUT", "PUT", "PROPFIND"]);
+  expect(since(n, "GET")).toEqual([]);
   expect(since(n, "PUT")[0].ifMatch).toBe(etag);
   // a server that gives no ETag: the stamp changes kind, so the content is compared first and no If-Match is sent
   fake.etags = false;
@@ -403,7 +465,8 @@ test("Save puts the open design on the server as the folder's project file, and 
   await clearToasts();
   await page.click("#btn-remote-save");
   await toast("Saved “Lid” to the server.");
-  expect(methodsSince(n)).toEqual(["PROPFIND", "GET", "PUT", "PROPFIND"]);
+  expect(methodsSince(n)).toEqual(["PROPFIND", "GET", "PUT", "PUT", "PROPFIND"]);
+  expect(since(n, "GET").map((r) => r.name)).toEqual(["Lid-dtlocal1.json"]);
   expect(since(n, "PUT")[0].ifMatch).toBeUndefined();
 });
 
@@ -422,10 +485,9 @@ test("a renamed design replaces only its own file on the server", async () => {
   const n = fake.log.length;
   await page.click("#btn-remote-save");
   await toast("Saved “Lid 2” to the server.");
-  expect([...fake.files.keys()].sort()).toEqual(["Lid 2-dtlocal1.json", "other.json"]);
+  expect([...fake.files.keys()].sort()).toEqual(["Lid 2-dtlocal1.json", "Lid 2-dtlocal1.json.thumb", "other.json"]);
   expect(fake.files.get("other.json").text).toBe(other);
-  expect(since(n, "DELETE")).toHaveLength(1);
-  expect(since(n, "DELETE")[0].name).toBe("Lid-dtlocal1.json");
+  expect(since(n, "DELETE").map((r) => r.name)).toEqual(["Lid-dtlocal1.json.thumb", "Lid-dtlocal1.json"]);
   expect((await record()).files.dtlocal1.file).toBe("Lid 2-dtlocal1.json");
 });
 
@@ -457,7 +519,8 @@ test("a server copy changed elsewhere is never overwritten without asking", asyn
   await page.click("#btn-remote-replace");
   await toast("Saved “Lid” to the server.");
   const puts = since(n, "PUT");
-  expect(puts).toHaveLength(1);
+  expect(puts).toHaveLength(2);
+  expect(puts[1]).toMatchObject({ name: "Lid-dtlocal1.json.thumb", type: "text/plain" });
   expect(puts[0].ifMatch).toBe(etag);
   const local = await page.evaluate(() => JSON.stringify({ app: "jumpstart-3d", version: 1, doc: window.__store.doc }, null, 1));
   expect(fake.files.get("Lid-dtlocal1.json").text).toBe(local);
@@ -481,7 +544,8 @@ test("Delete asks first, removes only the server file, and leaves this browser's
   await clearToasts();
   await card("Lid").locator(".confirm-row .btn.danger").click();
   await toast("Deleted “Lid” from the server. A copy in this browser, if any, stays.");
-  expect(since(0, "DELETE")).toHaveLength(1);
+  expect(since(0, "DELETE").map((r) => r.name)).toEqual(["Lid-dtlocal1.json.thumb", "Lid-dtlocal1.json"]);
+  expect(fake.files.has("Lid-dtlocal1.json.thumb")).toBe(false);
   expect(fake.files.has("Lid-dtlocal1.json")).toBe(false);
   await expect(cards()).toHaveCount(0);
   expect(await stored("dtlocal1")).not.toBeNull();
@@ -716,3 +780,158 @@ test("inside claude.ai there is no tab strip and no request", async () => {
   await closeDesigns();
 });
 
+
+test("Save captures JSON and preview before waiting for the server, even when the open design changes", async () => {
+  await saveLocal(design("dtlocal1", "Lid", 30));
+  await openRemote();
+  await connect();
+  const listing = gate(), upload = gate();
+  let listed = false, uploading = false;
+  fake.beforeRequest = async ({ method, name }) => {
+    if (method === "PROPFIND" && !listed) { listed = true; await listing.promise; }
+    if (method === "PUT" && name === "Lid-dtlocal1.json") { uploading = true; await upload.promise; }
+  };
+  await page.evaluate(() => {
+    window.__originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    window.__previewCaptures = [];
+    HTMLCanvasElement.prototype.toDataURL = function (type, ...args) {
+      if (type !== "image/jpeg") return window.__originalToDataURL.call(this, type, ...args);
+      const id = window.__store.doc.id;
+      window.__previewCaptures.push(id);
+      return "data:image/jpeg;base64," + btoa(id);
+    };
+  });
+  try {
+    await page.click("#btn-remote-save");
+    await expect.poll(() => listed).toBe(true);
+    expect(await page.evaluate(() => window.__previewCaptures)).toContain("dtlocal1");
+    await loadDoc(page, design("dtlocal2", "Other", 60));
+    listing.release();
+    await expect.poll(() => uploading).toBe(true);
+    await loadDoc(page, design("dtlocal3", "Third", 90));
+    upload.release();
+    await toast("Saved “Lid” to the server.");
+    const puts = since(0, "PUT");
+    expect(puts.map((r) => r.name)).toEqual(["Lid-dtlocal1.json", "Lid-dtlocal1.json.thumb"]);
+    expect(plain(JSON.parse(puts[0].body).doc.bodies)).toEqual(design("dtlocal1", "Lid", 30).bodies);
+    expect(JSON.parse(puts[0].body).doc).toMatchObject({ id: "dtlocal1", name: "Lid" });
+    expect(puts[1].body).toBe("data:image/jpeg;base64," + Buffer.from("dtlocal1").toString("base64"));
+    expect(await openId()).toBe("dtlocal3");
+    expect((await record()).files.dtlocal1.file).toBe("Lid-dtlocal1.json");
+  } finally {
+    fake.beforeRequest = null;
+    listing.release(); upload.release();
+    await page.evaluate(() => {
+      HTMLCanvasElement.prototype.toDataURL = window.__originalToDataURL;
+      delete window.__originalToDataURL; delete window.__previewCaptures;
+    });
+  }
+});
+
+test("listings stay usable while previews load progressively with bounded concurrency, and Save reuses previews", async () => {
+  await saveLocal(design("dtlocal1", "Lid", 30));
+  const thumb = (await entries()).find((e) => e.id === "dtlocal1").thumb;
+  expect(thumb).toMatch(/^data:image\/jpeg;base64,/);
+  for (let i = 0; i < 9; i++) {
+    const doc = design("dtpreview" + i, "Preview " + i, 20 + i);
+    const name = doc.name + "-" + doc.id + ".json";
+    fake.put(name, projectFile(doc)); fake.put(name + ".thumb", thumb);
+  }
+  const waiting = new Map();
+  let active = 0, peak = 0;
+  fake.beforeRequest = async ({ method, name }) => {
+    if (method !== "GET" || !name.endsWith(".thumb")) return;
+    const pending = gate();
+    waiting.set(name, pending);
+    peak = Math.max(peak, ++active);
+    try { await pending.promise; } finally { active--; }
+  };
+  try {
+    await openRemote();
+    await connect();
+    await expect(cards()).toHaveCount(9);
+    await expect(page.locator("#btn-remote-save")).toBeEnabled();
+    await expect.poll(() => waiting.size).toBe(4);
+    expect(active).toBe(4);
+    for (let i = 0; i < 9; i++) await expect(card("Preview " + i).locator(".open")).toBeEnabled();
+    expect(await background("Preview 8")).toBe("none");
+    // A thumbnail finishing must not dismiss a Delete/Keep confirmation.
+    const first = [...waiting.keys()][0], firstName = first.slice(0, first.indexOf("-dtpreview"));
+    await card(firstName).locator(".del").click();
+    waiting.get(first).release();
+    await expect.poll(() => background(firstName)).toBe(`url("${thumb}")`);
+    await expect(card(firstName).locator(".confirm-row")).toBeVisible();
+    await expect.poll(() => waiting.size).toBe(5);
+    expect(active).toBe(4);
+    await card(firstName).locator(".confirm-row .btn", { hasText: "Keep" }).click();
+    // Open works while the other four GETs are still stalled.
+    await card("Preview 0").locator(".open").click();
+    await toast("Opened “Preview 0” from the server.");
+    expect(await openId()).toBe("dtpreview0");
+    fake.beforeRequest = null;
+    for (const pending of waiting.values()) pending.release();
+    await expect.poll(() => active).toBe(0);
+    await openRemote();
+    for (let i = 0; i < 9; i++) await expect.poll(() => background("Preview " + i)).toBe(`url("${thumb}")`);
+    expect(peak).toBe(4);
+    const n = fake.log.length;
+    await page.click("#btn-remote-save");
+    await toast("Saved “Preview 0” to the server.");
+    expect(since(n, "GET").filter((r) => r.name.endsWith(".thumb"))).toEqual([]);
+    await expect(cards()).toHaveCount(9);
+  } finally {
+    fake.beforeRequest = null;
+    for (const pending of waiting.values()) pending.release();
+    await expect.poll(() => active).toBe(0);
+  }
+});
+
+for (const action of ["Delete", "Rename"]) {
+  test(`${action} preserves the old JSON, card and record when preview cleanup fails, then retries an absent sidecar`, async () => {
+    await saveLocal(design("dtlocal1", "Lid", 30));
+    await openRemote();
+    await connect();
+    await page.click("#btn-remote-save");
+    await toast("Saved “Lid” to the server.");
+    const oldFile = fake.files.get("Lid-dtlocal1.json").text, oldRecord = (await record()).files.dtlocal1;
+    if (action === "Rename") {
+      await closeDesigns();
+      await saveLocal(design("dtlocal1", "Lid 2", 30));
+      await openRemote();
+    }
+    const perform = async () => {
+      if (action === "Rename") return page.click("#btn-remote-save");
+      if (await card("Lid").locator(".del").count()) await card("Lid").locator(".del").click();
+      await card("Lid").locator(".confirm-row .btn.danger").click();
+    };
+    await clearToasts();
+    fake.previewDelete = 403;
+    const n = fake.log.length;
+    await perform();
+    await expect(status()).toContainText("403");
+    expect(since(n, "DELETE").map((r) => r.name)).toEqual(["Lid-dtlocal1.json.thumb"]);
+    expect(fake.files.get("Lid-dtlocal1.json").text).toBe(oldFile);
+    expect(fake.files.has("Lid-dtlocal1.json.thumb")).toBe(true);
+    expect((await record()).files.dtlocal1).toEqual(oldRecord);
+    await expect(card("Lid")).toHaveCount(1);
+    expect((await toastTexts()).filter((t) => /^(Saved|Deleted) /.test(t))).toEqual([]);
+    // Another client removes the advertised sidecar before DELETE: a 404 must not block JSON cleanup.
+    fake.previewDelete = 0;
+    fake.beforeRequest = async ({ method, name }) => {
+      if (method === "DELETE" && name === "Lid-dtlocal1.json.thumb") fake.files.delete(name);
+    };
+    const retry = fake.log.length;
+    await perform();
+    await toast(action === "Rename" ? "Saved “Lid 2” to the server." : "Deleted “Lid” from the server.");
+    fake.beforeRequest = null;
+    expect(since(retry, "DELETE").map((r) => r.name)).toEqual(["Lid-dtlocal1.json.thumb", "Lid-dtlocal1.json"]);
+    expect(fake.files.has("Lid-dtlocal1.json")).toBe(false);
+    await expect(card("Lid")).toHaveCount(0);
+    await expect(page.locator("#remote-conflict")).toHaveCount(0);
+    if (action === "Rename") {
+      expect((await record()).files.dtlocal1.file).toBe("Lid 2-dtlocal1.json");
+      expect(fake.files.has("Lid 2-dtlocal1.json.thumb")).toBe(true);
+      await expect(card("Lid 2")).toHaveCount(1);
+    } else expect((await record()).files).toEqual({});
+  });
+}

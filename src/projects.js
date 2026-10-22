@@ -24,7 +24,7 @@ export function initProjects(app) {
   // the version counters and the last-open id stay in localStorage because they are read synchronously.
   const ps = openProjectStore();
   const mirror = initFolder({ ps, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t) }); // jumpstart-3d: copies in a folder
-  const remote = initRemote({ ps, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t), open: (id) => open(id) }); // jumpstart-3d: remote
+  const remote = initRemote({ ps, thumbnail, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t), open: (id) => open(id) }); // jumpstart-3d: remote
   let saving = 0, started = false, openGate;
   const startGate = new Promise((r) => { openGate = r; }); // saves wait until start() has loaded the resumed design
   const stateEl = $("savestate");
