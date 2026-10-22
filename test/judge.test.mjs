@@ -289,3 +289,95 @@ test('golden collector rejects missing run ID and baseline-update mode before ru
     assert.match(result.stdout + result.stderr, /JUDGE_EXPORTS requires JUDGE_RUN_ID and forbids UPDATE_GOLDEN/);
   }
 });
+
+// Exercise the actual writer bodies without starting their browser UI closures.
+function stlWriter(file, name, next, bindings = {}) {
+  const source = readFileSync(path.join(ROOT, file), 'utf8');
+  const start = source.indexOf(`function ${name}(`), end = source.indexOf(next, start);
+  assert.ok(start >= 0 && end > start, `${file}: writer boundaries`);
+  return new Function(...Object.keys(bindings), `return (${source.slice(start, end)});`)(...Object.values(bindings));
+}
+function stlFacets(bytes) {
+  const data = Buffer.from(bytes), count = data.readUInt32LE(80);
+  assert.equal(data.length, 84 + count * 50, 'header count agrees with exact returned length');
+  return Array.from({ length: count }, (_, i) => data.subarray(84 + i * 50, 134 + i * 50));
+}
+function zeroAreaFacets(bytes) {
+  return stlFacets(bytes).filter(facet => {
+    const p = Array.from({ length: 9 }, (_, i) => facet.readFloatLE(12 + i * 4));
+    const ab = p.slice(3, 6).map((x, i) => x - p[i]), ac = p.slice(6, 9).map((x, i) => x - p[i]);
+    return ab[1] * ac[2] === ab[2] * ac[1] && ab[2] * ac[0] === ab[0] * ac[2] && ab[0] * ac[1] === ab[1] * ac[0];
+  }).length;
+}
+const validFacets = [
+  [0, 0, 0, 1, 0, 0, 0, 1, 0],
+  [0, 0, 0, 1e-20, 0, 0, 0, 1e-20, 0], // tiny but nonzero
+  [0, 0, 0, 1, 0, 0, 1, 1e-20, 0], // skinny but nonzero
+];
+// Exact records from the original writers, including normals and attributes.
+const validFacetHex = [
+  "00000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f000000000000",
+  "00000000000000000000803f00000000000000000000000008e53c1e00000000000000000000000008e53c1e000000000000",
+  "00000000000000000000803f0000000000000000000000000000803f00000000000000000000803f08e53c1e000000000000"
+];
+const invalidFacets = [
+  [0, 0, 0, 0, 0, 0, 1, 1, 1], // coincident positions with distinct indices
+  [1, 2, 3, 2, 4, 6, 3, 6, 9], // three different collinear positions
+  [1, 0, 0, 1 + 1e-8, 0, 0, 1, 1, 0], // only collapses in the STL float32 output
+];
+const indexedMesh = facets => ({ vertices: facets.flat(), triangles: facets.flatMap((_, i) => [i * 3, i * 3 + 1, i * 3 + 2]) });
+function projectSTL(facets, matrix = IDENTITY) {
+  const app = { scene: { views: new Map([['body', { data: indexedMesh(facets), group: { matrix: { elements: matrix } } }]]) } };
+  return stlWriter('src/projects.js', 'stlBytes', '  async function exportSTL', { app })([{ id: 'body' }]);
+}
+const stlWriters = [
+  ['projects', projectSTL],
+  ['lathe', facets => {
+    const { vertices: V, triangles: I } = indexedMesh(facets);
+    return stlWriter('src/lathe.js', 'stlFile', '  const num =')([{ V, I }]);
+  }],
+  ...['tools/flexi-source.html', 'src/flexigen.html'].map(file => [file, facets => stlWriter(file, 'toSTL', '  function to3MF')([facets.flat()])]),
+  ...['tools/chisel-source.html', 'src/chisel.html'].map(file => [file, facets => stlWriter(file, 'buildSTL', 'function buildOBJ', {
+    worldTris: o => o, Core: { transformTris: t => t }, C2J: { elements: IDENTITY },
+  })([facets.flat()])]),
+];
+for (const [name, write] of stlWriters) {
+  test(`${name} STL drops zero-area output facets and preserves valid records in order`, () => {
+    const good = write(validFacets);
+    const mixed = write([invalidFacets[0], validFacets[0], invalidFacets[1], validFacets[1], validFacets[2], invalidFacets[2]]);
+    assert.equal(stlFacets(mixed).length, 3);
+    assert.equal(zeroAreaFacets(mixed), 0);
+    assert.deepEqual(Buffer.from(mixed), Buffer.from(good), 'headers, normals, positions, attributes and facet order are unchanged');
+    assert.deepEqual(stlFacets(good).map(f => f.toString('hex')), validFacetHex, 'good facet bytes match the original writers');
+  });
+  test(`${name} STL handles empty and all-degenerate meshes`, () => {
+    for (const facets of [[], invalidFacets]) {
+      const bytes = write(facets);
+      if (name === 'projects') assert.equal(bytes, null);
+      else assert.equal(stlFacets(bytes).length, 0);
+    }
+  });
+}
+
+test('project STL tests transformed output coordinates and retains mirrored winding', () => {
+  const collapsed = [...IDENTITY]; collapsed[12] = 2 ** 25;
+  assert.equal(projectSTL([validFacets[0]], collapsed), null);
+  const singular = [...IDENTITY]; singular[5] = 0;
+  assert.equal(projectSTL([validFacets[0]], singular), null);
+  const mirror = [...IDENTITY]; mirror[0] = -2; mirror[5] = 3; mirror[10] = 4;
+  const facets = stlFacets(projectSTL([validFacets[0]], mirror));
+  assert.equal(facets.length, 1);
+  assert.deepEqual(Array.from({ length: 12 }, (_, i) => facets[0].readFloatLE(i * 4)), [0, -0, 1, 0, 0, 0, 0, 3, 0, -2, 0, 0]);
+});
+
+for (const build of BUILDS) test(`${build} fresh collected regression STLs contain no zero-area facets`, t => {
+  if (!process.env.JUDGE_RUN_ID) { t.skip('requires JUDGE_RUN_ID and exports from the golden collector'); return; }
+  const inputs = validateInputs(ROOT, process.env.JUDGE_RUN_ID);
+  for (const fixture of ['advanced-3d-sketch-tube.json', 'beginner-peg-block.json']) {
+    const input = inputs.find(x => x.build === build && x.fixture === fixture && x.format === 'stl');
+    assert.ok(input, `${build}/${fixture} collected STL`);
+    const bytes = readFileSync(input.path);
+    assert.ok(stlFacets(bytes).length > 0);
+    assert.equal(zeroAreaFacets(bytes), 0, fixture);
+  }
+});

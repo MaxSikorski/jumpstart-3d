@@ -362,7 +362,6 @@ export function initProjects(app) {
     const dv = new DataView(buf);
     const head = "JumpStart 3D export (mm)";
     for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i));
-    dv.setUint32(80, count, true);
     let o = 84;
     const e = new Float32Array(16);
     for (const { data, m } of tris) {
@@ -379,10 +378,16 @@ export function initProjects(app) {
         nx /= l; ny /= l; nz /= l;
         for (const f of [nx, ny, nz, ...a, ...b, ...c]) { dv.setFloat32(o, f, true); o += 4; }
         dv.setUint16(o, 0, true); o += 2;
+        // jumpstart-3d: test the float32 coordinates actually written, keeping valid facet bytes unchanged.
+        const p = o - 50, coord = (k) => dv.getFloat32(p + 12 + k * 4, true);
+        const abx = coord(3) - coord(0), aby = coord(4) - coord(1), abz = coord(5) - coord(2);
+        const acx = coord(6) - coord(0), acy = coord(7) - coord(1), acz = coord(8) - coord(2);
+        if (aby * acz - abz * acy === 0 && abz * acx - abx * acz === 0 && abx * acy - aby * acx === 0) o = p;
       }
     }
     void e;
-    return new Uint8Array(buf);
+    dv.setUint32(80, (o - 84) / 50, true);
+    return o === 84 ? null : new Uint8Array(buf, 0, o);
   }
   async function exportSTL() {
     const bytes = stlBytes();

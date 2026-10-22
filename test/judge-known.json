@@ -1,14 +1,4 @@
 {
-  "advanced-3d-sketch-tube.stl": {
-    "match": "zero-area|degenerate_facets",
-    "defect": "2 degenerate triangles (two identical vertices); the STL has them, the 3MF and STEP do not",
-    "followUp": "the STL exporter must drop zero-area triangles (follow-up PR)"
-  },
-  "beginner-peg-block.stl": {
-    "match": "zero-area|degenerate_facets",
-    "defect": "10 degenerate triangles (two identical vertices); the STL has them, the 3MF and STEP do not",
-    "followUp": "the STL exporter must drop zero-area triangles (follow-up PR)"
-  },
   "fasteners.stl": {
     "match": "self-intersection longer than 0.01 mm",
     "defect": "a 0.9 mm self-crossing in the thread mesh of one of the four fasteners (facets 2155, 2246, 2151 and 12433 of its component)",
