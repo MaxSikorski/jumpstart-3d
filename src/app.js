@@ -35,6 +35,7 @@ import { initMeshDetail } from "./meshdetail.js";
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
+import { initReport } from "./report.js"; // jumpstart-3d: report
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 
 /* global __WASM_PARTS__ */
@@ -607,6 +608,7 @@ app.showAbout = function () {
       el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D ", el("span", { class: "ab-hver" }, "Version " + BUILD_LABEL)), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
       el("div", { class: "ab-update ab-top" },
         el("button", { class: "btn", id: "ab-check", onclick: (e) => checkForUpdates(e.currentTarget) }, "Check for updates"),
+        el("button", { class: "btn", id: "ab-report", onclick: () => { back.remove(); app.showReport(); } }, "Report a problem"), // jumpstart-3d: report
         // jumpstart-3d: the main button goes to the community build; the author's site stays as a second link
         el("a", { class: "btn primary", id: "ab-community", href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "Visit the community build"),
         // jumpstart-3d: support link (community build), at the top of About
@@ -835,6 +837,7 @@ app.sketchHint = function () {
 
 // ------------------------------------------------------------------ shared UI helpers
 app.toast = function (msg, kind = "") {
+  if (kind === "err") app.lastError = String(msg); // jumpstart-3d: report (the last error is carried into the report)
   const t = el("div", { class: "toast " + kind }, msg);
   $("toasts").append(t);
   setTimeout(() => t.remove(), kind === "err" ? 5200 : 2600);
@@ -1006,3 +1009,4 @@ window.__app = app; window.__store = store; window.__findBody = findBody;
 initBridge(app);
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
+initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing
