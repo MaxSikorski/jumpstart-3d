@@ -8,7 +8,7 @@ together in Beginner mode, or sketch, extrude, fillet and shell in Advanced
 mode.
 
 Created by **J.Siwek**, who publishes it under the MIT License. Find him at
-the [official site](https://sites.google.com/view/jumpstart-3d-creator/home)
+the [official site](https://classyapps.org/)
 (his own downloads), his [source repository on GitHub](https://github.com/classyapps2026/jumpstart3d)
 and his [video introducing 2.0](https://youtu.be/OmoVmYzoIsk).
 
@@ -255,7 +255,7 @@ through Beginner, Advanced and Chisel in
 ## Where to find us
 
 - The official JumpStart 3D site, with the author's own downloads:
-  https://sites.google.com/view/jumpstart-3d-creator/home
+  https://classyapps.org/
 - The author's source repository: https://github.com/classyapps2026/jumpstart3d
 - Reddit: https://www.reddit.com/r/Jumpstart3D/ for questions, prints and ideas
 - GitHub Discussions, for announcements, polls and Q&A:
@@ -266,6 +266,7 @@ through Beginner, Advanced and Chisel in
 JumpStart 3D is free and stays free. If it saves you time, you can chip in
 towards the maintainer's hosting and coffee. Both are Stripe payment links;
 no account needed.
+The About dialog also has a Support button.
 
 - One-time, any amount: https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
 - Monthly: https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
@@ -424,7 +425,9 @@ UPSTREAM-README.md         the author's README from the source release
   500,000 triangles. The original always used the Normal level.
 - The website build keeps the 7 MB kernel as a separate file, so the page
   itself is about 5 MB instead of 14 MB
-- About > Check for updates checks our GitHub releases only when clicked
+- The About dialog's top row has **Check for updates**, **Visit the community
+  build** (the main GitHub button), **Support** and **J.Siwek's site**; the
+  update button checks our GitHub releases only when clicked
 - A reproducible build from readable source, with the libraries pinned
 - Imported SVG drawings are stripped of scripts, embedded HTML and event
   handlers before the app reads their geometry, so a booby-trapped file cannot
@@ -487,7 +490,7 @@ UPSTREAM-README.md         the author's README from the source release
 ## License
 
 MIT. The author released the source of version 2.0 under the MIT License
-(on the official site, https://sites.google.com/view/jumpstart-3d-creator/home,
+(on his first official site, https://sites.google.com/view/jumpstart-3d-creator/home,
 and in his GitHub repository, https://github.com/classyapps2026/jumpstart3d).
 This repository's additions, by Max Sikorski and the community, use the same
 license. The author's repository has the app source but not the bundled
