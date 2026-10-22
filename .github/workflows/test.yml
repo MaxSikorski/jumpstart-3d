@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   # Fast lane: a pull request whose every changed file is a root-level Markdown file needs only the MCP tests (they read the README).
-  # Fails closed: anything else, an empty diff, a deleted or renamed non-Markdown file, a push or a manual run means code=true; a git error fails this job, which skips the rest and fails the "test" gate.
+  # Fails closed: anything else, an empty diff, a deleted or renamed non-Markdown file, a push, a manual run or a pull request into a branch other than main means code=true; a git error fails this job, which skips the rest and fails the "test" gate.
   changes:
     name: changes
     runs-on: ubuntu-24.04
@@ -31,18 +31,21 @@ jobs:
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.sha }}
         run: |
           set -euo pipefail
-          [ "$EVENT" = pull_request ] || { echo "not a pull request: run everything"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          # Only a pull request into main may take the fast lane. A pull request into another branch always runs everything, so a green
+          # check on a head commit never rests on a diff against a branch other than main (retargeting a pull request starts no new run).
+          if [ "$EVENT" != pull_request ] || [ "$BASE_REF" != main ]; then echo "not a pull request into main: run everything"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           # to a file first: a git error must stop the step, which a failure inside <( ) would not
           git diff --name-only --no-renames -z "$BASE...$HEAD" > "$RUNNER_TEMP/changed.list"
           count=0
           other=0
           while IFS= read -r -d '' path; do
             count=$((count + 1))
-            echo "changed: $path"
+            printf 'changed: %q\n' "$path"
             [[ "$path" =~ ^[^/]+\.md$ ]] || other=$((other + 1))
           done < "$RUNNER_TEMP/changed.list"
           echo "changed files: $count, not root Markdown: $other"
