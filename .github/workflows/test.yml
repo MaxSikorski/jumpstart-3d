@@ -64,7 +64,7 @@ jobs:
         total: [8]
     env:
       # the chat judge shares one 8-minute clock across both builds, so it runs whole in the "chat judge" job;
-      # the golden exports run in the "export judge" job, which judges them
+      # the golden exports run in the "golden exports" jobs, which the export judge then checks
       JS3D_SKIP_CHATJUDGE: '1'
       JS3D_SKIP_GOLDEN: '1'
     steps:
@@ -97,14 +97,19 @@ jobs:
           retention-days: 7
           overwrite: true
 
-  judge:
-    name: export judge
+  # The golden spec exports every design as STL, 3MF and STEP; one job per build, side by side with the parts (pretest builds both outputs).
+  golden:
+    name: golden exports (${{ matrix.build }})
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [site, single]
     env:
-      # J1: The collector and judge must identify the same workflow run.
+      # J1: The collector and judge must identify the same workflow run; a rerun of single jobs keeps the same commit and run ID.
       JUDGE_EXPORTS: '1'
       JUDGE_RUN_ID: ${{ github.run_id }}
     steps:
@@ -116,10 +121,46 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npx playwright install chromium
-      # The golden spec exports every design on both builds into test-results/judge/ (pretest builds both outputs); the judge's unit tests read those fresh exports, so this runs first.
-      - name: Write golden exports
-        timeout-minutes: 10
-        run: npm test -- test/golden.spec.mjs
+      - run: npm test -- test/golden.spec.mjs --project=${{ matrix.build }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: judge-exports-${{ matrix.build }}
+          path: test-results/judge/
+          # GitHub allows rerunning failed jobs for 30 days; the judge needs the exports of the builds that passed
+          retention-days: 30
+          overwrite: true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-report-${{ matrix.build }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  judge:
+    name: export judge
+    needs: [changes, golden]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # J1: The collector and judge must identify the same workflow run.
+      JUDGE_RUN_ID: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: judge-exports-*
+          merge-multiple: true
+          path: test-results/judge
       # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
       - name: Install export judge consumers
         timeout-minutes: 14
@@ -146,9 +187,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: judge-report
-          path: |
-            playwright-report/
-            test-results/
+          path: test-results/judge/
           retention-days: 7
           overwrite: true
 
@@ -202,9 +241,9 @@ jobs:
   # The branch rules on main require a check named exactly "test"; the matrix jobs report under other names.
   # Passes only when "changes" succeeded and either
   #   - code=true:  every other job succeeded, or
-  #   - code=false: the MCP tests succeeded and the three code jobs were skipped (exactly "skipped", not failed or cancelled).
+  #   - code=false: the MCP tests succeeded and the code jobs were skipped (exactly "skipped", not failed or cancelled).
   test:
-    needs: [changes, playwright, judge, chat-judge, mcp]
+    needs: [changes, playwright, golden, judge, chat-judge, mcp]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -213,17 +252,18 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           CODE: ${{ needs.changes.outputs.code }}
           PLAYWRIGHT: ${{ needs.playwright.result }}
+          GOLDEN: ${{ needs.golden.result }}
           JUDGE: ${{ needs.judge.result }}
           CHAT: ${{ needs.chat-judge.result }}
           MCP: ${{ needs.mcp.result }}
         run: |
-          echo "changes=$CHANGES code=$CODE playwright=$PLAYWRIGHT judge=$JUDGE chat=$CHAT mcp=$MCP"
+          echo "changes=$CHANGES code=$CODE playwright=$PLAYWRIGHT golden=$GOLDEN judge=$JUDGE chat=$CHAT mcp=$MCP"
           [ "$CHANGES" = success ] || { echo "the changes job did not succeed"; exit 1; }
           [ "$MCP" = success ] || { echo "the MCP tests did not succeed"; exit 1; }
           if [ "$CODE" = true ]; then
-            [ "$PLAYWRIGHT" = success ] && [ "$JUDGE" = success ] && [ "$CHAT" = success ] && exit 0
+            [ "$PLAYWRIGHT" = success ] && [ "$GOLDEN" = success ] && [ "$JUDGE" = success ] && [ "$CHAT" = success ] && exit 0
           elif [ "$CODE" = false ]; then
-            [ "$PLAYWRIGHT" = skipped ] && [ "$JUDGE" = skipped ] && [ "$CHAT" = skipped ] && exit 0
+            [ "$PLAYWRIGHT" = skipped ] && [ "$GOLDEN" = skipped ] && [ "$JUDGE" = skipped ] && [ "$CHAT" = skipped ] && exit 0
           fi
           echo "not every needed job succeeded"
           exit 1
