@@ -18,7 +18,7 @@ test("Pattern cell limit permits 2500 accepted cells and stops at the 2501st", (
     const fits = x >= 0 && y >= 0;
     if (fits) accepted++;
     return fits;
-  })).toThrow("Pattern: that would be 2501 shapes. Make the pattern size bigger (or pick a smaller face).");
+  })).toThrow("Pattern: that would be more than 2500 shapes. Make the pattern size bigger (or pick a smaller face).");
   expect(accepted).toBe(2501);
   expect(visited).toBeGreaterThan(accepted);
 });
@@ -141,7 +141,7 @@ test.describe("geometry and tools", () => {
       doc.bodies[0].node.mods.push({ id: "limit", seq: 2, t: "facepat", p: [0, 0, 8], n: [0, 0, 1], x: [1, 0, 0], kind: "mesh", mode: "raise", size: 0.5, gap: 0.1, depth: 1, border: 0, edge: "whole", angle: 0, ox: 0, oy: 0 });
     }, "Excessive face pattern"));
     await waitIdle(page);
-    expect((await bodies(page))[0].error).toBe("Pattern: that would be 2501 shapes. Make the pattern size bigger (or pick a smaller face).");
+    expect((await bodies(page))[0].error).toBe("Pattern: that would be more than 2500 shapes. Make the pattern size bigger (or pick a smaller face).");
     await page.evaluate(() => window.__store.undo());
     await waitIdle(page);
     const [restored] = await bodies(page);
@@ -151,7 +151,7 @@ test.describe("geometry and tools", () => {
 
   test("Voxel Studio: imported and exported colours are normalized, and closing preserves the design", async () => {
     const doc = newDoc("Imported voxel colours", "advanced", {
-      bodies: ["#12abef", '#123456" injected="yes', "#abcdef\n", "#abc"].map((color, i) => {
+      bodies: ["#12ABEF", '#123456" injected="yes', "#abcdef\n", "#abc"].map((color, i) => {
         const m = IDENTITY.slice(); m[12] = i * 12;
         return body(`colour${i}`, `Colour ${i}`, prim("box", { w: 8, d: 8, h: 8, r: 0, c: 0 }), m, { color });
       }),
@@ -171,7 +171,7 @@ test.describe("geometry and tools", () => {
       return u && u.g && u.g.occ.some((v) => v > 0);
     });
     await expect(page.locator("#vx-count").getByRole("button", { name: "16", exact: true })).toHaveAttribute("aria-pressed", "true");
-    expect(await page.evaluate(() => window.__app.voxel._ui().g.colors)).toEqual(["#12ABEF", "#C8CCD2"]);
+    expect(await page.evaluate(() => window.__app.voxel._ui().g.colors)).toEqual(["#12abef", "#c8ccd2"]);
     expect(await voxelExportColors(page)).toEqual(["#12ABEFFF", "#C8CCD2FF"]);
     // Bypass import normalization to exercise the independent XML boundary too.
     await page.evaluate(() => { window.__app.voxel._ui().g.colors.splice(0, 2, "#abcdef", '#123456" injected="yes'); });
@@ -180,6 +180,32 @@ test.describe("geometry and tools", () => {
     await expect(page.locator("#voxel")).toHaveCount(0);
     await waitIdle(page);
     expect(await bodies(page)).toEqual(before);
+  });
+
+  test("Voxel Studio: picking and painting the same palette colour uses one colour", async () => {
+    const doc = box();
+    doc.bodies[0].color = "#D01012";
+    await loadDoc(page, doc);
+    await page.evaluate(() => localStorage.setItem("jumpstart3d.voxel.count", "16"));
+    await page.click("#ws-simulate");
+    await page.click("#sim-voxel");
+    await page.waitForFunction(() => {
+      const u = window.__app.voxel._ui();
+      return u && u.g && u.mesh && !u.dirty;
+    });
+    // A single solid box fills the camera target at the centre of the canvas.
+    const canvas = page.locator("#voxel-canvas");
+    await page.click('#vx-tool [data-v="pick"]');
+    await canvas.click();
+    await expect(page.locator('#vx-tool [data-v="paint"]')).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate(() => window.__app.voxel._ui().st.color)).toBe("#d01012");
+    await canvas.click();
+    await page.click('#vx-colors [data-c="#d01012"]');
+    await canvas.click();
+    expect(await page.evaluate(() => window.__app.voxel._ui().g.colors)).toEqual(["#d01012"]);
+    await expect(page.locator("#vx-colorlist tr")).toHaveCount(1);
+    await page.click("#vx-cancel");
+    await expect(page.locator("#voxel")).toHaveCount(0);
   });
 
   test("Beginner: ArrowRight follows the default camera's screen-right ground axis; Shift moves ten steps", async () => {

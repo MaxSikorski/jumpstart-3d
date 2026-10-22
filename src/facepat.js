@@ -17,8 +17,8 @@ export function facePatCells(m, box, accept = () => true) {
   const [x0, y0, x1, y1] = box;
   const out = [];
   // jumpstart-3d: bound retained cells after the kernel's face/border filter.
-  const tooMany = (n) => { throw new Error(`Pattern: that would be ${n} shapes. Make the pattern size bigger (or pick a smaller face).`); };
-  const room = () => { if (out.length >= 2500) tooMany(out.length + 1); };
+  const tooMany = () => { throw new Error("Pattern: that would be more than 2500 shapes. Make the pattern size bigger (or pick a smaller face)."); };
+  const room = () => { if (out.length >= 2500) tooMany(); };
   const add = (cell) => { if (accept(cell)) { room(); out.push(cell); } };
   // jumpstart-3d: reject only grid indices whose next increment cannot advance.
   const next = (v) => { const n = v + 1; if (n === v) throw new Error("Pattern: the grid coordinates are too large."); return n; };

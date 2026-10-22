@@ -12,7 +12,7 @@ const PALETTE = ["#d01012", "#fe8a18", "#f2cd37", "#58ab41", "#237841", "#5a93db
 const NAMES = { "#d01012": "red", "#fe8a18": "orange", "#f2cd37": "yellow", "#58ab41": "green", "#237841": "dark green", "#5a93db": "light blue", "#0055bf": "blue", "#923978": "purple", "#f5a3c7": "pink", "#6c3d1d": "brown", "#ffffff": "white", "#a0a5a9": "gray", "#1b2a34": "dark gray", "#000000": "black" };
 const colorName = (c) => NAMES[String(c).toLowerCase()] || String(c).toUpperCase();
 // jumpstart-3d: imported colors must be six hex digits, including at the XML boundary.
-const safeColor = (c) => typeof c === "string" && c.length === 7 && /^#[0-9a-f]{6}$/i.test(c) ? c.toUpperCase() : "#C8CCD2";
+const safeColor = (c) => typeof c === "string" && c.length === 7 && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : "#c8ccd2";
 const COUNTS = [16, 24, 32, 48, 64];
 const MAX_VOX = 260000;
 // the six faces of a cube: direction, and the four corners of the face (unit cube, outward winding)
@@ -479,7 +479,7 @@ export function initVoxel(app) {
   }
   async function threeMFBytes(list, name) {
     const esc = (t) => String(t).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
-    const hex = (c) => safeColor(c) + "FF"; // jumpstart-3d: prevent XML attribute injection.
+    const hex = (c) => safeColor(c).toUpperCase() + "FF"; // jumpstart-3d: prevent XML attribute injection.
     const out = ['<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">', ' <metadata name="Application">JumpStart 3D</metadata>', ' <metadata name="Title">' + esc(name) + "</metadata>", " <resources>\n  <basematerials id=\"1\">"];
     const cols = ui.g.colors;
     cols.forEach((c) => out.push('   <base name="' + esc(colorName(c)) + '" displaycolor="' + hex(c) + '"/>'));

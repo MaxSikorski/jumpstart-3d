@@ -2,6 +2,7 @@
 // exports produce files, and a saved design comes back after a reload.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { VERSION, BUILD } from "../src/version.js";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, exportBytes, newDoc, body, prim, stlTriangles, sha256 } from "./helpers.mjs";
 
 const box20 = () => newDoc("Box", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
@@ -42,11 +43,15 @@ test("icon links: files on the site, data URIs in the single file", async ({}, i
   }
 });
 
-test("About keeps the author's credit and identifies community build 19", async () => {
+test("About keeps the author's credit and matches the source splash version", async () => {
+  const expected = `Version ${VERSION} · community build ${BUILD}`;
+  const source = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+  const splashVersion = await page.evaluate((html) => new DOMParser().parseFromString(html, "text/html").querySelector("#sp-ver")?.textContent, source);
+  expect(splashVersion).toBe(expected);
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
   await expect(about).toBeVisible();
-  await expect(about).toContainText("Version 2.1.3 · community build 19");
+  await expect(about).toContainText(expected);
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
 });
