@@ -2171,15 +2171,21 @@ function buildSTL(list) {
   const tris = list.map(worldTris), n = tris.reduce((a, t) => a + t.length / 9, 0);
   const buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
   const head = 'Chisel Sculpt export'; for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i));
-  dv.setUint32(80, n, true); let o = 84;
+  let o = 84;
   for (const T of tris) for (let i = 0; i < T.length; i += 9) {
     const ux = T[i + 3] - T[i], uy = T[i + 4] - T[i + 1], uz = T[i + 5] - T[i + 2], vx = T[i + 6] - T[i], vy = T[i + 7] - T[i + 1], vz = T[i + 8] - T[i + 2];
     const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1;
     dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true);
     for (let k = 0; k < 9; k++) dv.setFloat32(o + 12 + k * 4, T[i + k], true);
     o += 50;
+    // jumpstart-3d: test the float32 coordinates actually written, keeping valid facet bytes unchanged.
+    const p = o - 50, coord = (k) => dv.getFloat32(p + 12 + k * 4, true);
+    const abx = coord(3) - coord(0), aby = coord(4) - coord(1), abz = coord(5) - coord(2);
+    const acx = coord(6) - coord(0), acy = coord(7) - coord(1), acz = coord(8) - coord(2);
+    if (aby * acz - abz * acy === 0 && abz * acx - abx * acz === 0 && abx * acy - aby * acx === 0) o = p;
   }
-  return new Uint8Array(buf);
+  dv.setUint32(80, (o - 84) / 50, true);
+  return new Uint8Array(buf, 0, o);
 }
 function buildOBJ(list) {
   const out = ['# Chisel Sculpt export']; let base = 1;

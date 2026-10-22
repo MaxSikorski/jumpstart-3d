@@ -993,7 +993,6 @@ export function initLathe(app) {
   function stlFile(meshes) {
     const n = meshes.reduce((a, m) => a + m.I.length / 3, 0), dv = new DataView(new ArrayBuffer(84 + n * 50));
     const head = "JumpStart 3D lathe (mm)"; for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i));
-    dv.setUint32(80, n, true);
     let o = 84;
     for (const { V, I } of meshes) for (let t = 0; t < I.length; t += 3) {
       const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
@@ -1001,8 +1000,14 @@ export function initLathe(app) {
       let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1;
       for (const f of [nx / l, ny / l, nz / l, V[a], V[a + 1], V[a + 2], V[b], V[b + 1], V[b + 2], V[c], V[c + 1], V[c + 2]]) { dv.setFloat32(o, f, true); o += 4; }
       o += 2;
+      // jumpstart-3d: test the float32 coordinates actually written, keeping valid facet bytes unchanged.
+      const p = o - 50, coord = (k) => dv.getFloat32(p + 12 + k * 4, true);
+      const abx = coord(3) - coord(0), aby = coord(4) - coord(1), abz = coord(5) - coord(2);
+      const acx = coord(6) - coord(0), acy = coord(7) - coord(1), acz = coord(8) - coord(2);
+      if (aby * acz - abz * acy === 0 && abz * acx - abx * acz === 0 && abx * acy - aby * acx === 0) o = p;
     }
-    return new Uint8Array(dv.buffer);
+    dv.setUint32(80, (o - 84) / 50, true);
+    return new Uint8Array(dv.buffer, 0, o);
   }
   const num = (x) => { const r = Math.round(x * 1e5) / 1e5; return Object.is(r, -0) ? "0" : String(r); };
   function objFile(meshes) {

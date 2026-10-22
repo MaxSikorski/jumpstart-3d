@@ -184,8 +184,8 @@
       "b2 Cone 1": 1583.4,
       "b3 Sphere 1": 1436.8
     },
-    "stlTriangles": 8756,
-    "stl": "2ea1d6b55aa8fbfbfa75e6e7a4bb07fdbb020d5a4936aa54b561f9996fa62d3c",
+    "stlTriangles": 8746,
+    "stl": "c594fd2a6677f3f03e4d7a1fe6db0cfc1853c12fa2f9f7a49cc214f2d2c2e750",
     "obj": "e644bf7c00437a25bbcac51b56bf48b6f329efe55f9c3db50618be7153dae26f",
     "3mf": "0260762f2addd68cc5fe50be650233e6e524cb5307fbff6db2df56b00266c6dc",
     "step": "6c745005516da8198b1c7c4c4c950ce1e8456b9d335c16a4346a0291aadbce33"
@@ -245,8 +245,8 @@
     "volumes": {
       "b1 3D sketch": 1893.1
     },
-    "stlTriangles": 16318,
-    "stl": "bb1d41732a26cb82b973053bcb795bc833e7c99db265a3553b71d4a9f7215075",
+    "stlTriangles": 16316,
+    "stl": "24134cbb787eedb4879fa30b591ae3da0919f400915ca967cfbe76384c37f269",
     "obj": "fccb4ce6e7b8475ae282d22c173a0728b002b7439837c755935e20250a7b8bec",
     "3mf": "e712cfbf63de1c41f248441212353b3349dd3129ca1589f946db27572dcd5a2d",
     "step": "978fb556abf43f058e5b26fd7bc926d7d3a47fb7e319744cac448b451106392f"

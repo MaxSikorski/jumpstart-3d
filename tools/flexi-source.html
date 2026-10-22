@@ -610,7 +610,6 @@ const FX = (() => {
     const buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
     const hdr = 'Super Flexi Builder print-in-place export';
     for (let i = 0; i < hdr.length; i++) dv.setUint8(i, hdr.charCodeAt(i));
-    dv.setUint32(80, n, true);
     let o = 84;
     for (const s of soups) for (let i = 0; i < s.length; i += 9) {
       const ax = s[i + 3] - s[i], ay = s[i + 4] - s[i + 1], az = s[i + 5] - s[i + 2];
@@ -620,8 +619,14 @@ const FX = (() => {
       dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
       for (let k = 0; k < 9; k++) { dv.setFloat32(o, s[i + k], true); o += 4; }
       o += 2;
+      // jumpstart-3d: test the float32 coordinates actually written, keeping valid facet bytes unchanged.
+      const p = o - 50, coord = (k) => dv.getFloat32(p + 12 + k * 4, true);
+      const abx = coord(3) - coord(0), aby = coord(4) - coord(1), abz = coord(5) - coord(2);
+      const acx = coord(6) - coord(0), acy = coord(7) - coord(1), acz = coord(8) - coord(2);
+      if (aby * acz - abz * acy === 0 && abz * acx - abx * acz === 0 && abx * acy - aby * acx === 0) o = p;
     }
-    return new Uint8Array(buf);
+    dv.setUint32(80, (o - 84) / 50, true);
+    return new Uint8Array(buf, 0, o);
   }
   function to3MF(objects) { // objects: [{name, soup}]
     const enc = new TextEncoder();
