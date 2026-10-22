@@ -38,7 +38,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # no --with-deps: the runner image already has Chromium's libraries, and the apt mirror stalled that step for 10 to 12 minutes twice
+      - run: npx playwright install chromium
       # pretest builds both outputs and runs the Node unit tests in every part
       - run: npm test -- --shard=${{ matrix.shard }}/4
       # lets someone who reported an issue try a pull request's single file before a release exists
@@ -125,7 +126,7 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: mcp
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: npm run test:mcp
 
   # The branch rules on main require a check named exactly "test"; the matrix jobs report under other names.
