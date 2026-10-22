@@ -169,7 +169,7 @@ export function initBeginner(app) {
     btn("spline", "3D Sketch", "Draw lines in 3D on a shape, a virtual sphere or cube, or in the air", () => app.sketch3d.open(), "bb-sketch3d", true);
     btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
     btn("extrude", "Extrude", "Extrude a sketch into a shape (E)", () => app.quickExtrude(), "bb-extrude", true);
-    btn("import", "Import", "Import a 3D model (STL, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true);
+    btn("import", "Import", "Import a 3D model (STL, OBJ, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true); // jumpstart-3d: OBJ import
     bar.append(el("span", { class: "sep" }));
     btn("group", "Group", "Group (Ctrl+G): merges solids, cuts holes", () => group(), "bb-group", true);
     btn("ungroup", "Ungroup", "Ungroup (Ctrl+Shift+G)", () => ungroup(), "bb-ungroup", true);
