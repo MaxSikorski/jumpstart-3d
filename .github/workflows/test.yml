@@ -1,4 +1,4 @@
-# Builds both outputs and runs the Playwright regression tests (see test/README.md).
+# Builds both outputs and runs the Playwright regression tests in 4 parallel parts, then the export judge and the MCP server tests (see test/README.md).
 # Runs on every pull request and on pushes to main. Public repository: Actions minutes are free.
 name: test
 
@@ -16,8 +16,101 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  playwright:
+    name: playwright (${{ matrix.shard }}/4)
     # J1: The pinned consumer AppImages were probed on Ubuntu 24.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      # every part runs to the end, so one failure shows all the others
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      # J1: The collector and judge must identify the same workflow run; a rerun of single jobs keeps the same commit and run ID.
+      JUDGE_EXPORTS: '1'
+      JUDGE_RUN_ID: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # pretest builds both outputs and runs the Node unit tests in every part
+      - run: npm test -- --shard=${{ matrix.shard }}/4
+      # lets someone who reported an issue try a pull request's single file before a release exists
+      - if: ${{ !cancelled() && matrix.shard == 1 }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: jumpstart-3d-single-file
+          path: dist/jumpstart-3d.html
+          retention-days: 14
+          overwrite: true
+      # the judge job collects the golden exports of all parts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: judge-exports-${{ matrix.shard }}
+          path: test-results/judge/
+          if-no-files-found: ignore
+          retention-days: 1
+          overwrite: true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  judge:
+    name: export judge
+    needs: playwright
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      JUDGE_RUN_ID: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: judge-exports-*
+          merge-multiple: true
+          path: test-results/judge
+      # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
+      - name: Install export judge consumers
+        timeout-minutes: 8
+        run: bash tools/install-judge-tools.sh
+      - run: npm run test:judge:unit
+      - name: Native negative controls
+        timeout-minutes: 5
+        run: npm run test:judge:integration
+      - name: Judge golden exports
+        # The full report is wanted even when the controls fail.
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: npm run test:judge
+      # J1 end.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: judge-report
+          path: test-results/judge/
+          retention-days: 7
+          overwrite: true
+
+  mcp:
+    name: mcp server
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -33,41 +126,17 @@ jobs:
       - run: npm ci
         working-directory: mcp
       - run: npx playwright install --with-deps chromium
-      - run: npm test
-        # J1: The collector and judge must identify the same workflow attempt.
-        env:
-          JUDGE_EXPORTS: '1'
-          JUDGE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
-      - name: Install export judge consumers
-        timeout-minutes: 8
-        run: bash tools/install-judge-tools.sh
-      - run: npm run test:judge:unit
-        env:
-          JUDGE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      - name: Native negative controls
-        timeout-minutes: 5
-        run: npm run test:judge:integration
-      - name: Judge golden exports
-        # The full report is wanted even when the controls fail.
-        if: ${{ !cancelled() }}
-        timeout-minutes: 10
-        env:
-          JUDGE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: npm run test:judge
-      # J1 end.
-      # lets someone who reported an issue try a pull request's single file before a release exists
-      - uses: actions/upload-artifact@v7
-        with:
-          name: jumpstart-3d-single-file
-          path: dist/jumpstart-3d.html
-          retention-days: 14
       - run: npm run test:mcp
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
+
+  # The branch rules on main require a check named exactly "test"; the matrix jobs report under other names.
+  test:
+    needs: [playwright, judge, mcp]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "needed jobs: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done
