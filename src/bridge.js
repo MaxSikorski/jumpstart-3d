@@ -421,7 +421,7 @@ export function initBridge(app) {
       app.exitSketch();
       store.load(d);
       app.projects.saveNow();
-      app.vp.setView("home");
+      const box = app.scene.allBox(); app.vp.setView("home", box.isEmpty() ? null : box); // jumpstart-3d: frame shapes already built
       return ready();
     },
     newDesign(mode = "beginner") {

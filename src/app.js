@@ -176,7 +176,7 @@ app.voxel = initVoxel(app);
       // a design opens in the mode it was made in
       app.setMode(store.doc.mode || "beginner", true);
       // jumpstart-3d: shapes already built this session bring no build result, so frame now; left armed, the next edit would throw the camera back
-      if (app.needFit && !scene.busy()) { const b = scene.allBox(); if (!b.isEmpty()) { app.needFit = false; vp.fit(b); } }
+      if (app.needFit && !scene.busy()) { app.needFit = false; const b = scene.allBox(); if (!b.isEmpty()) vp.fit(b); }
     }
   });
 
