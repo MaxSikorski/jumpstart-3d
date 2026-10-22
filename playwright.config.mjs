@@ -11,6 +11,12 @@ const base = +(process.env.JS3D_PORT || 8765); // set JS3D_PORT when two checkou
 const chromiumArgs = ["--use-gl=swiftshader", "--enable-unsafe-swiftshader"]; // WebGL without a GPU, as the author's scripts ran
 
 const MOBILE = /mobile\.spec\.mjs/; // its own project: the phone budget needs a phone profile, a throttled link and a gzip server
+// CI shards `npm test` over parallel runners. Two specs run whole in jobs of their own and are left out of the shards:
+// the chat judge (its 8-minute mock clock is shared by both builds, so one runner must hold both) with JS3D_SKIP_CHATJUDGE=1,
+// and the golden exports (the export judge job writes and judges them) with JS3D_SKIP_GOLDEN=1. Only the value 1 counts.
+const BUILDS_IGNORE = [MOBILE];
+if (process.env.JS3D_SKIP_CHATJUDGE === "1") BUILDS_IGNORE.push(/chatjudge\.spec\.mjs/);
+if (process.env.JS3D_SKIP_GOLDEN === "1") BUILDS_IGNORE.push(/golden\.spec\.mjs/);
 
 export default defineConfig({
   testDir: "test",
@@ -23,8 +29,8 @@ export default defineConfig({
   // a service worker would answer page.reload() from its cache; test/load.spec.mjs allows one in its own context
   use: { viewport: { width: 1400, height: 880 }, launchOptions: { args: chromiumArgs }, trace: "retain-on-failure", serviceWorkers: "block" },
   projects: [
-    { name: "site", testIgnore: MOBILE, use: { baseURL: `http://127.0.0.1:${base}/` } },
-    { name: "single", testIgnore: MOBILE, use: { baseURL: pathToFileURL("dist/jumpstart-3d.html").href } },
+    { name: "site", testIgnore: BUILDS_IGNORE, use: { baseURL: `http://127.0.0.1:${base}/` } },
+    { name: "single", testIgnore: BUILDS_IGNORE, use: { baseURL: pathToFileURL("dist/jumpstart-3d.html").href } },
     {
       name: "mobile", // port base + 2: 8766 is the single-file preview in .claude/launch.json
       testMatch: MOBILE,

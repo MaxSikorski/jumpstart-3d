@@ -16,6 +16,19 @@ npm run test:mobile   the phone budget only
 First time: `npm install`, then `npx playwright install chromium`. Set `JS3D_PORT` (default 8765) to serve the site build on another port, so two checkouts can run the tests at the same time. The same
 suite runs on GitHub Actions for every pull request (`.github/workflows/test.yml`).
 
+## How CI runs it
+
+The workflow splits the work over parallel jobs (a full run takes about 4 to 6 minutes):
+
+- `changes` looks at what a pull request touched. If every changed file is a Markdown file in the repository root (`README.md`, `NOTICE.md`, `CHANGELOG.md` and so on), only the MCP tests run (they read the README), and the pull request is done in about a minute. The lane is only for pull requests into `main` (a pull request into another branch always runs everything, so a green check that came from that branch stays a full run when the pull request is later retargeted to `main`). Anything else, an empty list, a deleted or renamed non-Markdown file, a push to `main` or a manual run means the full set; a git error fails the job and so the whole run. It uses plain `git` and no extra actions.
+- `playwright (1/8)` to `(8/8)`: the Playwright tests (`--shard=N/8`, one worker each; every part builds both outputs itself in about a second). Playwright splits by spec file and build, so a part is a mix of whole files and the parts differ by about a minute. Two spec files are left out of the parts and run whole in their own jobs: `chatjudge.spec.mjs` (`JS3D_SKIP_CHATJUDGE=1`) and `golden.spec.mjs` (`JS3D_SKIP_GOLDEN=1`; only the value `1` counts, see `playwright.config.mjs`). Together with the parts, every test runs exactly once (641 tests: 545 in the parts, 72 golden, 24 chat judge).
+- `chat judge`: `npm run test:chat-judge`, both builds in one job, because its eight-minute mock clock is shared across both builds and only one runner can hold one clock.
+- `golden exports (site)` and `(single)`: the golden spec for one build each, uploading the exports it wrote (`JUDGE_EXPORTS=1`, kept 30 days, the longest GitHub allows a rerun). `export judge` then downloads both, installs the two consumer tools and checks all 216 files.
+- `mcp server`: its own `npm ci`, Chromium and `npm run test:mcp`.
+- `test`: waits for all of the above and is the one check the branch rules on `main` require, because the others report under other names. It passes only when `changes` succeeded and either every job succeeded, or the pull request was docs-only and the MCP tests succeeded while the Playwright, golden, judge and chat jobs were all exactly "skipped". A failed or cancelled job always fails it.
+
+The single file (`jumpstart-3d-single-file`) is uploaded once per run, from part 1, and only when part 1 passed. A failed part uploads its own `playwright-report-N`. If one flaky test fails, `gh run rerun --failed` reruns only that part and what depends on it; the judge run ID is the workflow run ID alone (no attempt number), so the exports of golden jobs that already passed stay valid. Chromium comes from `npx playwright install chromium` (about 10 seconds; a cache was not worth it).
+
 The config sets `serviceWorkers: "block"` for every spec, because a service worker would answer `page.reload()` from its cache; only `load.spec.mjs` allows one, in its own context. Your own browser on `http://127.0.0.1:8765/` keeps the service worker, so after a rebuild the first reload shows the old build and the "new version" message, and the second reload shows the new one.
 
 ## What runs
@@ -82,7 +95,7 @@ sets `UPDATE_GOLDEN=1` and records from the site build; in PowerShell run
 <!-- J1: Consumer checks require original downloads and separately reviewed expectations. -->
 ## Slicer and STEP judge
 
-The existing CI `test` job collects the normal golden run's original STL, 3MF
+The CI Playwright parts collect the normal golden run's original STL, 3MF
 and STEP downloads from **both** builds. Playwright streams the downloads;
 there is no object-URL interception or second export pass. `JUDGE_EXPORTS=1`
 requires a nonempty `JUDGE_RUN_ID` and refuses `UPDATE_GOLDEN`.
@@ -97,7 +110,7 @@ npm run test:judge:integration          # same
 Mac contributors can collect exports and run the Node unit tests without
 native consumers. The full consumer judge is **CI-only**: the pinned Linux
 AppImages and console launcher are not a supported Mac installation. The
-existing workflow runs on every PR, push to main and manual dispatch; there is
+workflow runs on every PR, push to main and manual dispatch; there is
 no nightly substitute and no successful skip for missing tools.
 
 Inputs live in `test-results/judge/site/` and `test-results/judge/single/`.
@@ -108,7 +121,7 @@ supply a complete manifest. STEP bytes on disk remain unmodified; only the
 golden hash comparison normalizes timestamps and export counters. The judge
 requires exact coverage of the discovered projects in both manifests,
 `golden.json` and `judge-solids.json`, and checks all hashes before consuming
-files. CI uses the same `${{ github.run_id }}-${{ github.run_attempt }}` in
+files. CI uses the same `${{ github.run_id }}` in
 collection and judging.
 
 Pinned consumers are **PrusaSlicer 2.8.1+linux-x64-GTK3-202409181416** and
@@ -216,7 +229,7 @@ Measured on `ubuntu-24.04` (runner image 20261012.334.1), 36 designs, 216
 files (144 slices, 72 STEP imports): install 27 s (apt libraries 11 s,
 PrusaSlicer 3 s, FreeCAD 12 s), unit tests 2 s, native controls 2 s, judge
 113 s (the one FreeCAD batch for all 216 files 28 s, then the slices). That is
-about 2.4 minutes added to the job. One STEP import with checks takes up to
+about 2.4 minutes, now its own job after the four test parts. One STEP import with checks takes up to
 1.2 s, one mesh check up to 1.9 s, and one slice (info plus G-code) up to 9.7 s;
 the 144 slices add up to 251 s, three at a time.
 
@@ -229,7 +242,7 @@ heritage, so this is not a wholly independent geometry kernel.
 
 ## Chat geometry benchmark
 
-`npm run test:chat-judge` builds both products, runs `node --test test/bench/*.test.mjs`, then runs `test/chatjudge.spec.mjs` on both Playwright projects. The existing PR/main/manual Actions test job runs the same checks through `npm test`; it needs no model or secret. The five positive mock plans are J3-001 (box), J3-003 (grouped cylinder cutter), J3-005 (two-hole pattern), J3-007 (tube), and J3-008 (side hole pattern). The real panel builds the geometry; the judge reads it through `JS3D`. The mock tests the scorer, not how well a model understands a request. Browser negatives cover empty geometry, spare hidden/cutter bodies, equal-volume wrong hole count, shifted bounds, terminal errors, deadlines and fresh-context isolation. The Node suite audits every expected record independently, tests topology refusals, and checks reporting and CLI setup with local HTTP stubs.
+`npm run test:chat-judge` builds both products, runs `node --test test/bench/*.test.mjs`, then runs `test/chatjudge.spec.mjs` on both Playwright projects. The PR/main/manual Actions workflow runs the same checks in its `chat judge` job (`npm run test:chat-judge`; `npm test` in the parallel parts skips the file); it needs no model or secret. The five positive mock plans are J3-001 (box), J3-003 (grouped cylinder cutter), J3-005 (two-hole pattern), J3-007 (tube), and J3-008 (side hole pattern). The real panel builds the geometry; the judge reads it through `JS3D`. The mock tests the scorer, not how well a model understands a request. Browser negatives cover empty geometry, spare hidden/cutter bodies, equal-volume wrong hole count, shifted bounds, terminal errors, deadlines and fresh-context isolation. The Node suite audits every expected record independently, tests topology refusals, and checks reporting and CLI setup with local HTTP stubs.
 
 The literal fixture is [`bench/chat-cases.json`](bench/chat-cases.json): `{version:1, preamble, tolerance, cases}` with exactly 50 ordered IDs, J3-001 through J3-050, in ten families of five numerical variants. Each case has `id`, `family`, `request`, `expected:{bodies,volumeMm3,bboxMm:{min,max},holes}`, and a readable, substituted `calculation`. Expected numbers come from the request's algebra, never recorded app output; calculation text is never executed. The full fixture is validated even for a subset: unknown/missing fields, changed preamble/tolerances, invalid geometry, duplicate IDs and family counts fail before any Send. Fixture size is limited to 1 MiB and request/calculation strings to 2,000 characters. Only the exact preamble, newline and request reach the model, never IDs, expectations or calculations.
 
