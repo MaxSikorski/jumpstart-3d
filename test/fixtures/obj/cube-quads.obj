@@ -1,0 +1,16 @@
+# A 20 x 20 x 20 cube, with six outward-facing quads.
+o Cube
+v 0 0 0
+v 20 0 0
+v 20 20 0
+v 0 20 0
+v 0 0 20
+v 20 0 20
+v 20 20 20
+v 0 20 20
+f 1 4 3 2
+f 5 6 7 8
+f 1 2 6 5
+f 2 3 7 6
+f 3 4 8 7
+f 4 1 5 8
