@@ -2206,12 +2206,12 @@ export function initAdvanced(app) {
     });
   }
   async function insertFile(kind = "any") {
-    const MODELS = ".stl,.3mf,.step,.stp,model/stl,model/3mf,application/sla";
+    const MODELS = ".stl,.obj,.3mf,.step,.stp,model/stl,model/obj,model/3mf,application/sla"; // jumpstart-3d: OBJ in both modes' shared picker
     const accept = kind === "svg" ? ".svg,image/svg+xml" : kind === "dxf" ? ".dxf" : kind === "image" ? "image/png,image/jpeg,image/webp,image/gif,image/bmp" : kind === "model" ? MODELS : ".svg,.dxf,image/png,image/jpeg,image/webp,image/gif," + MODELS;
     const f = await pickFile(accept);
     if (!f) return;
     const ext = (f.name.split(".").pop() || "").toLowerCase();
-    if (ext === "stl" || ext === "3mf" || ext === "step" || ext === "stp") return importModel(f);
+    if (ext === "stl" || ext === "obj" || ext === "3mf" || ext === "step" || ext === "stp") return importModel(f); // jumpstart-3d: OBJ import
     const type = ext === "svg" ? "svg" : ext === "dxf" ? "dxf" : /^image\//.test(f.type) ? "image" : null;
     if (!type) { app.toast("Pick an SVG, DXF or picture file.", "err"); return; }
     try {
@@ -2243,7 +2243,7 @@ export function initAdvanced(app) {
       }
       const big = bytes.length > 4e6;
       if (big) { app.toast("Reading " + file.name + "…"); await new Promise((r) => setTimeout(r, 60)); }
-      const res = await readMeshFile(bytes);
+      const res = await readMeshFile(bytes, file.name); // jumpstart-3d: OBJ dispatch by filename
       const nt0 = res.mesh.I.length / 3;
       let mesh = res.mesh, err = 0;
       if (nt0 > MESH_LIMIT) {
@@ -2284,7 +2284,7 @@ export function initAdvanced(app) {
     const K = { mm: 1, cm: 10, in: 25.4 };
     const fromFile = !!info.unitFromFile; // 3MF: the file says its units (already turned into mm)
     // a tiny STL is probably in inches or centimetres; a huge one in micrometres is rare
-    if (!fromFile && Math.max(...b.size) < 6) st.unit = "in";
+    if (info.format === "STL" && !fromFile && Math.max(...b.size) < 6) st.unit = "in";
     const rep = info.report || {};
     const fixes = [];
     if (rep.flipped) fixes.push(`turned ${rep.flipped.toLocaleString()} inside-out triangle${rep.flipped > 1 ? "s" : ""} the right way`);
@@ -2308,10 +2308,12 @@ export function initAdvanced(app) {
         const s = b.size.map((v) => v * K[st.unit]);
         hint(`Size: ${s.map((v) => showLen(v, 1)).join(" × ")} ${getUnit()}`);
         if (fixes.length) hint("Repaired: " + fixes.join(", ") + ".");
-        if (rep.open) hint(el("b", {}, "Not closed: "), `${rep.open.toLocaleString()} open edge${rep.open > 1 ? "s" : ""}. It will come in as a surface you can see and export, but not cut or fillet. Try fixing the file, or the Mesh to STEP Helper.`);
+        // jumpstart-3d: OBJ cannot be opened directly in the Mesh to STEP helper.
+        if (rep.open) hint(el("b", {}, "Not closed: "), `${rep.open.toLocaleString()} open edge${rep.open > 1 ? "s" : ""}. It will come in as a surface you can see and export, but not cut or fillet. ${info.format === "OBJ" ? "Try fixing the file." : "Try fixing the file, or the Mesh to STEP Helper."}`);
         else hint(el("b", {}, "Closed solid ✓ "), "It comes in as a solid you can move, scale, group and cut holes in.");
         if (rep.nonManifold) hint(`${rep.nonManifold.toLocaleString()} edge${rep.nonManifold > 1 ? "s are" : " is"} shared by more than two triangles (touching parts). It may not build cleanly.`);
-        if (info.bytes && app.meshstep) body.append(el("button", { class: "btn", id: "imp-tostep", style: { marginTop: "8px", width: "100%" }, title: "Turn the mesh into smooth, editable CAD faces (planes, cylinders, fillets) first", onclick: () => { closeCmd(false); app.meshstep.open({ bytes: info.bytes, name: fileName }); } }, "Convert to CAD faces in Mesh to STEP…"));
+        // jumpstart-3d: the Mesh to STEP helper only reads STL/3MF bytes.
+        if (info.bytes && info.format !== "OBJ" && app.meshstep) body.append(el("button", { class: "btn", id: "imp-tostep", style: { marginTop: "8px", width: "100%" }, title: "Turn the mesh into smooth, editable CAD faces (planes, cylinders, fillets) first", onclick: () => { closeCmd(false); app.meshstep.open({ bytes: info.bytes, name: fileName }); } }, "Convert to CAD faces in Mesh to STEP…"));
       },
       handler: { down: () => false, hover() {} },
     };
@@ -5628,7 +5630,7 @@ export function initAdvanced(app) {
         { id: "ad-ins-svg", label: "SVG drawing", title: "Insert an SVG drawing as a sketch", icon: "svgfile", fn: () => insertFile("svg") },
         { id: "ad-ins-dxf", label: "DXF drawing", title: "Insert a DXF drawing as a sketch", icon: "dxffile", fn: () => insertFile("dxf") },
         { id: "ad-ins-img", label: "Image to trace", title: "Place a picture to trace over (canvas)", icon: "image", fn: () => insertFile("image") },
-        { id: "ad-ins-model", label: "STL / 3MF / STEP model", title: "Import a 3D model: an STL or 3MF mesh, or a STEP solid", icon: "import", fn: () => insertFile("model") },
+        { id: "ad-ins-model", label: "STL / OBJ / 3MF / STEP model", title: "Import a 3D model: an STL, OBJ or 3MF mesh, or a STEP solid", icon: "import", fn: () => insertFile("model") }, // jumpstart-3d: OBJ import
       ] },
     ]);
     group("Modify", "", [

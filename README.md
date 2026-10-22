@@ -383,6 +383,7 @@ UPSTREAM-README.md         the author's README from the source release
 ## What this repository adds on top of the original
 
 - OBJ export in the Open/Export menu
+- OBJ import in Beginner and Advanced: reads vertex positions and faces into one body, then uses the same mesh repair and units path as other imported meshes; materials are ignored (`src/objimport.js`)
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
 - Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit and their old copies are left in place, so an older version of the app still finds them as they were that day; browsers where IndexedDB fails keep the old way (`src/projstore.js`)
