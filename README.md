@@ -121,6 +121,9 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
   shell, patterns (including along a path, and of whole features such as
   holes and cuts) and a feature timeline, driven by a real CAD kernel
   (OpenCascade)
+- When a combine or Beginner Hole and Group leaves separate solid pieces,
+  each piece becomes a separately movable body. Copies keep their own feature
+  histories, so you can edit each piece independently.
 - 3D Sketch: draw tubes and pipes freely in space
 - Lathe: turn a body or a blank into a round part
 - Jump Brick Builder (Advanced, Simulate): build with bricks
