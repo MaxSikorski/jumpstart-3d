@@ -28,6 +28,15 @@ Pick one:
   [jumpstart-3d.html](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)
   and double-click it. That one file is the whole app. It works without an
   internet connection (only the fonts come from the web).
+- **macOS app:** the Electron wrapper shared by a community member in
+  [issue #11](https://github.com/MaxSikorski/jumpstart-3d/issues/11) also
+  works. In a folder containing `jumpstart-3d.html`, a `main.js` that loads it,
+  and a `package.json` with `"main": "main.js"`, run:
+
+  ```
+  npm install --save-dev electron @electron/packager
+  npx electron-packager . JumpStart --platform=darwin --arch=arm64
+  ```
 
 That is all. You do not need anything else in this repository.
 
@@ -384,6 +393,7 @@ UPSTREAM-README.md         the author's README from the source release
 
 - OBJ export in the Open/Export menu
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
+- Installable as an app: Install in Chrome/Edge, Add to Dock in Safari
 - Back up all designs and Restore from backup in Your designs: every design in this browser in one JSON file, and an additive restore that never deletes or overwrites (`src/projects.js`)
 - Designs are stored in the browser's IndexedDB instead of the 5 MB localStorage, so a design with an imported mesh no longer fills the browser up; designs saved the old way are copied over on the first visit and their old copies are left in place, so an older version of the app still finds them as they were that day; browsers where IndexedDB fails keep the old way (`src/projstore.js`)
 - Save copies into a folder in Your designs (Chrome and Edge): every design kept up to date as a project file in a folder you pick, so clearing the browser's site data no longer loses work (`src/folder.js`)

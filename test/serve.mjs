@@ -6,7 +6,8 @@ import { join, normalize, extname } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const [dir, port, mode] = [process.argv[2], +process.argv[3], process.argv[4]];
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json" };
+// jumpstart-3d: serve the install manifest with its standard media type.
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/octet-stream", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json", ".webmanifest": "application/manifest+json" };
 
 // gzip mode imitates GitHub Pages for the phone budget (test/mobile.spec.mjs): html, js and wasm go out gzipped (level 6, as
 // tools/measure-load.mjs) with a content-length. The key holds the size and mtime, so a server reused across a rebuild never serves the old build.

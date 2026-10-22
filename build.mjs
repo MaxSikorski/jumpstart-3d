@@ -48,8 +48,12 @@ const read = (p) => readFileSync(p, "utf8");
 const shell = read(join(src, "index.html"));
 const appTag = '<script type="module" src="app.js"></script>\n';
 if (!shell.includes(appTag)) throw new Error("src/index.html is missing the app.js script tag");
+// jumpstart-3d: a manifest belongs to the hosted site, not the single file
+const manifestLink = '<link rel="manifest" href="manifest.webmanifest">';
+if (!shell.includes(manifestLink)) throw new Error('src/index.html is missing href="manifest.webmanifest"');
 // jumpstart-3d: tab icons inline in the single file (the site links them as files)
 const icons = [["favicon.svg", "image/svg+xml"], ["favicon-32.png", "image/png"], ["apple-touch-icon.png", "image/png"]];
+const appIcons = ["icon-192.png", "icon-512.png"];
 const dataUri = (f, mime) => "data:" + mime + ";base64," + readFileSync(join(src, f)).toString("base64");
 for (const [f] of icons) if (!shell.includes('href="' + f + '"')) throw new Error('src/index.html is missing href="' + f + '"');
 const app = read(join(out, "app.js"));
@@ -65,6 +69,9 @@ cpSync(join(out, "worker.js"), join(docs, "worker.js"));
 cpSync(wasm, join(docs, "occt-gz.wasm"));
 cpSync(join(src, "og-image.png"), join(docs, "og-image.png")); // link-preview card; the meta tags in index.html point here
 for (const [f] of icons) cpSync(join(src, f), join(docs, f)); // tab icons; index.html links them
+// jumpstart-3d: installable app assets
+cpSync(join(src, "manifest.webmanifest"), join(docs, "manifest.webmanifest"));
+for (const f of appIcons) cpSync(join(src, f), join(docs, f));
 writeFileSync(join(docs, ".nojekyll"), "");
 // jumpstart-3d: offline. the site's service worker; its cache name comes from the files it keeps, so every build gets its own cache. Not in the single file.
 const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm"].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
@@ -84,6 +91,7 @@ let single = shell.replace(
     '<script type="module">' + app + "</script>\n"
 );
 for (const [f, mime] of icons) single = single.replace('href="' + f + '"', () => 'href="' + dataUri(f, mime) + '"');
+single = single.replace(manifestLink, () => ""); // jumpstart-3d: a web manifest cannot be used from file://
 writeFileSync(join(dist, "jumpstart-3d.html"), single);
 
 const mb = (n) => (n / 1048576).toFixed(2) + " MB";
