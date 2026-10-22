@@ -90,15 +90,25 @@ export function zipEntries(bytes) {
   return out;
 }
 
-// What a 3MF holds: for every mesh its triangle count, how many directed edges have no partner (0 when the mesh is
-// closed; the file's vertices are already welded, so indexes are compared as they are) and its signed volume.
+// What a 3MF holds, as a consumer would build it: every <object> with a <mesh> (triangle count, directed edges with
+// no partner, signed volume; the file's vertices are already welded, so indexes are compared as they are), and the
+// <build> items resolved to those objects. `placed` is the volume of each build item: mesh volume times the determinant
+// of its transform (the 12 numbers of a 3MF matrix, identity when there is none). An item that points at no object, or at
+// an object made of components, throws.
 export function readThreeMf(bytes) {
   const files = zipEntries(bytes);
   const name = [...files.keys()].find((k) => /\.model$/i.test(k));
   if (!name) throw new Error("3MF has no .model file: " + [...files.keys()].join(", "));
   const xml = files.get(name).toString("utf8");
   if (!/<\/model>\s*$/.test(xml)) throw new Error("3MF model XML is cut off");
-  const meshes = [...xml.matchAll(/<mesh>([\s\S]*?)<\/mesh>/g)].map((m) => {
+  const objects = new Map();
+  for (const o of xml.matchAll(/<object\b([^>]*)>([\s\S]*?)<\/object>/g)) {
+    const id = (o[1].match(/\bid="([^"]+)"/) || [])[1];
+    if (id === undefined) throw new Error("3MF object without an id");
+    if (objects.has(id)) throw new Error(`3MF has two objects with id ${id}`);
+    if (/<components\b/.test(o[2])) { objects.set(id, { components: true }); continue; }
+    const m = o[2].match(/<mesh>([\s\S]*?)<\/mesh>/);
+    if (!m) throw new Error(`3MF object ${id} has no mesh`);
     const verts = [...m[1].matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"/g)].map((v) => [+v[1], +v[2], +v[3]]);
     const tris = [...m[1].matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"/g)].map((t) => [+t[1], +t[2], +t[3]]);
     const edges = new Map();
@@ -111,15 +121,56 @@ export function readThreeMf(bytes) {
     }
     let open = 0;
     for (const [k, n] of edges) { const [u, v] = k.split(">"); open += Math.abs(n - (edges.get(`${v}>${u}`) || 0)); }
-    return { vertices: verts.length, triangles: tris.length, open, volume };
+    objects.set(id, { vertices: verts.length, triangles: tris.length, open, volume });
+  }
+  const build = xml.match(/<build>([\s\S]*?)<\/build>/);
+  if (!build) throw new Error("3MF has no <build>");
+  const items = [...build[1].matchAll(/<item\b([^>]*?)\/?>/g)].map((it) => {
+    const objectid = (it[1].match(/\bobjectid="([^"]+)"/) || [])[1];
+    const obj = objects.get(objectid);
+    if (!obj) throw new Error(`3MF build item points at object ${objectid}, which does not exist`);
+    if (obj.components) throw new Error(`3MF build item ${objectid} is made of components (not written by the exporter)`);
+    const t = ((it[1].match(/\btransform="([^"]+)"/) || [])[1] || "1 0 0 0 1 0 0 0 1 0 0 0").trim().split(/\s+/).map(Number);
+    if (t.length !== 12 || !t.every(Number.isFinite)) throw new Error(`3MF build item ${objectid} has a damaged transform`);
+    const det = t[0] * (t[4] * t[8] - t[5] * t[7]) - t[1] * (t[3] * t[8] - t[5] * t[6]) + t[2] * (t[3] * t[7] - t[4] * t[6]);
+    return { objectid, mesh: obj, placed: obj.volume * det };
   });
-  return { meshes, build: (xml.match(/<item[\s/]/g) || []).length };
+  return { objects, items };
 }
 
-// STEP text: a start line, an end line, and a count of solid bodies.
+// STEP text: a start line, an end line, and how many solid entities it holds. A plain solid is a MANIFOLD_SOLID_BREP; a
+// solid with an enclosed cavity is a BREP_WITH_VOIDS.
 export function readStep(bytes) {
   const text = bytes.toString("latin1");
   if (!/^ISO-10303-21;/.test(text)) throw new Error("STEP file does not start with ISO-10303-21;");
   if (!/END-ISO-10303-21;\s*$/.test(text)) throw new Error("STEP file does not end with END-ISO-10303-21;");
-  return { solids: (text.match(/MANIFOLD_SOLID_BREP/g) || []).length };
+  return { solids: (text.match(/=\s*(MANIFOLD_SOLID_BREP|BREP_WITH_VOIDS)\s*\(/g) || []).length };
+}
+
+// How well a mesh must match the kernel's exact volume. Flat faces are written exactly; curved faces are cut into
+// triangles that sit inside the true surface (0.3 to 0.7 percent seen).
+export const PLANAR_KINDS = new Set(["box", "wedge", "pyramid", "prism", "roof", "star", "group"]);
+export function meshMatches(mesh, exact, kinds) {
+  const flat = kinds.every((k) => PLANAR_KINDS.has(k));
+  const rel = flat ? 2e-4 : 1e-2, abs = flat ? 0.01 : 0.05;
+  return Number.isFinite(mesh) && Math.abs(mesh - exact) <= abs + rel * Math.max(Math.abs(mesh), Math.abs(exact));
+}
+
+// A body made of separate solids can lose a torus from its mesh (see test/README.md). Excused only for that: the body
+// holds a torus and several solids, and its mesh is smaller than the kernel's volume.
+export const lostTorusExcused = (body, mesh) => body.solids > 1 && body.kinds.includes("torus") && mesh < body.volume;
+
+// "This body can't be stretched unevenly" is the kernel giving up on rebuilding a stretched body from a fine mesh of more
+// than 4000 triangles (src/kernel.js, facetedScale). Excused only for that: factors that differ, a body that is rebuilt
+// that way (a group, a torus or text) and a mesh that is big.
+export const FINE_MESH_TRIANGLES = 2000; // drawn triangles: a group of 1396 stretched fine, one of 8552 did not
+export function stretchExcused(k, body) {
+  const different = Array.isArray(k) && !k.every((v) => v === k[0]);
+  const rebuilt = body.kind === "group" || ["torus", "text"].includes(body.kind);
+  return different && rebuilt && body.tris >= FINE_MESH_TRIANGLES;
+}
+
+// What a person pastes to run the same chain again.
+export function replayCommand({ seed, ops, strict, project }) {
+  return `${strict ? "FUZZ_STRICT=1 " : ""}FUZZ_SEED=${seed} FUZZ_OPS=${ops} npx playwright test test/fuzz.spec.mjs --project=${project}`;
 }
