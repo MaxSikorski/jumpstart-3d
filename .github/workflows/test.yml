@@ -60,8 +60,8 @@ jobs:
       # every part runs to the end, so one failure shows all the others
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
-        total: [6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        total: [8]
     env:
       # the chat judge shares one 8-minute clock across both builds, so it runs whole in the "chat judge" job;
       # the golden exports run in the "export judge" job, which judges them
@@ -118,14 +118,14 @@ jobs:
       - run: npx playwright install chromium
       # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
       - name: Install export judge consumers
-        timeout-minutes: 8
+        timeout-minutes: 14
         # J1: The runner's apt mirror sometimes serves a package at a crawl; a new try gets a new connection.
         # A killed try can leave dpkg half-finished, so each new try repairs that first; apt also retries and gives up on a stalled connection by itself.
         run: |
           printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries >/dev/null
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4; do
             sudo dpkg --configure -a || true
-            timeout 150 bash tools/install-judge-tools.sh && exit 0
+            timeout 180 bash tools/install-judge-tools.sh && exit 0
           done
           exit 1
       - run: npm run test:judge:unit
