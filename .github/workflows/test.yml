@@ -4,6 +4,8 @@ name: test
 
 on:
   pull_request:
+    # edited also fires when a pull request's target branch changes, so a retarget is classified again (a title edit reruns too; rare)
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
   workflow_dispatch:
