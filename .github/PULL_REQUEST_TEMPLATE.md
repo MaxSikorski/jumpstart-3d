@@ -2,6 +2,24 @@
 
 <!-- One or two sentences: what, and why. Link the issue if there is one. -->
 
+## Outcome and proof
+
+<!-- Quote the requester's answer to "What should it end up as?" -->
+
+>
+
+- Proving test and result (written before implementation):
+- What was not tested:
+
+## Review gates
+
+<!-- Follow REVIEW.md. Record pending or skipped gates honestly, including the post-release checks. -->
+
+- Gates run and results:
+- Findings (HIGH/MEDIUM/LOW, source file:line evidence; duplicates removed):
+- Fixes and verification:
+- What was not tested or is still pending:
+
 ## Checklist
 
 - [ ] Ran `node build.mjs` and committed the rebuilt `docs/`
