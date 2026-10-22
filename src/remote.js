@@ -1,6 +1,7 @@
 // jumpstart-3d: designs on your own server. Your designs gets a second tab, "Your server": the designs in a folder on a
 // WebDAV server (Nextcloud, a NAS, Apache, nginx), listed, opened, saved and deleted by hand as the same project files
 // the folder copies use (<name>-<id>.json holding { app, version, doc }). Nothing runs by itself.
+// A matching .json.thumb holds the browser's JPEG data URI so listing never needs the full design.
 // The address, user and files live in localStorage "jumpstart.remote":
 // { url, user, remember, pass?, files: { <design id>: { file, tag, sum } } } where tag is the server's version stamp
 // and sum a fingerprint of the content both sides held at the last Open or Save.
@@ -72,7 +73,7 @@ function parse(text, base) {
   if (xml.getElementsByTagName("parsererror").length || xml.documentElement.localName !== "multistatus") throw new Err(T.unreadable);
   const first = (p, n) => p.getElementsByTagNameNS(DAV, n)[0];
   const basePath = dec(new URL(base).pathname.replace(/\/$/, ""));
-  const out = [];
+  const out = [], previews = new Map();
   for (const r of xml.getElementsByTagNameNS(DAV, "response")) try {
     const href = first(r, "href"), p = {};
     if (!href) continue;
@@ -84,15 +85,19 @@ function parse(text, base) {
     const path = new URL(href.textContent.trim(), base).pathname.replace(/\/$/, "");
     if ((p.resourcetype && p.resourcetype.getElementsByTagNameNS(DAV, "collection").length) || dec(path) === basePath) continue;
     const file = dec(path.split("/").pop());
-    if (!file || file.startsWith(".") || !/\.json$/i.test(file)) continue;
+    if (!file || file.startsWith(".")) continue;
     const etag = p.getetag ? p.getetag.textContent.trim() : "", mod = p.getlastmodified ? p.getlastmodified.textContent.trim() : "";
+    if (file.endsWith(".json.thumb")) { previews.set(file, etag || mod); continue; }
+    if (!/\.json$/i.test(file)) continue;
     out.push({ file, id: (/-(d[a-z0-9]{7,})\.json$/i.exec(file) || [])[1] || null, etag, mtime: Date.parse(mod) || 0, tag: etag || mod });
   } catch (e) { /* a response we can't read is skipped */ }
-  return out.sort((a, b) => b.mtime - a.mtime);
+  return out.sort((a, b) => b.mtime - a.mtime).map((item) => ({ ...item, preview: previews.has(item.file + ".thumb"), previewTag: previews.get(item.file + ".thumb") || item.tag }));
 }
 
-export function initRemote({ ps, toast, fileSafe, open }) {
+export function initRemote({ ps, toast, fileSafe, open, thumbnail }) {
   let rec = null, auth = null, base = "", items = null, conflict = null, busy = false, tried = false, dflt = "", pend = null;
+  let previewRun = 0, previewActive = 0, previewQueue = [];
+  const thumbButtons = new WeakMap();
   let status = { text: T.intro, red: false }, panel = null, closeModal = () => {};
   try { const j = JSON.parse(localStorage.getItem(KEY)), c = j && typeof j.url === "string" ? check(j.url, location.protocol) : {}; if (c.url && j.files && typeof j.files === "object") rec = { url: c.url, user: String(j.user || ""), remember: !!j.remember, pass: typeof j.pass === "string" ? j.pass : undefined, files: j.files }; } catch (e) {}
   const writeRec = () => { try { localStorage.setItem(KEY, JSON.stringify({ url: rec.url, user: rec.user, remember: rec.remember, ...(rec.remember && rec.pass ? { pass: rec.pass } : {}), files: rec.files })); } catch (e) {} };
@@ -117,8 +122,9 @@ export function initRemote({ ps, toast, fileSafe, open }) {
     } finally { busy = false; lock(false); }
   }
 
-  // name "" is the folder. A status outside 2xx throws its text, except the ones listed in allow (true: all); a 401 signs out.
-  async function call(method, name, { body, headers, allow, probe } = {}) { // probe: a test that must not touch the saved record
+  // name "" is the folder. A status outside 2xx throws its text, except those in allow (true: all).
+  // A 401 signs out except for optional previews, which may have different permissions from the designs.
+  async function call(method, name, { body, headers, allow, probe, preview } = {}) { // probe: a test that must not touch the saved record
     if (!auth) throw new Err(T.denied);
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), WAIT);
     try {
@@ -132,17 +138,52 @@ export function initRemote({ ps, toast, fileSafe, open }) {
       }
       const s = r.status;
       if (r.type === "opaqueredirect" || (s >= 300 && s < 400)) throw new Err(T.moved); // a redirect would send the password on
-      if (s === 401) { auth = null; if (rec && !probe) { delete rec.pass; writeRec(); } }
+      if (s === 401 && !preview) { auth = null; if (rec && !probe) { delete rec.pass; writeRec(); } }
       if (s === 401 || !((s >= 200 && s < 300) || allow === true || (allow || []).includes(s))) {
         throw new Err(s === 401 ? T.denied : s === 403 ? T.forbidden : s === 405 && method === "PROPFIND" ? T.nolist : s === 507 ? T.space : `The server answered with error ${s}.`);
       }
       return { status: s, text };
     } finally { clearTimeout(timer); }
   }
-  async function list() {
-    const r = await call("PROPFIND", "", { headers: { Depth: "1", "Content-Type": "application/xml; charset=utf-8" }, body: PROPFIND, allow: [404] });
+  // Keep the limit across refreshes too: old requests finish before taking new queue entries.
+  function loadPreviews() {
+    while (previewActive < 4 && previewQueue.length) {
+      const { item, run } = previewQueue.shift();
+      previewActive++;
+      (async () => {
+        try {
+          const g = await call("GET", item.file + ".thumb", { preview: true });
+          if (run !== previewRun || !auth || !items?.includes(item)) return;
+          if (g.text.length <= 200_000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(g.text)) {
+            item.thumb = g.text;
+            const button = thumbButtons.get(item);
+            if (button) button.style.backgroundImage = `url(${item.thumb})`;
+          }
+        } catch (e) { /* previews are optional; the card remains usable */ }
+        finally { previewActive--; loadPreviews(); }
+      })();
+    }
+  }
+  async function list(withPreviews = true, saved = null) {
+    let run = previewRun;
+    let r;
+    try { r = await call("PROPFIND", "", { headers: { Depth: "1", "Content-Type": "application/xml; charset=utf-8" }, body: PROPFIND, allow: [404] }); }
+    catch (e) { if (run !== previewRun) return null; throw e; }
+    if (run !== previewRun) return null;
     if (r.status === 404) throw Object.assign(new Err(T.gone), { missing: true }); // never created by itself: a typo must not make folders
-    return (items = parse(r.text, base));
+    const found = parse(r.text, base);
+    if (!withPreviews) return found;
+    run = ++previewRun;
+    const previous = new Map((items || []).map((item) => [item.file, item]));
+    for (const item of found) {
+      const cached = previous.get(item.file);
+      if (saved && item.file === saved.file) item.thumb = saved.thumb;
+      else if (item.preview && cached && item.previewTag && item.previewTag === cached.previewTag) item.thumb = cached.thumb;
+    }
+    items = found;
+    previewQueue = items.filter((item) => item.preview && !item.thumb && !(saved && item.file === saved.file)).map((item) => ({ item, run }));
+    loadPreviews();
+    return items;
   }
   const hello = () => say(`Connected to ${host()}: ${plural(items.length)} there.`);
 
@@ -155,9 +196,10 @@ export function initRemote({ ps, toast, fileSafe, open }) {
     return { url: c.url, user, pass, remember: f("remember").checked };
   }
   async function attempt(c) {
+    previewRun++; previewQueue = []; items = null;
     base = c.url; auth = mk(c.user, c.pass);
     say(`Connecting to ${host()}…`);
-    try { await list(); } catch (e) { auth = null; pend = e.missing ? c : null; throw e; }
+    try { if (!await list()) return; } catch (e) { auth = null; pend = e.missing ? c : null; throw e; }
     pend = null;
     rec = { url: c.url, user: c.user, remember: c.remember, pass: c.pass, files: rec && rec.url === c.url ? rec.files : {} };
     writeRec(); render(); hello();
@@ -203,10 +245,11 @@ export function initRemote({ ps, toast, fileSafe, open }) {
     if (!auth) { say(T.intro); render(); fillDefault(); return; }
     if (!busy) say(`Connecting to ${host()}…`);
     render();
-    await act(async () => { await list(); render(); hello(); });
+    await act(async () => { if (!await list()) return; render(); hello(); });
   }
   function forget() {
     try { localStorage.removeItem(KEY); } catch (e) {}
+    previewRun++; previewQueue = [];
     rec = null; auth = null; items = null; conflict = null;
     show();
   }
@@ -223,7 +266,7 @@ export function initRemote({ ps, toast, fileSafe, open }) {
     let local = null, odd = false;
     try { const s = await ps.get(id); local = s ? JSON.parse(s) : null; } catch (e) { odd = true; }
     if (odd || (!local && (await ps.list()).some((e) => e.id === id)) || (local && typeof local !== "object")) odd = true;
-    const put = async (did, d) => { if (!await ps.put(did, JSON.stringify({ ...d, id: did, _updated: t }), { id: did, name: d.name || "Untitled", ver: d.ver || 0, mode: d.mode, updated: t, thumb: null })) throw new Err(T.full); };
+    const put = async (did, d) => { if (!await ps.put(did, JSON.stringify({ ...d, id: did, _updated: t }), { id: did, name: d.name || "Untitled", ver: d.ver || 0, mode: d.mode, updated: t, thumb: item.thumb || null })) throw new Err(T.full); };
     let go = id, mark = true, msg = `Opened “${nm}” from the server.`;
     if (!odd && !local) await put(id, doc);
     else if (!odd && sum(local) === ssum) { /* already the same */ }
@@ -243,10 +286,12 @@ export function initRemote({ ps, toast, fileSafe, open }) {
 
   async function save(force) {
     conflict = null;
-    const doc = store.doc, name = (fileSafe(doc.name || "").slice(0, 70) || "design") + "-" + doc.id + ".json", lsum = sum(doc), old = rec.files[doc.id];
+    const doc = JSON.parse(JSON.stringify(store.doc)), name = (fileSafe(doc.name || "").slice(0, 70) || "design") + "-" + doc.id + ".json", lsum = sum(doc), old = rec.files[doc.id];
     const text = JSON.stringify({ app: "jumpstart-3d", version: 1, doc }, null, 1);
-    const found = await list();
-    if (!rec) return; // forgotten meanwhile: stop quietly
+    const thumb = thumbnail();
+    const record = rec;
+    const found = await list(false);
+    if (!found || rec !== record) return; // forgotten meanwhile: stop quietly
     const srv = found.find((i) => old && i.file === old.file) || found.find((i) => i.id === doc.id);
     const hit = found.find((i) => sameName(i.file, name)); // a file already called what we would write
     const hold = () => { conflict = { name: doc.name || "Untitled" }; render(); };
@@ -254,31 +299,44 @@ export function initRemote({ ps, toast, fileSafe, open }) {
     for (const s of force ? [] : [srv, hit !== srv && hit]) {
       if (!s || (old && s.file === old.file && s.tag && s.tag === old.tag)) continue;
       const g = await call("GET", s.file);
-      if (!rec) return;
+      if (rec !== record) return;
       let ssum = null;
       try { ssum = sum(JSON.parse(g.text).doc); } catch (e) {}
       if (ssum !== lsum && (!old || ssum !== old.sum)) return hold();
     }
     const strong = hit && hit.file === name && hit.etag && !/^W\//.test(hit.etag);
     const r = await call("PUT", name, { body: text, headers: { "Content-Type": "application/json", ...(strong ? { "If-Match": hit.etag } : {}) }, allow: [412] });
-    if (!rec) return;
+    if (rec !== record) return;
     if (r.status === 412) { // an answer to Replace it must not bring the same question back
       if (!force) return hold();
       render(); return say(T.refused, true);
     }
-    if (srv && !sameName(srv.file, name)) { try { await call("DELETE", srv.file, { allow: [404] }); } catch (e) {} } // the renamed design's old file, found by its id
-    if (!rec) return;
+    let previewNote = "";
+    try {
+      if (thumb) await call("PUT", name + ".thumb", { body: thumb, headers: { "Content-Type": "text/plain" }, preview: true });
+      else await call("DELETE", name + ".thumb", { allow: [404], preview: true });
+    } catch (e) { if (!(e instanceof Err)) throw e; previewNote = " The design is saved, but its preview could not be updated."; }
+    if (rec !== record) return;
+    if (srv && !sameName(srv.file, name)) {
+      if (srv.preview) await call("DELETE", srv.file + ".thumb", { allow: [404], preview: true });
+      if (rec !== record) return;
+      await call("DELETE", srv.file, { allow: [404] });
+    }
+    if (rec !== record) return;
     let tag = "";
-    try { tag = ((await list()).find((i) => i.file === name) || {}).tag || ""; } catch (e) {}
-    if (!rec) return;
+    try { tag = ((await list(true, previewNote ? null : { file: name, thumb })).find((i) => i.file === name) || {}).tag || ""; } catch (e) {}
+    if (rec !== record) return;
     rec.files[doc.id] = { file: name, tag, sum: lsum };
     writeRec(); render();
-    say(`Saved “${doc.name || "Untitled"}” to ${host()}.`);
+    say(`Saved “${doc.name || "Untitled"}” to ${host()}.` + previewNote);
     toast(`Saved “${doc.name || "Untitled"}” to the server.`);
   }
   async function remove(item) {
+    const record = rec;
+    if (item.preview) await call("DELETE", item.file + ".thumb", { allow: [404], preview: true });
+    if (rec !== record) return;
     await call("DELETE", item.file, { allow: [404] });
-    if (!rec) return;
+    if (rec !== record) return;
     items = items.filter((i) => i !== item);
     if (item.id && rec.files[item.id] && rec.files[item.id].file === item.file) delete rec.files[item.id];
     writeRec(); render(); hello();
@@ -295,8 +353,10 @@ export function initRemote({ ps, toast, fileSafe, open }) {
       acts.replaceWith(row);
     };
     const when = item.mtime ? new Date(item.mtime).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+    const button = el("button", { class: "thumb", style: { backgroundImage: item.thumb ? `url(${item.thumb})` : "none", border: 0, cursor: "pointer" }, "aria-label": "Open " + name, onclick: go });
+    thumbButtons.set(item, button);
     return el("div", { class: "pcard" + (item.id && item.id === store.doc.id ? " current" : "") },
-      el("button", { class: "thumb", style: { border: 0, cursor: "pointer" }, "aria-label": "Open " + name, onclick: go }),
+      button,
       el("div", { class: "meta" }, el("b", {}, name), el("span", {}, when)), acts);
   }
   function render() {

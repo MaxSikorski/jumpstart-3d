@@ -24,6 +24,9 @@
   the About dialog and in THIRD-PARTY-NOTICES.md.
 -->
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="format-detection" content="telephone=no">
+<!-- jumpstart-3d: iPhone home-screen label -->
+<meta name="apple-mobile-web-app-title" content="JumpStart 3D">
+<title>JumpStart 3D</title>
 <meta name="description" content="Free 3D CAD in your browser. No install, no account, no server. Drag shapes together in Beginner mode, or sketch, extrude, fillet and shell in Advanced mode.">
 <meta name="theme-color" content="#1b232d">
 <!-- Link previews (Discord, iMessage, Reddit, Slack, X). URLs must be absolute; the image is served from the site. -->
@@ -44,8 +47,9 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<!-- jumpstart-3d: installable app manifest -->
+<link rel="manifest" href="manifest.webmanifest">
 </head><body>
-<title>JumpStart 3D</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -697,6 +701,9 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .about .ab-update .btn { text-decoration: none; }
 .about .ab-credit-sub { margin: 8px 0 0; text-align: center; font-size: 13px; color: var(--ink-2); }
 .about .ab-credit-sub a { color: var(--accent); }
+.about .ab-update.ab-top { justify-content: flex-start; margin: 4px 0 4px 56px; }
+.about .ab-upmsg { margin: 8px 0 0; text-align: center; color: var(--ink-2); font-size: 13px; }
+.about .ab-upmsg a { color: var(--accent); font-weight: 600; }
 .about .ab-credit { margin: 22px 0 2px; padding-top: 12px; border-top: 1px solid var(--line-2); text-align: center; font: 600 15px/1 var(--f-label); letter-spacing: .1em; color: var(--ink); }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--loading-bg); z-index: 30; }
 .loading .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; width: min(360px, 86%); box-shadow: 0 10px 34px rgba(20,30,45,.14); }
@@ -936,6 +943,11 @@ body.s3d-on .tut-panel { z-index: 96; }
 .lathe-done-back { background: transparent; justify-content: flex-end; align-items: flex-start; pointer-events: none; }
 .lathe-done-back .s3d-modal { pointer-events: auto; width: min(370px, 100%); max-height: 100%; overflow: auto; }
 
+.fp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 2px 0 6px; }
+.fp-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; font: inherit; color: inherit; }
+.fp-tile small { font-size: 10px; line-height: 1.15; text-align: center; }
+.fp-tile[aria-pressed="true"] { border-color: var(--accent, #1f4fa8); box-shadow: 0 0 0 1px var(--accent, #1f4fa8) inset; background: color-mix(in srgb, var(--accent, #1f4fa8) 10%, var(--panel)); }
+.fp-tile svg { display: block; border-radius: 4px; }
 .bk-panes { display: flex; }
 .bk-view { position: relative; flex: 1; min-width: 0; }
 .bk-side { width: 300px; max-width: 42vw; overflow: auto; border-left: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); font-size: 13px; }
@@ -993,6 +1005,7 @@ body.s3d-on .tut-panel { z-index: 96; }
 .tut-level.easy { background: #2e9d57; }
 .tut-level.proficient { background: #d08a12; }
 .tut-level.advanced { background: #c0392b; }
+.tut-level.expert { background: #4b2a7b; }
 .tut-panel { position: fixed; z-index: 48; width: min(340px, calc(100vw - 16px)); max-height: calc(100vh - 70px); overflow: auto; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.25); font-size: 13px; }
 .tut-panel.mini { width: min(300px, calc(100vw - 16px)); }
 .tut-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; cursor: move; background: var(--panel-2); border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0; touch-action: none; }
@@ -1217,7 +1230,8 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <svg class="sp-logo" viewBox="0 0 24 24" aria-hidden="true"><path class="l1" d="M3 16.5 12 21l9-4.5L12 12z" fill="#2d63c8"/><path class="l2" d="M3 12 12 16.5 21 12 12 7.5z" fill="#6f98d8"/><path class="l3" d="M3 7.5 12 12l9-4.5L12 3z" fill="#e9eef4"/></svg>
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
-    <p class="sp-ver" id="sp-ver">Version 2.0</p>
+    <!-- jumpstart-3d: match version.js before the app loads. -->
+    <p class="sp-ver" id="sp-ver">Version 2.1.3 · community build 19</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

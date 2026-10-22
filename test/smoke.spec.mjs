@@ -2,6 +2,7 @@
 // exports produce files, and a saved design comes back after a reload.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { VERSION, BUILD } from "../src/version.js";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, exportBytes, newDoc, body, prim, stlTriangles, sha256 } from "./helpers.mjs";
 
 const box20 = () => newDoc("Box", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
@@ -42,11 +43,15 @@ test("icon links: files on the site, data URIs in the single file", async ({}, i
   }
 });
 
-test("About keeps the author's credit and says 2.0", async () => {
+test("About keeps the author's credit and matches the source splash version", async () => {
+  const expected = `Version ${VERSION} · community build ${BUILD}`;
+  const source = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+  const splashVersion = await page.evaluate((html) => new DOMParser().parseFromString(html, "text/html").querySelector("#sp-ver")?.textContent, source);
+  expect(splashVersion).toBe(expected);
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
   await expect(about).toBeVisible();
-  await expect(about).toContainText("Version 2.0");
+  await expect(about).toContainText(expected);
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
 });
@@ -1334,13 +1339,14 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   const r = await page.evaluate(() => {
     const t = window.__app.tutorials, tut = t.list.find((x) => x.id === "a-params"), T = t.T;
     const run = () => tut.steps.map((s) => (s.check ? !!s.check(T) : null));
-    const out = { count: t.list.length, adv: t.list.filter((x) => x.mode === "advanced").length, steps: tut.steps.length, level: tut.level, item: tut.item };
+    const out = { count: t.list.length, beginner: t.list.filter((x) => x.mode === "beginner").length, adv: t.list.filter((x) => x.mode === "advanced").length, steps: tut.steps.length, level: tut.level, item: tut.item };
     out.empty = run();
     return out;
   });
   expect(r.steps).toBeGreaterThanOrEqual(7);
-  expect(r.count).toBe(19);
-  expect(r.adv).toBe(10);
+  expect(r.count).toBe(39);
+  expect(r.beginner).toBe(19);
+  expect(r.adv).toBe(20);
   expect(r.level).toBe("Proficient");
   expect(r.item).toBe("Bracket");
   expect(r.empty.slice(0, 6)).toEqual([false, false, false, false, false, false]);
@@ -1359,10 +1365,10 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   expect((await bodies(page))[0].volume).toBeCloseTo(80 * 40 * 8, 0);
 });
 
-test("About says nineteen tutorials and lists what the community build adds", async () => {
+test("About says thirty-nine tutorials and lists what the community build adds", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText("nineteen step-by-step projects (nine in Beginner, ten in Advanced");
+  await expect(about).toContainText("thirty-nine step-by-step projects (nineteen in Beginner, twenty in Advanced");
   await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();

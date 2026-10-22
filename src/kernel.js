@@ -2,6 +2,7 @@
 // and meshes. Runs inside a Web Worker in the app, and directly in Node for tests.
 import * as R from "replicad";
 import { fontBytes } from "./fonts.js";
+import { facePatCells } from "./facepat.js";
 
 let OC = null;
 export async function initKernel(opencascade, wasmBinary) {
@@ -1174,6 +1175,16 @@ function applyMod(shape, mod) {
       shape.delete();
       return out;
     }
+    case "facepat": {
+      const tool = facePatTool(shape, mod);
+      const v0 = safeVolume(shape);
+      let out;
+      try { out = mod.mode === "cut" ? cutAll(shape, [tool]) : fuseAllTools(shape, [tool]); } finally { tool.delete(); }
+      if (!out || !(safeVolume(out) > 1e-9)) { if (out) out.delete(); throw new Error("Pattern: couldn't " + (mod.mode === "cut" ? "cut it into" : "raise it on") + " this face"); }
+      void v0;
+      shape.delete();
+      return out;
+    }
     case "thread": {
       const { groove, clipped, crest } = threadGroove(shape, mod);
       // the print offset's crest relief first (a plain ring), then the helical groove
@@ -1800,6 +1811,156 @@ function embossTool(m) {
   }
   return dr.sketchOnPlane(new R.Plane(add(m.p, n, -depth), x, n)).extrude(depth + 0.5);
 }
+// ---------------------------------------------------------------- face patterns
+// A pattern of shapes (hexagons, diamond-plate bars, screen-mesh squares, ...) raised from or cut
+// into one flat face. Parametric: it is rebuilt from its settings every time, centered on the face
+// it was put on (found again by its direction and the point that was clicked, so it follows the
+// face when the body is resized).
+function facePatFace(shape, m) {
+  const n = Vec.norm(m.n), p = m.p;
+  let best = null, bd = Infinity;
+  const faces = shape.faces;
+  for (const f of faces) {
+    if (f.geomType !== "PLANE") continue;
+    let nf;
+    try { nf = f.normalAt().toTuple(); } catch (e) { continue; }
+    if (Vec.dot(nf, n) < 0.999) continue;
+    let d;
+    try { const v = R.makeVertex(p); d = R.measureDistanceBetween(v, f); v.delete(); } catch (e) { d = Infinity; }
+    if (d < bd) { bd = d; best = f; }
+  }
+  for (const f of faces) if (f !== best) f.delete();
+  return best;
+}
+// the face's outline (outer edge and holes) as 2D segments in the pattern's frame
+function faceSegments2D(face, O, X, Y) {
+  const segs = [];
+  const to2 = (q) => { const d = Vec.sub(q, O); return [Vec.dot(d, X), Vec.dot(d, Y)]; };
+  for (const w of face.wires) {
+    for (const e of w.edges) {
+      let k = 1;
+      try { const t = e.geomType; k = t === "LINE" ? 1 : t === "CIRCLE" ? 48 : 32; } catch (err) { k = 24; }
+      let prev = null;
+      for (let i = 0; i <= k; i++) {
+        let q;
+        try { const v = e.pointAt(i / k); q = to2(v.toTuple()); v.delete && v.delete(); } catch (err) { continue; }
+        if (prev) segs.push([prev[0], prev[1], q[0], q[1]]);
+        prev = q;
+      }
+      e.delete();
+    }
+    w.delete();
+  }
+  return segs;
+}
+const segDist = (x, y, s) => {
+  const dx = s[2] - s[0], dy = s[3] - s[1], L = dx * dx + dy * dy;
+  let t = L > 0 ? ((x - s[0]) * dx + (y - s[1]) * dy) / L : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(x - (s[0] + t * dx), y - (s[1] + t * dy));
+};
+function insideSegs(x, y, segs) {
+  let c = false;
+  for (const s of segs) {
+    if ((s[1] > y) !== (s[3] > y) && x < s[0] + ((y - s[1]) * (s[2] - s[0])) / (s[3] - s[1])) c = !c;
+  }
+  return c;
+}
+function inPoly(x, y, P) {
+  let c = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    if ((P[i][1] > y) !== (P[j][1] > y) && x < P[i][0] + ((y - P[i][1]) * (P[j][0] - P[i][0])) / (P[j][1] - P[i][1])) c = !c;
+  }
+  return c;
+}
+function facePatTool(shape, m) {
+  const face = facePatFace(shape, m);
+  if (!face) throw new Error("Pattern: the flat face it was on is gone. Edit the pattern and click a face again.");
+  try {
+    const n = Vec.norm(m.n);
+    let X = Vec.norm(Vec.sub(m.x || perpTo(n, null), n.map((v) => v * Vec.dot(m.x || [1, 0, 0], n))));
+    if (Math.hypot(...X) < 1e-6) X = perpTo(n, null);
+    const ang = ((+m.angle || 0) * Math.PI) / 180;
+    if (ang) { const Y0 = Vec.cross(n, X); X = Vec.norm([0, 1, 2].map((i) => X[i] * Math.cos(ang) + Y0[i] * Math.sin(ang))); }
+    const Y = Vec.cross(n, X);
+    // on the face's own plane (wherever the face is now); the pattern centers on the face
+    const O0 = face.center.toTuple();
+    let segs = faceSegments2D(face, O0, X, Y);
+    if (!segs.length) throw new Error("Pattern: couldn't read this face's outline");
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (const s of segs) { bx0 = Math.min(bx0, s[0], s[2]); bx1 = Math.max(bx1, s[0], s[2]); by0 = Math.min(by0, s[1], s[3]); by1 = Math.max(by1, s[1], s[3]); }
+    // center the pattern on the face (plus the offsets), so it stays in the middle when the face grows
+    const cx = (bx0 + bx1) / 2 + (+m.ox || 0), cy = (by0 + by1) / 2 + (+m.oy || 0);
+    const O = [0, 1, 2].map((i) => O0[i] + X[i] * cx + Y[i] * cy);
+    segs = segs.map((s) => [s[0] - cx, s[1] - cy, s[2] - cx, s[3] - cy]);
+    const box = [bx0 - cx, by0 - cy, bx1 - cx, by1 - cy];
+    const clip = m.edge === "clip" || m.kind === "slots";
+    const border = clip ? 0 : Math.max(0, +m.border || 0);
+    const bpts = []; for (const s of segs) bpts.push([s[0], s[1]]);
+    const cells = facePatCells(m, box, (c) => {
+      if (clip) return c.strip || insideSegs(c.c[0], c.c[1], segs) || c.pts.some(([x, y]) => insideSegs(x, y, segs)) || bpts.some(([x, y]) => inPoly(x, y, c.pts));
+      for (const [x, y] of c.pts) { if (!insideSegs(x, y, segs)) return false; if (border > 0) for (const s of segs) if (segDist(x, y, s) < border) return false; }
+      for (const [x, y] of bpts) if (inPoly(x, y, c.pts)) return false; // a hole or corner inside the shape
+      return true;
+    });
+    if (!cells.length) throw new Error("Pattern: no shapes fit on this face. Make the pattern smaller or the border thinner.");
+    const depth = clampPos(+m.depth || 1, 0.05), cut = m.mode === "cut";
+    const e = 0.02;
+    // raised: from just under the face up by the depth; cut: from the depth below up past the face
+    const z0 = cut ? -depth : -e, len = cut ? depth + 0.4 : depth + e;
+    const P3 = (x, y) => [0, 1, 2].map((i) => O[i] + X[i] * x + Y[i] * y + n[i] * z0);
+    const vec = new R.Vector(n.map((v) => v * len));
+    const prisms = [];
+    try {
+      for (const c of cells) {
+        let f;
+        if (c.r) { const w = R.assembleWire([R.makeCircle(c.r, P3(c.c[0], c.c[1]), n)]); f = R.makeFace(w); w.delete(); }
+        else f = R.makePolygon(c.pts.map(([x, y]) => P3(x, y)));
+        prisms.push(R.basicFaceExtrusion(f, vec));
+        f.delete();
+      }
+    } catch (err) { prisms.forEach((p) => p.delete()); throw new Error("Pattern: couldn't make the shapes (" + (err.message || err) + ")"); }
+    const comp = R.makeCompound(prisms);
+    // the slab over the whole face: to trim shapes at the edge, or to raise / cut the lines between
+    const slab = () => { const base = face.clone().translate(n.map((v) => v * z0)); const s = R.basicFaceExtrusion(base, vec); base.delete(); return s; };
+    if (m.lines) {
+      const sl = slab();
+      const t = cutAll(sl, [comp]);
+      sl.delete(); comp.delete();
+      if (!t) throw new Error("Pattern: couldn't make the lines between the shapes");
+      return t;
+    }
+    if (!clip) return comp;
+    const sl = slab();
+    const t = commonAll(comp, sl);
+    sl.delete(); comp.delete();
+    if (!t) throw new Error("Pattern: couldn't trim the shapes at the face's edge");
+    return t;
+  } finally { face.delete(); }
+}
+function commonAll(a, b) {
+  const op = new OC.BRepAlgoAPI_Common();
+  const L1 = new OC.NCollection_List_TopoDS_Shape(); L1.Append(a.wrapped);
+  const L2 = new OC.NCollection_List_TopoDS_Shape(); L2.Append(b.wrapped);
+  try {
+    op.SetArguments(L1); op.SetTools(L2); op.Build();
+    if (op.HasErrors()) return null;
+    const sh = op.Shape(); if (sh.IsNull()) return null;
+    return R.cast(sh);
+  } catch (e) { return null; } finally { op.delete(); L1.delete(); L2.delete(); }
+}
+function fuseAllTools(shape, tools) {
+  const op = new OC.BRepAlgoAPI_Fuse();
+  const L1 = new OC.NCollection_List_TopoDS_Shape(); L1.Append(shape.wrapped);
+  const L2 = new OC.NCollection_List_TopoDS_Shape(); for (const t of tools) L2.Append(t.wrapped);
+  try {
+    op.SetArguments(L1); op.SetTools(L2); op.Build();
+    if (op.HasErrors()) return null;
+    const sh = op.Shape(); if (sh.IsNull()) return null;
+    return R.cast(sh);
+  } catch (e) { return null; } finally { op.delete(); L1.delete(); L2.delete(); }
+}
+
 function centered(d) { const b = d.boundingBox.center; return d.translate(-b[0], -b[1]); }
 
 // a helix on a cone (taper angle in degrees; 0 = plain cylinder), one edge per turn
@@ -2184,6 +2345,8 @@ function scaleMod(m, k, o) {
       return { ...m, faces: (m.faces || []).map((f) => ({ ...f, c: P(f.c), n: N(f.n) })) };
     case "thread":
       return { ...m, face: { ...m.face, c: P(m.face.c) } };
+    case "facepat":
+      return { ...m, p: P(m.p), n: N(m.n) };
     case "bool": {
       const g = scaleNode({ t: "group", children: [{ node: m.tool, m: m.m || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }] }, k, o);
       if (!g) return null;

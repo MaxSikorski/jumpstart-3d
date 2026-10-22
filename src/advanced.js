@@ -14,13 +14,14 @@ import { sketchDof } from "./constraints.js"; // jumpstart-3d: parameters
 import { traceImage, curvesFor } from "./trace.js";
 import { subjectMask, inflate, maskBox } from "./puffy.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
-import { M4, arr, makePrimBody, frameOnFace, groupBodies, ungroupBody, deleteBodies, duplicateBodies, nextName, PRIM_DEFAULTS } from "./ops.js";
+import { M4, arr, makePrimBody, frameOnFace, groupBodies, ungroupBody, deleteBodies, duplicateBodies, nextName, PRIM_DEFAULTS, transformBodies } from "./ops.js";
 import { MATERIALS, matByKey, swatchCSS } from "./appearance.js";
 import { renderImage, QUALITY, LIGHT_COLORS, LIGHT_TYPES, BACKGROUNDS } from "./render.js";
 import { LIB, TEX_CATS, TEXTURE_DEFAULTS, textureThumb, texByKey, registerImageTexture, bytesToB64 } from "./texture.js";
 import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
 import { initMeasure } from "./measure.js";
+import { textBounds } from "./textgeo.js";
 import { initSection } from "./section.js";
 import { sketchesDXF } from "./dxf.js";
 import { initPipeCoil } from "./pipecoil.js";
@@ -29,6 +30,7 @@ import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole patter
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
 import { initNamePlate } from "./nameplate.js"; // jumpstart-3d: name plates
 import { initPrintSim } from "./printsim.js";
+import { FACEPAT, facePatCells } from "./facepat.js";
 
 const BODY_COLORS = ["#9fb1c4", "#c9a27a", "#8fb79a", "#b49ac8", "#c98f8f", "#8fb8c9"];
 
@@ -369,11 +371,38 @@ export function initAdvanced(app) {
     const ok = document.getElementById("cmd-ok");
     if (ok) ok.disabled = true;
   }
+  // ------------------------------------------------------------------ placing text on a face
+  // Snap a point on a flat face (all vectors in one space): to the face's center lines when close,
+  // otherwise to the grid measured from the face center. Returns the point and its offsets.
+  const gridMM = () => { const v = +(document.getElementById("snap") || {}).value; return v > 0 ? v : 1; };
+  function snapOnFace(p, c, x, up, tolMM, on) {
+    let u = p.clone().sub(c).dot(x), v = p.clone().sub(c).dot(up);
+    if (on) {
+      const g = gridMM();
+      u = Math.abs(u) < tolMM ? 0 : Math.round(u / g) * g;
+      v = Math.abs(v) < tolMM ? 0 : Math.round(v / g) * g;
+    }
+    const n = new THREE.Vector3().crossVectors(x, up).normalize();
+    const out = c.clone().addScaledVector(x, u).addScaledVector(up, v).addScaledVector(n, p.clone().sub(c).dot(n));
+    return { p: out, u, v };
+  }
+  // a text-sized outline on a face while dragging (the real letters follow when you let go)
+  function drawTextGhost(center, x, up, w, h, angleDeg, color = 0x1f4fa8) {
+    const a = (angleDeg * Math.PI) / 180, n = new THREE.Vector3().crossVectors(x, up).normalize();
+    const xr = x.clone().applyAxisAngle(n, a), ur = up.clone().applyAxisAngle(n, a);
+    const lift = n.clone().multiplyScalar(0.05);
+    const pt = (i, j) => center.clone().addScaledVector(xr, (i * w) / 2).addScaledVector(ur, (j * h) / 2).add(lift);
+    drawLine([pt(-1, -1), pt(1, -1), pt(1, 1), pt(-1, 1), pt(-1, -1)], color);
+    drawLine([center.clone().addScaledVector(xr, -w / 2 - 2).add(lift), center.clone().addScaledVector(xr, w / 2 + 2).add(lift)], 0x7fa6e0);
+    drawLine([center.clone().addScaledVector(ur, -h / 2 - 2).add(lift), center.clone().addScaledVector(ur, h / 2 + 2).add(lift)], 0x7fa6e0);
+  }
+  const textSize = (str, size, font) => { const b = textBounds({ str: String(str || "TEXT"), size, x: 0, y: 0, angle: 0, font }); return [Math.max(size * 0.6, b.maxX - b.minX), Math.max(size, b.maxY - b.minY)]; };
+
   // ------------------------------------------------------------------ Emboss / deboss text
   // Text raised from or cut into a face: flat faces, round faces (wrapped letter by
   // letter around a cylinder or a hole), spheres, and a straight push on other curves.
   function embossCmd(editing = null, pre = null) {
-    const st = { pick: null, str: "TEXT", font: "sans", size: 8, depth: 1, mode: "emboss", angle: 0, along: false, mirror: false, reverse: false, geo: null, body: null };
+    const st = { pick: null, str: "TEXT", font: "sans", size: 8, depth: 1, mode: "emboss", angle: 0, along: false, mirror: false, reverse: false, geo: null, body: null, snap: app.snapOn, dragging: false, lastPrev: 0 };
     // wrapping a Beginner text shape onto another shape: start from its text, and replace it on OK
     if (pre) { for (const k of ["str", "font", "size", "depth", "mode"]) if (pre[k] !== undefined) st[k] = pre[k]; st.removeAfter = pre.removeId || null; }
     if (editing) {
@@ -386,24 +415,33 @@ export function initAdvanced(app) {
         if (axW.z < -0.35) { st.geo.ax = st.geo.ax.map((q) => -q); st.angle = (((st.angle + 180) % 360) + 360) % 360; }
       }
     }
-    function geoOf(m) { const g = {}; for (const k of ["kind", "p", "n", "x", "o", "ax", "r", "ext", "c", "up"]) if (m[k] !== undefined) g[k] = m[k]; return g; }
+    function geoOf(m) { const g = {}; for (const k of ["kind", "p", "n", "x", "o", "ax", "r", "ext", "c", "up", "fc"]) if (m[k] !== undefined) g[k] = m[k]; return g; }
     let hover = null;
     const r6 = (v) => v.toArray().map((q) => (Math.abs(q) < 1e-9 ? 0 : +q.toFixed(6)));
     // where the text goes, in the body's own coordinates
-    function geoFromPick(f) {
+    function geoFromPick(f, snapOn = false) {
       const inv = f.base.m.clone().invert();
       const pl = f.point.clone().applyMatrix4(inv);
+      const tolMM = vp.tol(10) * vp.pixelSize(f.point);
       const info = f.info;
       const wn = f.normal.clone().normalize();
       const toLocalDir = (v) => v.clone().transformDirection(inv).normalize();
       // upright text: along world X on floors and ceilings, otherwise level across the face
       const wx = Math.abs(wn.z) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1).cross(wn).normalize();
-      if (info.t === "PLANE" && info.n) return { kind: "plane", p: r6(pl), n: info.n.slice(), x: r6(toLocalDir(wx)) };
+      if (info.t === "PLANE" && info.n) {
+        // snapping: the face's center lines when close, otherwise the grid measured from the face center
+        const xl = toLocalDir(wx), nl = new THREE.Vector3(...info.n).normalize(), upl = new THREE.Vector3().crossVectors(nl, xl).normalize();
+        const c = info.c ? new THREE.Vector3(...info.c) : null;
+        const q = c ? snapOnFace(pl, c, xl, upl, tolMM, snapOn).p : pl;
+        return { kind: "plane", p: r6(q), n: info.n.slice(), x: r6(xl), ...(c ? { fc: r6(c) } : {}) };
+      }
       if (info.t === "CYLINDRE" && info.ax) {
         // a round face's axis can point either way; turn it so letters stand upright as you see them
         const axW = new THREE.Vector3(...info.ax).transformDirection(f.base.m);
         const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(vp.camera.quaternion);
         const flip = Math.abs(axW.z) > 0.35 ? axW.z < 0 : axW.dot(camUp) < 0;
+        const ax = new THREE.Vector3(...info.ax).normalize(), o = new THREE.Vector3(...info.o);
+        if (snapOn) { const h = pl.clone().sub(o).dot(ax), g = gridMM(); pl.addScaledVector(ax, Math.round(h / g) * g - h); }
         return { kind: "cyl", p: r6(pl), o: info.o.slice(), ax: flip ? info.ax.map((q) => -q) : info.ax.slice(), r: info.r, ext: info.ext !== false };
       }
       if (info.t === "SPHERE" && info.o) return { kind: "sphere", p: r6(pl), c: info.o.slice(), r: info.r, up: r6(toLocalDir(new THREE.Vector3(0, 0, 1))) };
@@ -418,14 +456,14 @@ export function initAdvanced(app) {
         const b = findBody(doc, st.body);
         if (!b) return;
         const props = { ...st.geo, str: st.str, font: st.font, size: st.size, depth: st.depth, mode: st.mode, angle: st.angle, along: st.along, mirror: st.mirror, reverse: st.reverse };
-        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); for (const k of ["kind", "p", "n", "x", "o", "ax", "r", "ext", "c", "up"]) delete m[k]; Object.assign(m, props); return; }
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); for (const k of ["kind", "p", "n", "x", "o", "ax", "r", "ext", "c", "up", "fc"]) delete m[k]; Object.assign(m, props); return; }
         b.node.mods = b.node.mods || [];
         b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "emboss", ...props });
         if (st.removeAfter) doc.bodies = doc.bodies.filter((x) => x.id !== st.removeAfter);
       },
       ok() { commit(def, st.mode === "deboss" ? "Deboss text" : "Emboss text"); },
       onDelete: editing ? () => deleteFeature(editing) : null,
-      hint: () => st.geo ? "Click elsewhere on the face to move the text. Building round faces takes a moment." : "Click where the text goes: a flat face, a round face or a sphere.",
+      hint: () => st.geo ? "Drag the text across the body to move it (or click a spot). Arrow keys nudge it. Hold Alt (Option) while dragging to move freely." : "Click where the text goes: a flat face, a round face or a sphere.",
       build(body) {
         body.append(pickbox(!st.geo, st.geo ? el("span", {}, el("b", {}, findBody(store.doc, st.body)?.name || "Body"), " · " + KIND[st.geo.kind]) : "Click a face", null));
         const txt = el("input", { class: "num", id: "em-text", value: st.str, style: { fontFamily: "var(--f-ui)" }, "aria-label": "Text" });
@@ -446,7 +484,17 @@ export function initAdvanced(app) {
           el("button", { id: "em-reverse", "aria-pressed": st.reverse, title: "Reverse the order of the letters", onclick: () => { st.reverse = !st.reverse; refresh(); } }, "Reverse order"),
           el("button", { id: "em-rot180", title: "Turn the text upside down (adds 180° to the angle)", onclick: () => { st.angle = ((st.angle + 180) % 360 + 360) % 360; refresh(); } }, "↻ 180°"));
         body.append(row("Flip", flip, "em-flip"));
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, "On round faces each letter wraps around the curve. For 3D printing, keep letters at least 5 mm tall and 0.6 mm deep."));
+        // where it sits: offsets from the face center (flat faces), and snapping
+        if (st.geo && st.geo.kind === "plane" && st.geo.fc) {
+          const [u, v] = uvOf();
+          const p3 = el("div", { class: "row3" });
+          p3.append(el("label", {}, "Across", app.numField({ value: +u.toFixed(3), id: "em-u", step: 1, onCommit: (val) => { setUV(val, null); refresh(); } })));
+          p3.append(el("label", {}, "Up", app.numField({ value: +v.toFixed(3), id: "em-v", step: 1, onCommit: (val) => { setUV(null, val); refresh(); } })));
+          p3.append(el("label", {}, "\u00a0", el("button", { class: "btn", id: "em-center", title: "Put the text in the middle of the face", onclick: () => { setUV(0, 0); refresh(); } }, "Center")));
+          body.append(el("div", { class: "subhead" }, "Position (from the face center)"), p3);
+        }
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "em-snap", checked: st.snap, onchange: (e) => { st.snap = e.target.checked; } }), "Snap to the face center and the grid (" + withUnit(gridMM(), 3) + ")"));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Drag the text to move it. Snap off (or holding Alt / Option while you drag) moves it freely. Arrow keys nudge it (Shift ×10, Alt ×0.1). On round faces each letter wraps around the curve. For 3D printing, keep letters at least 5 mm tall and 0.6 mm deep."));
       },
       start() { refresh(); },
       handler: {
@@ -460,7 +508,144 @@ export function initAdvanced(app) {
           const f = pickBaseFace(e, (b) => !b.hole && !b.locked && b.id !== st.removeAfter && (!editing || b.id === st.body));
           if (!f || !f.info) return true;
           st.body = f.body;
+          st.geo = geoFromPick(f, st.snap !== !!e.altKey);
+          st.dragging = true; st.lastPrev = performance.now();
+          refresh();
+          return true;
+        },
+        // drag the text across the body's faces; the letters rebuild a few times a second and when you let go
+        move(e) {
+          if (!st.dragging) return;
+          const f = pickBaseFace(e, (b) => b.id === st.body);
+          if (!f || !f.info) return;
+          st.geo = geoFromPick(f, st.snap !== !!e.altKey);
+          draw();
+          const now = performance.now();
+          if (now - st.lastPrev > 350) { st.lastPrev = now; schedulePreview(def); }
+        },
+        up() { if (!st.dragging) return; st.dragging = false; refresh(); },
+      },
+      arrowKey(e) {
+        if (!st.geo || !st.body) return false;
+        const k = (e.shiftKey ? 10 : e.altKey ? 0.1 : 1) * (st.snap ? gridMM() : 1);
+        const dx = e.key === "ArrowLeft" ? -k : e.key === "ArrowRight" ? k : 0, dy = e.key === "ArrowUp" ? k : e.key === "ArrowDown" ? -k : 0;
+        const g = st.geo, P = new THREE.Vector3(...g.p);
+        if (g.kind === "plane") { const [x, up] = axesOf(); P.addScaledVector(x, dx).addScaledVector(up, dy); }
+        else if (g.kind === "cyl") { const ax = new THREE.Vector3(...g.ax).normalize(), o = new THREE.Vector3(...g.o); P.addScaledVector(ax, dy); if (dx) P.sub(o).applyAxisAngle(ax, -dx / Math.max(1e-6, g.r) * (g.ext === false ? -1 : 1)).add(o); }
+        else return false;
+        st.geo = { ...g, p: r6(P) };
+        refresh();
+        return true;
+      },
+    };
+    // a flat face's directions (body coordinates): across (the text's x) and up
+    function axesOf() { const g = st.geo, x = new THREE.Vector3(...g.x).normalize(), n = new THREE.Vector3(...g.n).normalize(); return [x, new THREE.Vector3().crossVectors(n, x).normalize(), n]; }
+    function uvOf() { const g = st.geo, [x, up] = axesOf(), d = new THREE.Vector3(...g.p).sub(new THREE.Vector3(...g.fc)); return [d.dot(x), d.dot(up)]; }
+    function setUV(u, v) {
+      const g = st.geo, [x, up] = axesOf(), [u0, v0] = uvOf();
+      const P = new THREE.Vector3(...g.p).addScaledVector(x, (u ?? u0) - u0).addScaledVector(up, (v ?? v0) - v0);
+      st.geo = { ...g, p: r6(P) };
+    }
+    function draw() {
+      clearOv();
+      if (hover) drawFace(hover.base, hover.face, 0xe8a317);
+      if (st.geo && st.body) {
+        const base = baseOf(st.body);
+        if (base) {
+          const P = new THREE.Vector3(...st.geo.p).applyMatrix4(base.m);
+          drawDot(P, 0x1f4fa8, 10);
+          if (st.geo.kind === "plane") {
+            const [x, up] = axesOf().map((v) => v.clone().transformDirection(base.m));
+            const [w, h] = textSize(st.str, st.size, st.font);
+            drawTextGhost(P, x, up, w, h, st.angle || 0);
+            if (st.geo.fc) drawDot(new THREE.Vector3(...st.geo.fc).applyMatrix4(base.m), 0x7fa6e0, 7);
+          }
+        }
+      }
+      vp.request();
+    }
+    function refresh(rerender = true) { if (rerender) def.render(); draw(); schedulePreview(def); }
+    openCmd(def);
+  }
+  // ------------------------------------------------------------------ Pattern on face
+  // Raise or cut a pattern (hexagons, diamond plate, screen mesh, ...) on one flat face. It is a
+  // feature like a hole or emboss text: listed in the timeline, editable, rebuilt when the body changes.
+  function facePatternCmd(editing = null) {
+    const lastKind = (() => { try { return localStorage.getItem("jumpstart3d.facepat.kind") || "hex"; } catch (e) { return "hex"; } })();
+    const K0 = FACEPAT[lastKind] ? lastKind : "hex";
+    const st = { kind: K0, size: FACEPAT[K0].size, gap: FACEPAT[K0].g, depth: 1, mode: "raise", lines: false, edge: "whole", border: 2, angle: 0, ox: 0, oy: 0, body: null, geo: null, face: -1 };
+    if (editing) {
+      const b = findBody(store.doc, editing.body);
+      const m = b.node.mods.find((x) => x.id === editing.mod);
+      Object.assign(st, { kind: m.kind, size: m.size, gap: m.gap, depth: m.depth, mode: m.mode, lines: !!m.lines, edge: m.edge || "whole", border: m.border ?? 2, angle: m.angle || 0, ox: m.ox || 0, oy: m.oy || 0, body: b.id, geo: { p: m.p, n: m.n, x: m.x } });
+    }
+    let hover = null;
+    const r6 = (v) => v.toArray().map((q) => (Math.abs(q) < 1e-9 ? 0 : +q.toFixed(6)));
+    function geoFromPick(f) {
+      const inv = f.base.m.clone().invert();
+      const pl = f.point.clone().applyMatrix4(inv);
+      const wn = f.normal.clone().normalize();
+      // pattern "across" direction: world X on floors and ceilings, otherwise level across the face
+      const wx = Math.abs(wn.z) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1).cross(wn).normalize();
+      return { p: r6(pl), n: f.info.n.slice(), x: r6(wx.clone().transformDirection(inv).normalize()) };
+    }
+    const flat = (f) => f && f.info && f.info.t === "PLANE" && f.info.n;
+    const def = {
+      title: (editing ? "Edit " : "") + "Pattern on face",
+      valid: () => !!st.geo && st.size > 0 && st.depth > 0,
+      canOk: () => def.valid(),
+      apply(doc) {
+        const b = findBody(doc, st.body);
+        if (!b) return;
+        const props = { p: st.geo.p, n: st.geo.n, x: st.geo.x, kind: st.kind, size: st.size, gap: st.gap, depth: st.depth, mode: st.mode, lines: st.lines, edge: st.edge, border: st.border, angle: st.angle, ox: st.ox, oy: st.oy };
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, props); return; }
+        b.node.mods = b.node.mods || [];
+        b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "facepat", ...props });
+      },
+      ok() { try { localStorage.setItem("jumpstart3d.facepat.kind", st.kind); } catch (e) {} commit(def, FACEPAT[st.kind].name + (st.mode === "cut" ? " cut" : " pattern")); },
+      onDelete: editing ? () => deleteFeature(editing) : null,
+      hint: () => st.geo ? "Change the pattern, its size, depth and direction. It stays editable: double-click it in the timeline later. Click another flat face to move it there." : "Click a flat face to put the pattern on.",
+      build(body) {
+        body.append(pickbox(!st.geo, st.geo ? el("span", {}, el("b", {}, findBody(store.doc, st.body)?.name || "Body"), " · flat face") : "Click a flat face", null));
+        // the patterns, with little pictures
+        const grid = el("div", { class: "fp-grid", id: "fp-kind" });
+        for (const [k, d] of Object.entries(FACEPAT)) {
+          grid.append(el("button", { class: "fp-tile", "aria-pressed": String(st.kind === k), "data-k": k, title: d.name, onclick: () => { if (st.kind === k) return; st.kind = k; st.size = d.size; st.gap = d.g; if (k === "slots") st.edge = "clip"; refresh(); } },
+            el("span", { html: patSVG(k) }), el("small", {}, d.name)));
+        }
+        body.append(grid);
+        body.append(row("Style", seg([["raise", "Raise"], ["cut", "Cut in"]], st.mode, (v) => { st.mode = v; refresh(); }, "fp-mode")));
+        body.append(row("Make", seg([[false, "The shapes"], [true, "Lines between"]], st.lines, (v) => { st.lines = v; refresh(); }, "fp-lines")));
+        const r3 = el("div", { class: "row3" });
+        r3.append(el("label", {}, "Pattern size", app.numField({ value: st.size, id: "fp-size", min: 0.5, step: 1, onCommit: (v) => { st.size = v; refresh(false); } })));
+        r3.append(el("label", {}, FACEPAT[st.kind].gap, app.numField({ value: st.gap, id: "fp-gap", min: 0, step: 0.2, onCommit: (v) => { st.gap = v; refresh(false); } })));
+        r3.append(el("label", {}, st.mode === "cut" ? "Depth" : "Height", app.numField({ value: st.depth, id: "fp-depth", min: 0.05, step: 0.2, onCommit: (v) => { st.depth = v; refresh(false); } })));
+        body.append(r3);
+        const dirs = el("div", { class: "seg", id: "fp-dirs" }, ...[0, 30, 45, 60, 90].map((a) => el("button", { "aria-pressed": String(st.angle === a), onclick: () => { st.angle = a; refresh(); } }, a + "°")));
+        body.append(row("Direction", el("div", { style: { display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" } }, dirs, app.numField({ value: st.angle, id: "fp-angle", step: 15, onCommit: (v) => { st.angle = v; refresh(); } })), "fp-angle"));
+        if (st.kind !== "slots") body.append(row("At the edges", seg([["whole", "Whole shapes"], ["clip", "Trim at edge"]], st.edge, (v) => { st.edge = v; refresh(); }, "fp-edge")));
+        const r3b = el("div", { class: "row3" });
+        if (st.edge !== "clip" && st.kind !== "slots") r3b.append(el("label", {}, "Border", app.numField({ value: st.border, id: "fp-border", min: 0, step: 0.5, onCommit: (v) => { st.border = v; refresh(false); } })));
+        r3b.append(el("label", {}, "Shift across", app.numField({ value: st.ox, id: "fp-ox", step: 0.5, onCommit: (v) => { st.ox = v; refresh(false); } })));
+        r3b.append(el("label", {}, "Shift up", app.numField({ value: st.oy, id: "fp-oy", step: 0.5, onCommit: (v) => { st.oy = v; refresh(false); } })));
+        body.append(r3b);
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Pattern size is the distance from one shape to the next. The pattern is centered on the face and follows it when the body is resized. For 3D printing keep gaps and walls at least 0.8 mm and heights at least 0.4 mm."));
+      },
+      start() { refresh(); },
+      handler: {
+        hover(e) {
+          const f = pickBaseFace(e, (b) => !b.hole && !b.locked && (!editing || b.id === st.body));
+          hover = flat(f) ? f : null;
+          draw();
+          vp.canvas.style.cursor = hover ? "crosshair" : f ? "not-allowed" : "default";
+        },
+        down(e) {
+          const f = pickBaseFace(e, (b) => !b.hole && !b.locked && (!editing || b.id === st.body));
+          if (!f) return true;
+          if (!flat(f)) { app.toast("Patterns go on flat faces. Click a flat face."); return true; }
+          st.body = f.body; st.face = f.face;
           st.geo = geoFromPick(f);
+          st.ox = 0; st.oy = 0;
           refresh();
           return true;
         },
@@ -468,15 +653,27 @@ export function initAdvanced(app) {
     };
     function draw() {
       clearOv();
-      if (hover) drawFace(hover.base, hover.face, 0xe8a317);
+      if (hover) drawFace(hover.base, hover.face, 0xe8a317, 0.35);
       if (st.geo && st.body) {
         const base = baseOf(st.body);
-        if (base) drawDot(new THREE.Vector3(...st.geo.p).applyMatrix4(base.m), 0x1f4fa8, 10);
+        if (base && st.face >= 0 && base.data.faceGroups[st.face]) drawFace(base, st.face, 0x1f4fa8, 0.18);
       }
       vp.request();
     }
     function refresh(rerender = true) { if (rerender) def.render(); draw(); schedulePreview(def); }
     openCmd(def);
+  }
+  // a small picture of a pattern (SVG), from the same shapes the engine uses
+  const patSVGCache = new Map();
+  function patSVG(kind) {
+    if (patSVGCache.has(kind)) return patSVGCache.get(kind);
+    const d = FACEPAT[kind], W = 40, s = kind === "knurl" ? 9 : kind === "mesh" ? 8 : 12;
+    const cells = facePatCells({ kind, size: s, gap: (d.g / d.size) * s }, [-W / 2, -W / 2, W / 2, W / 2]);
+    let out = `<svg viewBox="${-W / 2} ${-W / 2} ${W} ${W}" width="40" height="40" aria-hidden="true"><rect x="${-W / 2}" y="${-W / 2}" width="${W}" height="${W}" rx="4" fill="#d9dee6"/><g fill="#1f4fa8">`;
+    for (const c of cells) out += c.r ? `<circle cx="${c.c[0].toFixed(2)}" cy="${(-c.c[1]).toFixed(2)}" r="${c.r.toFixed(2)}"/>` : `<polygon points="${c.pts.map(([x, y]) => x.toFixed(2) + "," + (-y).toFixed(2)).join(" ")}"/>`;
+    out += "</g></svg>";
+    patSVGCache.set(kind, out);
+    return out;
   }
   function textFontSelect(value, onPick, id) {
     const s = el("select", { class: "num", id, "aria-label": "Font" }, ...Object.entries(FONT_NAMES).map(([v, l]) => el("option", { value: v, selected: v === value }, l)));
@@ -2882,14 +3079,14 @@ export function initAdvanced(app) {
         grid.append(el("button", { class: "tx-item tx-import", id: "tx-import", title: "Use your own picture (PNG, JPG, SVG) as a texture", onclick: importImage }, el("span", { class: "tx-plus", html: ICON.import }), el("span", {}, "Import image…")));
         for (const t of items) {
           const img = el("img", { alt: "", width: 44, height: 44 });
-          const btn = el("button", { class: "tx-item", title: t.name, "aria-pressed": st.tex === t.key, "data-key": t.key, onclick: () => { const wasMine = st.tex.startsWith("img:"); st.tex = t.key; if (t.custom && !wasMine) { st.once = true; if (st.size < 15) st.size = 30; refresh(); return; } grid.querySelectorAll(".tx-item").forEach((x) => x.setAttribute("aria-pressed", x.dataset.key === t.key)); schedulePreview(def); } }, img, el("span", {}, t.name));
+          const btn = el("button", { class: "tx-item", title: t.name, "aria-pressed": st.tex === t.key, "data-key": t.key, onclick: () => { const wasMine = st.tex.startsWith("img:"); st.tex = t.key; if (t.custom && !wasMine) { st.once = true; if (st.size < 15) st.size = 30; refresh(); return; } if (t.size && !st.sizeSet && !editing && Math.abs(st.size - t.size) > 1e-9) { st.size = t.size; const nf = document.getElementById("tx-size"), rg = document.getElementById("tx-size-range"); if (nf && nf.setValue) nf.setValue(t.size); else if (nf) nf.value = t.size; if (rg) { if (+rg.max < t.size) rg.max = 100; rg.value = t.size; } } grid.querySelectorAll(".tx-item").forEach((x) => x.setAttribute("aria-pressed", x.dataset.key === t.key)); schedulePreview(def); } }, img, el("span", {}, t.name));
           grid.append(btn);
           thumbQueue.push([img, t.key]);
         }
         pumpThumbs();
         body.append(grid);
         const live = (k) => (v) => { st[k] = v; refreshSoon(); };
-        body.append(sliderRow("Tile size", "tx-size", st.size, 0.5, 20, 0.1, "mm", live("size")));
+        body.append(sliderRow("Tile size", "tx-size", st.size, 0.5, Math.max(20, st.size > 20 ? 100 : 20), 0.1, "mm", (v) => { st.sizeSet = true; live("size")(v); }));
         body.append(sliderRow("Depth", "tx-depth", st.depth, 0.05, 3, 0.05, "mm", live("depth")));
         body.append(row("Direction", seg([["raise", "Raise"], ["engrave", "Engrave"], ["both", "Both"]], st.dir, (v) => { st.dir = v; refresh(); }, "tx-dir")));
         body.append(sliderRow("Rotation", "tx-rot", st.rot, -180, 180, 1, "°", live("rot")));
@@ -4272,7 +4469,7 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, st.copy ? "Copy" : "Move"); },
-      hint: () => st.ids.length ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (Shift: 1° steps; then arrow keys turn 1°). Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes to move.",
+      hint: () => st.ids.length ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (Shift: 1° steps). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes to move.",
       build(body) {
         body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null));
         body.append(row("Drag shape", seg([["ground", "Free on ground"], ["screen", "Free in 3D"]], st.drag, (v) => { st.drag = v; def.render(); }, "mv-drag")));
@@ -4333,19 +4530,28 @@ export function initAdvanced(app) {
     };
     const angInputs = [];
     let ringReadout = null, keyRing = null;
-    // arrow keys: turn 1° (Shift: 15°) around the ring last dragged (the blue Z ring at first)
+    // arrow keys move it the way it looks on screen (Ctrl/Cmd + Up/Down: lift); , and . turn it
     def.arrowKey = (e) => {
+      if (!st.ids.length || e.altKey) return false;
+      const d = app.arrowDelta(e, (app.gridStep() || 1) * (e.shiftKey ? 10 : 1));
+      st.d = st.d.map((v, i) => +(v + d.getComponent(i)).toFixed(6));
+      inputs.forEach((f, i) => f.setValue && f.setValue(st.d[i]));
+      changed(false);
+      return true;
+    };
+    // , and . : turn 1° (Shift: 15°) around the ring last dragged (the blue Z ring at first)
+    def.turnKey = (e) => {
       if (!st.ids.length || e.ctrlKey || e.metaKey || e.altKey) return false;
       const ringObj = keyRing || rings[2], axis = ringObj.userData.dir.clone();
-      const s = (e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+      const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
       st.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, (s * Math.PI) / 180));
       const ang = eulerDeg();
       angInputs.forEach((f, i) => f.setValue(ang[i]));
       const sc = vp.project(giz.position);
       tag.hidden = false;
-      tag.innerHTML = `<b>${s > 0 ? "+" : ""}${s}°</b><span>around ${ringObj.userData.axis.slice(4).toUpperCase()} · arrow keys</span>`;
+      tag.innerHTML = `<b>${s > 0 ? "+" : ""}${s}°</b><span>around ${ringObj.userData.axis.slice(4).toUpperCase()} · , and . keys</span>`;
       tag.style.transform = `translate(${Math.round(sc[0] + 40)}px, ${Math.round(sc[1] - 40)}px)`;
-      clearTimeout(def.arrowKey.t); def.arrowKey.t = setTimeout(() => { if (!drag) tag.hidden = true; }, 1400);
+      clearTimeout(def.turnKey.t); def.turnKey.t = setTimeout(() => { if (!drag) tag.hidden = true; }, 1400);
       changed(false);
       return true;
     };
@@ -5042,6 +5248,137 @@ export function initAdvanced(app) {
     };
     openCmd(def);
   }
+
+  // ------------------------------------------------------------------ 3D text on a surface
+  // A text body that lies on any face (or the ground) and reads upright. Point to place it, then
+  // drag it anywhere: it follows the faces, snapping to face centers and the grid (Snap off or Alt
+  // moves it freely). Arrow keys nudge it; Angle spins it on the face.
+  function textCmd(editingId = null) {
+    const existing = editingId ? findBody(store.doc, editingId) : null;
+    const p0 = existing ? existing.node.p : {};
+    const st = { id: existing ? existing.id : uid("b"), str: p0.text || "TEXT", font: p0.font || "sans", size: p0.size || 10, h: p0.h || 2, angle: 0, sink: 0,
+      snap: app.snapOn, placed: !!existing, dragging: false, at: null };
+    // where it sits: a point on a surface, the surface's normal, the text's "across" direction, and the face center
+    if (existing) {
+      const m = M4(existing.m), x = new THREE.Vector3(), y = new THREE.Vector3(), z = new THREE.Vector3();
+      m.extractBasis(x, y, z);
+      st.at = { p: new THREE.Vector3().setFromMatrixPosition(m), n: z.normalize(), x: x.normalize(), c: null, ground: false };
+    } else { const t = vp.view.target; st.at = { p: new THREE.Vector3(round(t.x, 5), round(t.y, 5), 0), n: new THREE.Vector3(0, 0, 1), x: new THREE.Vector3(1, 0, 0), c: new THREE.Vector3(0, 0, 0), ground: true }; }
+    const upOf = (a) => new THREE.Vector3().crossVectors(a.n, a.x).normalize();
+    function matrix() {
+      const a = st.at, z = a.n.clone().normalize();
+      const x = a.x.clone().applyAxisAngle(z, ((st.angle || 0) * Math.PI) / 180), y = new THREE.Vector3().crossVectors(z, x);
+      const m = new THREE.Matrix4().makeBasis(x, y, z);
+      m.setPosition(a.p.clone().addScaledVector(z, -(st.sink || 0)));
+      return arr(m);
+    }
+    // the surface under the pointer, as a place for the text
+    function pick(e) {
+      const snapOn = st.snap !== !!e.altKey;
+      const f = pickBaseFace(e, (b) => b.id !== st.id && !b.hole && b.visible !== false);
+      if (f && f.info) {
+        const n = f.normal.clone().normalize();
+        const x = Math.abs(n.z) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1).cross(n).normalize();
+        let p = f.point.clone(), c = null;
+        if (f.info.t === "PLANE" && f.info.c) {
+          c = new THREE.Vector3(...f.info.c).applyMatrix4(f.base.m);
+          p = snapOnFace(p, c, x, new THREE.Vector3().crossVectors(n, x).normalize(), vp.tol(10) * vp.pixelSize(f.point), snapOn).p;
+        }
+        return { p, n, x, c, ground: false, name: f.base.body.name };
+      }
+      const g = vp.rayPlane(e, new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+      if (!g) return null;
+      const c = new THREE.Vector3(0, 0, 0);
+      const p = snapOnFace(g, c, new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), vp.tol(10) * vp.pixelSize(g), snapOn).p;
+      return { p, n: new THREE.Vector3(0, 0, 1), x: new THREE.Vector3(1, 0, 0), c, ground: true, name: "Workplane" };
+    }
+    const uv = () => { const a = st.at; if (!a.c) return null; const d = a.p.clone().sub(a.c); return [d.dot(a.x), d.dot(upOf(a))]; };
+    function setUV(u, v) {
+      const a = st.at, cur = uv(); if (!cur) return;
+      a.p.addScaledVector(a.x, (u ?? cur[0]) - cur[0]).addScaledVector(upOf(a), (v ?? cur[1]) - cur[1]);
+    }
+    const def = {
+      title: (existing ? "Edit " : "") + "3D text",
+      valid: () => !!st.str.trim() && st.size > 0 && st.h > 0,
+      canOk: () => def.valid() && st.placed,
+      apply(doc) {
+        let b = findBody(doc, st.id);
+        if (!b) { b = makePrimBody(doc, "text", matrix(), { color: BODY_COLORS[doc.bodies.length % BODY_COLORS.length] }); b.id = st.id; doc.bodies.push(b); }
+        b.node.p = { ...(b.node.p || {}), text: st.str, size: st.size, h: st.h, font: st.font };
+        b.m = matrix();
+      },
+      ok() { commit(def, existing ? "Edit 3D text" : "Add 3D text"); },
+      onDelete: existing ? () => { closeCmd(false); deleteBodies([existing.id]); } : null,
+      hint: () => st.placed ? "Drag to move the text over any face or the workplane. Arrow keys nudge it; hold Alt (Option) while dragging to move freely." : "Point at a face or the workplane and click to place the text.",
+      build(body) {
+        body.append(pickbox(!st.placed, st.placed ? el("span", {}, "On ", el("b", {}, st.at.name || (st.at.ground ? "Workplane" : "a face"))) : "Click a face or the workplane", null));
+        const txt = el("input", { class: "num", id: "tx-text", value: st.str, style: { fontFamily: "var(--f-ui)" }, "aria-label": "Text" });
+        txt.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { st.str = txt.value; txt.blur(); schedulePreview(def); } });
+        txt.addEventListener("input", () => { st.str = txt.value; clearTimeout(st.tt); st.tt = setTimeout(() => { schedulePreview(def); draw(); }, 300); });
+        body.append(row("Text", txt, "tx-text"));
+        body.append(row("Font", textFontSelect(st.font, (v) => { st.font = v; schedulePreview(def); draw(); }, "tx-font"), "tx-font"));
+        const r3 = el("div", { class: "row3" });
+        r3.append(el("label", {}, "Letter height", app.numField({ value: st.size, id: "tx-size", min: 0.5, step: 1, onCommit: (v) => { st.size = v; schedulePreview(def); draw(); } })));
+        r3.append(el("label", {}, "Thickness", app.numField({ value: st.h, id: "tx-h", min: 0.1, step: 0.5, onCommit: (v) => { st.h = v; schedulePreview(def); } })));
+        r3.append(el("label", {}, "Angle °", app.numField({ value: st.angle, id: "tx-angle", step: 15, onCommit: (v) => { st.angle = v; schedulePreview(def); draw(); } })));
+        body.append(r3);
+        const turn = (d) => { st.angle = (((st.angle + d) % 360) + 360) % 360; def.render(); schedulePreview(def); draw(); };
+        body.append(row("Turn", el("div", { class: "seg", id: "tx-turn" },
+          el("button", { onclick: () => turn(-90), title: "Turn 90° to the left" }, "↺ 90°"), el("button", { onclick: () => turn(-15) }, "−15°"),
+          el("button", { onclick: () => turn(15) }, "+15°"), el("button", { onclick: () => turn(90), title: "Turn 90° to the right" }, "↻ 90°")), "tx-turn"));
+        body.append(row("Sink into the face", app.numField({ value: st.sink, id: "tx-sink", min: 0, step: 0.1, onCommit: (v) => { st.sink = v; schedulePreview(def); } }), "tx-sink"));
+        const c = uv();
+        if (st.placed && c) {
+          const p3 = el("div", { class: "row3" });
+          p3.append(el("label", {}, "Across", app.numField({ value: +c[0].toFixed(3), id: "tx-u", step: 1, onCommit: (v) => { setUV(v, null); after(); } })));
+          p3.append(el("label", {}, "Up", app.numField({ value: +c[1].toFixed(3), id: "tx-v", step: 1, onCommit: (v) => { setUV(null, v); after(); } })));
+          p3.append(el("label", {}, " ", el("button", { class: "btn", id: "tx-center", title: st.at.ground ? "Put the text on the origin" : "Put the text in the middle of the face", onclick: () => { setUV(0, 0); after(); } }, "Center")));
+          body.append(el("div", { class: "subhead" }, st.at.ground ? "Position (from the origin)" : "Position (from the face center)"), p3);
+        }
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "tx-snap", checked: st.snap, onchange: (e) => { st.snap = e.target.checked; } }), "Snap to face centers and the grid (" + withUnit(gridMM(), 3) + ")"));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "The text is its own body: use Combine (Join) to make it one part with the shape, or try Decorate › Emboss text. A small Sink (0.2 mm) helps it join cleanly."));
+      },
+      start() { schedulePreview(def); draw(); },
+      handler: {
+        hover(e) {
+          if (st.placed || st.dragging) return;
+          const a = pick(e); if (!a) return;
+          st.at = a; schedulePreview(def); draw();
+        },
+        down(e) {
+          const a = pick(e); if (!a) return true;
+          st.at = a; st.placed = true; st.dragging = true;
+          schedulePreview(def); draw();
+          return true;
+        },
+        move(e) {
+          if (!st.dragging) return;
+          const a = pick(e); if (!a) return;
+          st.at = a; schedulePreview(def); draw();
+        },
+        up() { if (!st.dragging) return; st.dragging = false; def.render(); draw(); },
+      },
+      arrowKey(e) {
+        if (!st.placed) return false;
+        const k = (e.shiftKey ? 10 : e.altKey ? 0.1 : 1) * (st.snap ? gridMM() : 1);
+        const dx = e.key === "ArrowLeft" ? -k : e.key === "ArrowRight" ? k : 0, dy = e.key === "ArrowUp" ? k : e.key === "ArrowDown" ? -k : 0;
+        st.at.p.addScaledVector(st.at.x, dx).addScaledVector(upOf(st.at), dy);
+        after();
+        return true;
+      },
+    };
+    function after() { def.render(); schedulePreview(def); draw(); }
+    function draw() {
+      clearOv();
+      if (!st.at) return;
+      const [w, h] = textSize(st.str, st.size, st.font);
+      const lift = st.at.n.clone().multiplyScalar(st.h + 0.05);
+      drawTextGhost(st.at.p.clone().add(lift), st.at.x, upOf(st.at), w, h, st.angle || 0, st.placed ? 0x1f4fa8 : 0xe8a317);
+      if (st.at.c && st.placed) drawDot(st.at.c, 0x7fa6e0, 7);
+      vp.request();
+    }
+    openCmd(def);
+  }
   function placeOn(e, ignore) {
     const g = app.gridStep();
     const hit = scene.pickFace(e, (b) => b.id !== ignore && !b.hole);
@@ -5056,7 +5393,8 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ edit / delete features
   function editBody(b) {
     if (b.locked) { app.toast("This body is locked. Unlock it to edit (Ctrl+L)."); return; }
-    if (b.node.t === "prim") primCmd(b.node.kind, b.id);
+    if (b.node.t === "prim" && b.node.kind === "text") textCmd(b.id);
+    else if (b.node.t === "prim") primCmd(b.node.kind, b.id);
     else if (b.node.t === "extrude" || b.node.t === "revolve" || b.node.t === "sweep") extrudeCmd(b.node.t, { body: b.id });
     else if (b.node.t === "pipe") pipeCmd({ body: b.id });
     else if (b.node.t === "coil") coilCmd({ body: b.id });
@@ -5090,6 +5428,7 @@ export function initAdvanced(app) {
     else if (m.t === "thread") threadCmd({ body: b.id, mod: m.id });
     else if (m.t === "scale") scaleCmd({ body: b.id, mod: m.id });
     else if (m.t === "emboss") embossCmd({ body: b.id, mod: m.id });
+    else if (m.t === "facepat") facePatternCmd({ body: b.id, mod: m.id });
     else if (m.t === "pattern") patternCmd({ body: b.id, mod: m.id }); // jumpstart-3d: pattern
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
     else if (m.t === "bool" && m.src === "combine") combineCmd({ body: b.id, mod: m.id });
@@ -5232,6 +5571,9 @@ export function initAdvanced(app) {
       group("Bricks", "", [
         { id: "sim-bricks", label: "Jump Brick Builder", title: "Rebuild the selected objects (or all) out of stud-and-tube building bricks you can print, press together and take apart", icon: "bricks", fn: () => app.bricks.open() },
       ]);
+      group("Voxels", "", [
+        { id: "sim-voxel", label: "Voxel Studio", title: "Turn the selected objects (or all) into cubes you can paint face by face, then export STL or 3MF or add them to the design (your design is not changed until you add it)", icon: "voxel", fn: () => app.voxel.open() },
+      ]);
       group("Flexi", "", [
         { id: "sim-flexigen", label: "FlexiGen", title: "Turn one object into a print-in-place articulated flexi model (your design is not changed)", icon: "flexigen", fn: () => flexiGenCmd() },
       ]);
@@ -5273,6 +5615,7 @@ export function initAdvanced(app) {
         { id: "ad-pyramid", label: "Pyramid", icon: "pyramid", fn: () => primCmd("pyramid") },
         { id: "ad-tube", label: "Tube", icon: "tube", fn: () => primCmd("tube") },
         { id: "ad-capsule", label: "Capsule", icon: "capsule", fn: () => primCmd("capsule") },
+        { id: "ad-text3d", label: "3D text", title: "Text that sits on any face or the workplane: drag it into place", icon: "text", fn: () => textCmd() },
       ] },
     ]);
     group("Construct", "", [
@@ -5309,8 +5652,9 @@ export function initAdvanced(app) {
         { id: "ad-scale", label: "Scale", title: "Scale a body by typed factors (or drag its white handles)", icon: "scale", fn: () => scaleCmd() },
         { id: "ad-align", label: "Align", title: "Align (A)", icon: "align", fn: () => alignCmd() },
       ] },
-      { id: "ad-decorate", label: "Decorate", title: "Surface styling: texture, emboss text and appearance", icon: "texture", dropdown: [
+      { id: "ad-decorate", label: "Decorate", title: "Surface styling: texture, patterns on faces, emboss text and appearance", icon: "texture", dropdown: [
         { id: "ad-texture", label: "Texture", title: "Surface texture (T)", icon: "texture", fn: () => textureCmd() },
+        { id: "ad-facepat", label: "Pattern on face", title: "Raise or cut a hexagon, diamond plate, screen mesh or other pattern on a flat face", icon: "facePattern", fn: () => facePatternCmd() },
         { id: "ad-emboss", label: "Emboss text", title: "Raise or cut text on a flat or curved face", icon: "emboss", fn: () => embossCmd() },
         { id: "ad-appearance", label: "Appearance", title: "Colors and materials for bodies or faces (display only)", icon: "appearance", fn: () => appearanceCmd() },
       ] },
@@ -5538,7 +5882,7 @@ export function initAdvanced(app) {
   }
 
   // ------------------------------------------------------------------ timeline
-  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
+  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
   let lastTl = null, lastTlT = 0;
   function renderTimeline() {
     tl.innerHTML = "";
@@ -5618,7 +5962,13 @@ export function initAdvanced(app) {
         const f = (label, value, key, opts = {}) => el("label", {}, label, app.numField({ value, id: "pal-" + key, ...opts, onCommit: (v) => sketcher.setEntProps(id, { [key]: v }) }));
         body.append(el("div", { class: "row3" }, f("Size", ent.size || 10, "size", { min: 0.1 }), f("Angle °", ent.angle || 0, "angle"), el("span")));
         body.append(el("div", { class: "row3" }, f("X", p.x, "x"), f("Y", p.y, "y"), el("span")));
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Size is the height of capital letters. Drag the text to move it."));
+        const onFace = !!sk.faceCenter;
+        body.append(row(onFace ? "Center on face" : "Center on origin", el("div", { class: "seg", id: "pal-tcenter" },
+          el("button", { id: "pal-tc-both", onclick: () => sketcher.centerText(id, "both"), title: "Put the middle of the text on the " + (onFace ? "face center" : "origin") }, "Both"),
+          el("button", { id: "pal-tc-h", onclick: () => sketcher.centerText(id, "h") }, "↔ Across"),
+          el("button", { id: "pal-tc-v", onclick: () => sketcher.centerText(id, "v") }, "↕ Up")), "pal-tcenter"));
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pal-tsnap", checked: app.snapOn, onchange: (e) => app.setSnap(e.target.checked) }), "Snap while dragging (" + (onFace ? "face center, " : "") + "points, shape centers, grid)"));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Size is the height of capital letters. Drag the text to move it: its middle snaps into place. Hold Alt (Option) while dragging, or turn Snap off, to move it freely. Arrow keys nudge it (Shift ×10, Alt ×0.1)."));
       } else {
         const c = resolveSketch(sk).find((x) => x.id === id);
         const ent = sk.ents.find((x) => x.id === id);
@@ -5663,6 +6013,13 @@ export function initAdvanced(app) {
     const k = e.key.toLowerCase();
     if (mod && k === "a") { app.select(store.doc.bodies.map((b) => b.id)); return true; }
     if (mod && k === "l") { toggleLock(); return true; }
+    if (/^Arrow/.test(e.key) && !e.altKey && app.sel.length) {
+      const ids = app.sel.filter((id) => !app.isLocked(id) && findBody(store.doc, id));
+      if (!ids.length) return true;
+      const d = app.arrowDelta(e, (app.gridStep() || 1) * (e.shiftKey ? 10 : 1));
+      transformBodies(ids, new THREE.Matrix4().makeTranslation(d.x, d.y, d.z), "Nudge");
+      return true;
+    }
     if (e.key === "Delete" || e.key === "Backspace") { deleteSelected(); return true; }
     if ((e.ctrlKey || e.metaKey) && k === "c") { copySel(); return true; }
     if ((e.ctrlKey || e.metaKey) && k === "v") { pasteClip(); return true; }
@@ -5800,6 +6157,8 @@ export function initAdvanced(app) {
     scale: () => scaleCmd(),
     measure: () => measureCmd(),
     emboss: (pre) => embossCmd(null, pre || null),
+    facePattern: (opts) => facePatternCmd(opts || null),
+    text3d: (id) => textCmd(id || null),
     hole: () => holeCmd(),
     appearance: () => appearanceCmd(),
     extrude: (opts) => extrudeCmd("extrude", null, opts || {}),

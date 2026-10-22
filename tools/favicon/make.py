@@ -1,4 +1,4 @@
-# Makes src/favicon-32.png and src/apple-touch-icon.png from the splash-logo geometry (src/favicon.svg is hand-written).
+# Makes the PNG icons from the splash-logo geometry (src/favicon.svg is hand-written).
 # Run from the repo root: uv run --with pillow python tools/favicon/make.py
 from pathlib import Path
 
@@ -27,3 +27,6 @@ def icon(size, rounded):
 
 icon(32, True).save(OUT / "favicon-32.png")
 icon(180, False).save(OUT / "apple-touch-icon.png")
+# jumpstart-3d: install icons for the web manifest
+icon(192, False).save(OUT / "icon-192.png")
+icon(512, False).save(OUT / "icon-512.png")
