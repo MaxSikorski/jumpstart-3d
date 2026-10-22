@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, lostTorusExcused, stretchExcused, replayCommand, FINE_MESH_TRIANGLES } from "./fuzz-checks.mjs";
+import { makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, lostTorusExcused, stretchExcused, replayCommand, FINE_MESH_TRIANGLES, coneOpenExcused } from "./fuzz-checks.mjs";
 
 // a zip with the given entries (compressed, no checksum: the reader does not look at it)
 function zip(entries) {
@@ -95,4 +95,12 @@ test("STL: closed and open meshes are told apart, the same seed gives the same n
   assert.throws(() => readStl(stl(tris).subarray(0, 200)), /says 12 triangles/);
   const a = makeRng(5), b = makeRng(5);
   assert.deepEqual([a.next(), a.int(1, 6)], [b.next(), b.int(1, 6)]);
+});
+
+test("cone seam: 12 open edges for each cone a body holds, and no other body is excused", () => {
+  assert.equal(coneOpenExcused(12, 1), true);
+  assert.equal(coneOpenExcused(13, 1), false); // one more open edge than a cone leaves
+  assert.equal(coneOpenExcused(24, 2), true);
+  assert.equal(coneOpenExcused(40, 1), false); // a cone does not excuse a broken body around it
+  assert.equal(coneOpenExcused(6, 0), false); // a body with no cone has no excuse at all
 });

@@ -174,3 +174,7 @@ export function stretchExcused(k, body) {
 export function replayCommand({ seed, ops, strict, project }) {
   return `${strict ? "FUZZ_STRICT=1 " : ""}FUZZ_SEED=${seed} FUZZ_OPS=${ops} npx playwright test test/fuzz.spec.mjs --project=${project}`;
 }
+
+// A cone's STL has 12 open edges at its apex (12 measured at every size). A body is excused that many for each cone it holds.
+export const CONE_OPEN_EDGES = 12;
+export const coneOpenExcused = (open, cones) => cones > 0 && open <= CONE_OPEN_EDGES * cones;

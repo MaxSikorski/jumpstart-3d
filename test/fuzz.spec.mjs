@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { boot, loadDoc, newDoc, watchErrors } from "./helpers.mjs";
 import {
-  makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, lostTorusExcused, stretchExcused, replayCommand,
+  makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, lostTorusExcused, stretchExcused, replayCommand, coneOpenExcused,
 } from "./fuzz-checks.mjs";
 
 const OPS = +(process.env.FUZZ_OPS || 18);
@@ -67,10 +67,12 @@ const snapshot = () => page.evaluate(() => {
     for (const m of n.mods || []) if (m.tool) kindsOf(m.tool, out);
     return out;
   };
+  const countCones = (n) => (n.t === "prim" && n.kind === "cone" ? 1 : 0)
+    + (n.children || []).reduce((c, x) => c + countCones(x.node), 0) + (n.mods || []).reduce((c, m) => c + (m.tool ? countCones(m.tool) : 0), 0);
   return JS3D.list().map((b) => {
     const v = __app.scene.views.get(b.id), node = JS3D.get(b.id).node;
     return {
-      ...b, mods: (node.mods || []).length, kinds: [...kindsOf(node, new Set())].sort(),
+      ...b, mods: (node.mods || []).length, cones: countCones(node), kinds: [...kindsOf(node, new Set())].sort(),
       solids: v && v.data ? v.data.solidCount : null, nonSolid: !!(v && v.data && v.data.hasNonSolidFaces),
       tris: v && v.data ? v.data.triangles.length / 3 : 0,
     };
@@ -101,7 +103,7 @@ function sameList(a, b, what) {
 function sane(list, what) {
   for (const b of list) {
     check(!b.error, `${what}: ${b.name} has a kernel error: ${b.error}`);
-    if (!b.hidden && b.volume < 0 && b.kinds.some((k) => CURVED_BOOLEAN.has(k))) soft(false, noteCurved(b.kinds));
+    if (!b.hidden && b.volume < 0 && (b.kind === "group" || b.mods > 0) && b.kinds.some((k) => CURVED_BOOLEAN.has(k))) soft(false, noteCurved(b.kinds));
     else if (!b.hidden) {
       check(Number.isFinite(b.volume) && b.volume >= 0, `${what}: ${b.name} volume is ${b.volume}`);
       check(b.volume > 0 || b.kind === "group", `${what}: ${b.name} has no volume`);
@@ -145,6 +147,8 @@ function chooseStep(rng, cur, depth) {
       const uneven = rng.chance(0.4);
       const k = uneven ? [rng.pick([1, 2]), rng.pick([1, 1.5, 2]), rng.pick([0.5, 1, 2])].map((v) => (small && v < 1 ? 1 : v))
         : (small ? 2 : rng.pick([0.5, 1.5, 2]));
+      // a capsule stretched flatter than it is wide is built wrongly and can stall the kernel for 25 s (test/README.md): keep its height up
+      if (Array.isArray(k) && b.kinds.includes("capsule")) k[2] = Math.max(k[2], k[1]);
       return { op: "scale", pick, k };
     });
     add(4, () => ({ op: "setHole", pick: idx(1) }));
@@ -523,8 +527,9 @@ async function exportCheck(kind, solids) {
     check(rep.triangles > 0, `STL of ${b.name} has no triangles`);
     const flat = b.kinds.includes("capsule-flat"), flawed = (b.kind === "group" || b.mods > 0) && b.kinds.some((k) => CURVED_BOOLEAN.has(k));
     if (rep.open) {
-      const why = flat ? NOTE_FLAT_CAPSULE : b.kinds.includes("cone") ? NOTE_CONE : flawed ? noteCurved(b.kinds) : null;
-      check(why, `STL of ${b.name} (${b.kinds}) is not closed: ${rep.open} edges have no partner`);
+      const coneOnly = coneOpenExcused(rep.open, b.cones);
+      const why = flat ? NOTE_FLAT_CAPSULE : coneOnly ? NOTE_CONE : flawed ? noteCurved(b.kinds) : null;
+      check(why, `STL of ${b.name} (${b.kinds}, ${b.cones} cones) is not closed: ${rep.open} edges have no partner`);
       soft(false, why);
     }
     if (!meshMatches(rep.volume, b.volume, b.kinds)) {
@@ -549,7 +554,9 @@ async function exportCheck(kind, solids) {
   check(new Set(m.items.map((x) => x.objectid)).size === m.items.length, `3MF builds the same object twice: ${m.items.map((x) => x.objectid)}`);
   check(m.objects.size === m.items.length, `3MF has ${m.objects.size} objects and ${m.items.length} build items`);
   m.items.forEach((x) => {
-    if (each.every((e) => e.open === 0)) check(x.mesh.open === 0, `3MF object ${x.objectid} is not closed: ${x.mesh.open} edges have no partner`); // (the STLs of cones are known to be open)
+    // an object is excused from being closed only when it is a body whose own STL is open (the known cone seam and the like)
+    const knownOpen = each.some((e) => e.open > 0 && near(x.placed, e.volume, 2e-3, 0.05));
+    if (!knownOpen) check(x.mesh.open === 0, `3MF object ${x.objectid} is not closed: ${x.mesh.open} edges have no partner`);
     check(x.placed > 0 || each.some((e) => e.volume <= 0), `3MF object ${x.objectid} placed with volume ${x.placed}`);
   });
   check(near(tris, triangles, 0.02, 2), `3MF has ${tris} triangles; the STL has ${triangles}`);
@@ -558,7 +565,7 @@ async function exportCheck(kind, solids) {
 }
 
 // ---- the chains --------------------------------------------------------------------------------------------------
-const covered = new Set();
+const covered = new Set(), seedsDone = new Set();
 function noteFindings() {
   for (const f of new Set(findings)) { console.log("fuzz finding: " + f); test.info().annotations.push({ type: "fuzz finding", description: f }); }
 }
@@ -568,7 +575,7 @@ for (const seed of SEEDS) {
     test.setTimeout(Math.max(120_000, OPS * 15_000));
     const info = test.info(), rng = makeRng(seed), log = [];
     findings.length = 0;
-    if (seed === SEEDS[0]) covered.clear(); // coverage is counted per build
+    if (seed === SEEDS[0]) { covered.clear(); seedsDone.clear(); } // coverage is counted per build
     // the steps are on record before each one runs, so a timeout or a crash still shows what led to it
     const record = { type: "fuzz steps", description: "" };
     info.annotations.push(record);
@@ -640,7 +647,9 @@ for (const seed of SEEDS) {
       console.log(`fuzz seed ${seed} ran: ${[...ran].sort().join(" ")}`);
       noteFindings();
       // the default seeds were picked to reach every kind of step; if a change to the steps loses one, say so
-      if (!CUSTOM && seed === SEEDS[SEEDS.length - 1]) {
+      seedsDone.add(seed);
+      // (only when every default seed ran in this run: -g, --last-failed or an earlier failure leave some out)
+      if (!CUSTOM && SEEDS.every((x) => seedsDone.has(x))) {
         const missing = REQUIRED.filter((x) => !covered.has(x));
         check(!missing.length, `the default seeds never ran: ${missing.join(", ")} (pick other default seeds, see test/README.md)`);
       }
@@ -705,6 +714,18 @@ if (!CUSTOM) {
       if (chooseStep(makeRng(seed), [shape(false), shape(false), shape(false)], { undo: 2, redo: 0 }).op === "uiGroup") offered++;
     }
     check(offered > 0, "control: the Group button is never offered even with three shapes on screen");
+
+    // A capsule is never stretched flatter, and a negative volume is excused only for a boolean result
+    const capsule = { hole: false, hidden: false, volume: 100, mods: 0, kind: "capsule", kinds: ["capsule"], solids: 1, children: 0 };
+    for (let seed = 1; seed <= 400; seed++) {
+      const st = chooseStep(makeRng(seed), [capsule, capsule], { undo: 0, redo: 0 });
+      if (st.op === "scale" && Array.isArray(st.k)) check(st.k[2] >= st.k[1], `control: a capsule is stretched flat by ${st.k} (seed ${seed})`);
+    }
+    const body = { name: "T", id: "t", hole: false, hidden: false, volume: -5, kind: "torus", mods: 0, kinds: ["torus"], solids: 1, position: [0, 0, 0], bbox: { min: [0, 0, 0], max: [1, 1, 1] } };
+    await fails(async () => sane([body], "control"), /volume is -5/);
+    findings.length = 0;
+    sane([{ ...body, kind: "group", kinds: ["group", "torus", "box"] }], "control");
+    check(findings.some((f) => /torus/.test(f)), "control: a negative volume of a boolean with a torus was not noticed");
 
     // Booleans must fit together: join + overlap = both parts. The two-sphere intersect is wrong in the kernel (it gives a
     // whole sphere): noted for spheres, and a failure when strict. Boxes with a known overlap pass in strict mode.
