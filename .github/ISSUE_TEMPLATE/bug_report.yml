@@ -42,6 +42,13 @@ body:
     validations:
       required: true
   - type: textarea
+    id: outcome
+    attributes:
+      label: What should it end up as?
+      description: "When this is fixed, what will you see or be able to do?"
+    validations:
+      required: true
+  - type: textarea
     id: extra
     attributes:
       label: Anything else
