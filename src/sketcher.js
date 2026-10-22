@@ -473,6 +473,22 @@ export class Sketcher {
   }
 
   pickEnt(raw) {
+    const hit = this.pickEnt0(raw);
+    // in Select, fixed (projected) edges and points under a text don't stop you grabbing the text
+    if (this.tool === "select" && hit && hit !== "origin") {
+      const sk = this.sketch;
+      const fixed = hit.startsWith("pt:") ? sk.ents.some((x) => x.proj && entPts(x).includes(hit.slice(3))) && !sk.ents.some((x) => !x.proj && x.t !== "text" && entPts(x).includes(hit.slice(3))) : !!(sk.ents.find((x) => x.id === hit) || {}).proj;
+      if (fixed) {
+        const tol = this.vp.tol(7) * this.px();
+        for (const t of sketchTexts(sk)) {
+          const b = textBounds(t.spec);
+          if (raw[0] > b.minX - tol && raw[0] < b.maxX + tol && raw[1] > b.minY - tol && raw[1] < b.maxY + tol) return t.id;
+        }
+      }
+    }
+    return hit;
+  }
+  pickEnt0(raw) {
     const sk = this.sketch;
     const tol = this.vp.tol(7) * this.px();
     let best = null, bd = tol;
@@ -812,15 +828,36 @@ export class Sketcher {
       if (ent && ent.t === "arc") pids = [ent.c, ent.a, ent.b];
     }
     if (pids.some((pid) => sk.ents.some((x) => x.proj && entPts(x).includes(pid)))) pids = [];
-    this.drag = { start: raw, pids, orig: new Map(sk.pts.filter((p) => pids.includes(p.id)).map((p) => [p.id, [p.x, p.y]])), moved: false, hit, add: e.shiftKey };
+    const textEnt = !hit.startsWith("pt:") && sk.ents.find((x) => x.id === hit && x.t === "text");
+    this.drag = { start: raw, pids, orig: new Map(sk.pts.filter((p) => pids.includes(p.id)).map((p) => [p.id, [p.x, p.y]])), moved: false, hit, add: e.shiftKey, text: textEnt ? textEnt.id : null };
     this.redraw();
     return true;
   }
-  dragMove(raw) {
+  dragMove(raw, e) {
     const d = this.drag;
     if (!d.pids.length) return;
     let delta;
-    if (d.pids.length === 1) {
+    if (d.text) {
+      // a text keeps where you grabbed it; its middle snaps (face center, origin, points, shape
+      // centers, the grid), or it moves freely with Snap off or while Alt is held
+      const ent = this.sketch.ents.find((x) => x.id === d.text), o = d.orig.get(d.pids[0]);
+      const free = [raw[0] - d.start[0], raw[1] - d.start[1]];
+      const snapOn = this.app.snapOn !== !!(e && e.altKey);
+      if (!snapOn) { delta = free; this.cursor = null; }
+      else {
+        const b = textBounds({ str: ent.str, size: ent.size || 10, x: o[0], y: o[1], angle: ent.angle || 0, font: ent.font || "sans" });
+        const mid = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
+        const want = [mid[0] + free[0], mid[1] + free[1]];
+        const s = this.snap(want, null, { exclude: new Set(d.pids), excludeEnt: new Set([d.text]) });
+        // line the middle up with the face center or the origin along one direction when close
+        const tol = this.vp.tol(9) * this.px();
+        const lines = [[0, 0], ...(this.sketch.faceCenter ? [this.sketch.faceCenter] : [])];
+        const out = [...s.p];
+        if (s.kind === "grid" || s.kind === "free" || !s.kind) for (const c of lines) { if (Math.abs(want[0] - c[0]) < tol) out[0] = c[0]; if (Math.abs(want[1] - c[1]) < tol) out[1] = c[1]; }
+        delta = [out[0] - mid[0], out[1] - mid[1]];
+        this.cursor = { ...s, p: out };
+      }
+    } else if (d.pids.length === 1) {
       const s = this.snap(raw, null, { exclude: new Set(d.pids) });
       const o = d.orig.get(d.pids[0]);
       delta = [s.p[0] - o[0], s.p[1] - o[1]];
@@ -1201,6 +1238,36 @@ export class Sketcher {
       }
       if (props.cons != null && !e.proj) e.cons = props.cons;
     });
+  }
+  // arrow keys move the selected geometry (texts, points, shapes): one grid step, Shift ×10, Alt ×0.1
+  nudge(e) {
+    const sk = this.sketch;
+    if (!sk || this.tool !== "select" || !this.sel.size) return false;
+    const pids = new Set();
+    for (const id of this.sel) {
+      if (id.startsWith("pt:")) { pids.add(id.slice(3)); continue; }
+      const ent = sk.ents.find((x) => x.id === id);
+      if (ent && !ent.proj) for (const q of (ent.t === "arc" ? [ent.c, ent.a, ent.b] : entPts(ent))) pids.add(q);
+    }
+    if (!pids.size) return false;
+    const step = (e.shiftKey ? 10 : e.altKey ? 0.1 : 1) * (this.snapStep() || 1);
+    const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0, dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+    if (!dx && !dy) return false;
+    this.edit("Nudge sketch geometry", (s2) => { for (const p of s2.pts) if (pids.has(p.id)) { p.x += dx; p.y += dy; } solveSketch(s2, pids); normalizeSketch(s2); });
+    this.redraw();
+    this.app.onSketchSelection && this.app.onSketchSelection();
+    return true;
+  }
+  // put a text's middle on the face center (or the origin), across, up or both
+  centerText(entId, how = "both") {
+    const sk = this.sketch;
+    const ent = sk && sk.ents.find((x) => x.id === entId && x.t === "text");
+    if (!ent) return;
+    const p = sk.pts.find((q) => q.id === ent.p);
+    const b = textBounds({ str: ent.str, size: ent.size || 10, x: p.x, y: p.y, angle: ent.angle || 0, font: ent.font || "sans" });
+    const c = sk.faceCenter || [0, 0];
+    const dx = how === "v" ? 0 : c[0] - (b.minX + b.maxX) / 2, dy = how === "h" ? 0 : c[1] - (b.minY + b.maxY) / 2;
+    this.setEntProps(entId, { x: p.x + dx, y: p.y + dy });
   }
   setPointProps(pid, x, y) {
     this.edit("Move point", (sk) => { const p = sk.pts.find((q) => q.id === pid); if (p) { p.x = x; p.y = y; } });

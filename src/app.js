@@ -5,8 +5,11 @@ import { inflate } from "./inflate.js";
 import { CREDITS, LICENSE_TEXTS } from "./licenses.js";
 import { initSketch3D } from "./sketch3d.js";
 import { initLathe } from "./lathe.js";
-import { VERSION } from "./version.js";
+// jumpstart-3d: keep the upstream version and community release number separate.
+import { VERSION, BUILD } from "./version.js";
+const BUILD_LABEL = VERSION + " · community build " + BUILD;
 import { initBricks } from "./bricks.js";
+import { initVoxel } from "./voxel.js";
 import { initTutorials } from "./tutorials.js";
 import * as THREE from "three";
 import { Viewport, ViewCube } from "./viewport.js";
@@ -46,6 +49,28 @@ export const app = {
   snapOn: true,
   objectSnap: true,
   gridStep() { const v = +$("snap").value; return app.snapOn && v > 0 ? v : 0; },
+  // Arrow keys move things the way they look on screen, whatever the camera angle: Left/Right
+  // along the world axis (X or Y) closest to the screen's left-right, Up/Down along the ground
+  // axis that points "up the screen" (or straight up, Z, when looking from the side), and
+  // Ctrl/Cmd + Up/Down always lifts or lowers (Z). Returns a world step of length `step`.
+  arrowDelta(e, step) {
+    const q = app.vp.camera.quaternion;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(q), up = new THREE.Vector3(0, 1, 0).applyQuaternion(q), fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    const ground = (v) => { const ax = Math.abs(v.x) >= Math.abs(v.y) ? new THREE.Vector3(Math.sign(v.x) || 1, 0, 0) : new THREE.Vector3(0, Math.sign(v.y) || 1, 0); return ax; };
+    const k = e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : -1;
+    // Left/Right: the ground axis closest to the screen's across direction
+    const R = ground(right);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") return R.multiplyScalar(k * step);
+    if (e.ctrlKey || e.metaKey) return new THREE.Vector3(0, 0, k * step);
+    // looking from the side: Up/Down go up and down
+    const upG = new THREE.Vector3(up.x, up.y, 0);
+    if (Math.abs(fwd.z) < 0.42 || upG.length() < 0.2) return new THREE.Vector3(0, 0, Math.sign(up.z || 1) * k * step);
+    // otherwise the other ground axis (never the same one as Left/Right, even at a 45° view),
+    // pointing the way "up the screen" goes
+    const U = R.x ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    if (U.dot(upG) < 0) U.negate();
+    return U.multiplyScalar(k * step);
+  },
   isLocked(id) { const b = findBody(store.doc, id); return !!(b && b.locked); },
 };
 
@@ -122,8 +147,10 @@ function boot() {
   app.tutorials = initTutorials(app);
   app.sketch3d = initSketch3D(app);
 app.lathe = initLathe(app);
-{ const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + VERSION; }
+// jumpstart-3d: match the static splash before the app loads.
+{ const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + BUILD_LABEL; }
 app.bricks = initBricks(app);
+app.voxel = initVoxel(app);
   // Save makes a new version (v1, v2...); the number shows next to the name
   app.onVersion = () => app.refreshUI && app.refreshUI("version");
   $("btn-save").onclick = () => app.projects.saveVersion();
@@ -539,6 +566,33 @@ app.startSketchTool = function (tool) {
   app.advanced.createSketch({ tool });
 };
 
+// ------------------------------------------------------------------ updates
+const SITE_URL = "https://classyapps.org/";
+// jumpstart-3d: check community builds only on demand; never trust response links or HTML.
+const UPDATE_URL = "https://api.github.com/repos/MaxSikorski/jumpstart-3d/releases/latest";
+const RELEASE_URL = "https://github.com/MaxSikorski/jumpstart-3d/releases/latest";
+async function checkForUpdates(btn) {
+  const msg = document.getElementById("ab-upmsg");
+  const say = (...kids) => { if (!msg) return; msg.hidden = false; msg.replaceChildren(...kids); try { msg.scrollIntoView({ block: "nearest" }); } catch (e) {} };
+  btn.disabled = true; btn.textContent = "Checking…";
+  let timeout;
+  try {
+    const ctl = new AbortController();
+    timeout = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(UPDATE_URL, { method: "GET", credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal: ctl.signal });
+    if (r.status !== 200) throw new Error("HTTP " + r.status);
+    const info = await r.json();
+    const match = typeof info?.tag_name === "string" && info.tag_name.match(/-community\.(\d+)$/);
+    const build = match ? Number(match[1]) : NaN;
+    if (!Number.isSafeInteger(build) || ctl.signal.aborted) throw new Error("Invalid release or timeout");
+    if (build > BUILD) {
+      say(el("b", {}, `Build ${build} is available`), " ", el("a", { href: RELEASE_URL, target: "_blank", rel: "noopener" }, "Get the new build"));
+    } else say(el("b", {}, "You have the latest build"));
+  } catch (err) {
+    say("Couldn't check for updates");
+  } finally { clearTimeout(timeout); btn.disabled = false; btn.textContent = "Check for updates"; }
+}
+
 // keyboard shortcuts sheet
 app.showAbout = function () {
   const sec = (title, items) => el("section", {}, el("h3", {}, title), el("ul", {}, ...items.map(([b, t]) => el("li", {}, el("b", {}, b), " " + t))));
@@ -547,7 +601,28 @@ app.showAbout = function () {
   const modal = el("div", { class: "modal about", role: "dialog", "aria-label": "About JumpStart 3D" },
     el("header", {}, el("h2", {}, "About"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
     el("div", { class: "mbody", id: "about-body" },
-      el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D ", el("span", { class: "ab-hver" }, "Version " + VERSION)), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
+      // jumpstart-3d: display both release numbers in About.
+      el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D ", el("span", { class: "ab-hver" }, "Version " + BUILD_LABEL)), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
+      el("div", { class: "ab-update ab-top" },
+        el("button", { class: "btn", id: "ab-check", onclick: (e) => checkForUpdates(e.currentTarget) }, "Check for updates"),
+        el("a", { class: "btn primary", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "Visit classyapps.org")),
+      el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.1.3", [
+        ["Pattern on face:", "a new tool in Beginner (Face pattern) and Advanced (Decorate → Pattern on face). Click a flat face and raise or cut hexagons, diamond plate, screen mesh, circles, triangles, knurl or ribs into it, or the lines between them. Set the pattern size, gap, height or depth, direction (angle), border and an offset; keep whole shapes or trim them at the edge. It is a real feature, not a texture: it stays editable (timeline in Advanced, the shape panel in Beginner) and follows the face when the shape is resized."],
+        ["26 new textures:", "new Wood, Building and Fabric groups: oak, knotty pine, fine grain, end grain, floor planks, bamboo, weathered wood; roof shingles, slate roof, fish-scale shingles, clapboard siding, barrel roof tiles, corrugated metal, floor tiles, tread plate; blue jean (denim), canvas, burlap, corduroy, quilted, window screen, rope; plus leaf veins, pineapple, rough rock and golf ball dimples. Each starts at a tile size that suits it."],
+      ]),
+      sec("New in version 2.1.2", [
+        ["Voxel Studio:", "Advanced → Simulate → Voxel Studio opens in its own window and turns the selected objects (or all of them) into cubes, 16 to 64 across, solid or hollow. Paint single faces or whole cubes, fill flat areas, pick colors, add and remove cubes (with left-right mirroring), undo and redo, then export STL or a colored 3MF, or add it to the design (one part per color)."],
+        ["Moving things:", "the arrow keys now move objects the way they look on screen, whichever way the camera is turned and however the object is rotated: Left and Right go across the screen, Up and Down go away and toward you (or up and down when you look from the side), and Ctrl+Up/Down always goes straight up and down. In Beginner, Advanced and the Move tool; , and . turn by 1° after picking a rotation arc."],
+      ]),
+      sec("New in version 2.1.1", [
+        ["20 new tutorials:", "10 more for Beginner (bookmark, plant marker, cookie cutter, tic-tac-toe, trinket tray, Tower of Hanoi, phone amplifier, marble maze, box with a lid, pencil box) and 10 more for Advanced (washers, luggage tag, spring toy, plant pot, cable organizer, gear spinner, chess rook, bangle, bolt and nut, press-fit box), from Easy to a new Expert level."],
+      ]),
+      sec("New in version 2.1", [
+        ["3D text:", "Advanced → Create → 3D text: text that lies on any face or the workplane and reads upright. Drag it anywhere and it follows the faces, snapping to face centers and the grid; turn Snap off (or hold Alt while dragging) to move it freely. Arrow keys nudge it, Across / Up place it exactly, Center puts it in the middle, and Angle and Turn spin it."],
+        ["Emboss text:", "drag the text across the body to move it (the letters update as you go), with the same snapping, Across / Up offsets from the face center, a Center button and arrow-key nudging."],
+        ["Sketch text:", "dragging keeps where you grabbed it, and the text's middle snaps to the face center, the origin, points, shape centers and the grid (hold Alt while dragging to move it freely). New Center on face buttons and arrow-key nudging."],
+      ]),
       sec("New in version 2.0", [
         ["3D Sketch:", "draw lines in 3D on a body, a virtual sphere, egg or cube, or in the air, with a split screen: turn the camera with one hand while you draw with the other (touch, pen, mouse or trackpad). Freehand or nodes, undo and redo; every line becomes a solid tube."],
         ["Lathe:", "turn a body (or a copy of it) or a square or round blank on a virtual wood lathe: pick the speed, a foot pedal (Space) that you hold or that stays on, seven chisels you can twist, flying chips, then hollow it out and add it to the design or export STL, 3MF or OBJ. In Beginner, Advanced and Chisel."],
@@ -570,7 +645,7 @@ app.showAbout = function () {
         ["Hole:", "simple, counterbore, countersink and tapped holes with standard screw sizes."],
         ["Threads:", "modeled ISO threads with a print offset for 3D-printed parts."],
         ["Modify:", "fillet, chamfer, offset face, shell, combine, split body, split face, pattern, move/copy, scale and align."],
-        ["Decorate:", "surface textures (including your own pictures), emboss or deboss text on flat and curved faces, and appearances (colors and materials)."],
+        ["Decorate:", "surface textures (including your own pictures), patterns raised on or cut into flat faces, emboss or deboss text on flat and curved faces, and appearances (colors and materials)."],
         ["Inspect:", "measure distances, angles and sizes."]]),
       sec("Chisel sculpting", [
         ["Your design is there:", "bodies from Beginner and Advanced show up ready to sculpt. Sculpt, cut or move one and it becomes a sculpt; undo brings the original back. Copy sculpts a copy instead."],
@@ -595,7 +670,7 @@ app.showAbout = function () {
         ["Lighting:", "realistic shading and shadows (sun button), light, dark or high-contrast themes, orthographic view and the view cube."],
         ["Projection & animation:", "Projector (a second window that shows your objects on black, for a projector or second screen), Media (pictures and videos on objects: facing view, wrap around, all sides or ball), and Picture to 3D model (puffs a picture's subject up into a rounded, printable solid with the picture painted on), and in Chisel: ready-made characters (people, heads, animals, aliens), textures, a History strip, and the Puppet Animator (rig, pose, keyframes up to 10 seconds, an animation library, a virtual set with your own background, MP4 export)."],
         ["Performance:", "Auto, Normal (slower computers), High (most laptops and Chromebooks) or Ultra (powerful computers, sharpest) in the theme menu (◐): lighter modes draw fewer pixels while the view moves and simpler shadows, with every tool and export unchanged. Auto picks a mode for the computer and steps down if things get slow."],
-        ["Tutorials:", "nineteen step-by-step projects (nine in Beginner, ten in Advanced, marked Easy, Proficient or Advanced, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."], // jumpstart-3d: tutorials count
+        ["Tutorials:", "thirty-nine step-by-step projects (nineteen in Beginner, twenty in Advanced, marked Easy, Proficient, Advanced or Expert, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."], // jumpstart-3d: tutorials count
         ["Mesh detail:", "Normal, Fine, Extra fine or a custom level up to 32× in the theme menu (◐): how finely curved surfaces are divided into triangles, in the view and in STL, OBJ and 3MF exports. STEP is exact at every level. The menu shows the triangle count of your design and estimates it for other levels; above 500,000 it asks first, because building can take minutes."],
         ["Help:", "press ? for every keyboard shortcut; right-click a shape for copy, paste, duplicate and delete."]]),
       // the author's credit from v1.93.8 stays in this community build (see NOTICE.md)
@@ -619,7 +694,8 @@ app.showAbout = function () {
           el("summary", {}, "Full license texts"),
           ...[["MIT License: three.js", "mit-three"], ["MIT License: replicad", "mit-replicad"], ["MIT License: opentype.js", "mit-opentype"], ["ISC License: Flatbush", "isc"], ["GNU Lesser General Public License 2.1: Open CASCADE Technology / opencascade.js / replicad-opencascadejs", "lgpl"], ["SIL Open Font License 1.1: Poppins, Liberation, IBM Plex, Barlow", "ofl"]]
             .map(([t, k]) => el("div", { class: "ab-lic" }, el("b", {}, t), el("pre", {}, LICENSE_TEXTS[k]))))),
-      el("div", { class: "ab-update" }, el("span", { class: "ab-ver", id: "ab-ver" }, "Version " + VERSION + " · community build"),
+      // jumpstart-3d: use the same community build label as the splash.
+      el("div", { class: "ab-update" }, el("span", { class: "ab-ver", id: "ab-ver" }, "Version " + BUILD_LABEL),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/releases", target: "_blank", rel: "noopener" }, "What's new"),
         // jumpstart-3d: support link (community build)
         el("a", { class: "btn", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
@@ -636,8 +712,8 @@ app.showShortcuts = function () {
     el("header", {}, el("h2", {}, "Keyboard shortcuts"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
     el("div", { class: "mbody keys-grid" },
       rows("Sketching (both modes)", [["L", "Line"], ["R", "Rectangle (last type used; ▾ for 2-point, 3-point, center)"], ["C", "Circle"], ["A", "Arc"], ["P", "Polygon"], ["Shift T", "Text"], ["Enter / dbl-click", "Finish a spline"], ["T", "Trim"], ["D", "Dimension"], ["X", "Construction line"], ["S", "Select"], ["E", "Finish and extrude"], ["Tab", "Next typed value"], ["Esc", "Stop / finish sketch"]]),
-      rows("Advanced", [["L R C", "Start a sketch with that tool"], ["S", "Create sketch"], ["E", "Extrude"], ["Shift R", "Revolve"], ["Q", "Offset face (press pull)"], ["H", "Hole"], ["F", "Fillet"], ["Shift C", "Chamfer"], ["M", "Move / copy"], ["A", "Align"], ["P", "Pattern"], ["B", "Combine"], ["T", "Texture"], ["I", "Measure"], ["Shift F", "Fit all"], ["Drag right / left", "Window / crossing select"]]),
-      rows("Beginner", [["L R C", "Sketch a line, rectangle or circle"], ["E", "Extrude"], ["A", "Align"], ["P", "Pattern"], ["M", "Mirror"], ["H", "Make hole"], ["S", "Make solid"], ["D", "Drop to workplane"], ["T", "Texture"], ["F", "Fit all"], ["Arrows", "Nudge (Shift ×10)"], ["Ctrl ↑↓", "Lift / lower"], ["Ctrl G", "Group (Shift: ungroup)"], ["Ctrl D", "Duplicate"], ["Tab", "Type sizes on the selected shape (Shift Tab: back)"], ["I", "Measure"]]),
+      rows("Advanced", [["L R C", "Start a sketch with that tool"], ["Arrows", "Nudge the selection, the way it looks on screen (Ctrl ↑↓: up / down)"], ["S", "Create sketch"], ["E", "Extrude"], ["Shift R", "Revolve"], ["Q", "Offset face (press pull)"], ["H", "Hole"], ["F", "Fillet"], ["Shift C", "Chamfer"], ["M", "Move / copy"], ["A", "Align"], ["P", "Pattern"], ["B", "Combine"], ["T", "Texture"], ["I", "Measure"], ["Shift F", "Fit all"], ["Drag right / left", "Window / crossing select"]]),
+      rows("Beginner", [["L R C", "Sketch a line, rectangle or circle"], ["E", "Extrude"], ["A", "Align"], ["P", "Pattern"], ["M", "Mirror"], ["H", "Make hole"], ["S", "Make solid"], ["D", "Drop to workplane"], ["T", "Texture"], ["F", "Fit all"], ["Arrows", "Nudge, the way it looks on screen (Shift ×10)"], ["Ctrl ↑↓", "Lift / lower"], [", .", "Turn 1° after a rotation arc (Shift 15°)"], ["Ctrl G", "Group (Shift: ungroup)"], ["Ctrl D", "Duplicate"], ["Tab", "Type sizes on the selected shape (Shift Tab: back)"], ["I", "Measure"]]),
       rows("Chisel (Pro)", [["D", "Standard brush"], ["C", "Clay"], ["S", "Smooth"], ["T", "Flatten"], ["G", "Move brush"], ["N", "Snakehook"], ["Q", "Mask"], ["J", "Paint"], ["M", "Select & move"], ["[ ]", "Brush size"], ["Shift drag", "Smooth"], ["Alt drag", "Invert brush"], ["Ctrl drag", "Mask"], ["X", "Mirror X"], ["F", "Frame"], ["Drag right / left", "Window / crossing select (Select & move)"], ["Tab", "Type sizes (Select & move)"], ["R C P", "Rectangle, circle, polygon (Sketch)"], ["E", "Extrude the sketch"], ["Esc", "Cancel the shape / sketch"]]),
       ...(IS_MAC ? [rows("Mac trackpad", [["Option drag", "Orbit"], ["Option Shift drag", "Pan"], ["Pinch", "Zoom"], ["Two-finger scroll", "Zoom"], ["Control click", "Right-click menu (drag to orbit)"]])] : []),
       rows("Everywhere", [["← →", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
@@ -885,6 +961,7 @@ function onKey(e) {
     if (e.key === "Escape") { if (!app.sketcher.escape()) app.exitSketch(); e.preventDefault(); return; }
     if (e.key === "Enter") { if (app.sketcher.state) app.sketcher.commitTyped(); else app.exitSketch(); return; }
     if (e.key === "Delete" || e.key === "Backspace") { app.sketcher.deleteSelection(); e.preventDefault(); return; }
+    if (/^Arrow/.test(e.key) && !mod && app.sketcher.nudge(e)) { e.preventDefault(); return; }
     const map = { l: "line", r: "rect*", c: "circle", a: "arc3", p: "polygon", t: "trim", d: "dim", s: "select" };
     if (!mod && (k === "e" || k === "q")) { e.preventDefault(); app.quickExtrude(); return; }
     if (!mod && e.shiftKey && k === "t") { app.sketcher.setTool("text"); return; }
@@ -907,8 +984,9 @@ function onKey(e) {
   }
   if (e.key === "Home") { app.vp.setView("home", app.scene.allBox()); return; }
   if (!mod && k === "e" && !e.shiftKey && !e.altKey) { e.preventDefault(); app.quickExtrude(); return; }
-  // the open tool can use the arrow keys (Move / Copy turns 1° with them)
+  // the open tool can use the arrow keys (Move / Copy moves with them, and turns with , and .)
   if (app.command && app.command.arrowKey && /^Arrow/.test(e.key) && app.command.arrowKey(e)) { e.preventDefault(); return; }
+  if (app.command && app.command.turnKey && (e.code === "Comma" || e.code === "Period") && app.command.turnKey(e)) { e.preventDefault(); return; }
   const handled = app.mode === "beginner" ? app.beginner.key(e) : app.advanced.key(e);
   if (handled) e.preventDefault();
 }

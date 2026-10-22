@@ -1559,3 +1559,5 @@ export const TUTORIALS = [
     ],
   },
 ];
+
+export { nameStep, saveStep, exportStep, FIELDS, TABS };

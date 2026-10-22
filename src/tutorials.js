@@ -3,7 +3,9 @@
 // and when it's the right tool; "Show me" points at the real button, tile or field with a pulsing
 // ring and a pop-up. Steps tick themselves off when the design shows they're done (or by hand).
 import * as THREE from "three";
-import { TUTORIALS } from "./tutorial_data.js";
+import { TUTORIALS as BASE_TUTORIALS } from "./tutorial_data.js";
+import { MORE } from "./tutorial_data_more.js";
+const TUTORIALS = [...BASE_TUTORIALS, ...MORE];
 import { store } from "./store.js";
 import { el } from "./util.js";
 import { ICON } from "./icons.js";
@@ -12,7 +14,7 @@ import { animSVG, animFor } from "./tutorial_anims.js";
 const LS = "jumpstart3d.tutorial.";
 const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(LS + k) || "null"); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(LS + k, JSON.stringify(v)); } catch (e) {} };
-const LEVEL_ORDER = { Easy: 0, Proficient: 1, Advanced: 2 };
+const LEVEL_ORDER = { Easy: 0, Proficient: 1, Advanced: 2, Expert: 3 };
 
 export function initTutorials(app) {
   let cur = null; // { tut, i, done: Set, startVer, exported: Set }
@@ -110,7 +112,7 @@ export function initTutorials(app) {
     const modal = el("div", { class: "modal tut-modal", role: "dialog", "aria-label": "Tutorials" },
       el("header", {}, el("h2", {}, "Tutorials"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
       el("div", { class: "mbody" },
-        el("p", { class: "tut-intro" }, "Pick a project. Each one walks you through real tools to make a real, printable item. The short ones take 5-10 minutes; the bigger projects take 10-15."),
+        el("p", { class: "tut-intro" }, "Pick a project. Each one walks you through real tools to make a real, printable item. The short ones take 5-10 minutes; the bigger projects take 10-15, and Expert projects about 20."),
         el("div", { class: "tut-remind" }, el("b", {}, "Always start by naming your design: "), "Last name, First name, Item name ", el("span", { class: "tut-eg" }, "(Lopez, Maria, Keychain)"),
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
         tabs, list));

@@ -284,7 +284,7 @@ You do not need to write code to help.
 ## I want to change it or contribute
 
 The app is plain JavaScript modules under `src/`, from the author's own
-source release of version 2.0 (the untouched 2.0 files are on the
+source release of version 2.1.3 (the untouched 2.0 files are on the
 `upstream-originals` release). One command bundles them into the website
 and the single offline file.
 
@@ -365,7 +365,7 @@ tools/              helper page sources and the scripts that rebuild them
                     measure-load.mjs times a page load on a simulated slow connection
 BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website, committed so GitHub Pages can serve it
-jumpstart_3d_v2.0.htm      the untouched upstream file this version came from
+jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.1.3)
 UPSTREAM-README.md         the author's README from the source release
 ```
 
@@ -405,6 +405,7 @@ UPSTREAM-README.md         the author's README from the source release
   500,000 triangles. The original always used the Normal level.
 - The website build keeps the 7 MB kernel as a separate file, so the page
   itself is about 5 MB instead of 14 MB
+- About > Check for updates checks our GitHub releases only when clicked
 - A reproducible build from readable source, with the libraries pinned
 - Imported SVG drawings are stripped of scripts, embedded HTML and event
   handlers before the app reads their geometry, so a booby-trapped file cannot

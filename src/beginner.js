@@ -5,6 +5,7 @@ import { el, fmt, round, PALETTE, clone, parseLength, uid } from "./util.js";
 import { showLen, parseLen } from "./units.js";
 import { ICON, shapeTile } from "./icons.js";
 import { LIB, textureThumb } from "./texture.js";
+import { FACEPAT } from "./facepat.js";
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import {
@@ -181,6 +182,7 @@ export function initBeginner(app) {
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);
+    btn("facePattern", "Face pattern", "Raise or cut a hexagon, diamond plate or screen mesh pattern on a flat face", () => app.advanced.facePattern(), "bb-facepat", true);
     btn("measure", "Measure", "Measure sizes, distances and angles (I)", () => app.advanced.measure(), "bb-measure", true);
     btn("printsim", "3D Print Sim", "Simulate printing it: supports, layers, strength, print time", () => app.advanced.openPrintSim(), "bb-printsim", true);
     bar.append(el("span", { class: "sep" }));
@@ -609,8 +611,12 @@ export function initBeginner(app) {
     topHandle.quaternion.setFromRotationMatrix(m);
     topHandle.visible = !!f.prim && f.prim !== "torus";
     topHandle.material = hot === topHandle ? hotMat : whiteMat;
-    const up = new THREE.Vector3(0, 0, 1).transformDirection(m);
-    const topW = W(new THREE.Vector3(cx, cy, max.z));
+    // the lift cone always sits above the object's highest point and points straight up (it lifts
+    // straight up, even when the object is turned on its side)
+    const up = new THREE.Vector3(0, 0, 1);
+    const lb = new THREE.Box3();
+    for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) lb.expandByPoint(W(new THREE.Vector3(x, y, z)));
+    const topW = new THREE.Vector3((lb.min.x + lb.max.x) / 2, (lb.min.y + lb.max.y) / 2, lb.max.z);
     const ps = vp.pixelSize(topW);
     lift.position.copy(topW).addScaledVector(up, ps * 28);
     lift.scale.setScalar(ps * 12 * hs);
@@ -958,7 +964,7 @@ export function initBeginner(app) {
             .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: arrow keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Esc or a click stops.`); } },
+        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it.`); } },
       };
       return true;
     }
@@ -1028,6 +1034,7 @@ export function initBeginner(app) {
     else if (one) sizeControls(body, one);
     if (one) transformControls(body, one);
     if (one && !one.hole) textureControls(body, one);
+    if (one && !one.hole) facePatControls(body, one);
     if (one && one.node.t === "group") body.append(el("button", { class: "btn", onclick: () => ungroup() }, "Ungroup"));
     if (sel.length > 1) body.append(el("button", { class: "btn primary", onclick: () => group() }, `Group ${sel.length} shapes`));
     const feats = one ? (one.node.mods || []).filter((m) => m.t !== "scale").length : 0;
@@ -1087,6 +1094,18 @@ export function initBeginner(app) {
         el("button", { class: "xbtn", "aria-label": "Remove texture", title: "Remove texture", html: ICON.close, onclick: () => store.update((doc) => { const x = findBody(doc, b.id); x.textures = (x.textures || []).filter((y) => y.id !== t.id); }, "Remove texture") })));
     }
     body.append(el("button", { class: "btn", id: "insp-texture", onclick: () => app.advanced.texture() }, list.length ? "Add another texture" : "Add texture…"));
+  }
+  // patterns raised on or cut into a face (hexagons, diamond plate, screen mesh...): edit or remove
+  function facePatControls(body, b) {
+    const list = (b.node.mods || []).filter((m) => m.t === "facepat");
+    body.append(el("div", { class: "subhead" }, "Face patterns"));
+    for (const m of list) {
+      body.append(el("div", { class: "texrow" },
+        el("span", {}, `${(FACEPAT[m.kind] || { name: "Pattern" }).name} · ${m.mode === "cut" ? "cut in" : "raised"} ${m.depth} mm`),
+        el("button", { class: "btn", onclick: () => app.advanced.facePattern({ body: b.id, mod: m.id }) }, "Edit"),
+        el("button", { class: "xbtn", "aria-label": "Remove pattern", title: "Remove pattern", html: ICON.close, onclick: () => store.update((doc) => { const x = findBody(doc, b.id); x.node.mods = (x.node.mods || []).filter((y) => y.id !== m.id); }, "Remove pattern") })));
+    }
+    body.append(el("button", { class: "btn", id: "insp-facepat", onclick: () => app.advanced.facePattern() }, list.length ? "Add another pattern" : "Add a face pattern…"));
   }
   // exprs: { w: "w/2" } for a size typed as a parameter expression; any other key in the patch loses its binding
   function updatePrim(id, patch, label = "Edit shape", exprs = {}) {
@@ -1181,7 +1200,7 @@ export function initBeginner(app) {
   let rotKeys = null;
   function rotateByKey(e) {
     if (!rotKeys || app.sel.length !== 1 || app.sel[0] !== rotKeys.id || !findBody(store.doc, rotKeys.id) || app.isLocked(rotKeys.id)) { rotKeys = null; return false; }
-    const s = (e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
     const wb = app.scene.bodyTightBox(rotKeys.id); if (!wb) return false;
     const c = wb.getCenter(new THREE.Vector3()), axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[rotKeys.axis];
     const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, (s * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
@@ -1190,7 +1209,7 @@ export function initBeginner(app) {
   }
   function key(e) {
     const mod = e.ctrlKey || e.metaKey;
-    if (/^Arrow/.test(e.key) && !mod && !e.altKey && rotKeys && rotateByKey(e)) return true;
+    if ((e.code === "Comma" || e.code === "Period") && !mod && !e.altKey && rotKeys && rotateByKey(e)) return true;
     if (e.key === "Escape") rotKeys = null;
     if (e.key === "Tab" && !mod && !e.altKey && app.sel.length === 1) return startDimEdit(e.shiftKey);
     const k = e.key.toLowerCase();
@@ -1202,12 +1221,7 @@ export function initBeginner(app) {
     if (mod && k === "a") { app.select(store.doc.bodies.map((b) => b.id)); return true; }
     if (mod && k === "l") { toggleLock(); return true; }
     if (e.key === "Delete" || e.key === "Backspace") { del(); return true; }
-    if (e.key === "ArrowUp" && mod) { nudge(0, 0, g); return true; }
-    if (e.key === "ArrowDown" && mod) { nudge(0, 0, -g); return true; }
-    if (e.key === "ArrowUp") { nudge(0, g, 0); return true; }
-    if (e.key === "ArrowDown") { nudge(0, -g, 0); return true; }
-    if (e.key === "ArrowLeft") { nudge(-g, 0, 0); return true; }
-    if (e.key === "ArrowRight") { nudge(g, 0, 0); return true; }
+    if (/^Arrow/.test(e.key) && !e.altKey) { const d = app.arrowDelta(e, g); nudge(d.x, d.y, d.z); return true; }
     if (mod) return false;
     if (k === "h") { setHole(true); return true; }
     if (k === "s") { setHole(false); return true; }

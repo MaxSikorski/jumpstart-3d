@@ -57,7 +57,7 @@ function normalizeHM(hm){
 const tri = t => 1 - 2 * Math.abs(fract(t) - .5);
 const SQ3 = Math.sqrt(3);
 
-export const TEX_CATS = [['all', 'All'], ['geo', 'Geometric'], ['nature', 'Nature'], ['skin', 'Skin & fur'], ['mat', 'Materials'], ['mine', 'My images']];
+export const TEX_CATS = [['all', 'All'], ['geo', 'Geometric'], ['nature', 'Nature'], ['wood', 'Wood'], ['build', 'Building'], ['fabric', 'Fabric'], ['skin', 'Skin & fur'], ['mat', 'Materials'], ['mine', 'My images']];
 function buildLibrary(){
   const n4 = periodicNoise(4, 7), n8 = periodicNoise(8, 11), n16 = periodicNoise(16, 3), n32 = periodicNoise(32, 5), n64 = periodicNoise(64, 9);
   const hexPts = [[0, 0], [.5, SQ3 / 2]];
@@ -71,6 +71,8 @@ function buildLibrary(){
   const L6 = periodicNoise(6, 21, true), L12 = periodicNoise(12, 22, true), L24 = periodicNoise(24, 23, true), L48 = periodicNoise(48, 24, true);
   const bark1 = periodicNoise(14, 31, false, 3), bark2 = periodicNoise(40, 32, false, 8), brush1 = periodicNoise(3, 41, false, 160), brush2 = periodicNoise(6, 42, false, 256);
   const woodFine = periodicNoise(64, 9, false, 16), w3 = periodicNoise(3, 51), w6 = periodicNoise(6, 52), n12 = periodicNoise(12, 53), n24 = periodicNoise(24, 54);
+  const poreN = periodicNoise(10, 71, false, 120), slub = periodicNoise(4, 72, false, 64), bur1 = periodicNoise(6, 73), bur2 = periodicNoise(6, 74);
+  const KNOTS = [[.3, .3, .13], [.78, .72, .1]], rowOff = rnd(75).slice(0, 7), shR = rnd(76).concat(rnd(77)).slice(0, 128), leafPts = pts(160, 78);
   const mudPts = pts(26, 61), mudR = rnd(62), cobPts = pts(5, 63, .7), cobR = rnd(64), hamPts = pts(60, 65), snakePts = pts(7, 66, .35);
 
   const defs = [
@@ -115,12 +117,12 @@ function buildLibrary(){
         let dx = x - cx, dy = y - cy; dx -= Math.round(dx); dy -= Math.round(dy); const d = Math.hypot(dx, dy);
         h += Math.cos(TAU * d * f) * Math.exp(-d * 4) * (1 - smooth(.32, .5, d));
       } return h; } },
-    { key: 'bark', name: 'Tree bark', cat: 'nature', fn: (x, y) => .75 * Math.pow(ridged(bark1(x, y)), 1.6) + .25 * bark2(x, y) },
+    { key: 'bark', name: 'Tree bark', cat: 'wood', fn: (x, y) => .75 * Math.pow(ridged(bark1(x, y)), 1.6) + .25 * bark2(x, y) },
     { key: 'mud', name: 'Cracked earth', cat: 'nature', fn: (x, y) => { const v = voronoi(mudPts, 1, 1, x, y); return smooth(.003, .018, v[1] - v[0] + .025 * (n16(x, y) - .5)) * (.8 + .2 * mudR[v[2]]) + .06 * n32(x, y); } },
     { key: 'stone', name: 'Stone', cat: 'nature', fn: (x, y) => { const v = voronoi(stonePts, 1, 1, x, y); return smooth(0, .03, v[1] - v[0]) * (.7 + .3 * stoneH[v[2]]) + .08 * n32(x, y); } },
     { key: 'terraces', name: 'Terraces', cat: 'nature', fn: (x, y) => { const t = (.6 * n4(x, y) + .4 * n8(x, y)) * 8; return Math.floor(t) + smooth(.8, 1, fract(t)); } },
     { key: 'coral', name: 'Coral maze', cat: 'nature', fn: (x, y) => 1 - Math.abs(Math.sin(Math.PI * 7 * (.6 * w6(x, y) + .4 * n12(x, y)))) },
-    { key: 'wood', name: 'Wood grain', cat: 'nature', fn: (x, y) => { const t = 6 * y + 1.3 * (n4(x, y) * .7 + n8(x, y) * .3); return .8 * Math.pow(.5 + .5 * Math.cos(TAU * t), 2.2) + .2 * woodFine(x, y); } },
+    { key: 'wood', name: 'Wood grain', cat: 'wood', fn: (x, y) => { const t = 6 * y + 1.3 * (n4(x, y) * .7 + n8(x, y) * .3); return .8 * Math.pow(.5 + .5 * Math.cos(TAU * t), 2.2) + .2 * woodFine(x, y); } },
     { key: 'sand', name: 'Sand', cat: 'nature', fn: (x, y) => .5 * n16(x, y) + .3 * n32(x, y) + .2 * n64(x, y) },
     // Skin & fur
     { key: 'fur', name: 'Fur', cat: 'skin', gen: (w, h) => {
@@ -158,25 +160,100 @@ function buildLibrary(){
       const N = 8, i = Math.floor(N * x), j = Math.floor(N * y), a = fract(N * x), b = fract(N * y);
       const over = (((i - j) % 4) + 4) % 4 < 2, across = over ? b : a, along = over ? a : b;
       return Math.pow(Math.sin(Math.PI * across), .5) * (.8 + .2 * Math.sin(Math.PI * along)) * (.93 + .07 * Math.sin(TAU * 5 * across)); } },
-    { key: 'weave', name: 'Basket weave', cat: 'mat', fn: (x, y) => {
+    { key: 'weave', name: 'Basket weave', cat: 'fabric', fn: (x, y) => {
       const i = Math.floor(2 * x), j = Math.floor(2 * y), a = fract(2 * x), b = fract(2 * y);
       const horiz = ((i + j) & 1) === 0, across = horiz ? b : a, along = horiz ? a : b;
       return Math.pow(Math.sin(Math.PI * across), .6) * (.7 + .3 * Math.sin(Math.PI * along)); } },
-    { key: 'knit', name: 'Knit', cat: 'mat', fn: (x, y) => {
+    { key: 'knit', name: 'Knit', cat: 'fabric', fn: (x, y) => {
       const u = fract(4 * x), v = fract(4 * y);
       const lobe = (cx, rot) => { let dx = u - cx, dy = v - .5; for (const o of [-1, 0, 1]){ const ddy = dy + o; const c = Math.cos(rot), s = Math.sin(rot); const X = (dx * c + ddy * s) / .2, Y = (-dx * s + ddy * c) / .42, q = X * X + Y * Y; if (q < 1) return Math.sqrt(1 - q); } return 0; };
       return Math.max(lobe(.28, .55), lobe(.72, -.55)); } },
-    { key: 'bricks', name: 'Bricks', cat: 'mat', h: 128, fn: (x, y) => {
+    { key: 'bricks', name: 'Bricks', cat: 'build', h: 128, fn: (x, y) => {
       const X = x, Y = y * .5, row = Math.floor(Y / .25), off = row % 2 ? .25 : 0;
       const bx = fract((X + off) / .5) * .5, by = Y - row * .25;
       return smooth(.008, .03, Math.min(bx, .5 - bx, by, .25 - by)) * (.9 + .1 * n8(x, y)); } },
-    { key: 'cobble', name: 'Cobblestone', cat: 'mat', fn: (x, y) => { const v = voronoi(cobPts, 1, 1, x, y); return Math.sqrt(smooth(0, .07, v[1] - v[0])) * (.85 + .15 * cobR[v[2]]) + .04 * n32(x, y); } },
+    { key: 'cobble', name: 'Cobblestone', cat: 'build', fn: (x, y) => { const v = voronoi(cobPts, 1, 1, x, y); return Math.sqrt(smooth(0, .07, v[1] - v[0])) * (.85 + .15 * cobR[v[2]]) + .04 * n32(x, y); } },
+    // ---- v2.1.3: wood
+    { key: 'oak', name: 'Oak', cat: 'wood', size: 20, fn: (x, y) => { const t = 7 * y + 1.1 * (n4(x, y) * .7 + n8(x, y) * .3); return .62 * Math.pow(.5 + .5 * Math.cos(TAU * t), 3) + .22 * woodFine(x, y) - .3 * smooth(.62, .8, poreN(x, y)); } },
+    { key: 'pine', name: 'Knotty pine', cat: 'wood', size: 40, fn: (x, y) => {
+      let warp = 0, ring = 0;
+      for (const [kx, ky, kr] of KNOTS) { let dx = x - kx, dy = y - ky; dx -= Math.round(dx); dy -= Math.round(dy); const d = Math.hypot(dx * 1.6, dy), f = Math.exp(-((d / kr) ** 2)); warp += Math.sign(dy || 1) * f * .9; ring = Math.max(ring, f > .45 ? .5 + .5 * Math.cos(TAU * d / kr * 3.2) : 0); }
+      const t = 5 * y + warp + .8 * (n4(x, y) * .7 + n8(x, y) * .3);
+      return Math.max(.75 * Math.pow(.5 + .5 * Math.cos(TAU * t), 2) + .15 * woodFine(x, y), ring * .9); } },
+    { key: 'walnut', name: 'Fine grain', cat: 'wood', size: 16, fn: (x, y) => { const t = 16 * y + 2.2 * (n4(x, y) * .6 + n8(x, y) * .4); return .7 * Math.pow(.5 + .5 * Math.cos(TAU * t), 1.6) + .3 * woodFine(x, y); } },
+    { key: 'endgrain', name: 'End grain', cat: 'wood', size: 30, fn: (x, y) => { let dx = x - .5, dy = y - .5; const d = Math.hypot(dx, dy) + .05 * (n8(x, y) - .5); return .8 * Math.pow(.5 + .5 * Math.cos(TAU * 11 * d), 2.5) + .2 * n32(x, y) - .25 * smooth(.7, .9, n64(x, y)); } },
+    { key: 'planks', name: 'Floor planks', cat: 'wood', size: 60, h: 256, fn: (x, y) => {
+      const rows = 5, r = Math.floor(rows * y), v = fract(rows * y), off = rowOff[r % rowOff.length], u = fract(x + off);
+      const seam = smooth(0, .035, Math.min(v, 1 - v)) * smooth(0, .006, Math.min(u, 1 - u));
+      const t = 3 * v + .5 * n8(fract(x + off * 3), y) + r * .37;
+      return seam * (.55 + .3 * Math.pow(.5 + .5 * Math.cos(TAU * 3 * t), 2) + .15 * woodFine(x, y)); } },
+    { key: 'bamboo', name: 'Bamboo', cat: 'wood', size: 30, fn: (x, y) => {
+      const c = fract(3 * x), stalk = Math.sqrt(Math.max(0, 1 - ((c - .5) / .5) ** 2)), node = Math.exp(-(((fract(2 * y + Math.floor(3 * x) * .37) - .5) / .03) ** 2));
+      return stalk * (.85 + .12 * node) - .35 * Math.exp(-(((fract(2 * y + Math.floor(3 * x) * .37) - .5 + .045) / .02) ** 2)) * stalk + .04 * brush2(x, y); } },
+    { key: 'weathered', name: 'Weathered wood', cat: 'wood', size: 20, fn: (x, y) => .55 * Math.pow(ridged(bark2(y, x)), 2) + .3 * brush1(y, x) + .15 * n32(x, y) },
+    // ---- building
+    { key: 'shingles', name: 'Roof shingles', cat: 'build', size: 30, fn: (x, y) => {
+      const rows = 6, R = Math.floor(rows * y), t = fract(rows * y), u = fract(4 * x + (R & 1) * .5), tab = Math.floor(4 * x + (R & 1) * .5);
+      // each row's thick bottom edge overlaps the row below; slots run up from the edge between the tabs
+      const slot = t < .55 ? smooth(.012, .03, Math.min(u, 1 - u)) : 1;
+      return (1 - .75 * t) * (.35 + .65 * slot) * (.9 + .1 * shR[(tab * 7 + R * 13) & 127]) + .05 * n64(x, y); } },
+    { key: 'slate', name: 'Slate roof', cat: 'build', size: 30, fn: (x, y) => {
+      const rows = 6, R = Math.floor(rows * y), t = fract(rows * y), u = fract(3 * x + (R & 1) * .5), id = Math.floor(3 * x + (R & 1) * .5);
+      const gap = smooth(.008, .025, Math.min(u, 1 - u));
+      return (1 - .6 * t) * (.3 + .7 * gap) * (.85 + .15 * shR[(id * 5 + R * 11) & 127]) + .08 * L24(x, y); } },
+    { key: 'scaleroof', name: 'Fish-scale shingles', cat: 'build', size: 24, fn: (x, y) => {
+      const rows = 6, R = Math.floor(rows * y), t = fract(rows * y), u = fract(4 * x + (R & 1) * .5) - .5;
+      // round-bottomed shingles: the edge of each is a half circle
+      const edge = Math.hypot(u * 1.25, t - .62) < .62 || t > .62 ? 1 : 0;
+      return edge ? .25 + .75 * (1 - t) : .15 * (1 - t); } },
+    { key: 'siding', name: 'Clapboard siding', cat: 'build', size: 24, fn: (x, y) => { const t = fract(8 * y); return (.2 + .8 * t) * smooth(0, .03, t) + .06 * woodFine(x, y); } },
+    { key: 'barrel', name: 'Barrel roof tiles', cat: 'build', size: 24, fn: (x, y) => { const c = fract(4 * x), t = fract(5 * y); return Math.pow(Math.abs(Math.sin(Math.PI * c)), .7) * (.75 + .25 * (1 - t)) * smooth(0, .04, t); } },
+    { key: 'corrugated', name: 'Corrugated metal', cat: 'build', size: 16, fn: (x, y) => .5 + .45 * Math.sin(TAU * 8 * x) + .05 * brush2(y, x) },
+    { key: 'tiles', name: 'Floor tiles', cat: 'build', size: 24, fn: (x, y) => { const u = fract(4 * x), v = fract(4 * y), e = Math.min(u, 1 - u, v, 1 - v); return smooth(.015, .06, e) * (.9 + .1 * Math.sin(Math.PI * u) * Math.sin(Math.PI * v)); } },
+    { key: 'tread', name: 'Tread plate', cat: 'build', size: 16, fn: (x, y) => {
+      const N = 6, i = Math.floor(N * x), j = Math.floor(N * y), a = fract(N * x) - .5, b = fract(N * y) - .5;
+      const s = (i + j) & 1 ? -1 : 1, along = (a + s * b) / Math.SQRT2, across = (a - s * b) / Math.SQRT2;
+      const L = .44, W = .13, end = Math.max(0, Math.abs(along) - (L - W)) ;
+      const d = Math.abs(across) + end; return d < W ? Math.sqrt(1 - (d / W) ** 2) : 0; } },
+    // ---- fabric
+    { key: 'denim', name: 'Blue jean (denim)', cat: 'fabric', size: 6, fn: (x, y) => {
+      // 3/1 twill: diagonal ribs, with the cross threads and the uneven (slub) yarn of denim
+      const rib = .5 + .5 * Math.sin(TAU * (20 * x + 20 * y)), thread = .5 + .5 * Math.sin(TAU * 80 * (x - y));
+      return .7 * Math.pow(rib, 1.3) + .12 * thread * rib + .18 * slub(x, y); } },
+    { key: 'canvas', name: 'Canvas', cat: 'fabric', size: 6, fn: (x, y) => {
+      const N = 24, i = Math.floor(N * x), j = Math.floor(N * y), a = fract(N * x), b = fract(N * y), over = ((i + j) & 1) === 0;
+      const across = over ? b : a, along = over ? a : b;
+      return Math.pow(Math.sin(Math.PI * across), .5) * (.75 + .25 * Math.sin(Math.PI * along)) * (.9 + .1 * slub(x, y)); } },
+    { key: 'burlap', name: 'Burlap', cat: 'fabric', size: 10, fn: (x, y) => {
+      const N = 12, wx = .5 + .25 * (bur1(x, y) - .5), wy = .5 + .25 * (bur2(x, y) - .5);
+      const i = Math.floor(N * x), j = Math.floor(N * y), a = fract(N * x), b = fract(N * y), over = ((i + j) & 1) === 0;
+      const thick = (q, w) => Math.max(0, 1 - Math.abs(q - .5) / w);
+      const tx = thick(b, wy), ty = thick(a, wx);
+      return Math.max(over ? tx : tx * .7, over ? ty * .7 : ty) * (.8 + .2 * n64(x, y)); } },
+    { key: 'corduroy', name: 'Corduroy', cat: 'fabric', size: 10, fn: (x, y) => { const c = fract(10 * x); return Math.pow(Math.sin(Math.PI * c), .6) * (.9 + .1 * Math.sin(TAU * 120 * x)) * (.95 + .05 * n32(x, y)); } },
+    { key: 'quilted', name: 'Quilted', cat: 'fabric', size: 24, fn: (x, y) => { const d = Math.min(tri(3 * (x + y)), tri(3 * (x - y))); return Math.pow(d, .45) * (1 - .3 * Math.exp(-((d / .05) ** 2))); } },
+    { key: 'screen', name: 'Window screen', cat: 'fabric', size: 6, fn: (x, y) => {
+      const N = 16, i = Math.floor(N * x), j = Math.floor(N * y), a = fract(N * x), b = fract(N * y);
+      const wire = (q) => Math.max(0, 1 - Math.abs(q - .5) / .17);
+      const wx = wire(b) * (.75 + .25 * Math.cos(Math.PI * (a + (i + j) % 2))), wy = wire(a) * (.75 + .25 * Math.cos(Math.PI * (b + (i + j + 1) % 2)));
+      return Math.sqrt(Math.max(wx, wy)); } },
+    { key: 'rope', name: 'Rope', cat: 'fabric', size: 10, fn: (x, y) => { const s = fract(5 * x + 10 * y); return Math.pow(Math.sin(Math.PI * s), .55) * (.85 + .15 * Math.sin(TAU * (40 * x + 20 * y))) ; } },
+    // ---- nature
+    { key: 'leaf', name: 'Leaf veins', cat: 'nature', size: 30, fn: (x, y) => {
+      // two leaves per tile: a midrib, side veins branching off at an angle, and the fine net between them
+      const v = fract(2 * y), dy = Math.abs(v - .5), mid = Math.exp(-((dy / .022) ** 2));
+      const f = fract(6 * x - 5 * dy), side = Math.exp(-((Math.min(f, 1 - f) / .11) ** 2)) * Math.max(0, 1 - 1.4 * dy);
+      const vr = voronoi(leafPts, 1, 1, x, y), net = 1 - smooth(0, .006, vr[1] - vr[0]);
+      return .55 * mid + .4 * side + .06 * net * (1 - mid) + .05 * n32(x, y); } },
+    { key: 'pineapple', name: 'Pineapple', cat: 'nature', size: 16, fn: (x, y) => { const d = Math.min(tri(5 * (x + y)), tri(5 * (x - y))); return Math.pow(d, .5) + .25 * Math.exp(-(((tri(5 * (x + y)) - 1) ** 2 + (tri(5 * (x - y)) - 1) ** 2) / .02)); } },
+    { key: 'rock', name: 'Rough rock', cat: 'nature', size: 20, fn: (x, y) => .45 * Math.pow(ridged(L6(x, y)), 1.5) + .3 * ridged(L12(x, y)) + .15 * ridged(L24(x, y)) + .1 * n64(x, y) },
+    { key: 'dimples', name: 'Golf ball dimples', cat: 'geo', size: 6, h: 443, fn: (x, y) => { const f = voronoi(hexPts, 1, SQ3, x, y * SQ3)[0], r = .44; return f < r ? 1 - Math.sqrt(1 - (f / r) ** 2) : 1; } },
     { key: 'stucco', name: 'Stucco', cat: 'mat', fn: (x, y) => .8 * smooth(.42, .72, .6 * n16(x, y) + .4 * n32(x, y)) + .2 * n64(x, y) },
   ];
   // Height maps are generated the first time they are needed.
   return defs.map(d => {
     const w = d.w || 256, h = d.h || 256; let src = null;
-    return { key: d.key, name: d.name, cat: d.cat, get src(){
+    return { key: d.key, name: d.name, cat: d.cat, size: d.size || 0, get src(){
       if (!src) src = d.gen ? normalizeHM({ w, h, data: d.gen(w, h) }) : makeHM(w, h, d.fn);
       return src; } };
   });
