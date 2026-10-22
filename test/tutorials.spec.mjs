@@ -1,21 +1,23 @@
 // The app's built-in tutorials as tests (queue idea 4b, plan §10 outcome 6: "anyone can learn the app without Max").
-//  1. Data: every tutorial is well formed, and every step's "check" runs without throwing (the app swallows a throw,
-//     so a typo in a check would just leave the step never ticking itself off).
-//  2. Walk: each tutorial is opened from the Tutorials button like a student would, and every step is visited: its
-//     "Show me" must land on a real, visible button, tile or field; menu items must be inside the menu the step names;
-//     the name, save and export steps are done for real and must tick themselves off; Finish must end the tutorial.
-//  3. Coverage: every toolbar and menu button in the DOM (Beginner and Advanced) is listed and compared with the
-//     buttons the tutorials point at. Today's gaps are in test/tutorial-gaps.json; a NEW button without a tutorial fails.
+//  1. Data: every tutorial is well formed, and every step's "check" runs without throwing on an empty design and on a
+//     set of real designs (the app swallows a throw, so a typo in a check would leave the step never ticking itself off).
+//  2. Walk: each tutorial is opened from the Tutorials button like a student would, and every step is visited: "Show me"
+//     must highlight an element that matches what the step asks for (the selector, the tile kind, or the menu button
+//     for a menu item, and then the item itself once the menu is open); the name step, Save and one real Export per mode are
+//     done and must tick the step; Next moves through all steps and Finish opens the finished pop-up.
+//  3. Coverage: every visible toolbar and menu button (Beginner and Advanced, with the hidden top-bar menus opened and
+//     buttons without an id keyed by their data-act or text) is compared with what the tutorials point at. Today's gaps
+//     are in test/tutorial-gaps.json; a NEW button without a tutorial fails.
 // One page for the whole file (the kernel loads once). Steps whose target only appears after an earlier step (a sketch
 // tool, the Lathe, a selected body's fields) get that state set up through the real buttons first; see prepareFor().
 import { test, expect } from "@playwright/test";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { ICON } from "../src/icons.js";
-import { boot, watchErrors, loadDoc, newDoc } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, waitIdle, bodies } from "./helpers.mjs";
 
 let page, errors, project;
 const tutorials = []; // { id, mode, title, steps }, read from the running app so the test sees exactly what users see
-const exportedIn = new Set(), savedIn = new Set();
+const exportedIn = new Set(), savedIn = new Set(), startedIds = new Set(); // exportedIn and savedIn: "<mode>:<repeat index>", so --repeat-each runs each time
 const stats = { tutorials: 0, steps: 0, menuItems: 0, tiles: 0, namedAndTicked: 0, saved: 0, exported: 0, started: 0 };
 
 test.beforeAll(async ({ browser }, info) => {
@@ -24,6 +26,7 @@ test.beforeAll(async ({ browser }, info) => {
   errors = watchErrors(page);
   page.on("dialog", (d) => d.accept()); // the Lathe asks "Start over?" before it throws work away
   await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+  await page.emulateMedia({ reducedMotion: "reduce" }); // the "Next" button pulses when a step is done; reduced motion turns that off, so plain clicks do not wait for it
   await boot(page, info);
   const list = await page.evaluate(() => window.__app.tutorials.list.map((t) => ({
     id: t.id, mode: t.mode, level: t.level, title: t.title, item: t.item, learn: t.learn, minutes: t.minutes,
@@ -41,10 +44,11 @@ const visible = (sel) => page.evaluate((sel) => { const e = document.querySelect
 
 // ---------------------------------------------------------------- 1. the data
 test("tutorial data: counts, ids, levels, icons and well-formed steps", async () => {
-  expect(tutorials.length).toBe(39);
-  expect(tutorials.filter((t) => t.mode === "beginner").length).toBe(19);
-  expect(tutorials.filter((t) => t.mode === "advanced").length).toBe(20);
+  // the number of tutorials is smoke.spec.mjs's job (it checks the About text); here: every one is in a mode the chooser has tabs for, and the walk below declares a test for each
+  expect(tutorials.length).toBeGreaterThan(0);
+  expect(tutorials.filter((t) => t.mode === "beginner" || t.mode === "advanced").length).toBe(tutorials.length);
   expect(new Set(tutorials.map((t) => t.id)).size).toBe(tutorials.length);
+  expect(tutorials.map((t) => t.id).sort(), "the ids the walk declares tests for (read from src/tutorial_data*.js) and the ids the app lists").toEqual([...BEGINNER_IDS(), ...ADVANCED_IDS()].sort());
   const problems = [];
   for (const t of tutorials) {
     if (!["Easy", "Proficient", "Advanced", "Expert"].includes(t.level)) problems.push(`${t.id}: level ${t.level}`);
@@ -65,31 +69,40 @@ test("tutorial data: counts, ids, levels, icons and well-formed steps", async ()
   expect(problems).toEqual([]);
 });
 
-test("tutorial checks: none throws, on an empty design or on one with a box, a group and a sketch", async () => {
+// Real designs from test/projects that have what the checks look at: groups with a hole child, sketches with lines, rectangles and
+// circles, extrudes with join/cut mods, revolves, fillets, patterns, text, threads. On an empty design most checks stop at "no bodies", so
+// only these reach the code behind the guards (childKinds, sketchRect, extrudeMod, hasCombine, ...).
+const CHECK_DESIGNS = ["beginner-peg-block", "beginner-box", "advanced-sketch-extrude", "advanced-bool-cut", "advanced-hole", "advanced-revolve", "advanced-pattern-feature", "advanced-fillet-chamfer", "advanced-emboss", "advanced-thread", "advanced-shell", "parametric-features"];
+const runChecks = () => page.evaluate(() => {
+  const t = window.__app.tutorials, T = t.T, out = { thrown: [], ticked: [], evaluated: 0 };
+  for (const tut of t.list) tut.steps.forEach((s, i) => {
+    if (!s.check) return;
+    out.evaluated++;
+    try { if (s.check(T)) out.ticked.push(`${tut.id} step ${i + 1}: ${s.title}`); } catch (e) { out.thrown.push(`${tut.id} step ${i + 1}: ${s.title}: ${e.message}`); }
+  });
+  return out;
+});
+
+test("tutorial checks: none throws, on an empty design or on real designs with groups, sketches and features", async () => {
   for (const mode of ["beginner", "advanced"]) {
     await loadDoc(page, newDoc("Untitled", mode));
-    const r = await page.evaluate(() => {
-      const t = window.__app.tutorials, T = t.T, out = { thrown: [], ticked: [] };
-      for (const tut of t.list) tut.steps.forEach((s, i) => {
-        if (!s.check) return;
-        try { if (s.check(T)) out.ticked.push(`${tut.id} step ${i + 1}: ${s.title}`); } catch (e) { out.thrown.push(`${tut.id} step ${i + 1}: ${s.title}: ${e.message}`); }
-      });
-      return out;
-    });
+    const r = await runChecks();
     expect(r.thrown, `checks that throw on an empty ${mode} design`).toEqual([]);
     // a step that is "done" before the student did anything would tick itself off for nothing
     expect(r.ticked, `checks already true on an empty ${mode} design`).toEqual([]);
   }
-  const populated = newDoc("Lopez, Maria, Test", "advanced", {
-    bodies: [{ id: "b1", name: "Box", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "prim", kind: "box", p: { w: 20, d: 20, h: 20, r: 0, c: 0 }, mods: [] } }],
-  });
-  await loadDoc(page, populated);
-  const thrown = await page.evaluate(() => {
-    const t = window.__app.tutorials, T = t.T, out = [];
-    for (const tut of t.list) tut.steps.forEach((s, i) => { if (s.check) { try { s.check(T); } catch (e) { out.push(`${tut.id} step ${i + 1}: ${e.message}`); } } });
-    return out;
-  });
-  expect(thrown, "checks that throw on a design with a box").toEqual([]);
+  const everTrue = new Set();
+  for (const name of CHECK_DESIGNS) {
+    const file = new URL(`./projects/${name}.json`, import.meta.url);
+    expect(existsSync(file), `test/projects/${name}.json`).toBe(true);
+    const doc = JSON.parse(readFileSync(file, "utf8"));
+    await loadDoc(page, doc);
+    const r = await runChecks();
+    expect(r.thrown, `checks that throw on ${name}`).toEqual([]);
+    r.ticked.forEach((x) => everTrue.add(x));
+  }
+  // the designs must really reach into the predicates: about 55 checks come out true on them, not just "false because empty"
+  expect(everTrue.size, "checks that were true on at least one of the real designs: " + [...everTrue].join("; ")).toBeGreaterThanOrEqual(40);
 });
 
 // ---------------------------------------------------------------- 2. the walk
@@ -130,48 +143,53 @@ async function prepareFor(sel, mode) {
   }
   if (/#insp-|\.colors/.test(sel)) { // a body must be selected for its fields and colours to show
     await addBox(mode);
-    await page.waitForSelector("#inspector .colors, #insp-pos0", { state: "attached" });
     return "a box is selected";
   }
   if (/param-expr/.test(sel)) { await page.click("#browser .param-add"); return "one parameter added"; }
   return null;
 }
 
-// What "Show me" does for this step, checked from the outside. Returns what it pointed at.
+// What "Show me" does for this step, checked from the outside. It must highlight an element that is the one the data asks for.
 async function checkShowMe(tutId, i, show, mode) {
   const at = `${tutId} step ${i + 1}`;
-  const showMe = async () => page.evaluate(() => {
-    document.getElementById("tut-show").click(); // the same handler a mouse click runs; one round trip instead of several
+  const showMe = () => page.evaluate(({ sel, via, tile }) => {
+    document.getElementById("tut-show").click(); // the same handler a mouse click runs
     const e = document.querySelector(".tut-spot");
     if (!e) return null;
     const r = e.getBoundingClientRect();
-    return { id: e.id, kind: e.dataset.kind || null, cls: e.className, onScreen: e.getClientRects().length > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight, bubble: !!document.querySelector("#tut-bubble") };
-  });
+    return {
+      id: e.id, onScreen: e.getClientRects().length > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight,
+      bubble: !!document.querySelector("#tut-bubble"),
+      isTile: tile ? e.dataset.kind === tile.kind && e.classList.contains("tile") && e.classList.contains("hole") === tile.hole : false,
+      isSel: sel ? e.matches(sel) : false, isVia: via ? e.matches(via) : false,
+    };
+  }, { sel: show.sel || null, via: show.via || null, tile: show.tile ? { kind: show.tile, hole: !!show.hole } : null });
   let spot = await showMe(), prepared = null;
-  if (!spot) { prepared = await prepareFor(show.sel || "", mode); if (prepared) spot = await showMe(); }
-  expect(spot, `${at} (${show.sel || show.tile}): Show me found nothing to point at${prepared ? " even after: " + prepared : ""}`).not.toBeNull();
+  if (!spot) { // the target only exists after earlier work: do that work, then wait for the step's own target to appear
+    prepared = await prepareFor(show.sel || "", mode);
+    if (prepared) await expect.poll(async () => (spot = await showMe()) !== null, { message: `${at} (${show.sel}): Show me found nothing to point at after: ${prepared}`, timeout: 10_000 }).toBe(true);
+  }
+  expect(spot, `${at} (${show.sel || show.tile}): Show me found nothing to point at`).not.toBeNull();
   expect(spot.onScreen, `${at}: the highlighted target is not on screen`).toBe(true);
   expect(spot.bubble, `${at}: no pop-up next to the target`).toBe(true);
   if (show.tile) {
-    expect(spot.kind, `${at}: Show me pointed at the wrong tile`).toBe(show.tile);
+    expect(spot.isTile, `${at}: Show me did not highlight the ${show.hole ? "hole " : ""}${show.tile} tile`).toBe(true);
     stats.tiles++;
-    return `tile ${show.hole ? "hole " : ""}${show.tile}`;
+    return;
   }
-  const wanted = show.sel.split(",").map((s) => s.trim());
-  const wantedIds = wanted.filter((s) => /^#[\w-]+$/.test(s)).map((s) => s.slice(1));
-  if (show.via && spot.id === show.via.slice(1)) { // the menu is closed: Show me points at its button; the item must be inside once it is open
+  if (show.via && spot.isVia && !spot.isSel) { // the menu is closed: Show me points at its button; open it, and Show me must now point at the item
     await page.click(show.via);
     await expect(page.locator("#ribbon-menu"), `${at}: ${show.via} opens no menu`).toBeVisible();
-    const found = await page.evaluate((ids) => ids.find((id) => { const e = document.querySelector("#ribbon-menu #" + id); return e && e.getClientRects().length; }) || null, wantedIds);
-    expect(found, `${at}: ${show.sel} is not in the menu ${show.via} opens`).not.toBeNull();
+    const inside = await showMe();
+    expect(inside && inside.isSel, `${at}: with ${show.via} open, Show me does not highlight ${show.sel}`).toBe(true);
     await page.keyboard.press("Escape");
     stats.menuItems++;
-    return found;
+    return;
   }
-  if (wantedIds.length) expect(wantedIds.includes(spot.id) || wanted.some((s) => s.startsWith(".") || s.includes(" ")), `${at}: Show me pointed at #${spot.id}, expected one of ${show.sel}`).toBe(true);
-  return spot.id || spot.cls;
+  expect(spot.isSel, `${at}: Show me highlighted #${spot.id}, which is not ${show.sel}`).toBe(true);
 }
 
+const once = (tut) => `${tut.mode}:${test.info().repeatEachIndex}`;
 async function walk(tut) {
   await normalize();
   await page.evaluate(() => window.__app.tutorials.close());
@@ -196,20 +214,23 @@ async function walk(tut) {
       expect(await page.evaluate(() => window.__store.doc.name)).toBe(`Lopez, Maria, ${tut.item}`);
       stats.namedAndTicked++;
     }
-    const target = await checkShowMe(tut.id, i, s.show, tut.mode);
+    await checkShowMe(tut.id, i, s.show, tut.mode);
     await normalize({ keepLathe: /#lathe-/.test(tut.steps[i + 1]?.show.sel || "") });
     if (s.show.sel === "#btn-save") {
       await page.click("#btn-save");
       // the app looks at the design every 0.7 s to tick steps off; the check it runs is T.saved(), so ask it directly (waiting for the real tick only in the first tutorial of each mode keeps the run short)
-      if (!savedIn.has(tut.mode)) { savedIn.add(tut.mode); await expect(page.locator("#tut-panel .tut-step.done"), `${tut.id}: Save did not tick its step`).toBeVisible({ timeout: 5000 }); }
+      if (!savedIn.has(once(tut))) { savedIn.add(once(tut)); await expect(page.locator("#tut-panel .tut-step.done"), `${tut.id}: Save did not tick its step`).toBeVisible({ timeout: 5000 }); }
       else expect(await page.evaluate(() => window.__app.tutorials.T.saved()), `${tut.id}: Save did not make a new version`).toBe(true);
       stats.saved++;
     }
-    if (s.show.sel === "#btn-export" && !exportedIn.has(tut.mode)) {
-      exportedIn.add(tut.mode); // a real download costs about a second each; the first tutorial of each mode proves the step ticks and the file is named after the design
+    if (s.show.sel === "#btn-export" && !exportedIn.has(once(tut))) {
+      exportedIn.add(once(tut)); // a real download costs about a second each; the first tutorial of each mode proves the step ticks and the file is named after the design
       if (!(await page.evaluate(() => window.__store.doc.bodies.length))) await addBox(tut.mode); // a student has shapes by now; an empty design exports nothing
+      await page.evaluate(() => window.__app.select([])); // nothing selected: every part is exported, and the file name has no part name in it
+      await waitIdle(page); // the export waits for nothing: a design whose meshes are not built yet downloads nothing
+      expect((await bodies(page)).filter((b) => b.error), `${tut.id}: bodies with a geometry error before Export`).toEqual([]);
       const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), (async () => { await page.click("#btn-export"); await page.click('#menu-export button[data-act="stl"]'); })()]);
-      expect(dl.suggestedFilename(), `${tut.id}: the STL is not named after the design`).toMatch(/^Lopez, Maria, .+\.stl$/);
+      expect(dl.suggestedFilename(), `${tut.id}: the STL is not named design name + version`).toBe(`Lopez, Maria, ${tut.item} v1.stl`);
       await expect(page.locator("#tut-panel .tut-step.done"), `${tut.id}: Export did not tick its step`).toBeVisible({ timeout: 5000 });
       stats.exported++;
     } else if (s.show.sel === "#btn-export") { // the other tutorials: the menu the step describes must offer "STL for 3D printing"
@@ -218,16 +239,15 @@ async function walk(tut) {
       await page.evaluate(() => { document.getElementById("menu-export").hidden = true; });
     }
     stats.steps++;
-    expect(target).toBeTruthy();
-    await page.click("#tut-next", { force: true }); // the button pulses when a step is done, which Playwright would wait out; "Next →", and "Finish ✓" on the last step
+    await page.click("#tut-next"); // "Next →", and "Finish ✓" on the last step
   }
   const finished = page.locator(".tut-done");
   await expect(finished, `${tut.id}: Finish did not open the finished pop-up`).toBeVisible();
-  await expect(finished.locator("h2")).toHaveText(/Nice work/); // every step was ticked, by hand or by itself
+  await expect(finished.locator("h2")).toHaveText(/Nice work/); // Next ticks a step off as the student moves on, so this shows Finish ran at the last step, not that the checks passed
   await expect(finished).toContainText(`Your design is saved as "Lopez, Maria, ${tut.item}`);
   await page.click(".tut-done .btn.primary");
   await expect(page.locator("#tut-panel")).toHaveCount(0);
-  stats.started++;
+  startedIds.add(tut.id);
 }
 
 test.describe("walk every tutorial", () => {
@@ -253,25 +273,47 @@ function BEGINNER_IDS() { return idsOf("beginner"); }
 function ADVANCED_IDS() { return idsOf("advanced"); }
 
 test("the walk reached every tutorial the app lists", () => {
-  expect(stats.started).toBe(tutorials.length);
+  expect([...startedIds].sort()).toEqual(tutorials.map((t) => t.id).sort());
 });
 
 // ---------------------------------------------------------------- 3. coverage
-// Every button the toolbars and menus put in the DOM. Ids are the key; shape tiles are "tile:<kind>" and "hole-tile:<kind>".
-async function popupItems(buttonSel) {
-  await page.click(buttonSel);
-  await expect(page.locator("#ribbon-menu")).toBeVisible();
-  const ids = await page.evaluate(() => [...document.querySelectorAll("#ribbon-menu button[id]")].map((b) => b.id));
-  await page.keyboard.press("Escape");
-  await expect(page.locator("#ribbon-menu")).toHaveCount(0);
-  return ids;
+// Every visible button the toolbars and menus put in the page. The key is the button's id; a button without an id is keyed by its menu
+// and its data-act / data-theme / data-perf / data-detail / data-agent, or else by its text (export:stl, theme:theme:dark, ribbon:text:Browser).
+// Shape tiles are "tile:<kind>" and "hole-tile:<kind>". Runs inside the page, so it must not use anything from this file.
+function scanIn({ container, prefix }) {
+  const keyOf = (b) => {
+    if (b.id) return b.id;
+    const d = b.dataset, menu = b.closest(".menu"), p = menu ? menu.id.replace(/^menu-/, "") : prefix;
+    if (d.act) return p + ":" + d.act;
+    for (const a of ["theme", "perf", "detail"]) if (d[a]) return p + ":" + a + ":" + d[a];
+    if ("agent" in d) return p + ":agent";
+    return p + ":text:" + b.textContent.replace(/\s+/g, " ").trim().slice(0, 40);
+  };
+  return [...document.querySelectorAll(container + " button")].filter((b) => b.getClientRects().length).map((b) => ({ key: keyOf(b), popup: b.id && b.getAttribute("aria-haspopup") ? b.id : null }));
 }
 async function ribbonButtons(group, containerSel, { menus = true } = {}) {
   const found = {};
-  const ids = await page.evaluate((c) => [...document.querySelectorAll(c + " button[id]")].filter((b) => b.getClientRects().length).map((b) => ({ id: b.id, popup: !!b.getAttribute("aria-haspopup") })), containerSel);
-  for (const b of ids) {
-    found[b.id] = group;
-    if (menus && b.popup) for (const sub of await popupItems("#" + b.id)) found[sub] = group;
+  for (const b of await page.evaluate(scanIn, { container: containerSel, prefix: group })) {
+    found[b.key] = group;
+    if (menus && b.popup) { // a ribbon drop-down: open it, read the items, close it
+      await page.click("#" + b.popup);
+      await expect(page.locator("#ribbon-menu")).toBeVisible();
+      for (const item of await page.evaluate(scanIn, { container: "#ribbon-menu", prefix: group })) found[item.key] = group;
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#ribbon-menu")).toHaveCount(0);
+    }
+  }
+  return found;
+}
+// the top bar's own menus (Export, and the Settings menu behind the theme button) are hidden until opened
+async function topBarMenus() {
+  const found = {};
+  for (const toggle of await page.$$eval(".topbar .menu-wrap > button[id]", (bs) => bs.map((b) => b.id))) {
+    await page.click("#" + toggle);
+    const items = await page.evaluate(scanIn, { container: ".topbar .menu:not([hidden])", prefix: toggle });
+    expect(items.length, `#${toggle} opened a menu with no buttons`).toBeGreaterThan(0);
+    for (const item of items) found[item.key] = "top bar menus";
+    await page.evaluate(() => document.querySelectorAll(".topbar .menu").forEach((m) => { m.hidden = true; }));
   }
   return found;
 }
@@ -282,9 +324,12 @@ async function collectUniverse() {
     await normalize();
     await loadDoc(page, newDoc("Untitled", mode));
     add(await ribbonButtons("top bar", ".topbar", { menus: false }));
+    add(await topBarMenus());
     add(await ribbonButtons("view buttons", ".navbtns", { menus: false }));
+    add(await ribbonButtons("snap controls", ".snapctl", { menus: false }));
     if (mode === "beginner") {
       add(await ribbonButtons("Beginner toolbar", ".bbar"));
+      add(await ribbonButtons("Beginner shape strip", "#shapes", { menus: false }));
       await page.click("#dock-objects");
       for (const k of await page.$$eval("#shapes .tile[data-kind]", (ts) => ts.map((t) => t.dataset.kind))) all["tile:" + k] = "Beginner shape tiles";
       await page.click("#dock-holes");
@@ -307,6 +352,7 @@ function referenced() {
   const ids = new Set();
   for (const t of tutorials) for (const s of t.steps) {
     if (s.show.tile) ids.add((s.show.hole ? "hole-tile:" : "tile:") + s.show.tile);
+    if (s.show.sel === "#btn-export") ids.add("export:stl"); // the step says "choose STL for 3D printing", and the walk checks that item is in the menu
     for (const part of (s.show.sel || "").split(",").map((x) => x.trim())) { const m = /^#([\w-]+)$/.exec(part); if (m) ids.add(m[1]); }
     const v = /^#([\w-]+)$/.exec(s.show.via || ""); if (v) ids.add(v[1]);
   }
@@ -326,7 +372,7 @@ test("every toolbar and menu button is used by a tutorial, or is a known gap in 
   mkdirSync("test-results", { recursive: true });
   writeFileSync(`test-results/tutorial-coverage-${project}.json`, JSON.stringify(report, null, 2) + "\n");
   console.log(`[${project}] ${ids.length} buttons; ${ids.length - without.length} used by a tutorial; ${without.length} without one:\n` + Object.entries(byGroup).map(([g, l]) => `  ${g}: ${l.join(", ")}`).join("\n"));
-  // a button a step points at that is not in any toolbar or menu is fine only when it is a panel field (inspector, Lathe, Parameters); those are the walk's job
+  // (ids a step points at that are not in any toolbar or menu are panel fields, the inspector, the Lathe or Parameters: the walk covers those)
   const newGaps = without.filter((id) => !allowed.has(id));
   const fixed = [...allowed].filter((id) => universe[id] && used.has(id));
   const gone = [...allowed].filter((id) => !universe[id]);

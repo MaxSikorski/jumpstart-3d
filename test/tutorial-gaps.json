@@ -1,5 +1,5 @@
 {
-  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
+  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
   "gaps": {
     "Advanced toolbar": [
       "ad-align",
@@ -73,6 +73,36 @@
       "mode-advanced",
       "mode-beginner",
       "mode-chisel"
+    ],
+    "Beginner shape strip": [
+      "dock-help-btn",
+      "dock-holes",
+      "dock-next",
+      "dock-objects",
+      "dock-prev"
+    ],
+    "top bar menus": [
+      "export-scope-all",
+      "export-scope-sel",
+      "export:3mf",
+      "export:dxf",
+      "export:import",
+      "export:json",
+      "export:obj",
+      "export:runscript",
+      "export:step",
+      "theme:agent",
+      "theme:detail:extra",
+      "theme:detail:fine",
+      "theme:detail:normal",
+      "theme:perf:auto",
+      "theme:perf:high",
+      "theme:perf:normal",
+      "theme:perf:ultra",
+      "theme:theme:contrast",
+      "theme:theme:dark",
+      "theme:theme:light",
+      "theme:theme:system"
     ],
     "Beginner hole tiles": [
       "hole-tile:arrow",
@@ -153,6 +183,11 @@
       "sk-spline",
       "sk-text",
       "sk-trim"
+    ],
+    "snap controls": [
+      "snap-more",
+      "snap-toggle",
+      "unit-toggle"
     ],
     "Beginner shape tiles": [
       "tile:arrow",
