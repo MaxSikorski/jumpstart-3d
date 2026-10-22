@@ -11,6 +11,9 @@ review service. Review the change against the requester's finished result.
 - **MEDIUM:** wrong behaviour in an edge case, no test proving the requester's
   end result, or a regression risk without a test.
 - **LOW:** clarity or naming. Report at most three style nits per review.
+- **PRE-EXISTING:** a real bug the change did not introduce. Report it as
+  such, so it is not blamed on the change; fix it here only if the change
+  touches it, otherwise note it for its own piece of work.
 
 ## Do not report
 
@@ -45,6 +48,28 @@ These skips concern where to report findings, not whether to test both builds.
   an empty result, skipped assertion, or merely successful exit is not proof.
 - User-facing text is plain English. Prefer Node; run Python only through
   uv (`uv run python ...`, `uvx ...`), never a bare `python3`.
+- A bug fix addresses the root cause, not only the symptom the report shows.
+- A finding names its class of bug, so every instance gets fixed, not only
+  the line flagged.
+
+## Sensitive paths: the maintainer merges
+
+A change that touches any of these waits for the maintainer's explicit go
+before it merges, even with every gate green: `.github/workflows/`, the
+service worker (`src/sw.js` and its handling in `build.mjs`), the update
+check, release and build scripts, the MCP server's tools and permissions
+(`mcp/`), and this file. An automated review never counts as that go.
+
+## How a review reads
+
+Start with the number of findings by severity, and say plainly "nothing to
+fix" when that is the case. A change that touches network calls, storage,
+imported files, the service worker or the update check also gets a
+`/security-review` pass. Later rounds review only the new diff and never
+repeat a finding already answered; every finding is fixed or answered with a
+reason. After about three rounds, rethink the approach instead of patching
+again. A finding that keeps recurring is fixed at its source: this file, a
+skill, or a test.
 
 ## Evidence
 
