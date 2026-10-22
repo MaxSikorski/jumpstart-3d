@@ -116,6 +116,10 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npx playwright install chromium
+      # The golden spec exports every design on both builds into test-results/judge/ (pretest builds both outputs); the judge's unit tests read those fresh exports, so this runs first.
+      - name: Write golden exports
+        timeout-minutes: 10
+        run: npm test -- test/golden.spec.mjs
       # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
       - name: Install export judge consumers
         timeout-minutes: 14
@@ -132,10 +136,6 @@ jobs:
       - name: Native negative controls
         timeout-minutes: 5
         run: npm run test:judge:integration
-      # The golden spec exports every design on both builds into test-results/judge/ (pretest builds both outputs).
-      - name: Write golden exports
-        timeout-minutes: 10
-        run: npm test -- test/golden.spec.mjs
       - name: Judge golden exports
         # The full report is wanted even when the controls fail.
         if: ${{ !cancelled() }}
