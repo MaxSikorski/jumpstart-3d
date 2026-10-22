@@ -64,7 +64,7 @@ const configureGlue = (
 // that merge goes wrong. A torus (two faces) that a boolean leaves untouched becomes one face with no boundary
 // loops, which the mesher turns into no triangles: the torus vanishes from views and exports. On a sphere whose seam
 // is split, merging edges and faces together rebuilds a wrong face (an intersect gave 4188.79 mm3 instead of 2360.38).
-// A result with no spherical or toroidal face is merged exactly as before. Otherwise the same merge runs with the
+// A result with no spherical or toroidal face is merged exactly as before. Otherwise the same kind of merge (edges, faces, B-splines) runs with the
 // edges of those faces kept, so flat faces still merge and the round ones are left as the boolean made them.
 function simplifiedResult(builder: {
   Shape(): TopoDS_Shape;
@@ -87,7 +87,7 @@ function simplifiedResult(builder: {
       )
     );
     for (; faces.More(); faces.Next()) {
-      const face = r(oc.TopoDS.Face(faces.Current()));
+      const face = r(oc.TopoDS.Face(r(faces.Current())));
       const surface = r(new oc.BRepAdaptor_Surface(face, true));
       const type = surface.GetType();
       if (
@@ -102,7 +102,7 @@ function simplifiedResult(builder: {
       return builder.Shape();
     }
     const unify = r(
-      new oc.ShapeUpgrade_UnifySameDomain(raw, true, true, false)
+      new oc.ShapeUpgrade_UnifySameDomain(raw, true, true, true)
     );
     for (const face of round) {
       const edges = r(
@@ -112,7 +112,7 @@ function simplifiedResult(builder: {
           oc.TopAbs_ShapeEnum.TopAbs_SHAPE
         )
       );
-      for (; edges.More(); edges.Next()) unify.KeepShape(edges.Current());
+      for (; edges.More(); edges.Next()) unify.KeepShape(r(edges.Current()));
     }
     unify.SetAngularTolerance(1e-3);
     unify.Build();

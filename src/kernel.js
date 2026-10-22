@@ -2898,8 +2898,9 @@ export function errorText(e) {
   }
   return (e && e.message) || String(e);
 }
+// empty means no geometry at all: a body of curves only (a wire from a STEP file) is not empty, it shows as lines
 function isEmptyShape(shape) {
-  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_FACE, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_VERTEX, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
   try { return !ex.More(); } finally { ex.delete(); }
 }
 

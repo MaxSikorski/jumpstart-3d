@@ -3,6 +3,7 @@
 // two spheres offset along x gave a wrong volume after Intersect or Cut, and an empty result showed
 // "[object WebAssembly.Exception]". Every check here is made from the user's side: list(), the Group button, the STL file.
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { boot, watchErrors, waitIdle } from "./helpers.mjs";
 
 let page, errors;
@@ -155,7 +156,29 @@ test("a box cut with a hole bigger than itself says nothing is left, in plain wo
   const [e] = await entries();
   expect(e.error).toMatch(/Nothing is left/);
   await noObjectText();
-  // exporting the design with that empty group does not produce a raw engine error either
+  // the export refuses a design with a build error, and says which
   const message = await run(async () => { try { await JS3D.export("step"); return null; } catch (err) { return err.message; } });
-  if (message) expect(message).not.toContain("[object");
+  expect(message).toMatch(/Nothing is left/);
+  expect(message).not.toContain("[object");
+});
+
+// A body of curves only (a wire from a STEP file) has no faces but is not empty: it builds, shows as lines, and exports.
+// Made with the app's own kernel: a circle of radius 10, written by blobSTEP().
+test("a STEP import that holds only a circle still builds and exports", async () => {
+  const data = readFileSync(new URL("./fixtures/wire-circle.step", import.meta.url)).toString("base64");
+  await fresh();
+  await run((data) => {
+    JS3D.add("box"); // a solid beside it: the export must keep both
+    const doc = JS3D.doc();
+    doc.assets = { wirecircle: { kind: "step", name: "Wire circle", data } };
+    doc.bodies.push({ id: "w1", name: "Wire circle", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "step", asset: "wirecircle", mods: [] } });
+    __store.load(doc);
+  }, data);
+  await waitIdle(page);
+  const list = await entries();
+  expect(list.map((e) => e.error)).toEqual([null, null]);
+  expect(await run(() => __app.scene.views.get("w1").data.lines.length)).toBeGreaterThan(0); // drawn as lines (it has no triangles)
+  const step = bytes(await run(() => JS3D.export("step"))).toString("latin1");
+  expect(step).toMatch(/CIRCLE/);
+  expect(step).toContain("MANIFOLD_SOLID_BREP");
 });
