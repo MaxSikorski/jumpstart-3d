@@ -78,6 +78,30 @@ or file name. Explain the trigger and user-visible consequence, and cite the
 relevant test or reproduction result. No evidence, no finding. State what
 failed, was skipped, or remains unverified; never call unrun checks passed.
 
+## Review tiers
+
+Scale the gates to the risk of the change. The PR's **Review gates** section
+names the tier.
+
+- **Light tier:** a change that is only documentation, only tests, or only
+  tooling (for example `tools/`, `test/`, `*.md`), and touches none of the
+  sensitive paths above. It gets gates 1 and 4 and one Claude review (gate 3).
+  No Codex review (gate 2) and no verify pass. CI is still required.
+- **Full tier:** anything that touches `src/` geometry, imports or exports,
+  storage, network calls, the service worker or the update check,
+  `.github/workflows/`, `mcp/`, release or build scripts, this file, or an
+  upstream merge. It gets every gate: Codex review, Claude review and the
+  verify pass.
+- **When unsure, use the full tier.** A PR that mixes both is full tier.
+
+## The flake rule
+
+A test that fails and then passes on a rerun with no code change is a flake.
+Record it in the PR (test name, run link, what the failure said). The very
+next piece of work fixes its root cause; the test is never rerun a second time
+across PRs to get past it. A test that fails again after one rerun blocks the
+merge.
+
 ## The gates
 
 1. **Outcome check first.** Contributors record the finished result and write
@@ -86,24 +110,30 @@ failed, was skipped, or remains unverified; never call unrun checks passed.
    in the PR, together with anything it does not cover. For a change with no
    code, the outcome check is a concrete verification recorded as such (for
    example, the YAML parses and the form keeps its fields, or the page
-   renders), never a faked test. No change skips gates 2-4.
-2. **Codex review.** The maintainer runs this gate with a Codex reviewer (a
-   Codex model). Give the reviewer this file and the PR's outcome and diff.
-   Review against this checklist independently of the Claude reviewer.
-3. **Independent Claude review.** The maintainer runs this gate with a Claude
-   model, in parallel with the Codex reviewer and without sharing either
-   reviewer's findings before both finish. Pass `REVIEW.md` explicitly in the
-   brief: `/code-review` reads `CLAUDE.md` but does not automatically read
-   this file. Both reviewers use the public rules above. A separate verify
-   pass checks every serious (HIGH or MEDIUM) or disputed finding against the
-   code with `file:line` evidence and breaks ties. Only a genuine remaining
-   disagreement on a HIGH finding stops for the maintainer. Rank verified
-   findings HIGH/MEDIUM/LOW, remove duplicates, fix them as appropriate, and
-   record their disposition.
-4. **CI.** CI runs the full suite on both builds, including the export judge,
-   phone budget, and chat scorer. See [test/README.md](test/README.md) for
-   commands and limits. A selected test or local build does not replace CI;
-   record failures and skipped checks explicitly.
+   renders), never a faked test. No change skips gates 1, 3 and 4; the tier
+   above decides whether gate 2 and the verify pass apply.
+2. **Codex review (full tier only).** The maintainer runs this gate with a
+   Codex reviewer (a Codex model). Give the reviewer this file and the PR's
+   outcome and diff. Review against this checklist independently of the Claude
+   reviewer.
+3. **Independent Claude review (every tier).** The maintainer runs this gate
+   with a Claude model. On the full tier it runs in parallel with the Codex
+   reviewer, and neither sees the other's findings before both finish. Pass
+   `REVIEW.md` explicitly in the brief: `/code-review` reads `CLAUDE.md` but
+   does not automatically read this file. Both reviewers use the public rules
+   above. On the light tier this is the only review and there is no verify
+   pass. On the full tier a separate verify pass checks every serious (HIGH or
+   MEDIUM) or disputed finding against the code with `file:line` evidence and
+   breaks ties. Only a genuine remaining disagreement on a HIGH finding stops
+   for the maintainer. Rank verified findings HIGH/MEDIUM/LOW, remove
+   duplicates, fix them as appropriate, and record their disposition.
+4. **CI.** CI runs the full suite on both builds, including the export judge
+   and phone budget. The chat scorer and the fuzzer run in a nightly workflow
+   (`.github/workflows/nightly.yml`), not on each PR; a red nightly run is
+   looked at the next working day and its cause fixed as the next piece of
+   work. See [test/README.md](test/README.md) for commands and limits. A
+   selected test or local build does not replace CI; record failures and
+   skipped checks explicitly.
    One exception: a pull request to `main` that changes only top-level Markdown
    files (README.md, NOTICE.md, CHANGELOG.md and the like) takes CI's docs-only
    lane, which runs the MCP tests (they read README.md) and skips the browser
