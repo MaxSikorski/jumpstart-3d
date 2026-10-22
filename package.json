@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "pretest": "node build.mjs && node --test test/bench/*.test.mjs test/objimport.test.mjs",
+    "pretest": "node build.mjs && node --test test/bench/*.test.mjs test/objimport.test.mjs test/combinesplit.test.mjs",
     "test": "playwright test",
     "test:site": "playwright test --project=site",
     "test:single": "playwright test --project=single",

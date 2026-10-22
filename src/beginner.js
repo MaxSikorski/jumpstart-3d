@@ -8,8 +8,9 @@ import { LIB, textureThumb } from "./texture.js";
 import { FACEPAT } from "./facepat.js";
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
+import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
 import {
-  M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodies, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
+  M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodiesInDoc, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
 
 const SHAPES = [
@@ -242,17 +243,21 @@ export function initBeginner(app) {
   }
   function dup() { if (app.sel.length) app.select(duplicateBodies(app.sel)); }
   function del() { const ids = free(); if (ids.length) { deleteBodies(ids); app.select(app.sel.filter((id) => !ids.includes(id))); } }
-  function group() {
+  async function group() {
     if (app.sel.length < 2) { app.toast(app.sel.length ? "Select one more shape to group with: Shift+click (or Ctrl+click) it, or drag a box around the shapes." : "Select the shapes to group first: drag a box around them, press Ctrl+A for all, or Shift+click (Ctrl+click) each one."); return; }
     if (app.sel.some((id) => app.isLocked(id))) { app.toast("Unlock the shapes before grouping them."); return; }
-    const id = groupBodies(app.sel);
-    if (id) app.select([id]);
+    // jumpstart-3d: stage and split the result before the single Group commit.
+    const selected = app.sel.slice();
+    try {
+      const ids = await commitCombine(app, doc => groupBodiesInDoc(doc, selected), "Group");
+      if (ids.length) app.select(ids);
+    } catch (err) { app.toast(err.message, "err"); }
   }
   function ungroup() {
     const ids = [];
     for (const b of app.selected()) if (b.node.t === "group") {
       const mods = b.node.mods || [];
-      if (mods.length && !(mods.length === 1 && mods[0].t === "scale")) { app.toast("This group has features (fillets, holes) from Advanced mode. Remove them first to ungroup.", "err"); continue; }
+      if (mods.length && !(mods.length === 1 && mods[0].t === "scale")) { app.toast(mods.some(m => m.t === "keeppiece") ? "This body keeps one piece of a group. Undo Group to restore the original shapes." : "This group has features (fillets, holes) from Advanced mode. Remove them first to ungroup.", "err"); continue; } // jumpstart-3d: split groups
       const got = ungroupBody(b.id);
       if (!got.length && mods.length) { app.toast("This group was stretched at an angle, so it can't be split back into shapes.", "err"); continue; }
       ids.push(...got);

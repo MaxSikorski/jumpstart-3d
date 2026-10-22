@@ -108,31 +108,34 @@ export function duplicateBodies(ids, offset = [0, 0, 0]) {
 // Tinkercad-style group: union of solids minus holes. op "intersect" for Combine > Intersect.
 export function groupBodies(ids, opts = {}) {
   let gid = null;
-  store.update((doc) => {
-    const bodies = ids.map((id) => findBody(doc, id)).filter(Boolean);
-    if (bodies.length < 2) return false;
-    const first = opts.target ? findBody(doc, opts.target) : bodies.find((b) => !b.hole) || bodies[0];
-    const ordered = [first, ...bodies.filter((b) => b !== first)];
-    const children = ordered.map((b) => ({
-      node: b.node, m: b.m, hole: opts.op === "cut" ? b !== first : !!b.hole, name: b.name, color: b.color,
-    }));
-    const allHoles = children.every((c) => c.hole);
-    const g = {
-      id: uid("b"),
-      name: opts.name || (opts.op ? first.name : nextName(doc, allHoles ? "Hole group" : "Group")),
-      seq: nextSeq(doc),
-      color: first.hole ? (bodies.find((b) => !b.hole) || first).color : first.color,
-      hole: allHoles,
-      hidden: false,
-      m: IDENTITY.slice(),
-      node: { t: "group", op: opts.op === "intersect" ? "intersect" : undefined, children, mods: [] },
-    };
-    const keep = new Set(opts.keepTools ? [first.id] : ids);
-    doc.bodies = doc.bodies.filter((b) => !keep.has(b.id));
-    doc.bodies.push(g);
-    gid = g.id;
-  }, opts.label || "Group");
+  store.update((doc) => { gid = groupBodiesInDoc(doc, ids, opts); return gid ? undefined : false; }, opts.label || "Group");
   return gid;
+}
+
+// jumpstart-3d: prepare a Group without committing, so its pieces share one undo step.
+export function groupBodiesInDoc(doc, ids, opts = {}) {
+  const bodies = ids.map((id) => findBody(doc, id)).filter(Boolean);
+  if (bodies.length < 2) return false;
+  const first = opts.target ? findBody(doc, opts.target) : bodies.find((b) => !b.hole) || bodies[0];
+  const ordered = [first, ...bodies.filter((b) => b !== first)];
+  const children = ordered.map((b) => ({
+    node: b.node, m: b.m, hole: opts.op === "cut" ? b !== first : !!b.hole, name: b.name, color: b.color,
+  }));
+  const allHoles = children.every((c) => c.hole);
+  const g = {
+    id: uid("b"),
+    name: opts.name || (opts.op ? first.name : nextName(doc, allHoles ? "Hole group" : "Group")),
+    seq: nextSeq(doc),
+    color: first.hole ? (bodies.find((b) => !b.hole) || first).color : first.color,
+    hole: allHoles,
+    hidden: false,
+    m: IDENTITY.slice(),
+    node: { t: "group", op: opts.op === "intersect" ? "intersect" : undefined, children, mods: [] },
+  };
+  const keep = new Set(opts.keepTools ? [first.id] : ids);
+  doc.bodies = doc.bodies.filter((b) => !keep.has(b.id));
+  doc.bodies.push(g);
+  return g.id;
 }
 
 // Push a stretch (x' = k*x + o) into a group's children. Only works when every child

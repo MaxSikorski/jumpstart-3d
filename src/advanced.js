@@ -21,6 +21,7 @@ import { LIB, TEX_CATS, TEXTURE_DEFAULTS, textureThumb, texByKey, registerImageT
 import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
 import { initMeasure } from "./measure.js";
+import { commitCombine, hasLaterKeepPiece } from "./combinesplit.js"; // jumpstart-3d: separate Combine pieces
 import { textBounds } from "./textgeo.js";
 import { initSection } from "./section.js";
 import { sketchesDXF } from "./dxf.js";
@@ -4293,7 +4294,16 @@ export function initAdvanced(app) {
         // (the preview leaves the tools in place, faint, so they can still be clicked)
         if (!st.keep && !app.previewing) { const gone = new Set(st.tools); doc.bodies = doc.bodies.filter((b) => !gone.has(b.id)); }
       },
-      ok() { const t = st.target; commit(def, "Combine"); if (t && !editing) app.select([t]); },
+      async ok() {
+        if (!def.valid()) return;
+        const t = st.target;
+        // jumpstart-3d: stop queued dialog previews before staging the atomic result.
+        closeCmd(false);
+        try {
+          const ids = await commitCombine(app, doc => { def.apply(doc); return t; }, "Combine", { target: t, op: st.op });
+          if (ids.length) app.select(ids);
+        } catch (err) { app.toast(err.message, "err"); }
+      },
       onDelete: editing ? () => deleteFeature(editing) : null,
       hint: () => editing ? "Change the operation, then OK." : picking === "target" ? "Select the target body: the one that stays." : "Select tool bodies: click them, drag a window, or Ctrl+click in the Browser. Click one again to drop it.",
       build(body) {
@@ -5430,6 +5440,7 @@ export function initAdvanced(app) {
     else if (m.t === "emboss") embossCmd({ body: b.id, mod: m.id });
     else if (m.t === "facepat") facePatternCmd({ body: b.id, mod: m.id });
     else if (m.t === "pattern") patternCmd({ body: b.id, mod: m.id }); // jumpstart-3d: pattern
+    else if (m.t === "keeppiece") app.toast(`This body keeps piece ${m.piece + 1} of ${m.count}. Its earlier features are independent copies. Undo Combine or Group to restore the inputs.`); // jumpstart-3d: split pieces
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
     else if (m.t === "bool" && m.src === "combine") combineCmd({ body: b.id, mod: m.id });
     else if (m.t === "bool" && m.tool.t === "pipe") pipeCmd({ body: b.id, mod: m.id });
@@ -5465,6 +5476,11 @@ export function initAdvanced(app) {
     if (it.joint) { store.update((doc) => { doc.joints = doc.joints.filter((x) => x.id !== it.joint); }, "Delete joint"); return; }
     if (it.tex) { store.update((doc) => { const b = findBody(doc, it.body); b.textures = (b.textures || []).filter((x) => x.id !== it.tex); }, "Remove texture"); return; }
     if (!it.mod) { deleteBodies([it.body]); return; }
+    // jumpstart-3d: a piece selector depends on the Combine that produced its pieces.
+    if (hasLaterKeepPiece(findBody(store.doc, it.body)?.node.mods, it.mod)) {
+      app.toast("Delete the split pieces, or undo Combine to restore the inputs.", "err");
+      return;
+    }
     store.update((doc) => {
       const b = findBody(doc, it.body);
       const gone = b.node.mods.find((m) => m.id === it.mod);
@@ -5882,7 +5898,7 @@ export function initAdvanced(app) {
   }
 
   // ------------------------------------------------------------------ timeline
-  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
+  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", keeppiece: "splitBody", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
   let lastTl = null, lastTlT = 0;
   function renderTimeline() {
     tl.innerHTML = "";

@@ -979,6 +979,18 @@ function applyMod(shape, mod) {
       tool.delete(); shape.delete();
       return out;
     }
+    // jumpstart-3d: a persisted piece selector re-evaluates the copied history.
+    case "keeppiece": {
+      const pieces = solidPieces(shape);
+      shape.delete();
+      if (pieces.length !== mod.count || !Number.isInteger(mod.piece) || mod.piece < 0 || mod.piece >= pieces.length) {
+        pieces.forEach(p => p.delete());
+        throw new Error(`Keep piece ${mod.piece + 1}: expected ${mod.count} separate solids, found ${pieces.length}. Undo the upstream change or recreate Combine/Group.`);
+      }
+      const keep = pieces[mod.piece];
+      pieces.forEach(p => { if (p !== keep) p.delete(); });
+      return keep;
+    }
     case "halfspace": {
       // Split body: keep the part of the body on one side of a plane (body coordinates)
       const p = mod.plane, n = Vec.norm(p.n).map((v) => v * (mod.side < 0 ? -1 : 1));
@@ -2835,12 +2847,38 @@ export function meshShape(shape, quality = 1) {
   };
 }
 
+// jumpstart-3d: local coordinates keep the chosen piece stable when its body moves.
+function solidPieces(shape) {
+  const pieces = [];
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try { for (; ex.More(); ex.Next()) pieces.push(R.cast(OC.TopoDS.Solid(ex.Current()))); }
+  finally { ex.delete(); }
+  const keys = new Map(pieces.map(p => {
+    const bb = bboxOf(p);
+    // Quantize centres to 0.01 mm; bounds resolve centre ties.
+    return [p, [...[2, 1, 0].map(i => Math.round((bb.min[i] + bb.max[i]) / 2 / 0.01)), ...bb.min, ...bb.max]];
+  }));
+  return pieces.sort((a, b) => {
+    const ka = keys.get(a), kb = keys.get(b);
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return 0;
+  });
+}
+
 export function buildBodies(bodies, quality = 1) {
   const out = [];
   for (const b of bodies) {
     try {
       const shape = evalNode(b.node);
       const mesh = meshShape(shape, quality);
+      // jumpstart-3d: only new Combine/Group actions use the count to create bodies.
+      const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      mesh.solidCount = 0;
+      try { for (; ex.More(); ex.Next()) mesh.solidCount++; }
+      finally { ex.delete(); }
+      const faces = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_FACE, OC.TopAbs_ShapeEnum.TopAbs_SOLID);
+      try { mesh.hasNonSolidFaces = faces.More(); }
+      finally { faces.delete(); }
       shape.delete();
       out.push({ id: b.id, rev: b.rev, ok: true, mesh });
     } catch (e) {

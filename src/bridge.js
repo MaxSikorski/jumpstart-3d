@@ -139,7 +139,7 @@ export function initBridge(app) {
       const v = s.views.get(b.id);
       if (!v || v.pending || (!b.hidden && !v.data && !s.errors.has(b.id))) names.push(b.name);
     }
-    return !k.ready || k.inflight || k.queue.size || names.length ? names : null;
+    return !k.ready || k.inflight || k.queue.size || s.holdBusy > 0 || names.length ? names : null; // jumpstart-3d: holdBusy = Combine/Group still staging
   }
   async function ready(timeoutMs = 90000) {
     const t0 = Date.now();

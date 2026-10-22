@@ -605,7 +605,11 @@ app.showAbout = function () {
       el("div", { class: "ab-head", html: logo }, el("div", {}, el("b", {}, "JumpStart 3D ", el("span", { class: "ab-hver" }, "Version " + BUILD_LABEL)), el("span", {}, "3D design for the browser: start simple, grow into real CAD, then 3D print it."))),
       el("div", { class: "ab-update ab-top" },
         el("button", { class: "btn", id: "ab-check", onclick: (e) => checkForUpdates(e.currentTarget) }, "Check for updates"),
-        el("a", { class: "btn primary", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "Visit classyapps.org")),
+        // jumpstart-3d: the main button goes to the community build; the author's site stays as a second link
+        el("a", { class: "btn primary", id: "ab-community", href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "Visit the community build"),
+        // jumpstart-3d: support link (community build), at the top of About
+        el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
+        el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
       sec("New in version 2.1.3", [
         ["Pattern on face:", "a new tool in Beginner (Face pattern) and Advanced (Decorate → Pattern on face). Click a flat face and raise or cut hexagons, diamond plate, screen mesh, circles, triangles, knurl or ribs into it, or the lines between them. Set the pattern size, gap, height or depth, direction (angle), border and an offset; keep whole shapes or trim them at the edge. It is a real feature, not a texture: it stays editable (timeline in Advanced, the shape panel in Beginner) and follows the face when the shape is resized."],
@@ -697,8 +701,6 @@ app.showAbout = function () {
       // jumpstart-3d: use the same community build label as the splash.
       el("div", { class: "ab-update" }, el("span", { class: "ab-ver", id: "ab-ver" }, "Version " + BUILD_LABEL),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/releases", target: "_blank", rel: "noopener" }, "What's new"),
-        // jumpstart-3d: support link (community build)
-        el("a", { class: "btn", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/issues", target: "_blank", rel: "noopener" }, "Report a bug or idea"))));
   back.append(modal);
   document.body.append(back);
