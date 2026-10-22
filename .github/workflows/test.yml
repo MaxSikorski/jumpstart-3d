@@ -91,7 +91,10 @@ jobs:
       # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
       - name: Install export judge consumers
         timeout-minutes: 8
-        run: bash tools/install-judge-tools.sh
+        # J1: The runner's apt mirror sometimes serves a package at a crawl; a new try gets a new connection.
+        run: |
+          for attempt in 1 2 3; do timeout 150 bash tools/install-judge-tools.sh && exit 0; done
+          exit 1
       - run: npm run test:judge:unit
       - name: Native negative controls
         timeout-minutes: 5
