@@ -14,7 +14,7 @@ def R(a, b, count=1):
 # its own copy of three.js (bundled, no network)
 three = open(ROOT + '/tools/three-global.min.js').read().replace('</script', '<\\/script')
 R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '<script>' + three + '</script>')
-# no web fonts (works offline; falls back to the system fonts)
+# no Google Fonts request (the app puts its own copy of the fonts into the page when it opens Chisel: src/helperfonts.js)
 for line in ['<link rel="preconnect" href="https://fonts.googleapis.com">\n', '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n']:
     R(line, '')
 import re

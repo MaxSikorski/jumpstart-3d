@@ -2,8 +2,6 @@
   "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
   "gaps": {
     "Advanced toolbar": [
-      "ad-fastener",
-      "ad-gear",
       "ad-ins-dxf",
       "ad-ins-img",
       "ad-ins-model",
@@ -13,10 +11,7 @@
       "ad-plane-ang",
       "ad-plane-mid",
       "ad-sketch3d",
-      "ad-splitbody",
-      "ad-splitface",
-      "ad-sweep",
-      "ad-thread-offset"
+      "ad-sweep"
     ],
     "Beginner toolbar": [
       "bb-extrude",
@@ -102,7 +97,6 @@
     "Advanced simulate toolbar": [
       "sim-apply",
       "sim-bricks",
-      "sim-cam",
       "sim-drive",
       "sim-flexigen",
       "sim-joint",
@@ -112,9 +106,7 @@
       "sim-render",
       "sim-reset",
       "sim-stress",
-      "sim-voxel",
-      "ws-design",
-      "ws-simulate"
+      "sim-voxel"
     ],
     "Advanced sketch toolbar": [
       "sk-arc3",
@@ -128,24 +120,14 @@
       "sk-c-perpendicular",
       "sk-c-tangent",
       "sk-c-vertical",
-      "sk-circle",
-      "sk-cons",
       "sk-constraints",
-      "sk-dim",
-      "sk-finish",
       "sk-ins-dxf",
       "sk-ins-img",
       "sk-ins-svg",
       "sk-insert",
       "sk-point",
-      "sk-polygon",
-      "sk-rect",
-      "sk-rect-more",
-      "sk-rect3",
-      "sk-rectc",
       "sk-spline",
-      "sk-text",
-      "sk-trim"
+      "sk-text"
     ],
     "snap controls": [
       "snap-more",
@@ -167,8 +149,7 @@
     ],
     "Architechies toolbar": [
       "Architechies toolbar:text:Metric",
-      "Architechies toolbar:text:ft · in",
-      "ar-xray"
+      "Architechies toolbar:text:ft · in"
     ]
   }
 }

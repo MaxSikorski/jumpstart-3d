@@ -3,8 +3,8 @@
 JumpStart 3D runs entirely in your browser. There is no server, no
 account and no data sent anywhere: your designs stay in your browser's
 storage or in files you save yourself. The only network requests the
-website makes are for its own files and for fonts from Google Fonts. The
-downloaded single file makes only the font requests.
+website makes are for its own files (the fonts are among them). The
+downloaded single file makes none.
 
 ## What counts as a security problem here
 
