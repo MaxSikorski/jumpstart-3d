@@ -124,6 +124,7 @@ The config sets `serviceWorkers: "block"` for every spec, because a service work
   bodies, which depend on how many STEP exports the page did before, are blanked). The entry also keeps
   each body's volume and the STL triangle count, so a mismatch says whether
   the shape changed or only its tessellation.
+- `export-determinism.spec.mjs`: a design's STL, OBJ and 3MF bytes do not depend on what was built before it. One design (a rounded box with a tangent-chain shell, an outward shell, a closed rounded shell, and a filleted box shelled) is exported first, then again after 1 to 6 sets of other designs with the engine's shape cache and the page's mesh cache emptied before each (so it is rebuilt from scratch in an engine whose memory is in another state), then once in a fresh page that built other designs first. All exports must be byte for byte equal. Before the fix (`inFixedOrder` in `src/kernel.js`) OpenCascade's offset builder returned the solid's faces in an order that followed memory addresses and every history gave other bytes (same triangles, other order).
 
 When a hash moves and the change was intended, re-record:
 
