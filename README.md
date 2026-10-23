@@ -259,6 +259,8 @@ and the safety notes are in [mcp/README.md](mcp/README.md).
 
 You do not need to write code to help JumpStart 3D.
 
+Writing or filming about it? [PRESS.md](PRESS.md) has the facts, links and pictures for press and video makers.
+
 ### Report a bug
 
 Open an issue at https://github.com/MaxSikorski/jumpstart-3d/issues/new/choose and pick "Bug
