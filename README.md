@@ -137,7 +137,7 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
   permission first
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Forty-four step-by-step tutorials with built-in animations (the community build adds ten more; see below)
+- Forty-four step-by-step tutorials with built-in animations (the community build adds thirty-one more; see below)
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
@@ -526,7 +526,7 @@ UPSTREAM-README.md         the author's README from the source release
   other agent (Codex, Hermes, OpenCode, Gemini CLI, Cursor...) set the server
   up for itself; `screenshot` can save its picture to a file for models that
   cannot see images
-- Ten more tutorials on top of the author's forty-four (five Beginner, five Advanced, 54 in all): they teach the 41 toolbar buttons that had no tutorial, such as copy and paste, mirror, lock, name plates, fasteners, gears and hole patterns. The lessons are in `src/tutorial_data_community.js`; the author's tutorial files are untouched
+- Thirty-one more tutorials on top of the author's forty-four (75 in all: 29 Beginner, 40 Advanced, 6 Architechies): they teach the 41 toolbar buttons that had no tutorial, such as copy and paste, mirror, lock, name plates, fasteners, gears and hole patterns. The lessons are in `src/tutorial_data_community.js`; the author's tutorial files are untouched
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds; a short part gates every pull request and the rest runs nightly
 
