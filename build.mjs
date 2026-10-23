@@ -10,10 +10,11 @@
 // src/meshstep.html, src/chisel.html) are committed already built; see
 // tools/helpers/README.md to regenerate them.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { createHash } from "node:crypto"; // jumpstart-3d: offline
+import { gzipSize, checkBudget } from "./tools/size-budget.mjs"; // jumpstart-3d: size budget
 
 const root = new URL(".", import.meta.url).pathname;
 const src = join(root, "src");
@@ -60,10 +61,33 @@ const app = read(join(out, "app.js"));
 const worker = read(join(out, "worker.iife.js"));
 for (const s of [app, worker]) if (/<\/script/i.test(s)) throw new Error("a bundle contains </script>, which would end the inline block");
 
+// jumpstart-3d: size budget. The gzipped app may grow 5 % over size-budget.json; node build.mjs --bump-budget records a deliberate growth.
+const budgetFile = join(root, "size-budget.json");
+const appGz = gzipSize(app);
+if (process.argv.includes("--bump-budget")) { writeFileSync(budgetFile, JSON.stringify({ "docs/app.js gzip bytes": appGz }, null, 2) + "\n"); console.log("size budget recorded:", appGz); }
+else {
+  let recorded;
+  try { recorded = JSON.parse(read(budgetFile))["docs/app.js gzip bytes"]; } catch (e) {}
+  const verdict = checkBudget(appGz, recorded);
+  if (!verdict.ok) throw new Error(verdict.message);
+  console.log("size budget ok:", verdict.message);
+}
+
+// jumpstart-3d: self-hosted fonts (src/fonts/*.woff2, rules in src/webfonts.css). The site serves docs/fonts/ and the rules sit in index.html; the single file carries the fonts as data: URIs, so neither makes a font request to anyone else.
+const fontMarker = '<style id="js3d-fonts"></style>';
+if (!shell.includes(fontMarker)) throw new Error('src/index.html is missing ' + fontMarker);
+const fontCss = read(join(src, "webfonts.css"));
+const fontFiles = readdirSync(join(src, "fonts")).filter((f) => f.endsWith(".woff2"));
+for (const f of fontFiles) if (!fontCss.includes("url(fonts/" + f + ")")) throw new Error("src/webfonts.css has no rule for fonts/" + f);
+const siteShell = shell.replace(fontMarker, () => '<style id="js3d-fonts">' + fontCss + "</style>");
+const singleShell = shell.replace(fontMarker, () => '<style id="js3d-fonts">' + fontCss.replace(/url\(fonts\/([^)]+)\)/g, (_, f) => "url(" + dataUri("fonts/" + f, "font/woff2") + ")") + "</style>");
+
 // ---------- site ----------
 rmSync(docs, { recursive: true, force: true });
 mkdirSync(docs, { recursive: true });
-writeFileSync(join(docs, "index.html"), shell);
+writeFileSync(join(docs, "index.html"), siteShell);
+cpSync(join(src, "fonts"), join(docs, "fonts"), { recursive: true });
+cpSync(join(root, "LICENSES", "OFL-1.1-fonts.txt"), join(docs, "fonts", "OFL.txt")); // the license travels with the fonts
 writeFileSync(join(docs, "app.js"), app);
 cpSync(join(out, "worker.js"), join(docs, "worker.js"));
 cpSync(wasm, join(docs, "occt-gz.wasm"));
@@ -74,16 +98,18 @@ cpSync(join(src, "manifest.webmanifest"), join(docs, "manifest.webmanifest"));
 for (const f of appIcons) cpSync(join(src, f), join(docs, f));
 writeFileSync(join(docs, ".nojekyll"), "");
 // jumpstart-3d: offline. the site's service worker; its cache name comes from the files it keeps, so every build gets its own cache. Not in the single file.
-const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm"].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
+const swFonts = fontFiles.map((f) => "fonts/" + f); // the fonts are cached too, and part of the cache name
+const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm", ...swFonts].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
 const swSource = read(join(src, "sw.js"));
 if (!swSource.includes('const VERSION = "dev";')) throw new Error('src/sw.js is missing the line const VERSION = "dev";');
-writeFileSync(join(docs, "sw.js"), swSource.replace('const VERSION = "dev";', () => `const VERSION = "${swVersion}";`));
+if (!swSource.includes("const FONTS = [];")) throw new Error('src/sw.js is missing the line const FONTS = [];');
+writeFileSync(join(docs, "sw.js"), swSource.replace('const VERSION = "dev";', () => `const VERSION = "${swVersion}";`).replace("const FONTS = [];", () => "const FONTS = " + JSON.stringify(swFonts) + ";"));
 
 // ---------- single file ----------
 mkdirSync(dist, { recursive: true });
 const wasmB64 = readFileSync(wasm).toString("base64");
 // Replacement callbacks everywhere: a replacement *string* would interpret "$'" and "$$" inside the code.
-let single = shell.replace(
+let single = singleShell.replace(
   appTag,
   () =>
     '<script type="text/plain" id="wp-worker-src">' + worker + "</script>\n" +
@@ -96,5 +122,5 @@ writeFileSync(join(dist, "jumpstart-3d.html"), single);
 
 const mb = (n) => (n / 1048576).toFixed(2) + " MB";
 console.log("docs/app.js:", mb(app.length), " docs/worker.js:", mb(statSync(join(docs, "worker.js")).size), " docs/occt-gz.wasm:", mb(wasmSize));
-console.log("dist/jumpstart-3d.html:", mb(Buffer.byteLength(single)));
+console.log("dist/jumpstart-3d.html:", mb(Buffer.byteLength(single)), " (fonts inlined: " + mb(Buffer.byteLength(singleShell) - Buffer.byteLength(siteShell)) + ")");
 console.log("docs/sw.js:", swVersion); // jumpstart-3d: offline

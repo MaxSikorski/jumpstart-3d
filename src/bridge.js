@@ -20,7 +20,7 @@
 //              group(ids, {name, op}) -> id, ungroup(id) -> new ids
 //   Parameters setParam(name, expr, {unit}) -> value, removeParam(name) -> count, bind(id, key, expr|null)
 //   History    undo(), redo() -> label or null
-//   View       select(ids), fit(), setMode("beginner"|"advanced"), screenshot({fit, width}), screenshotDataURL({fit, width})
+//   View       select(ids), fit(), setMode("beginner"|"advanced"|"arch"), screenshot({fit, width}), screenshotDataURL({fit, width})
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
@@ -163,7 +163,7 @@ export function initBridge(app) {
     if (opts.width !== undefined && !(typeof opts.width === "number" && opts.width >= 1 && opts.width <= 8192)) throw new Error("width must be a number of pixels between 1 and 8192");
     await ready();
     if (opts.fit) {
-      const box = app.scene.allBox();
+      const box = app.mode === "arch" ? app.arch.box() : app.scene.allBox(); // Architechies hides the bodies: frame the building
       app.vp.fit(box.isEmpty() ? null : box);
       for (let i = 0; app.vp.anim && i < 60; i++) await sleep(50);
       if (app.vp.anim) app.vp.stepAnim(app.vp.anim.t0 + app.vp.anim.ms); // a hidden tab runs no animation frames: jump to the end
@@ -380,7 +380,7 @@ export function initBridge(app) {
     fit: () => app.fit(),
     mode: () => app.mode,
     setMode(mode) {
-      if (mode !== "beginner" && mode !== "advanced") throw new Error('mode must be "beginner" or "advanced"');
+      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architechies)');
       if (app.mode === mode) return;
       app.setMode(mode);
       if (store.doc.mode !== mode) { store.doc.mode = mode; app.projects.changed(); }
