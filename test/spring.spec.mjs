@@ -93,6 +93,8 @@ test("volume, bounds, turns and ends across wire, size, turns, hand and ends", a
     { wire: 3, outside: 30, freeLength: 60, turns: 4.5, ends: "open" },
     { wire: 3, outside: 30, freeLength: 60, turns: 4.5, ends: "flat" },
     { wire: 0.8, outside: 8, freeLength: 12, turns: 10, ends: "flat" },
+    // steep: the pitch is 29.35, not the 29 of (L - w) / N, so the free length only comes out right with the cos(helix angle) term
+    { wire: 2, outside: 10, freeLength: 60, turns: 2, ends: "open" },
   ];
   const ids = await run((cs) => cs.map((c, i) => JS3D.spring({ ...c, at: [i * 50, 0, 0] })), cases);
   const list = await built();
@@ -108,6 +110,7 @@ test("volume, bounds, turns and ends across wire, size, turns, hand and ends", a
     expect(Math.abs(b.bbox.max[2] - L), label + " free length").toBeLessThan(0.05);
     expect(b.bbox.max[0] - i * 50, label + " reach").toBeLessThanOrEqual(O / 2 + 1e-6);
     expect(b.bbox.max[0] - i * 50, label + " reach").toBeGreaterThan(O / 2 - 0.05);
+    if (i === cases.length - 1) expect(node.pitch, "steep spring pitch is not (L - w) / N").toBeGreaterThan(29.3);
     expect(node.size).toBe(w);
     expect(node.mods.length, label + " cuts").toBe(c.ends === "flat" ? 2 : 0);
   }
@@ -169,8 +172,9 @@ test("bad input: each bridge error text, and nothing is added", async () => {
     [{ color: "red" }, 'color must look like "#rrggbb"'],
     [{ at: [0, 0] }, "at must be [x, y, z] in mm"],
     [{ freeLength: 10, turns: 5 }, "The coils would touch. Increase the free length, use fewer turns, or use thinner wire."],
-    [{ wire: 0.4, outside: 20, freeLength: 40, turns: 10 }, "This spring needs too much wire to build. Use fewer turns, a smaller outside diameter or thicker wire."],
-    [{ outside: 200, turns: 10, freeLength: 200 }, "This spring needs too much wire to build. Use fewer turns, a smaller outside diameter or thicker wire."],
+    [{ wire: 0.4, outside: 20, freeLength: 40, turns: 10 }, "This spring needs too much wire to build. Use fewer turns, a shorter free length, a smaller outside diameter or thicker wire."],
+    [{ outside: 200, turns: 10, freeLength: 200 }, "This spring needs too much wire to build. Use fewer turns, a shorter free length, a smaller outside diameter or thicker wire."],
+    [{ outside: 10, freeLength: 100, turns: 2 }, "The spring is too steep. Use more turns, a shorter free length or a larger outside diameter."],
     [{ freeLength: 10, turns: 5, ends: "flat" }, "The coils would touch. Increase the free length, use fewer turns, or use thinner wire."],
   ];
   for (const [spec, text] of bad) {
