@@ -581,6 +581,46 @@ scenario("Save (button and Ctrl+S) shows the error, never 'Saved as', while writ
   await closeClean(page);
 });
 
+scenario("a failed save's error toast is on top of the Your designs window (opening it saves first)", async (w) => {
+  const A = "t_chaos_a";
+  const page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  await page.evaluate(() => { window.__chaosFailWrites = true; window.__toasts.length = 0; window.__store.update((d) => { d.name += " edited"; }, "Edit"); });
+  await page.click("#btn-projects");
+  await page.waitForSelector(".modal-back .newcards");
+  await page.waitForFunction((m) => window.__toasts.some((t) => t.err && t.text === m), NOSAVE, { timeout: 10_000 });
+  const top = await page.evaluate(() => {
+    document.getElementById("toasts").style.pointerEvents = "auto"; // the toast ignores the pointer; let the hit test see it
+    const t = document.querySelector("#toasts .toast.err"), r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === t || t.contains(hit));
+  });
+  expect(top, "the toast is above the modal scrim").toBe(true);
+  await page.evaluate(() => { window.__chaosFailWrites = false; });
+  await closeClean(page);
+});
+
+scenario("a rescue copy made while the tab's own save was in flight does not leave a '(before fallback)' copy of that save", async (w) => {
+  const A = "t_chaos_a";
+  let page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  const first = (await readAll(page)).items.find((i) => i.entry.id === A);
+  const v2 = step(w, A, "now", 5);
+  await page.evaluate(drive, { plan: [v2] }); // stored: v2 at a stamp after the one the tab opened with
+  const stored = (await readAll(page)).items.find((i) => i.entry.id === A);
+  // what the closing tab leaves when its save was still running: the same content, a later stamp, and the base from before that save
+  const rescue = { id: A, doc: JSON.stringify({ ...JSON.parse(stored.doc), _updated: stored.entry.updated + 1000 }), entry: { ...stored.entry, updated: stored.entry.updated + 1000, thumb: null }, base: first.entry.updated };
+  await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [RESCUE, rescue]);
+  await closeClean(page);
+  w.tokens = [];
+  page = await openPage(w);
+  const snap = await readAll(page);
+  expect(snap.items.map((i) => i.entry.name), "one design, no extra copy").toEqual([v2.doc.name]);
+  expectWhole(w, snap, "after the rescue copy was applied");
+  expect(await page.evaluate((k) => localStorage.getItem(k), RESCUE)).toBeNull();
+  await closeClean(page);
+});
+
 // ---------------------------------------------------------------- 5b. the unload handler starts its write before it returns
 scenario("beforeunload queues the rescue write in IndexedDB before it returns, with localStorage full, and the edit comes back", async (w) => {
   const A = "t_chaos_a";

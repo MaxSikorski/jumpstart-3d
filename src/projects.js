@@ -133,8 +133,8 @@ export function initProjects(app) {
       setState(ok ? "Saved" : updated ? `Saved in this browser (${remoteNote})` : "Not saved");
     } else setState(updated ? "Saved in this browser" : "Couldn't save: browser storage is full or blocked. Export a project file instead.");
     // jumpstart-3d: the status label is hidden on narrower windows, so a failed save also gets a toast
-    if (!any && (loud || !failToasted)) app.toast("Couldn't save in this browser. Export a project file now.", "err");
-    failToasted = !any;
+    if (any) failToasted = false;
+    else if (loud || !failToasted) { app.toast("Couldn't save in this browser. Export a project file now.", "err"); failToasted = true; }
     return { local: !!updated, any }; // jumpstart-3d: backup (local: did the write fit?)
   }
   const saveSoon = debounce(saveNow, 1200);

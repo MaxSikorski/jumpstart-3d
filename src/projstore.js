@@ -51,6 +51,11 @@ function keepCopy(docs, entries, str, ent) {
   entries.put({ ver: d.ver || 0, mode: d.mode, updated: d._updated || 0, thumb: null, ...ent, id, name });
 }
 
+// the same design apart from its save stamp (a tab's own earlier save, met again by its rescue copy: nothing to keep)
+function sameDesign(a, b) {
+  try { const x = JSON.parse(a), y = JSON.parse(b); delete x._updated; delete y._updated; return JSON.stringify(x) === JSON.stringify(y); } catch (e) { return false; }
+}
+
 // `base` (optional, a stamp or a function returning one or null) is the `_updated` of the copy these edits started from.
 // With it the stored copy is read in the SAME transaction: if it is newer than the base and is not this very write, it is
 // kept first as "(before fallback)", so edits made on an older copy never replace a newer one. Both writes commit or neither.
@@ -67,7 +72,7 @@ function idbPut(db, id, docString, entry, base) {
       const go = () => {
         if (--waiting) return;
         try {
-          if (d.result != null && stamp(d.result) > b && stamp(d.result) !== stamp(docString)) keepCopy(docs, entries, d.result, e.result);
+          if (d.result != null && stamp(d.result) > b && stamp(d.result) !== stamp(docString) && !sameDesign(d.result, docString)) keepCopy(docs, entries, d.result, e.result);
           write();
         } catch (err) { try { tx.abort(); } catch (e2) {} }
       };
@@ -187,7 +192,7 @@ function idbDriver(db, guard) {
     // for the tab closing: the rescue copy goes to localStorage first (it may be full), then the put is queued in the same call, so a page torn down right after still has it in flight
     putNow(id, docString, entry, base) {
       rescueWrite(id, docString, entry, base);
-      try { db.transaction("meta", "readwrite").objectStore("meta").put(rescueOf(id, docString, entry, base), RESCUE); } catch (e) {}
+      try { const tx = db.transaction("meta", "readwrite"); tx.objectStore("meta").put(rescueOf(id, docString, entry, base), RESCUE); if (tx.commit) tx.commit(); } catch (e) {}
     },
   };
 }
