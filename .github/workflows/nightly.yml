@@ -58,13 +58,20 @@ jobs:
           [[ "$PROJECTS" == *firefox* ]] && browsers="$browsers firefox"
           [[ "$PROJECTS" == *webkit* ]] && browsers="$browsers webkit"
           if [ "$browsers" = chromium ]; then npx playwright install chromium; else npx playwright install --with-deps $browsers; fi
+      # Headless Firefox on the runner finds no GL driver; the cross job below explains the Xvfb + Mesa route
+      - name: Virtual screen for Firefox
+        if: ${{ contains(inputs.projects, 'firefox') }}
+        timeout-minutes: 5
+        run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
       - run: node build.mjs
       - name: Run the selected specs
         run: |
           read -ra specs <<< "$SPECS"
           args=()
           for p in $PROJECTS; do args+=(--project "$p"); done
-          npx playwright test "${specs[@]}" "${args[@]}"
+          run=(npx playwright test "${specs[@]}" "${args[@]}")
+          if [[ "$PROJECTS" == *firefox* ]]; then run=(xvfb-run -a -s "-screen 0 1400x900x24" "${run[@]}"); fi
+          "${run[@]}"
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -318,7 +325,7 @@ jobs:
     name: ${{ matrix.browser }} ${{ matrix.build }} (${{ matrix.shard }}/${{ matrix.total }})
     if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -341,10 +348,27 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       # these two browsers need the system libraries, unlike Chromium on the runner image
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # the runner's apt mirror now and then stalls this step for the whole 14 minutes (4 of 12 jobs on 2026-10-23: the default mirror served the 117 MB at ~50 KB/s).
+      # Tried three times, 4 minutes each; after a stall the retries use archive.ubuntu.com, as tools/install-judge-tools.sh does, with leftover apt processes and locks cleared first
+      - run: |
+          for try in 1 2 3; do
+            timeout 240 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
+            echo "install attempt $try did not finish"
+            sudo pkill -9 -f '[a]pt-get|/usr/lib/apt/method[s]' || true
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+            sudo dpkg --configure -a || true
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+          done
+          exit 1
         timeout-minutes: 14
+      # Headless Firefox on the runner finds no GL driver at all; under a virtual screen (Xvfb) it gets WebGL from Mesa's software renderer (probed 2026-10-23)
+      - if: ${{ matrix.browser == 'firefox' }}
+        run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
+        timeout-minutes: 5
       - run: node build.mjs
-      - run: npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
+      # a step limit ends the step as a failure (not a cancel), so the uploads below still run; the job limit leaves room for install + Xvfb + this step
+      - timeout-minutes: 20
+        run: ${{ matrix.browser == 'firefox' && 'xvfb-run -a -s "-screen 0 1400x900x24" ' || '' }}npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

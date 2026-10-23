@@ -7,7 +7,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
-import { boot, watchErrors, loadDoc, newDoc, body, prim, bodies, waitIdle, exportBytes, sha256, navigateKeepingStorage } from "./helpers.mjs";
+import { boot, buildOf, watchErrors, loadDoc, newDoc, body, prim, bodies, waitIdle, exportBytes, sha256, navigateKeepingStorage } from "./helpers.mjs";
 
 const projectsDir = new URL("./projects/", import.meta.url);
 const golden = JSON.parse(readFileSync(new URL("./golden.json", import.meta.url), "utf8"));
@@ -35,7 +35,7 @@ test.afterEach(() => { expect(senderErrors, "console or page errors on the sende
 
 const fragmentOf = (link) => link.slice(link.indexOf("#") + 1);
 const receiverUrl = (frag, query = "") => info0.project.use.baseURL + query + "#" + frag;
-const isSite = () => info0.project.name === "site";
+const isSite = () => buildOf(info0) === "site";
 
 // the page is ready once the kernel is up and the saved design is loaded (the offer comes right after)
 async function ready(page) {
