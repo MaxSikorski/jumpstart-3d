@@ -1,5 +1,5 @@
 {
-  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
+  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run. ar-planexp (Floor plan: PDF, SVG, DXF) is in none of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats.",
   "gaps": {
     "Advanced toolbar": [
       "ad-ins-dxf",
@@ -146,8 +146,5 @@
       "Architect toolbar:text:ft · in",
       "ar-planexp"
     ]
-  },
-  "why": {
-    "ar-planexp": "Floor plan (PDF, SVG, DXF) is not part of any of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats."
   }
 }

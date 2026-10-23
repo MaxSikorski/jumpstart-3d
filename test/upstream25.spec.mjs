@@ -75,12 +75,12 @@ test.describe("versions 2.4 and 2.5", () => {
   };
   const view = (az, el, tx, ty, dist) => page.evaluate(([az, el, tx, ty, dist]) => {
     const vp = window.__app.vp; vp.animateTo({ az, el, roll: 0, target: new vp.camera.position.constructor(tx, ty, 0), dist });
-  }, [az, el, tx, ty, dist]).then(() => page.waitForTimeout(1000));
+  }, [az, el, tx, ty, dist]).then(() => page.waitForFunction(() => !window.__app.vp.isMoving()));
   const drag = async (pts) => {
     const s = await Promise.all(pts.map(([x, y]) => at(x, y, 0)));
     await page.mouse.move(...s[0]); await page.mouse.down();
     for (const q of s.slice(1)) await page.mouse.move(...q, { steps: 6 });
-    await page.waitForTimeout(250); await page.mouse.up(); await page.waitForTimeout(250);
+    await page.waitForTimeout(250); await page.mouse.up();
   };
   const landStats = () => page.evaluate(() => {
     const L = window.__store.doc.arch.land;
@@ -107,7 +107,7 @@ test.describe("versions 2.4 and 2.5", () => {
     expect(VERSION).toBe("2.5");
     expect(BUILD).toBeGreaterThanOrEqual(22);
     const label = `Version 2.5 · community build ${BUILD}`;
-    expect(await page.locator("#sp-ver").textContent()).toBe(label); // the splash is in the page before the app loads
+    expect(await page.locator("#sp-ver").textContent()).toBe(label); // app.js rewrites #sp-ver at start-up; smoke.spec.mjs checks the same text in src/index.html
     await page.click("#btn-about");
     const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
     await expect(about).toContainText(label);
@@ -129,7 +129,7 @@ test.describe("versions 2.4 and 2.5", () => {
     await expect.poll(() => page.evaluate(() => window.__store.doc.bodies.length), { timeout: 60_000 }).toBeGreaterThan(0);
     await waitIdle(page);
     expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
-    const fit = await page.evaluate(() => { const b = window.__app.scene.allBox(), s = b.getSize(b.min.clone()); return [s.x, s.y, b.max.x - b.min.x]; });
+    const fit = await page.evaluate(() => { const b = window.__app.scene.allBox(), s = b.getSize(b.min.clone()); return [s.x, s.y]; });
     expect(fit[0]).toBeGreaterThan(20); expect(fit[1]).toBeGreaterThan(20);
     expect(fit[0]).toBeLessThanOrEqual(256.5); expect(fit[1]).toBeLessThanOrEqual(256.5);
     await page.click("#mode-arch");
@@ -307,7 +307,9 @@ test.describe("versions 2.4 and 2.5", () => {
     expect(gcode).toMatch(/^G[01] .*\bA-?[\d.]+/m); // moves that turn the A axis
     await page.click("#cam-export");
     const saved = await download(() => page.click("#cam-save-go"));
-    expect(saved.bytes.toString("utf8")).toBe(gcode);
+    // the machine can switch to one with a rotary axis after the first read, which changes the comment header: compare the moves
+    const moves = (t) => t.split("\n").filter((l) => !l.startsWith("(")).join("\n");
+    expect(moves(saved.bytes.toString("utf8"))).toBe(moves(gcode));
     await page.click("#cam-close");
     await expect(page.locator("#cam-side")).toHaveCount(0);
   });
