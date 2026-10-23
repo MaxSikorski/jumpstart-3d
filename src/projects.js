@@ -466,13 +466,35 @@ export function initProjects(app) {
       const M = o.m.elements, P = o.data.vertices, T = o.data.triangles;
       const det = M[0] * (M[5] * M[10] - M[9] * M[6]) - M[4] * (M[1] * M[10] - M[9] * M[2]) + M[8] * (M[1] * M[6] - M[5] * M[2]);
       const index = new Map(), verts = [], remap = new Int32Array(P.length / 3);
+      // jumpstart-3d: 3MF weld. Corners closer than 0.1 micron become one vertex, not only those that round to the same
+      // 0.01 micron: where two tori touch at one point the mesher leaves a patch of triangles that small, and rounding
+      // kept one of them with no partner (fuzz seed 33). The first corner of a cluster places its vertex.
+      const cell = 1e-4, grid = new Map(), placed = [];
+      const closeTo = (x, y, z) => {
+        const gx = Math.floor(x / cell), gy = Math.floor(y / cell), gz = Math.floor(z / cell);
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          for (const id of grid.get((gx + dx) + "," + (gy + dy) + "," + (gz + dz)) || []) {
+            const p = placed[id];
+            if (Math.abs(p[0] - x) <= cell && Math.abs(p[1] - y) <= cell && Math.abs(p[2] - z) <= cell) return id;
+          }
+        }
+      };
       for (let i = 0; i < P.length / 3; i++) {
         const x = M[0] * P[i * 3] + M[4] * P[i * 3 + 1] + M[8] * P[i * 3 + 2] + M[12];
         const y = M[1] * P[i * 3] + M[5] * P[i * 3 + 1] + M[9] * P[i * 3 + 2] + M[13];
         const z = M[2] * P[i * 3] + M[6] * P[i * 3 + 1] + M[10] * P[i * 3 + 2] + M[14];
         const key = num(x) + "," + num(y) + "," + num(z);
         let id = index.get(key);
-        if (id === undefined) { id = verts.length; index.set(key, id); verts.push('     <vertex x="' + num(x) + '" y="' + num(y) + '" z="' + num(z) + '"/>'); }
+        if (id === undefined) id = closeTo(x, y, z); // jumpstart-3d: 3MF weld
+        if (id === undefined) {
+          id = verts.length; verts.push('     <vertex x="' + num(x) + '" y="' + num(y) + '" z="' + num(z) + '"/>');
+          // jumpstart-3d: 3MF weld
+          placed.push([x, y, z]);
+          const g = Math.floor(x / cell) + "," + Math.floor(y / cell) + "," + Math.floor(z / cell);
+          if (!grid.has(g)) grid.set(g, []);
+          grid.get(g).push(id);
+        }
+        index.set(key, id);
         remap[i] = id;
       }
       const tris = [];
