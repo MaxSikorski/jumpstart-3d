@@ -238,3 +238,78 @@ test("a restore that cannot save the list is refused and leaves nothing behind",
   }
   expect(errors).toEqual([]);
 });
+
+// IndexedDB that works but answers late: the first open of this app's database is held until the test lets it go
+const slowOpen = (page) => page.addInitScript((name) => {
+  const real = IDBFactory.prototype.open;
+  let first = true, release;
+  const gate = new Promise((r) => { release = r; });
+  window.__releaseIdb = () => release();
+  IDBFactory.prototype.open = function (n, ...rest) {
+    if (n !== name || !first) return real.call(this, n, ...rest);
+    first = false;
+    const fake = {}, factory = this;
+    gate.then(() => {
+      const r = real.call(factory, n, ...rest);
+      Object.defineProperty(fake, "result", { get: () => r.result });
+      for (const ev of ["onupgradeneeded", "onsuccess", "onerror", "onblocked"]) r[ev] = (e) => fake[ev] && fake[ev](e);
+    });
+    return fake;
+  };
+}, DB);
+
+test("IndexedDB that opens late takes over from localStorage: nothing lost, nothing doubled, the folder button appears", async ({ context }, info) => {
+  const [A, B, C] = ["t_Late_Alpha", "t_Late_Beta", "t_Late_Gamma"];
+  const mk = (id, name) => newDoc(name, "beginner", { id, bodies: [body("b1", "Slab", box(30, 20, 5))] });
+  const p1 = await context.newPage();
+  const e1 = await prepare(p1);
+  await p1.addInitScript(() => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("mirror", { create: true }); });
+  await slowOpen(p1);
+  await boot(p1, info); // the app starts without waiting for the database any longer than 3 s
+  expect(await kind(p1)).toBe("local");
+
+  // saved while the database is still opening: they go to the old keys
+  await save(p1, mk(A, "Late Alpha"));
+  await save(p1, mk(B, "Late Beta"));
+  expect(await p1.evaluate((id) => JSON.parse(localStorage.getItem("workplane.doc.v1." + id)).name, A)).toBe("Late Alpha");
+  // the folder button needs IndexedDB: not there yet
+  await p1.click("#btn-projects");
+  await p1.waitForSelector(".projgrid .newcards", { timeout: 10_000 });
+  expect(await p1.locator("#btn-folder").count()).toBe(0);
+  await p1.click(".modal-back .xbtn");
+  expect(await kind(p1)).toBe("local");
+
+  // the database answers
+  await p1.evaluate(() => window.__releaseIdb());
+  await p1.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  const list = await p1.evaluate(() => window.__app.projects._store.list());
+  expect(list.map((e) => e.id).sort()).toEqual([A, B]); // each once
+  expect(JSON.parse(await rawRead(p1, "docs", A)).name).toBe("Late Alpha");
+  expect(JSON.parse(await rawRead(p1, "docs", B)).name).toBe("Late Beta");
+  expect(await rawRead(p1, "meta", "migrated")).toMatchObject({ count: 2 });
+
+  // saves now land in IndexedDB, not in the old keys
+  await save(p1, mk(C, "Late Gamma"));
+  expect(JSON.parse(await rawRead(p1, "docs", C)).name).toBe("Late Gamma");
+  expect(await p1.evaluate((id) => localStorage.getItem("workplane.doc.v1." + id), C)).toBeNull();
+  await save(p1, mk(A, "Late Alpha renamed"));
+  expect(JSON.parse(await rawRead(p1, "docs", A)).name).toBe("Late Alpha renamed");
+
+  // the folder button is there
+  await p1.click("#btn-projects");
+  await p1.waitForSelector(".projgrid .newcards", { timeout: 10_000 });
+  await p1.waitForSelector("#btn-folder", { timeout: 10_000 });
+  await p1.click(".modal-back .xbtn");
+  await p1.close();
+
+  // a new visit finds everything, once
+  const p2 = await context.newPage();
+  const e2 = await prepare(p2);
+  await boot(p2, info);
+  expect(await kind(p2)).toBe("idb");
+  const again = await p2.evaluate(() => window.__app.projects._store.list());
+  expect(again.map((e) => e.id).sort()).toEqual([A, B, C]);
+  expect(again.find((e) => e.id === A).name).toBe("Late Alpha renamed");
+  expect(again.some((e) => /before fallback/.test(e.name))).toBe(false);
+  expect([...e1, ...e2]).toEqual([]);
+});

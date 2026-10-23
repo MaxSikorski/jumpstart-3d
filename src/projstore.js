@@ -2,7 +2,9 @@
 // thumbnail) live in this browser's IndexedDB, which has room for big designs. Where IndexedDB
 // cannot be opened (browsers or sandboxes that block it, a hanging open, the claude.ai sandbox) the
 // same calls use the older localStorage keys, as the app always did. The choice is made once per
-// page and never changes.
+// page, except one way: if IndexedDB is only slow (it answers after the 3 s the first start waits), the
+// store starts on localStorage and switches to IndexedDB when the open finally succeeds, copying what was
+// saved meanwhile across once (see `upgrade`).
 // Not stored here: the version counters and the last-open id, which projects.js reads synchronously.
 import { uid } from "./util.js";
 
@@ -19,11 +21,10 @@ const readJSON = (k, d) => { try { const v = ls.get(k); return v ? JSON.parse(v)
 const stamp = (docString) => { try { return +JSON.parse(docString)._updated || 0; } catch (e) { return 0; } };
 
 // ---------------------------------------------------------------- IndexedDB driver
-function openDB() { // same pattern as recovery.js: null on error, blocked or after 3 s
+function openDB() { // null on error or blocked; a slow open keeps waiting (the caller decides how long to wait)
   return new Promise((res) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; res(v); } };
-    setTimeout(() => finish(null), 3000);
     try {
       const r = indexedDB.open(DBNAME, 1);
       r.onupgradeneeded = () => {
@@ -31,7 +32,7 @@ function openDB() { // same pattern as recovery.js: null on error, blocked or af
         r.result.createObjectStore("entries", { keyPath: "id" });
         r.result.createObjectStore("meta");
       };
-      r.onsuccess = () => { if (done) r.result.close(); else finish(r.result); }; // too late: the caller already gave up
+      r.onsuccess = () => { if (done) r.result.close(); else finish(r.result); }; // after an error or block: nobody will use it
       r.onerror = () => finish(null);
       r.onblocked = () => finish(null);
     } catch (e) { finish(null); }
@@ -180,21 +181,30 @@ const localDriver = {
 };
 
 // ---------------------------------------------------------------- the store
+const FIRST_WAIT = 3000; // how long the first start waits for IndexedDB before it begins on localStorage
+
+// Bring a freshly opened database up to date: copy the localStorage leftovers over, apply a rescue copy.
+// Returns the database, or null (closed) when the copy could not be made.
+async function adopt(db) {
+  try {
+    const migrated = await req(db.transaction("meta").objectStore("meta").get("migrated"));
+    const fp = fingerprint();
+    if ((!migrated || !sameFingerprint(migrated.fp, fp)) && !await merge(db, fp)) { db.close(); return null; }
+  } catch (e) { try { db.close(); } catch (e2) {} return null; }
+  try { await applyRescue(db); } catch (e) {}
+  return db;
+}
+
 export function openProjectStore() {
   let driver = null;
+  const switched = []; // called once, after a slow IndexedDB open took over from localStorage
+  const opened = openDB();
+  let slow = false;
   const ready = (async () => {
-    let db = null;
-    try {
-      db = await openDB();
-      if (db) {
-        const migrated = await req(db.transaction("meta").objectStore("meta").get("migrated"));
-        const fp = fingerprint();
-        if (!migrated || !sameFingerprint(migrated.fp, fp)) {
-          if (!await merge(db, fp)) { db.close(); db = null; }
-        }
-      }
-      if (db) { try { await applyRescue(db); } catch (e) {} }
-    } catch (e) { if (db) { try { db.close(); } catch (e2) {} } db = null; }
+    const waited = Symbol();
+    let db = await Promise.race([opened, new Promise((r) => setTimeout(() => r(waited), FIRST_WAIT))]);
+    if (db === waited) { slow = true; driver = localDriver; return "local"; }
+    if (db) db = await adopt(db);
     driver = db ? idbDriver(db) : localDriver;
     return driver.kind;
   })();
@@ -205,9 +215,21 @@ export function openProjectStore() {
     chain = p;
     return p;
   };
+  // Slow open: it joins the same chain, so the copy runs between two calls, never inside one. Saves made
+  // on localStorage before this point are in the old keys that `merge` reads; saves after it go to IndexedDB.
+  ready.then(() => slow && opened).then((db) => {
+    if (!db) return;
+    chain = chain.then(async () => {
+      const ok = await adopt(db);
+      if (!ok) return;
+      driver = idbDriver(ok);
+      for (const f of switched) { try { f(); } catch (e) {} }
+    }).catch(() => {});
+  });
   return {
     ready,
     get kind() { return driver ? driver.kind : null; },
+    onSwitch: (f) => switched.push(f),
     list: run("list", []),
     get: run("get", null),
     put: run("put", false),
