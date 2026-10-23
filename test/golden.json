@@ -339,9 +339,9 @@
       "b4 M8 tapped block": 5341.8
     },
     "stlTriangles": 34956,
-    "stl": "8d8ec5641e6dc456499558c0c8924984e9b141fa76878712e19eb378441e8c5e",
-    "obj": "d41ebde2cea28f320dfe1e88dd7eed438c3ff601f31bc401eb337315df3a7a5d",
-    "3mf": "139aab901c259aafeb68418f057daf444508768b954e3a4c72e96b94739bafd8",
+    "stl": "b51aa82348c9df2336ae32a8cab6d8c0108e053b212af96985d4fcf2f9c88224",
+    "obj": "907627dcd48e66752e0dd0d36f6e2cc6e2700973d7c21f053c2ba6e58ceffe7c",
+    "3mf": "5d8711e10ac27a10e5a9ec5fcb7ccfc6461867751c6e9c0cb0757d02334da15b",
     "step": "80f3692edc5e20443a3610f551bba4121a99e7395a80c535f0bb05c13a07d3aa"
   },
   "holepattern.json": {
@@ -390,5 +390,25 @@
     "3mf": "d470ed5130a094c6a43bf16156affe415143d327fc213b29296cec421194a01a",
     "step": "c49042144963bbfd239e25226deeebe26878bea526d38bff91e7cb9c4dc217ad",
     "dxf": "d52d8151c6b8e838cadcf6f8e7c103d09d7194667c0a37b82814ded1a61ac621"
+  },
+  "advanced-chord-fillet-cone.json": {
+    "volumes": {
+      "b1 Cone": 3655.8
+    },
+    "stlTriangles": 2632,
+    "stl": "b05f749503c7993bfc12582f49d5534d98afbb12ac055cf6569473031f73a75e",
+    "obj": "daccb483dd35eabb76cb3d60e7b1ae8f98d7cc9ea258bc92713e906fba11cd3e",
+    "3mf": "0ead503a3dd831a2c8332124d54dadbdb5893edce2fba28f9b5e3b5e0e78b0e8",
+    "step": "d09b5fef2ff4698a611117f7608b85a235d207dd09ecc569334f11b040d77848"
+  },
+  "advanced-shell-chain-cone.json": {
+    "volumes": {
+      "b1 Cone": 1629.1
+    },
+    "stlTriangles": 1600,
+    "stl": "952bca0ac2fff4cfa0b74ecf87ce7fb455a1ff91e011b79c47f285d10f42c8fb",
+    "obj": "852b7bf5bc7fe35404d7bb95e502600d1e4b39b0cc0df051705f75f08f59c632",
+    "3mf": "1d4451efa1b7eda62f67a1a5f190ff35e08956bfe2b9ae1e2d5cdc31d8ce8b97",
+    "step": "a8d018afd89f312978822421dd36b5659d71998d96c7fb92fb95bf223b2a6a3d"
   }
 }
