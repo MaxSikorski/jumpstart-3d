@@ -29,7 +29,7 @@ import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
-import { dragAngle, arcPoints, nearestArc, snapSwitch } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { dragAngle, pivotOf, arcPoints, nearestArc, snapSwitch } from "./rotationui.js"; // jumpstart-3d: rotation access
 import { initNamePlate } from "./nameplate.js"; // jumpstart-3d: name plates
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
@@ -4472,6 +4472,10 @@ export function initAdvanced(app) {
       const sr = st.sketch && sketchRef(st.sketch, store.doc); // jumpstart-3d: sketch move
       if (sr) box.expandByPoint(V3(sr.center));
       st.center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+      // jumpstart-3d: rotation access. One body turns about its own middle, which stays put under the turn (several: the box's middle)
+      const one = !st.sketch && st.ids.length === 1 && findBody(store.doc, st.ids[0]);
+      const pv = one && pivotOf(scene, one.id, M4(one.m));
+      if (pv) st.center = pv;
     };
     const def = {
       title: "Move / Copy",
@@ -4513,7 +4517,7 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, st.copy ? "Copy" : "Move"); },
-      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes or a sketch to move.",
+      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis. Ring drags turn in 15° steps (Shift or Free: any angle).") : "Click the shapes or a sketch to move.", // jumpstart-3d: rotation access (15° steps in both hints)
       build(body) {
         body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : st.sketch ? el("b", {}, findSketch(store.doc, st.sketch).name || "Sketch") : "Click bodies or a sketch", st.ids.length || st.sketch ? () => { st.ids = []; st.sketch = null; changed(); } : null));
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
@@ -4655,7 +4659,7 @@ export function initAdvanced(app) {
           angInputs.forEach((f, i) => f.setValue(ang[i]));
           const [mx, my] = vp.local(ev);
           tag.hidden = false;
-          tag.innerHTML = `<b>${deg > 0 ? "+" : ""}${deg}°</b><span>around ${ringObj.userData.axis.slice(4).toUpperCase()} · Shift for any angle</span>`;
+          tag.innerHTML = `<b>${deg > 0 ? "+" : ""}${deg}°</b><span>around ${ringObj.userData.axis.slice(4).toUpperCase()} · Shift for any angle</span>`; // jumpstart-3d: rotation access
           tag.style.transform = `translate(${Math.round(mx + 18)}px, ${Math.round(my - 10)}px)`;
           changed(false);
         },

@@ -42,7 +42,8 @@ const matrix = () => run(() => window.__store.doc.bodies[0].m);
 const previewMatrix = () => run(() => (window.__store.preview ? window.__store.preview.bodies[0].m : null));
 const undoDepth = () => run(() => window.__store.undoStack.length);
 const boxNow = (p = page) => p.evaluate(() => { const b = window.__app.scene.bodyTightBox("b1"); return b ? [...b.min.toArray(), ...b.max.toArray()] : null; });
-const expectBox = (want, p = page) => expect.poll(() => boxNow(p), { timeout: 20_000 }).toSatisfy((b) => !!b && b.every((v, i) => Math.abs(v - want[i]) < 1e-3));
+const boxGap = async (want, p) => { const b = await boxNow(p); return b ? Math.max(...b.map((v, i) => Math.abs(v - want[i]))) : Infinity; }; // the worst gap to the wanted box
+const expectBox = (want, p = page) => expect.poll(() => boxGap(want, p), { timeout: 20_000 }).toBeLessThan(1e-3);
 const settle = async (p = page) => { // the camera stops moving, twice in a row
   for (let ok = 0; ok < 2;) { await p.waitForTimeout(200); ok = (await p.evaluate(() => !window.__app.vp.isMoving())) ? ok + 1 : 0; }
 };
@@ -85,7 +86,10 @@ const plan = (p, kind, axis, deg, off = 0) => p.evaluate(([kind, axis, deg, off]
   const V = (x, y, z) => vp.view.target.clone().set(x, y, z);
   const centre = kind === "arc" ? scene.bodyTightBox("b1").getCenter(vp.view.target.clone()) : V(0, 0, 0).setFromMatrixPosition(obj.matrixWorld);
   const [cx, cy] = vp.project(centre);
-  for (const s of kind === "arc" ? [0.5, 0.35, 0.65, 0.2, 0.8] : [0.125, 0.375, 0.625, 0.875]) {
+  // a finger (off > 0) must be nearer to the wanted ring than to the others: the press is at least 8 px nearer to the wanted ring than to any other drawn ring
+  const others = [];
+  if (kind === "ring" && off) vp.overlay.traverseVisible((o) => { if (/^rot-/.test(o.userData.axis || "") && o !== obj) { o.updateWorldMatrix(true, false); for (let i = 0; i < 96; i++) others.push(vp.project(V(Math.cos(i * Math.PI / 48) * 0.95, Math.sin(i * Math.PI / 48) * 0.95, 0).applyMatrix4(o.matrixWorld))); } });
+  for (const s of kind === "arc" ? [0.5, 0.35, 0.65, 0.2, 0.8] : [0.125, 0.375, 0.625, 0.875, 0.0625, 0.25, 0.5, 0.75, 0.1875, 0.3125, 0.4375, 0.5625, 0.6875, 0.8125, 0.9375]) {
     const t = kind === "arc" ? (s * Math.PI) / 2.6 : s * Math.PI * 2, r = kind === "arc" ? 1 : 0.95;
     const [px, py] = vp.project(V(Math.cos(t) * r, Math.sin(t) * r, 0).applyMatrix4(obj.matrixWorld));
     const d = Math.hypot(px - cx, py - cy) || 1, sx = px + (off * (px - cx)) / d, sy = py + (off * (py - cy)) / d;
@@ -102,6 +106,7 @@ const plan = (p, kind, axis, deg, off = 0) => p.evaluate(([kind, axis, deg, off]
       ex = cx + R * Math.cos(a); ey = cy - R * Math.sin(a);
     }
     const free = (x, y) => document.elementFromPoint(rect.left + x, rect.top + y) === vp.canvas;
+    if (others.some(([ox, oy]) => Math.hypot(ox - sx, oy - sy) < off + 8)) continue;
     if (free(sx, sy) && free(ex, ey)) return { start: { x: rect.left + sx, y: rect.top + sy }, end: { x: rect.left + ex, y: rect.top + ey }, centre: [cx, cy] };
   }
   return null;
@@ -139,7 +144,7 @@ for (const axis of ["x", "z"]) {
     const C = [0, 1, 2].map((i) => (box0[i] + box0[i + 3]) / 2);
     const depth = await undoDepth();
 
-    const pl = await plan(page, "arc", axis, 17); // 17 is not a step: it lands on 15
+    const pl = await plan(page, "arc", axis, 22); // 22 is not a step: it lands on 15 (the nearest 5 would be 20)
     expect(pl, "an arc on screen").not.toBeNull();
     await mouseDrag(pl, { release: false });
     expect(await matrix(), "while dragging only the preview moves").toEqual(M0);
@@ -169,6 +174,7 @@ test("Beginner: Shift (or Free) turns by the pointer's own angle, not by 15; a p
   await mouseDrag(pl, { shift: true });
   const got = angleOf("x", await matrix());
   expect(Math.abs(got - 12.5), `Shift turned ${got} degrees`).toBeLessThan(1); // 12.5 aimed at; a snap would have said 15
+  expect(Math.abs(got - Math.round(got)), `${got} is a whole degree: the old 1 degree Shift steps`).toBeGreaterThan(0.3);
   expectMatrix(await matrix(), turned("x", got, C));
   await expectBox(turnedBox("x", got, box0));
   expect(await undoDepth()).toBe(depth + 1);
@@ -181,6 +187,7 @@ test("Beginner: Shift (or Free) turns by the pointer's own angle, not by 15; a p
   await mouseDrag(await plan(page, "arc", "z", -12.5));
   const free = angleOf("z", await matrix());
   expect(Math.abs(free + 12.5)).toBeLessThan(1);
+  expect(Math.abs(free - Math.round(free)), `${free} is a whole degree`).toBeGreaterThan(0.3);
   await page.click("#btn-undo");
   await page.click("#rot-snap");
   await mouseDrag(await plan(page, "arc", "z", 12.5));
@@ -229,6 +236,51 @@ test("Beginner: typed 'Turn by' boxes turn by any decimal angle about the middle
   expectMatrix(await matrix(), turned("y", 16, C));
 });
 
+// A lopsided shape: its world box's middle moves when it turns, its own middle does not. +45 then -45 must come back exactly.
+const WEDGE = { w: 40, d: 24, h: 16, r: 0, c: 0 };
+const wedgeDoc = (mode) => newDoc("rotation wedge", mode, { bodies: [body("b1", "Wedge", prim("wedge", WEDGE), M0)] });
+const apply = (m, p) => [0, 1, 2].map((r) => m[r] * p[0] + m[4 + r] * p[1] + m[8 + r] * p[2] + m[12 + r]);
+// the middle of the unturned vertex box, read from the mesh and carried to the world by the given matrix (worked out here)
+const middleIn = (m) => run(() => {
+  const p = window.__app.scene.views.get("b1").data.vertices, lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+  for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[i + k]); hi[k] = Math.max(hi[k], p[i + k]); }
+  return lo.map((v, k) => (v + hi[k]) / 2);
+}).then((c) => apply(m, c));
+const expectPoint = (got, want) => want.forEach((v, i) => expect(got[i], `point[${i}]`).toBeCloseTo(v, 6));
+
+for (const mode of ["beginner", "advanced"]) {
+  test(`${mode}: a turn of a lopsided wedge keeps its own middle in place, and +45 then -45 puts it back exactly`, async () => {
+    await loadDoc(page, wedgeDoc(mode));
+    await run(() => window.__app.select(["b1"]));
+    const mid0 = await middleIn(M0);
+    const turn = async (deg) => { // one typed turn about Y: the wedge is a triangle across Y, so the world box middle moves when it turns
+      if (mode === "beginner") {
+        await page.fill("#insp-turn1", String(deg));
+        await page.locator("#insp-turn1").blur();
+      } else {
+        await page.click("#ad-moverot");
+        await page.fill("#mv-r1", String(deg));
+        await page.locator("#mv-r1").blur();
+        await expect.poll(previewMatrix).not.toBeNull();
+        await page.click("#cmd-ok");
+        await expect(page.locator("#cmd")).toBeHidden();
+      }
+    };
+    const depth = await undoDepth();
+    await turn(45);
+    await expect.poll(undoDepth).toBe(depth + 1);
+    const m1 = await matrix();
+    expect(Math.abs(angleOf("y", m1) - 45)).toBeLessThan(1e-6);
+    expectPoint(await middleIn(m1), mid0); // the wedge's own middle did not move
+    // the turn is exactly the one about that point
+    expectMatrix(m1, mul(mul(mul(tr(...mid0), rot("y", 45)), tr(...mid0.map((v) => -v))), M0));
+    if (mode === "advanced") await run(() => window.__app.select(["b1"]));
+    await turn(-45);
+    await expect.poll(undoDepth).toBe(depth + 2);
+    expectMatrix(await matrix(), M0);
+  });
+}
+
 test("Beginner: a locked box shows no arcs and no turn boxes, and cannot be turned", async () => {
   await open("beginner");
   await run(() => window.__store.update((d) => { d.bodies[0].locked = true; }, "Lock"));
@@ -253,7 +305,7 @@ test("Advanced: one click on Move / Rotate shows the rings; a ring drag is a pre
   for (const i of [0, 1, 2]) await expect(page.locator("#mv-r" + i)).toBeVisible(); // the exact boxes
   await expect(page.locator("#cmd-ok")).toBeDisabled();
 
-  const pl = await plan(page, "ring", "x", 17); // 17 is not a step: 15
+  const pl = await plan(page, "ring", "x", 22); // 22 is not a step: 15 (the old 5 degree rule gave 20)
   expect(pl, "a ring on screen").not.toBeNull();
   await mouseDrag(pl, { release: false });
   await expect(page.locator(".ex-tag b")).toHaveText("+15°"); // the readout shows the applied angle
@@ -298,7 +350,7 @@ test("Advanced: Z ring in a fresh design; Shift and the Free switch give the poi
   const C = [0, 1, 2].map((i) => (box0[i] + box0[i + 3]) / 2);
   await page.click("#ad-moverot");
   await expect.poll(() => rings()).toEqual(["x", "y", "z"]);
-  await mouseDrag(await plan(page, "ring", "z", 17));
+  await mouseDrag(await plan(page, "ring", "z", 22)); // 15, not the old 5 degree rule's 20
   await page.click("#cmd-ok");
   expectMatrix(await matrix(), turned("z", 15, C));
   await expectBox(turnedBox("z", 15, box0));
@@ -310,6 +362,7 @@ test("Advanced: Z ring in a fresh design; Shift and the Free switch give the poi
   await mouseDrag(await plan(page, "ring", "x", 12.5), { shift: true });
   const got = Number(await page.locator("#mv-r0").inputValue());
   expect(Math.abs(got - 12.5), `Shift turned ${got}`).toBeLessThan(1);
+  expect(Math.abs(got - Math.round(got)), `${got} is a whole degree: the old 1 degree Shift steps`).toBeGreaterThan(0.3);
   await page.click("#cmd-ok");
   expectMatrix(await matrix(), turned("x", got, C));
   expect(Math.abs(angleOf("x", await matrix()) - got)).toBeLessThan(0.01);
@@ -320,6 +373,7 @@ test("Advanced: Z ring in a fresh design; Shift and the Free switch give the poi
   await mouseDrag(await plan(page, "ring", "y", 12.5));
   const free = Number(await page.locator("#mv-r1").inputValue());
   expect(Math.abs(free - 12.5)).toBeLessThan(1);
+  expect(Math.abs(free - Math.round(free)), `${free} is a whole degree`).toBeGreaterThan(0.3);
   await page.locator("#cmd footer button", { hasText: "Cancel" }).click();
 });
 
@@ -394,6 +448,7 @@ test("touch (tablet): the Snap 15 / Free switch changes what a finger drag turns
 
     // each arc is picked by a press 14 px beside it, not its neighbour
     for (const axis of ["x", "y", "z"]) {
+      await expect.poll(() => rotHandles(p)).toEqual(["x", "y", "z"]); // the arcs are redrawn on a frame after the last touch
       const pl = await plan(p, "arc", axis, 0, 14);
       expect(pl, axis + " arc on screen").not.toBeNull();
       await touch(cdp, "touchStart", [pl.start]); // sets the touch mode
@@ -403,6 +458,7 @@ test("touch (tablet): the Snap 15 / Free switch changes what a finger drag turns
     }
 
     // snapped: a finger drag of 12.5 lands on 15
+    await expect.poll(() => rotHandles(p)).toEqual(["x", "y", "z"]); // the arcs are redrawn on a frame after the last touch
     const pl = await plan(p, "arc", "x", 12.5, 6);
     await touch(cdp, "touchStart", [pl.start]);
     await touchTo(cdp, pl.start, pl.end);
@@ -447,13 +503,14 @@ test("touch (tablet): in Advanced a second finger or a cancelled touch drops the
       await touch(cdp, "touchStart", [pl.start]);
       await touchTo(cdp, pl.start, pl.end);
       await expect.poll(async () => Number(await p.locator("#mv-r2").inputValue()), { message: "the turn shows while the finger is down" }).not.toBe(0);
-      if (how === "second finger") await touch(cdp, "touchStart", [{ ...pl.end, id: 0 }, { x: pl.end.x + 60, y: pl.end.y + 60, id: 1 }]);
-      else await touch(cdp, "touchCancel", []);
-      await touch(cdp, "touchEnd", []);
+      if (how === "second finger") {
+        await touch(cdp, "touchStart", [{ ...pl.end, id: 0 }, { x: pl.end.x + 60, y: pl.end.y + 60, id: 1 }]);
+        await touch(cdp, "touchEnd", []);
+      } else await touch(cdp, "touchCancel", []); // a cancel ends the touch by itself
       await expect(p.locator("#mv-r2"), how).toHaveValue("0");
       await expect(p.locator("#mv-d0"), how).toHaveValue("5");
       await expect(p.locator("#cmd"), "the command stays open").toBeVisible();
-      await expect.poll(() => p.evaluate(() => (window.__store.preview ? window.__store.preview.bodies[0].m : null)), how).toSatisfy((m) => !!m && wantMoved.every((v, i) => Math.abs(m[i] - v) < 1e-6));
+      await expect.poll(async () => { const m = await p.evaluate(() => (window.__store.preview ? window.__store.preview.bodies[0].m : null)); return !!m && wantMoved.every((v, i) => Math.abs(m[i] - v) < 1e-6); }, { message: how }).toBe(true);
     }
     await p.locator("#cmd-ok").tap();
     await expect(p.locator("#cmd")).toBeHidden();

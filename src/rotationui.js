@@ -19,6 +19,19 @@ export function turnAbout(center, axis, deg) {
     .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
 }
 
+// The point a body turns about: the middle of its own unturned box, carried into the world by matrix m. Unlike the world
+// box's middle it does not move when the body turns (a wedge turned +45 then -45 comes back to where it was).
+export function pivotOf(scene, id, m) {
+  const v = scene.views.get(id);
+  if (!v || !v.data) return null;
+  if (!v._pivot || v._pivot.data !== v.data) {
+    const box = new THREE.Box3(), p = v.data.vertices, t = new THREE.Vector3();
+    for (let i = 0; i < p.length; i += 3) box.expandByPoint(t.set(p[i], p[i + 1], p[i + 2]));
+    v._pivot = { data: v.data, c: box.getCenter(new THREE.Vector3()) };
+  }
+  return v._pivot.c.clone().applyMatrix4(m);
+}
+
 // world points along an arc drawn in the XY plane of obj (radius r, from angle 0 for span radians)
 export function arcPoints(obj, r, span = Math.PI * 2, n = 48) {
   obj.updateWorldMatrix(true, false);
