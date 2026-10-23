@@ -29,6 +29,8 @@ import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
+import { snapSwitch, fine, makeGizmo, axisAlong, ringDrag, turnFeedback, placePill } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { liveGizmo, onEscape } from "./pivot.js"; // jumpstart-3d: pivot
 import { initNamePlate } from "./nameplate.js"; // jumpstart-3d: name plates
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
@@ -202,11 +204,15 @@ export function initAdvanced(app) {
 
   // ------------------------------------------------------------------ command framework
   // Selecting, resize handles (shared with Beginner) and window (marquee) selection
-  let delegated = false, pressOn = null;
+  let delegated = false, pressOn = null, liveOn = false;
+  // jumpstart-3d: pivot. The live gizmo: a click that selects bodies shows move / turn handles at once; only pressing one transforms
+  const live = liveGizmo(app, { parent: vpEl, active: () => app.mode === "advanced" && workspace === "design" && !app.command && !sketcher.active && !app.simLock, design: () => app.mode === "advanced" && workspace === "design" && !app.simLock });
   const defaultHandler = {
-    wantsTouch: (e) => !!app.beginner.pickHandle(e),
+    wantsTouch: (e) => !!(live.pick(e) || app.beginner.pickHandle(e)),
     hover(e) {
-      if (app.beginner.hoverHandle(e)) { scene.setHovered(null); return; }
+      if (live.hover(e, "dot")) { scene.setHovered(null); return; }
+      if (app.beginner.hoverHandle(e)) { live.unhot(); scene.setHovered(null); return; }
+      if (live.hover(e, "parts")) { scene.setHovered(null); return; }
       const f = scene.pickFace(e);
       scene.setHovered(f ? f.body : null);
       vp.canvas.style.cursor = "default";
@@ -214,7 +220,12 @@ export function initAdvanced(app) {
     leave() { scene.setHovered(null); },
     down(e) {
       selSketch = null;
+      // jumpstart-3d: pivot. The dot first, then the resize handles, then the arrows and rings. Not with Shift, Ctrl or Meta held (that toggles
+      // the body) and not for the tap a finger lets the viewport route after pressing a handle without moving
+      const plain = !(e.shiftKey || e.ctrlKey || e.metaKey) && !vp.tapping;
+      if (plain && live.down(e, "dot")) { liveOn = true; return true; }
       if (app.beginner.handleDown(e)) { delegated = true; return true; }
+      if (plain && live.down(e, "parts")) { liveOn = true; return true; }
       const f = scene.pickFace(e);
       const add = e.shiftKey || e.ctrlKey || e.metaKey;
       if (f) {
@@ -229,6 +240,7 @@ export function initAdvanced(app) {
       return true;
     },
     move(e) {
+      if (liveOn) { live.move(e); return; } // jumpstart-3d: pivot
       if (pressOn) {
         const [x, y] = vp.local(e);
         if (Math.hypot(x - pressOn.start[0], y - pressOn.start[1]) < 5) return;
@@ -239,6 +251,7 @@ export function initAdvanced(app) {
       if (delegated) app.beginner.handler.move(e);
     },
     up(e) {
+      if (liveOn) { liveOn = false; const r = live.up(e); renderBrowser(); return r; } // jumpstart-3d: pivot
       if (pressOn) {
         const { id, add } = pressOn;
         pressOn = null;
@@ -248,7 +261,7 @@ export function initAdvanced(app) {
       }
       if (delegated) { delegated = false; app.beginner.handler.up(e); renderBrowser(); }
     },
-    cancel() { pressOn = null; if (delegated) { delegated = false; app.beginner.handler.cancel(); } },
+    cancel() { pressOn = null; if (liveOn) { liveOn = false; live.cancel(); } if (delegated) { delegated = false; app.beginner.handler.cancel(); } }, // jumpstart-3d: pivot (live)
     dblclick(e) {
       const hits = vp.pick(e, scene.regionMeshes());
       if (hits.length) { app.enterSketch(hits[0].object.userData.region.sketch); return; }
@@ -289,7 +302,7 @@ export function initAdvanced(app) {
     if (!def) return;
     app.command = null;
     if (!committed) store.setPreview(null);
-    def.cleanup && def.cleanup();
+    def.cleanup && def.cleanup(committed); // jumpstart-3d: pivot. (committed)
     if (!committed && def.onCancel) def.onCancel();
     scene.state.forceSketch = null;
     scene.state.ghost = new Set();
@@ -4405,63 +4418,17 @@ export function initAdvanced(app) {
     }
     const inputs = [];
     let drag = null, hotArrow = null;
-    // gizmo: X/Y/Z arrows for moving along an axis, a ball for free 3D moves
-    const giz = new THREE.Group();
-    const AX = [["x", 0xd9534f, new THREE.Vector3(1, 0, 0)], ["y", 0x3f9b52, new THREE.Vector3(0, 1, 0)], ["z", 0x2f6fd0, new THREE.Vector3(0, 0, 1)]];
-    for (const [name, color, dir] of AX) {
-      const g = new THREE.Group();
-      const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true });
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 8).translate(0, 0.5, 0), mat);
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.3, 14).translate(0, 1.12, 0), mat);
-      // fat invisible grab zone
-      const grab = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 6).translate(0, 0.65, 0), new THREE.MeshBasicMaterial({ visible: false }));
-      g.add(shaft, tip, grab);
-      g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-      g.userData.axis = name; g.userData.dir = dir; g.userData.mat = mat; g.userData.color = color;
-      g.renderOrder = 20; shaft.renderOrder = tip.renderOrder = 20;
-      giz.add(g);
-    }
-    const ballMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true });
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), ballMat);
-    ball.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), new THREE.MeshBasicMaterial({ color: 0x18202a, depthTest: false, side: THREE.BackSide })));
-    ball.userData.axis = "free"; ball.renderOrder = 21;
-    giz.add(ball);
-    // rotation rings (Free in 3D: all three; Free on ground: the Z ring), dragged to turn
-    const rings = [];
-    for (const [name, color, dir] of AX) {
-      const g = new THREE.Group();
-      const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.9 });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.026, 8, 72), mat);
-      const grab = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.1, 6, 56), new THREE.MeshBasicMaterial({ visible: false }));
-      g.add(ring, grab);
-      g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir); // torus lies in XY: its axis is Z
-      g.userData.axis = "rot-" + name; g.userData.dir = dir; g.userData.mat = mat; g.userData.color = color; g.userData.ring = true;
-      ring.renderOrder = 19;
-      giz.add(g);
-      rings.push(g);
-    }
-    giz.visible = false;
-    vp.overlay.add(giz);
+    // jumpstart-3d: pivot. The gizmo (X/Y/Z arrows, rings, a pad for free moves) is shared with the live gizmo (pivot.js); the centre is the pivot dot
+    const pv = app.pivot, G = makeGizmo(vp), giz = G.group, rings = G.rings, fb = turnFeedback(vp);
     const sizeGiz = () => {
-      if (!st.ids.length && !st.sketch) { giz.visible = false; return; }
+      if (!st.ids.length && !st.sketch) { giz.visible = false; pv.dot.show(null, "move"); return; }
       giz.visible = true;
-      giz.position.copy(st.center).add(new THREE.Vector3(...st.d));
-      giz.scale.setScalar(vp.pixelSize(giz.position) * 70);
-      for (const g of giz.children) if (g.userData.mat) g.userData.mat.color.set(hotArrow === g || (drag && drag.ring === g) ? 0xe8a317 : g.userData.color);
-      ballMat.color.set(hotArrow === ball ? 0xe8a317 : 0xffffff);
-      for (const r of rings) r.visible = st.drag === "screen" || r.userData.axis === "rot-z";
+      const at = st.center.clone().add(new THREE.Vector3(...st.d));
+      G.place(at, st.drag === "screen" ? "all" : "z", hotArrow || (drag && drag.ring));
+      if (st.ids.length) pv.dot.show(at, "move"); else pv.dot.show(null, "move"); // a sketch has no pivot of its own
     };
     vp.afterRender.add(sizeGiz);
-    const pickGiz = (e) => {
-      if (!giz.visible) return null;
-      vp.ray(e);
-      const hits = vp.raycaster.intersectObjects(giz.children.filter((c) => c.visible), true);
-      if (!hits.length) return null;
-      // arrows and the ball win over the rings they sit inside
-      const pickOf = (h) => { let o = h.object; while (o && !o.userData.axis) o = o.parent; return o; };
-      const first = hits.map(pickOf).find((o) => o && !o.userData.ring);
-      return first || pickOf(hits[0]);
-    };
+    const pickGiz = (e) => G.pick(e);
     // the rotation center comes from where the bodies are now (not the preview)
     const recenter = () => {
       const box = new THREE.Box3();
@@ -4469,10 +4436,28 @@ export function initAdvanced(app) {
       const sr = st.sketch && sketchRef(st.sketch, store.doc); // jumpstart-3d: sketch move
       if (sr) box.expandByPoint(V3(sr.center));
       st.center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+      // jumpstart-3d: pivot. The pivot decides: the body's own middle (which stays put under a turn), the union box's middle taken when
+      // several were selected (not recomputed after each turn), or the point the dot was dragged to
+      const pvp = !st.sketch && st.ids.length && pv.base(st.ids);
+      if (pvp) st.center = pvp;
     };
+    // Move / Copy borrows the pivot: the dot and the Pivot fields show where it is in the preview, and moving it keeps the pose
+    // (the move and turn so far are re-expressed about the new point)
+    const posed = () => st.center.clone().add(new THREE.Vector3(...st.d));
+    const retarget = (p) => {
+      const R = new THREE.Matrix4().makeRotationFromQuaternion(st.rot), c0 = st.center.clone();
+      const c1 = c0.clone().add(p.clone().sub(c0).sub(new THREE.Vector3(...st.d)).applyMatrix4(R.clone().invert())); // the point that the pose carries to p
+      st.center = c1;
+      st.d = [p.x - c1.x, p.y - c1.y, p.z - c1.z];
+      inputs.forEach((f, i) => f.setValue && f.setValue(st.d[i]));
+      pv.setBase(c1);
+      changed(false);
+    };
+    const lent = { get: posed, set: retarget };
     const def = {
       title: "Move / Copy",
       keepSelection: true,
+      pivotIds: () => st.ids, // jumpstart-3d: pivot. the Pivot boxes stay on screen while this is open
       valid: () => st.ids.length > 0 || !!st.sketch,
       canOk: () => def.valid() && (st.d.some((v) => v) || Math.abs(st.rot.w) < 1 - 1e-9),
       mat() {
@@ -4510,13 +4495,14 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, st.copy ? "Copy" : "Move"); },
-      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (Shift: 1° steps). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes or a sketch to move.",
+      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it " + fine.step + "°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it " + fine.step + "° (Shift: 15°). Choose Free in 3D to rotate around any axis. Ring drags turn in 15° steps (Shift or Free: any angle).") : "Click the shapes or a sketch to move.", // jumpstart-3d: rotation access (15° steps in both hints)
       build(body) {
         body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : st.sketch ? el("b", {}, findSketch(store.doc, st.sketch).name || "Sketch") : "Click bodies or a sketch", st.ids.length || st.sketch ? () => { st.ids = []; st.sketch = null; changed(); } : null));
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
         if (store.doc.sketches.length) body.append(row("Sketch", el("select", { class: "num", id: "mv-sketch", onchange: (e) => { st.sketch = e.target.value || null; if (st.sketch) st.ids = []; changed(); } },
           el("option", { value: "" }, "…or pick a sketch"), ...store.doc.sketches.map((k) => el("option", { value: k.id, selected: st.sketch === k.id }, k.name || "Sketch"))), "mv-sketch"));
         body.append(row("Drag shape", seg([["ground", "Free on ground"], ["screen", "Free in 3D"]], st.drag, (v) => { st.drag = v; def.render(); }, "mv-drag")));
+        body.append(row("Ring turn", snapSwitch())); // jumpstart-3d: rotation access
         body.append(el("div", { class: "subhead" }, "Move by (" + getUnit() + ")"));
         const r3 = el("div", { class: "row3" });
         inputs.length = 0;
@@ -4539,12 +4525,13 @@ export function initAdvanced(app) {
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "mv-copy", checked: st.copy, onchange: (e) => { st.copy = e.target.checked; changed(false); } }), "Create a copy"));
         body.append(el("button", { class: "btn", id: "mv-reset", onclick: () => { st.d = [0, 0, 0]; st.rot.identity(); changed(); } }, "Reset"));
       },
-      start() { recenter(); scene.setSelected(st.ids); showSketch(); vp.request(); },
-      cleanup() { vp.afterRender.delete(sizeGiz); vp.overlay.remove(giz); tag.remove(); scene.setSelected([]); vp.request(); },
+      start() { recenter(); pv.lend(lent); scene.setSelected(st.ids); showSketch(); vp.request(); }, // jumpstart-3d: pivot
+      cleanup(committed) { pv.unlend(committed ? posed() : null); pv.dot.show(null, "move"); fb.dispose(); vp.afterRender.delete(sizeGiz); G.dispose(); tag.remove(); scene.setSelected([]); vp.request(); }, // jumpstart-3d: pivot (a pivot of your own goes with the bodies once Move is accepted)
       handler: {
-        wantsTouch: (e) => !!(pickGiz(e) || scene.pickFace(e) || pickSketch(e)),
+        wantsTouch: (e) => !!(pv.dot.at(e, "move") || pickGiz(e) || scene.pickFace(e) || pickSketch(e)),
         hover(e) {
           if (drag) return;
+          if (pv.dot.at(e, "move")) { vp.canvas.style.cursor = "grab"; scene.setHovered(null); return; } // jumpstart-3d: pivot
           const h = pickGiz(e);
           if (h !== hotArrow) { hotArrow = h; vp.request(); }
           if (h) { vp.canvas.style.cursor = "grab"; scene.setHovered(null); return; }
@@ -4554,6 +4541,8 @@ export function initAdvanced(app) {
           vp.canvas.style.cursor = f ? (st.ids.includes(f.body) ? "move" : "pointer") : sh ? (sh.sketch === st.sketch ? "move" : "pointer") : "default";
         },
         down(e) {
+          const pg = pv.dotDown(e, "move"); // jumpstart-3d: pivot. the dot first: it only moves the pivot
+          if (pg) { drag = { ...pg, restore: pg.cancel }; return true; }
           const h = pickGiz(e);
           if (h && h.userData.ring) return startRotate(e, h);
           if (h) return startDrag(e, h.userData.axis, h.userData.dir);
@@ -4577,7 +4566,22 @@ export function initAdvanced(app) {
           return startDrag(e, st.drag === "screen" ? "free" : "ground", null, f.point);
         },
         move(e) { if (drag) drag.move(e); },
-        up() { if (drag) { drag = null; ringReadout = null; tag.hidden = true; app.clearSnapGuides(); vp.canvas.style.cursor = "default"; def.render(); } },
+        // jumpstart-3d: rotation access. A second finger, or a touch the browser took over, drops the gesture: the pose and preview go back to how they were before it
+        cancel() {
+          if (!drag) return;
+          const restore = drag.restore;
+          drag = null; ringReadout = null; tag.hidden = true; fb.hide(); app.clearSnapGuides(); vp.canvas.style.cursor = "default";
+          if (restore) restore();
+          changed();
+        },
+        up(e) {
+          if (e && e.type === "pointercancel") return def.handler.cancel();
+          if (!drag) return;
+          const tap = vp.touchMode && drag.ring && !drag.moved; // jumpstart-3d: rotation access. a finger on a ring that did not move: the viewport treats it as a tap on what is under it
+          if (drag.finish) drag.finish();
+          fb.hide(); drag = null; ringReadout = null; tag.hidden = true; app.clearSnapGuides(); vp.canvas.style.cursor = "default"; def.render();
+          if (tap) return "tap";
+        },
       },
     };
     const angInputs = [];
@@ -4593,9 +4597,14 @@ export function initAdvanced(app) {
     };
     // , and . : turn 1° (Shift: 15°) around the ring last dragged (the blue Z ring at first)
     def.turnKey = (e) => {
-      if ((!st.ids.length && !st.sketch) || e.ctrlKey || e.metaKey || e.altKey) return false;
-      const ringObj = keyRing || rings[2], axis = ringObj.userData.dir.clone();
-      const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+      if (e.ctrlKey || e.metaKey || e.altKey) return false;
+      return def.turnBy((e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step), keyRing || rings[2]); // jumpstart-3d: fine rotation. the step chosen in the status bar
+    };
+    // jumpstart-3d: fine rotation. the status bar's − / + too: s degrees around a ring (the blue Z one at first), added to the pending turn
+    def.turnBy = (s, ringObj, axisName) => {
+      if (!st.ids.length && !st.sketch) return false;
+      ringObj = axisName ? rings.find((r) => r.userData.axis === "rot-" + axisName) : ringObj;
+      const axis = ringObj.userData.dir.clone();
       st.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, (s * Math.PI) / 180));
       const ang = eulerDeg();
       angInputs.forEach((f, i) => f.setValue(ang[i]));
@@ -4621,34 +4630,27 @@ export function initAdvanced(app) {
       const axis = ringObj.userData.dir.clone();
       const center = giz.position.clone();
       const q0 = st.rot.clone();
-      const cs = () => { const s = vp.project(center); return [s[0], s[1]]; };
-      // angle of the pointer around the ring's center, on screen; which way round counts as
-      // positive depends on whether the axis faces the viewer
-      const facing = Math.sign(axis.dot(vp.camera.position.clone().sub(center))) || 1;
-      const angAt = (ev) => { const [mx, my] = vp.local(ev); const [cx, cy] = cs(); return Math.atan2(-(my - cy), mx - cx); };
-      const a0 = angAt(e);
-      let total = 0, prev = a0;
+      const turn = ringDrag(vp, e, center, axis); // jumpstart-3d: pivot. shared with the live gizmo
+      const orbit = new THREE.Box3();
+      for (const id of st.ids) { const x = scene.bodyTightBox(id); if (x) orbit.union(x); }
+      fb.show(center, axis, orbit.isEmpty() ? center : orbit.getCenter(new THREE.Vector3())); // jumpstart-3d: pivot. the dashed ring through the selection's orbit
+      const s0 = vp.local(e);
       drag = {
-        ring: ringObj,
+        ring: ringObj, moved: false,
         move(ev) {
-          const a = angAt(ev);
-          let da = a - prev;
-          if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
-          prev = a;
-          total += da * facing;
-          const stepDeg = ev.shiftKey ? 1 : 5;
-          const deg = Math.round(((total * 180) / Math.PI) / stepDeg) * stepDeg;
+          if (!drag.moved) { const [x, y] = vp.local(ev); if (Math.hypot(x - s0[0], y - s0[1]) < 3) return; drag.moved = true; } // jumpstart-3d: rotation access. a finger's jitter is not a turn
+          const deg = turn(ev); // 15° steps; Shift or Free: the pointer's own angle
           st.rot.copy(new THREE.Quaternion().setFromAxisAngle(axis, (deg * Math.PI) / 180).multiply(q0));
           ringReadout = deg;
           const ang = eulerDeg();
           angInputs.forEach((f, i) => f.setValue(ang[i]));
-          const [mx, my] = vp.local(ev);
           tag.hidden = false;
-          tag.innerHTML = `<b>${deg > 0 ? "+" : ""}${deg}°</b><span>around ${ringObj.userData.axis.slice(4).toUpperCase()} · Shift for 1°</span>`;
-          tag.style.transform = `translate(${Math.round(mx + 18)}px, ${Math.round(my - 10)}px)`;
+          tag.innerHTML = `<b>${deg > 0 ? "+" : ""}${deg}°</b><span>around ${ringObj.userData.axis.slice(4).toUpperCase()} · Shift for any angle</span>`; // jumpstart-3d: rotation access
+          placePill(vp, tag, ev); // jumpstart-3d: pivot. beside the pointer, farther above a finger, inside the view
           changed(false);
         },
       };
+      drag.restore = () => { st.rot.copy(q0); }; // jumpstart-3d: rotation access
       vp.canvas.style.cursor = "grabbing";
       return true;
     }
@@ -4660,18 +4662,12 @@ export function initAdvanced(app) {
       else if (kind === "free") plane = new THREE.Plane().setFromNormalAndCoplanarPoint(vp.camera.getWorldDirection(new THREE.Vector3()).negate(), origin);
       const p0 = plane ? vp.rayPlane(e, plane) : null;
       const g = app.gridStep();
-      // position along the axis line closest to the pointer ray
-      const axisParam = (ev) => {
-        const ray = vp.ray(ev);
-        const w0 = origin.clone().sub(ray.origin);
-        const b = dir.dot(ray.direction), c = ray.direction.dot(ray.direction), d = dir.dot(w0), ee = ray.direction.dot(w0);
-        const den = c - b * b;
-        return Math.abs(den) < 1e-9 ? null : (b * ee - c * d) / den;
-      };
+      const axisParam = (ev) => axisAlong(vp, ev, origin, dir); // jumpstart-3d: pivot. position along the axis line closest to the pointer ray
       const s0 = dir ? axisParam(e) || 0 : 0;
       // where the bodies are when the drag starts (for snapping to other shapes)
       const boxes0 = new Map(st.ids.map((id) => { const b = findBody(store.doc, id); const bx = b && scene.boxWithMatrix(id, M4(b.m)); return [id, bx ? bx.translate(new THREE.Vector3(...d0)) : null]; }));
       drag = {
+        restore() { st.d = d0; }, // jumpstart-3d: rotation access
         move(ev) {
           let delta;
           if (dir) {
@@ -5696,6 +5692,7 @@ export function initAdvanced(app) {
       ] },
     ]);
     group("Modify", "", [
+      { id: "ad-moverot", label: "Move / Rotate", title: "Move or turn the selected shape in 3D: drag an arrow to move, a ring to turn, or type exact values", icon: "move", fn: () => moveCmd({ drag: "screen" }) }, // jumpstart-3d: rotation access
       { id: "ad-edge", label: edgeTool === "chamfer" ? "Chamfer" : "Fillet", title: "Edge tools: round (fillet) or bevel (chamfer) edges. The arrow switches tools.", icon: edgeTool, fn: () => edgeCmd(edgeTool),
         menu: [
           { id: "ad-fillet", label: "Fillet", title: "Round edges (F)", icon: "fillet", on: edgeTool === "fillet", fn: () => { edgeTool = "fillet"; renderRibbon(); edgeCmd("fillet"); } },
@@ -6117,12 +6114,14 @@ export function initAdvanced(app) {
   vp.canvas.parentElement.append(secChip);
   section.onChange((info) => { secChip.hidden = !info; if (info) secChip.querySelector(".txt").textContent = "Section: " + (info.ref.label || "plane") + (info.d ? ` ${info.d > 0 ? "+" : ""}${withUnit(info.d, 1)}` : ""); });
   const { measureCmd } = initMeasure(app, { vp, openCmd, closeCmd, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawFace, drawDot, clearOv, row, seg });
-  const psim = initPrintSim(app, { vp, scene, openCmd, closeCmd, row, seg, sliderRow, onView: () => { if (app.mode === "advanced") renderRibbon(); }, onClose: () => leftPrintSim() });
+  const plateUpdate = () => app.plateView && app.plateView.update(); // jumpstart-3d: printer plate. the overhang overlay steps aside while a simulation workspace is open
+  const psim = initPrintSim(app, { vp, scene, openCmd, closeCmd, row, seg, sliderRow, onView: () => { if (app.mode === "advanced") renderRibbon(); }, onOpen: plateUpdate, onClose: () => leftPrintSim() });
   // the sim panel closed (Done, ×, a mode switch…): unlock the design again
   function leftPrintSim() {
     app.simLock = false;
     document.body.classList.remove("simlock");
     if (workspace === "print") { workspace = "design"; if (app.mode === "advanced") { renderRibbon(); renderBrowser(); renderTimeline(); } }
+    plateUpdate(); // jumpstart-3d: printer plate
   }
   // Beginner mode opens the same sim as a tool
   function openPrintSim() {
@@ -6132,6 +6131,7 @@ export function initAdvanced(app) {
     app.simLock = true;
     document.body.classList.add("simlock");
     psim.open();
+    plateUpdate(); // jumpstart-3d: printer plate
   }
   function setWorkspace(w) {
     if (workspace === w) return;
@@ -6143,6 +6143,7 @@ export function initAdvanced(app) {
     renderRibbon();
     renderBrowser();
     if (w === "print") psim.open();
+    plateUpdate(); // jumpstart-3d: printer plate. Simulate and 3D Print Sim hide the overlay; Design brings it back
   }
 
   let lastKind = null;
@@ -6195,6 +6196,7 @@ export function initAdvanced(app) {
     handler: defaultHandler,
     key,
     refresh(kind) {
+      vp.request(); // jumpstart-3d: pivot. the live gizmo follows the selection
       // switching mode or opening another design leaves the simulation workspaces
       if ((kind === "mode" || kind === "load") && workspace !== "design") { workspace = "design"; app.simLock = false; if (app.command) closeCmd(false); psim.teardown(); sim.resetPose(); }
       if (kind === "mode" || kind === "sketch" || kind === "load" || !ribbon.querySelector(".rgroup") || lastKind === "mode-b") renderRibbon();

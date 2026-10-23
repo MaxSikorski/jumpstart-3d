@@ -1,0 +1,75 @@
+{
+ "v": 1,
+ "id": "g_painted_cube",
+ "name": "Painted cube",
+ "mode": "beginner",
+ "created": 1,
+ "seq": 9,
+ "grid": 1,
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Cube",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "box",
+    "p": {
+     "w": 20,
+     "d": 20,
+     "h": 20,
+     "r": 0,
+     "c": 0
+    },
+    "mods": []
+   }
+  }
+ ],
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "printPaint": {
+  "slots": [
+   "#3b82c4",
+   "#e5484d",
+   "#f5c518",
+   "#2fbf71",
+   "#9b59d0"
+  ],
+  "of": {
+   "b1": 0
+  },
+  "faces": {
+   "b1": {
+    "n": 6,
+    "f": {
+     "0": 1,
+     "1": 2,
+     "2": 3,
+     "3": 4
+    }
+   }
+  }
+ }
+}

@@ -58,13 +58,20 @@ jobs:
           [[ "$PROJECTS" == *firefox* ]] && browsers="$browsers firefox"
           [[ "$PROJECTS" == *webkit* ]] && browsers="$browsers webkit"
           if [ "$browsers" = chromium ]; then npx playwright install chromium; else npx playwright install --with-deps $browsers; fi
+      # Headless Firefox on the runner finds no GL driver; the cross job below explains the Xvfb + Mesa route
+      - name: Virtual screen for Firefox
+        if: ${{ contains(inputs.projects, 'firefox') }}
+        timeout-minutes: 5
+        run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
       - run: node build.mjs
       - name: Run the selected specs
         run: |
           read -ra specs <<< "$SPECS"
           args=()
           for p in $PROJECTS; do args+=(--project "$p"); done
-          npx playwright test "${specs[@]}" "${args[@]}"
+          run=(npx playwright test "${specs[@]}" "${args[@]}")
+          if [[ "$PROJECTS" == *firefox* ]]; then run=(xvfb-run -a -s "-screen 0 1400x900x24" "${run[@]}"); fi
+          "${run[@]}"
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

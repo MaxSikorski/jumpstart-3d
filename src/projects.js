@@ -7,6 +7,7 @@ import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs stor
 import { initFolder } from "./folder.js"; // jumpstart-3d: copies in a folder
 import { glbBytes } from "./gltf.js"; // jumpstart-3d: glTF export
 import { initRemote } from "./remote.js"; // jumpstart-3d: remote
+import { triangleCodes, paintAttrs, PAINT_NS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 
 const LS_PREF = "workplane.pref.v1";
 
@@ -22,6 +23,7 @@ export function initProjects(app) {
   let db = null, userId = null, downloads = null;
   let remoteOk = false;
   let dirty = false;
+  let opened = { id: null, at: 0 }; // jumpstart-3d: designs storage. which design is open and the `_updated` of the copy it was read from or last saved as
   // jumpstart-3d: designs storage. Designs and the list live in projstore.js (IndexedDB, or localStorage where that fails);
   // the version counters and the last-open id stay in localStorage because they are read synchronously.
   const ps = openProjectStore();
@@ -118,7 +120,8 @@ export function initProjects(app) {
       const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
       dirty = false;
-      if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
+      // the last argument is read when the write runs: the stamp these edits started from (see idbPut in projstore.js)
+      if (await ps.put(r[0], r[1], r[2], () => (opened.id === r[0] ? opened.at : null))) { if (store.doc.id === r[0]) opened = { id: r[0], at: r[2].updated }; if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
     if (remoteOk) {
@@ -129,6 +132,24 @@ export function initProjects(app) {
     return !!updated; // jumpstart-3d: backup (did the write fit?)
   }
   const saveSoon = debounce(saveNow, 1200);
+
+  // jumpstart-3d: designs storage. A slow IndexedDB took over from localStorage. The open design may have been read from an
+  // older copy than the one IndexedDB holds (a design moved over on an earlier visit leaves its old copy behind), and a save
+  // that failed meanwhile (localStorage full) was never retried.
+  ps.onSwitch(async () => {
+    let cur = null;
+    try { cur = JSON.parse(await ps.get(store.doc.id)); } catch (e) {}
+    const newer = cur && opened.id === store.doc.id && (cur._updated || 0) > opened.at;
+    if (dirty || saving) saveSoon(); // edits on an older copy are safe: the write keeps a newer stored copy as "(before fallback)" first
+    else if (newer) {
+      opened = { id: cur.id, at: cur._updated };
+      delete cur._updated;
+      app.select([]); if (app.command) app.command.cancel(); app.exitSketch();
+      store.load(cur);
+      setState("Saved in this browser");
+      app.toast("Opened the newer saved copy of this design.");
+    }
+  });
 
   // ---------------------------------------------------------------- versions
   // Every Save (the Save button, Ctrl+S, or a project file) is a new version of the same design:
@@ -214,6 +235,7 @@ export function initProjects(app) {
   async function open(id) {
     const d = await loadDoc(id);
     if (!d) { app.toast("That design couldn't be found.", "err"); return false; }
+    opened = { id, at: d._updated || 0 };
     delete d._updated;
     app.select([]);
     if (app.command) app.command.cancel();
@@ -224,6 +246,44 @@ export function initProjects(app) {
     app.vp.setView("home", app.scene.allBox().isEmpty() ? null : app.scene.allBox());
     const gen = loads; setTimeout(() => { if (gen !== loads) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: only the latest load's
     return true;
+  }
+  // jumpstart-3d: share link. A design opened from a link becomes the one a reload reopens only after it has built without an error,
+  // so a design that stalls or breaks the engine is not reopened (and stalls it again) on the next load.
+  let unproven = null;
+  function proveShared(id) {
+    unproven = id;
+    const timer = setInterval(() => {
+      if (store.doc.id !== id) { clearInterval(timer); if (unproven === id) unproven = null; return; }
+      if (app.scene.busy() || store.doc.bodies.some((b) => app.scene.errors.has(b.id))) return;
+      clearInterval(timer); unproven = null; ls.set(LS_PREF + ".last", id);
+    }, 400);
+  }
+  // jumpstart-3d: share link. Adds a checked design from a share link as a NEW design (own id, version 0, own creation time) and opens it.
+  // The open design is saved first and stays as it is; nothing is replaced until the new one is safely stored. Returns "ok", "save-failed"
+  // (the open design could not be saved: nothing happens), "stale" (the person changed designs while this waited: nothing happens),
+  // "storage" (the new design could not be stored: the open one stays) or "chisel" (Chisel keeps its own copy of the open design).
+  async function importShared(shared) {
+    if (app.mode === "chisel") return "chisel";
+    const gen = loads;
+    if (app.command) app.command.cancel();
+    const open0 = store.doc;
+    if (!await saveNow()) return "save-failed";
+    if (store.doc !== open0 || loads !== gen) return "stale"; // an edit or another design while the save ran: the person is asked again
+    const id = uid("d"), now = Date.now(), doc = { ...structuredClone(shared), id, created: now, ver: 0 };
+    delete doc._updated;
+    if (!await ps.put(id, JSON.stringify({ ...doc, _updated: now }), { id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null })) return "storage";
+    if (store.doc !== open0 || loads !== gen) { await ps.del(id); return "stale"; }
+    app.select([]);
+    if (app.command) app.command.cancel();
+    app.exitSketch();
+    proveShared(id);
+    store.load(doc);
+    setState("Saved");
+    mirror.soon();
+    saveNow();
+    const b = app.scene.allBox(); app.vp.setView("home", b.isEmpty() ? null : b);
+    const g2 = loads; setTimeout(() => { if (g2 !== loads) return; const bx = app.scene.allBox(); if (!bx.isEmpty()) app.vp.fit(bx); }, 900);
+    return "ok";
   }
   function createNew(doc, mode = "beginner") {
     app.select([]);
@@ -284,7 +344,8 @@ export function initProjects(app) {
         acts.replaceWith(confirmRow);
       };
       acts.append(delBtn);
-      card.append(th, el("div", { class: "meta" }, el("b", {}, (p.name || "Untitled") + (p.ver ? " v" + p.ver : "")), el("span", {}, when + (p.where === "account" ? " · account" : "")), p.mode ? el("span", { class: "tag " + p.mode }, p.mode === "advanced" ? "Advanced" : p.mode === "chisel" ? "Chisel" : "Beginner") : null), acts);
+      // jumpstart-3d: the Architechies tag label is added to the mode tag below
+      card.append(th, el("div", { class: "meta" }, el("b", {}, (p.name || "Untitled") + (p.ver ? " v" + p.ver : "")), el("span", {}, when + (p.where === "account" ? " · account" : "")), p.mode ? el("span", { class: "tag " + p.mode }, p.mode === "advanced" ? "Advanced" : p.mode === "chisel" ? "Chisel" : p.mode === "arch" ? "Architechies" : "Beginner") : null), acts);
       grid.append(card);
     }
   }
@@ -451,11 +512,12 @@ export function initProjects(app) {
       if (v && v.data) objs.push({ b, data: v.data, m: v.group.matrix });
     }
     if (!objs.length) return null;
+    const codes = objs.map((o) => triangleCodes(store.doc.printPaint, o.b.id, o.data)); // jumpstart-3d: painted 3MF
     const esc = (t) => String(t).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
     const hex = (c) => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ""); return "#" + (m ? m[1] : "A7B0BA").toUpperCase() + "FF"; };
     const num = (x) => { const r = Math.round(x * 1e5) / 1e5; return Object.is(r, -0) ? "0" : String(r); };
     const out = [];
-    out.push('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">');
+    out.push('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"' + (codes.some(Boolean) ? ' xmlns:slic3rpe="' + PAINT_NS + '"' : "") + ">"); // jumpstart-3d: painted 3MF
     out.push(' <metadata name="Application">JumpStart 3D</metadata>');
     out.push(' <metadata name="Title">' + esc(store.doc.name || "design") + '</metadata>');
     out.push(' <resources>\n  <basematerials id="1">');
@@ -465,13 +527,35 @@ export function initProjects(app) {
       const M = o.m.elements, P = o.data.vertices, T = o.data.triangles;
       const det = M[0] * (M[5] * M[10] - M[9] * M[6]) - M[4] * (M[1] * M[10] - M[9] * M[2]) + M[8] * (M[1] * M[6] - M[5] * M[2]);
       const index = new Map(), verts = [], remap = new Int32Array(P.length / 3);
+      // jumpstart-3d: 3MF weld. Corners closer than 0.1 micron become one vertex, not only those that round to the same
+      // 0.01 micron: where two tori touch at one point the mesher leaves a patch of triangles that small, and rounding
+      // kept one of them with no partner (fuzz seed 33). The first corner of a cluster places its vertex.
+      const cell = 1e-4, grid = new Map(), placed = [];
+      const closeTo = (x, y, z) => {
+        const gx = Math.floor(x / cell), gy = Math.floor(y / cell), gz = Math.floor(z / cell);
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          for (const id of grid.get((gx + dx) + "," + (gy + dy) + "," + (gz + dz)) || []) {
+            const p = placed[id];
+            if (Math.abs(p[0] - x) <= cell && Math.abs(p[1] - y) <= cell && Math.abs(p[2] - z) <= cell) return id;
+          }
+        }
+      };
       for (let i = 0; i < P.length / 3; i++) {
         const x = M[0] * P[i * 3] + M[4] * P[i * 3 + 1] + M[8] * P[i * 3 + 2] + M[12];
         const y = M[1] * P[i * 3] + M[5] * P[i * 3 + 1] + M[9] * P[i * 3 + 2] + M[13];
         const z = M[2] * P[i * 3] + M[6] * P[i * 3 + 1] + M[10] * P[i * 3 + 2] + M[14];
         const key = num(x) + "," + num(y) + "," + num(z);
         let id = index.get(key);
-        if (id === undefined) { id = verts.length; index.set(key, id); verts.push('     <vertex x="' + num(x) + '" y="' + num(y) + '" z="' + num(z) + '"/>'); }
+        if (id === undefined) id = closeTo(x, y, z); // jumpstart-3d: 3MF weld
+        if (id === undefined) {
+          id = verts.length; verts.push('     <vertex x="' + num(x) + '" y="' + num(y) + '" z="' + num(z) + '"/>');
+          // jumpstart-3d: 3MF weld
+          placed.push([x, y, z]);
+          const g = Math.floor(x / cell) + "," + Math.floor(y / cell) + "," + Math.floor(z / cell);
+          if (!grid.has(g)) grid.set(g, []);
+          grid.get(g).push(id);
+        }
+        index.set(key, id);
         remap[i] = id;
       }
       const tris = [];
@@ -479,7 +563,7 @@ export function initProjects(app) {
         let a = remap[T[t]], b2 = remap[T[t + 1]], c = remap[T[t + 2]];
         if (a === b2 || b2 === c || a === c) continue; // collapsed by welding
         if (det < 0) [b2, c] = [c, b2];
-        tris.push('     <triangle v1="' + a + '" v2="' + b2 + '" v3="' + c + '"/>');
+        tris.push('     <triangle v1="' + a + '" v2="' + b2 + '" v3="' + c + '"' + (codes[k] && codes[k][t / 3] ? paintAttrs(codes[k][t / 3]) : "") + "/>"); // jumpstart-3d: painted 3MF
       }
       out.push('  <object id="' + (k + 2) + '" type="model" name="' + esc(o.b.name || "Body") + '" pid="1" pindex="' + k + '">\n   <mesh>\n    <vertices>');
       out.push(verts.join("\n"));
@@ -653,7 +737,7 @@ export function initProjects(app) {
   });
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(); ps.putNow(...r); save(r); } }); // jumpstart-3d: designs storage (putNow is the synchronous copy; the save may not finish)
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened.at : null); save(r); } }); // jumpstart-3d: designs storage (putNow is the synchronous copy; the save may not finish)
 
   return {
     // a finished render (PNG) goes through the same save path as models
@@ -669,7 +753,7 @@ export function initProjects(app) {
       const capP = capabilities();
       const last = ls.get(LS_PREF + ".last");
       let doc = last ? await getDoc(last) : null; // jumpstart-3d: designs storage
-      if (doc) { delete doc._updated; store.load(doc); setState("Saved in this browser"); }
+      if (doc) { opened = { id: doc.id, at: doc._updated || 0 }; delete doc._updated; store.load(doc); setState("Saved in this browser"); }
       else {
         // wait briefly for account storage so returning users get their last design
         await Promise.race([capP, new Promise((r) => setTimeout(r, 2500))]);
@@ -685,16 +769,17 @@ export function initProjects(app) {
       }
       started = true; openGate(); // jumpstart-3d: designs storage (saves wait for this)
       // offer back any work that was never saved (a crash, a closed tab)
-      Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => rec.check(), 300));
+      Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => { if (app.sharelink) app.sharelink.afterDecision(() => rec.check()); else rec.check(); }, 300)); // jumpstart-3d: share link (the recovery offer waits for the person's decision)
       capP.then(async () => {
         if (!remoteOk) { if (!stateEl.textContent) setState("Saved in this browser"); return; }
         // the account may hold a newer copy of this design (edited on another device)
         try {
-          const s = await col().doc(store.doc.id).get();
+          const id0 = store.doc.id, gen0 = loads; // jumpstart-3d: share link. a design opened while this waited (a shared one) is not replaced
+          const s = await col().doc(id0).get();
           if (s.exists && !store.undoStack.length) {
             const v = s.data();
-            const local = await getDoc(store.doc.id);
-            if (v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
+            const local = await getDoc(id0);
+            if (store.doc.id === id0 && loads === gen0 && v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
           }
           setState("Saved");
         } catch (e) {}
@@ -707,6 +792,7 @@ export function initProjects(app) {
     version: () => verOf(),
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
+    exportJSON, liveDoc: () => store.doc, importShared, // jumpstart-3d: share link
     stlBytes, objBytes, threeMFBytes, stepBytes, glbBytes: glbBytesOf, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
     get started() { return started; }, _store: ps, _folder: mirror, _remote: remote, // jumpstart-3d: designs storage, copies in a folder, remote (tests read these)

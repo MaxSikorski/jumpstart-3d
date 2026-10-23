@@ -56,7 +56,7 @@ function recordStorageAtStart(page) {
 }
 
 // On the Linux CI runner, Chromium now and then opens the next document of a file:// page with an empty storage area (seen 2026-10-21, not tied to how soon the reload comes). The app never touches the marker key, so a document that starts without it lost the storage to the browser, not to an app mistake; only then is the store put back and the navigation repeated (if every saved localStorage key is there with its saved value, the helper just logs `storage-kept` and carries on). Writes the app makes while the old page unloads (the save at beforeunload, autosave on pagehide) are not in the snapshot, so a test about unsaved work surviving a reload must not use reload().
-async function navigateKeepingStorage(page, go) {
+export async function navigateKeepingStorage(page, go) {
   await recordStorageAtStart(page);
   const { saved, age } = await page.evaluate((marker) => {
     const saved = {};

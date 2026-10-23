@@ -34,11 +34,16 @@ import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
+import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 import { initReport } from "./report.js"; // jumpstart-3d: report
+import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
+captureShare(); // jumpstart-3d: share link. first thing: a design link's fragment goes into memory and off the address bar, before boot() or the bridge can see it
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
+import { initFineTurn } from "./fineturn.js"; // jumpstart-3d: fine rotation
+import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -134,7 +139,7 @@ function boot() {
   const scene = (app.scene = new SceneSync(vp, kernel));
   vp.zoomTargets = () => scene.meshes();
   app.sketcher = new Sketcher(app);
-  scene.onRefresh = () => app.onSceneRefresh && app.onSceneRefresh();
+  scene.onRefresh = () => { app.onSceneRefresh && app.onSceneRefresh(); app.plateView && app.plateView.update(); }; // jumpstart-3d: printer plate. overhang shading follows the shapes
   // a shape's size and position boxes need its finished geometry: show them once it arrives
   let drawnKey; // jumpstart-3d: fix. redraw when a new mesh lands, not only when the position boxes are missing
   app.onSceneRefresh = () => {
@@ -145,6 +150,7 @@ function boot() {
 
   // on small screens the side panels start tucked away (toggle from the toolbar)
   if (window.matchMedia("(max-width: 860px)").matches) { $("shapes").classList.add("collapsed"); $("browser").classList.add("collapsed"); }
+  app.pivot = initPivot(app); // jumpstart-3d: pivot. before the two modes: both draw and use it
   app.beginner = initBeginner(app);
   app.advanced = initAdvanced(app);
   if (IS_IOS) document.documentElement.classList.add("ios");
@@ -172,6 +178,7 @@ app.voxel = initVoxel(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
   app.cam = initCam(app);
+  app.plateView = initPrinterPreview(app); // jumpstart-3d: printer plate. Printer plate… in the Settings menu, overhang shading
 
   store.on((kind) => {
     const doc = store.view;
@@ -217,6 +224,9 @@ app.voxel = initVoxel(app);
   $("snap").onchange = () => { gridFromSnap(); savePrefs(); };
   // mm / inch switch, always in the status bar: changes every readout and typed value
   $("unit-toggle").onclick = () => setUnit(getUnit() === "in" ? "mm" : "in");
+  initFineTurn(app); // jumpstart-3d: fine rotation
+  // jumpstart-3d: the top bar wraps to two rows on a narrow screen; Chisel and the Lathe message start below its real height
+  new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px")).observe(document.querySelector(".topbar"));
   onUnit(() => {
     fillSnapSizes();
     $("unit-toggle").textContent = unitName();
@@ -309,6 +319,7 @@ app.voxel = initVoxel(app);
     vp.setView("home", scene.allBox().isEmpty() ? null : scene.allBox());
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
+    app.sharelink.offer(); // jumpstart-3d: share link. a design link that opened the page is offered now that the saved design is loaded
   });
   load.hideSplash(); // jumpstart-3d: load. the workspace is built: let the mouse in
 }
@@ -753,7 +764,7 @@ app.showShortcuts = function () {
       rows("Architechies", [["W", "Wall (click each corner)"], ["R", "Room (drag corner to corner)"], ["E", "Raise walls"], ["D", "Door"], ["N", "Window"], ["O", "Roof"], ["G", "Floor"], ["V", "Select"], ["0-9 Enter", "While drawing a wall: type its exact length (12' 6\" or 3600)"], ["Enter", "Finish the walls you are drawing"], ["Shift", "Draw at any angle"], ["Alt", "Turn snapping off for a moment"], ["P", "Plan view / 3D"], ["X", "See-through on or off"], ["Arrows", "Nudge the selected door or window"], ["Delete", "Delete the selection"], ["Esc", "Stop drawing, back to Select"]]),
       rows("Chisel (Pro)", [["D", "Standard brush"], ["C", "Clay"], ["S", "Smooth"], ["T", "Flatten"], ["G", "Move brush"], ["N", "Snakehook"], ["Q", "Mask"], ["J", "Paint"], ["M", "Select & move"], ["[ ]", "Brush size"], ["Shift drag", "Smooth"], ["Alt drag", "Invert brush"], ["Ctrl drag", "Mask"], ["X", "Mirror X"], ["F", "Frame"], ["Drag right / left", "Window / crossing select (Select & move)"], ["Tab", "Type sizes (Select & move)"], ["R C P", "Rectangle, circle, polygon (Sketch)"], ["E", "Extrude the sketch"], ["Esc", "Cancel the shape / sketch"]]),
       ...(IS_MAC ? [rows("Mac trackpad", [["Option drag", "Orbit"], ["Option Shift drag", "Pan"], ["Pinch", "Zoom"], ["Two-finger scroll", "Zoom"], ["Control click", "Right-click menu (drag to orbit)"]])] : []),
-      rows("Everywhere", [[", .", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
+      rows("Everywhere", [[", .", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Shift drag", "On a rotation arc or ring: turn by any angle (otherwise 15° steps)"], ["Turn − +", "In the status bar: turn the selected shape by the chosen step (15, 5, 1, 0.5 or 0.1°); the , and . keys use that step too"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
   back.append(modal);
   document.body.append(back);
   back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
@@ -781,6 +792,7 @@ app.onShapeClosed = function (skId, regionKeys) {
 
 app.select = function (ids) {
   app.sel = [...new Set(ids)];
+  app.pivot && app.pivot.selection(app.sel); // jumpstart-3d: pivot. a different set of bodies starts from its middle again
   app.scene.setSelected(app.sel);
   app.refreshUI("select");
 };
@@ -1045,3 +1057,4 @@ initBridge(app);
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
 initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing
+initShareLink(app); // jumpstart-3d: share link. Share link… and Import shared link (Open/Export menu); the link stays in the address, nothing is uploaded
