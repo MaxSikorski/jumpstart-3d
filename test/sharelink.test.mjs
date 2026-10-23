@@ -343,14 +343,40 @@ test("parameters: names, expressions that evaluate, and dependencies", () => {
   bad((d) => { d.params = [{ id: "q1", name: "w", expr: "1" }, { id: "q1", name: "x", expr: "2" }]; }, "damaged", /duplicate/, "beginner-box");
 });
 
-test("repeat counts are bounded before any CAD work", () => {
+test("repeat counts, turns and sizes stay inside what the app's own controls allow", () => {
   const hole = (extra) => (d) => { d.bodies[0].node.mods = [{ id: "m1", t: "pattern", seq: 1, kind: "linear", what: "all", n1: 1, n2: 1, ...extra }]; };
-  validateEnvelope(valid(hole({ n1: 100, n2: 100 }), "beginner-box")); // 10,000 instances
-  bad(hole({ n1: 101, n2: 100 }), "toolarge", /repeats/, "beginner-box");
-  bad(hole({ n1: 20000 }), "toolarge", /repeats/, "beginner-box");
-  bad(hole({ n1: -1 }), "toolarge", /repeats/, "beginner-box");
-  bad(hole({ cn: 10001 }), "toolarge", /repeats/, "beginner-box");
-  bad(hole({ count: 10001 }), "toolarge", /repeats/, "beginner-box");
+  validateEnvelope(valid(hole({ n1: 200, n2: 10 }), "beginner-box")); // 200 is the pattern box's top
+  validateEnvelope(valid(hole({ n1: 40, n2: 50 }), "beginner-box")); // 2000 copies in all
+  validateEnvelope(valid(hole({ cn: 360 }), "beginner-box"));
+  for (const extra of [{ n1: 201 }, { n2: 201 }, { n1: 41, n2: 50 }, { n1: 5000 }, { n1: 20000 }, { n1: -1 }, { cn: 361 }, { count: 201 }]) {
+    bad(hole(extra), "toolarge", /repeats .*at most/, "beginner-box");
+  }
+  // a count typed as an expression is held to the same limit
+  const viaParam = (n) => (d) => { d.params = [{ id: "q1", name: "N", expr: String(n), value: n }]; d.bodies[0].node.mods = [{ id: "m1", t: "pattern", seq: 1, kind: "linear", what: "all", n1: 2, n2: 1, exprs: { n1: "N" } }]; };
+  validateEnvelope(valid(viaParam(200), "beginner-box"));
+  bad(viaParam(5000), "toolarge", /repeats/, "beginner-box");
+  // coils and springs
+  const coil = (turns) => (d) => { d.bodies[0].node.turns = turns; };
+  validateEnvelope(valid(coil(400), "advanced-coil"));
+  bad(coil(10000), "toolarge", /turns/, "advanced-coil");
+  bad(coil(401), "toolarge", /turns/, "advanced-coil");
+  const prim = (kind, p) => (d) => { d.bodies[0].node = { t: "prim", kind, p: { w: 20, d: 20, h: 10, ...p }, mods: [] }; };
+  validateEnvelope(valid(prim("spring", { turns: 400 }), "beginner-box"));
+  bad(prim("spring", { turns: 10000 }), "toolarge", /turns/, "beginner-box");
+  validateEnvelope(valid(prim("prism", { sides: 24 }), "beginner-box"));
+  bad(prim("prism", { sides: 25 }), "toolarge", /sides/, "beginner-box");
+  bad(prim("pyramid", { sides: 13 }), "toolarge", /sides/, "beginner-box");
+  validateEnvelope(valid(prim("star", { points: 16 }), "beginner-box"));
+  bad(prim("star", { points: 17 }), "toolarge", /points/, "beginner-box");
+  // measurements: 100,000 mm is the most, in a size, a sketch point, a placement or an expression
+  validateEnvelope(valid(prim("box", { w: 1e5 }), "beginner-box"));
+  bad(prim("box", { w: 100001 }), "toolarge", /larger than/, "beginner-box");
+  bad(prim("box", { w: 1e9 }), "toolarge", /larger than/, "beginner-box");
+  bad((d) => { d.sketches[0].pts[0].x = 1e6; }, "toolarge", /larger than/);
+  bad((d) => { d.bodies[0].m[12] = -1e6; }, "toolarge", /larger than/, "beginner-box");
+  bad((d) => { d.params = [{ id: "q1", name: "W", expr: "1e7", value: 1 }]; d.bodies[0].node.exprs = { w: "W" }; }, "toolarge", /larger than/, "beginner-box");
+  // the creation time and counters are not measurements
+  validateEnvelope(valid((d) => { d.created = 1.8e12; d.seq = 7000000; }, "beginner-box"));
 });
 
 test("pictures and models: embedded raster data only, 256 KiB in all, nothing from outside", () => {

@@ -22,7 +22,9 @@ export const LIMITS = {
   PAYLOAD_BYTES: 3072, // decoded bytes of either codec
   JSON_BYTES: 512 * 1024, // JSON text, after inflating
   DEPTH: 64, ENTRIES: 50000, BODIES: 256, SKETCHES: 256, PARAMS: 256, NODES: 4096, SKETCH_ITEMS: 20000,
-  NAME: 256, EXPR: 512, STRING: 2048, ASSET_BYTES: 256 * 1024, INSTANCES: 10000,
+  NAME: 256, EXPR: 512, STRING: 2048, ASSET_BYTES: 256 * 1024,
+  // the most the app's own controls allow (advanced.js pattern box, beginner.js sliders, kernel.js coil and thread), so a link cannot ask the engine for more
+  REPEAT: 200, REPEAT_TOTAL: 2000, CIRCULAR: 360, TURNS: 400, MEASURE: 1e5, SIDES: 24, PYRAMID_SIDES: 12, POINTS: 16,
 };
 const SITE = "https://maxsikorski.github.io/jumpstart-3d/"; // the community website; a file:// copy shares this address, never its own path
 const PREFIX = "js3d=";
@@ -209,17 +211,17 @@ function mat16(m, what) {
 
 // depth, size, finite numbers, string length and dangerous names for everything, before the tables look at it. Iterative: no recursion to blow.
 function scan(root) {
-  const stack = [[root, 1]];
+  const stack = [[root, 1, ""]];
   let entries = 0;
   while (stack.length) {
-    const [v, depth] = stack.pop();
+    const [v, depth, key] = stack.pop();
     if (depth > LIMITS.DEPTH) throw tooBig("This design is nested too deeply to open from a link.");
     if (Array.isArray(v)) {
       entries += v.length;
       for (const x of v) {
-        if (typeof x === "number") { if (!isFinite(x)) throw damaged("a number is not finite"); }
+        if (typeof x === "number") measure(key, x);
         else if (typeof x === "string") { if (x.length > LIMITS.STRING) throw tooBig("This design has text too long for a link."); }
-        else if (x !== null && typeof x === "object") stack.push([x, depth + 1]);
+        else if (x !== null && typeof x === "object") stack.push([x, depth + 1, key]);
         else if (typeof x !== "boolean" && x !== null) throw damaged("unexpected data");
       }
     } else {
@@ -227,14 +229,22 @@ function scan(root) {
         entries++;
         if (DANGER.has(k)) throw damaged("a reserved name");
         const x = v[k];
-        if (typeof x === "number") { if (!isFinite(x)) throw damaged("a number is not finite"); }
+        if (typeof x === "number") measure(k, x);
         else if (typeof x === "string") { if (x.length > ((k === "data" || k === "src" || k === "key") ? LIMITS.JSON_BYTES : LIMITS.STRING)) throw tooBig("This design has text too long for a link."); }
-        else if (x !== null && typeof x === "object") stack.push([x, depth + 1]);
+        else if (x !== null && typeof x === "object") stack.push([x, depth + 1, k]);
         else if (typeof x !== "boolean" && x !== null) throw damaged("unexpected data");
       }
     }
     if (entries > LIMITS.ENTRIES) throw tooBig("This design has too many parts to open from a link.");
   }
+}
+
+// a number is finite, and no length is bigger than the app's own controls take (not the clock, counters or version numbers)
+const NOT_LENGTHS = new Set(["created", "seq", "ver", "_updated"]);
+const tooLarge = () => tooBig("This design has a measurement larger than a link can open safely (over 100,000 mm). Use a project file for this design.");
+function measure(key, x) {
+  if (!isFinite(x)) throw damaged("a number is not finite");
+  if (Math.abs(x) > LIMITS.MEASURE && !NOT_LENGTHS.has(key)) throw tooLarge();
 }
 
 function base64Bytes(s, what) {
@@ -275,6 +285,7 @@ export function validateEnvelope(env) {
     if (!isFinite(v)) throw damaged("parameter " + p.name + " does not evaluate");
     done.push({ name: p.name, value: v });
   }
+  ctx.scope = done;
 
   // assets and media: embedded data only, 256 KiB of decoded bytes in all
   const assets = doc.assets === undefined ? {} : obj(doc.assets, "assets");
@@ -387,6 +398,7 @@ function node(n, ctx, what) {
   if (t === "prim") {
     if (!PRIM_KINDS.has(n.kind)) throw unsupported("a " + String(n.kind).slice(0, 16).replace(/[^\w ]/g, "?") + " shape");
     obj(n.p, "shape sizes");
+    bounds({ ...n.p, exprs: n.exprs, exprUnits: n.exprUnits }, ctx, [["turns", LIMITS.TURNS, "turns"], ["sides", n.kind === "pyramid" ? LIMITS.PYRAMID_SIDES : LIMITS.SIDES, "sides"], ["points", LIMITS.POINTS, "points"]]);
     for (const [k, v] of Object.entries(n.p)) { if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) throw damaged("a size name"); if (typeof v !== "number" && typeof v !== "string" && typeof v !== "boolean") throw damaged("a size"); }
   } else if (t === "extrude" || t === "revolve" || t === "sweep") {
     sk(n.sketch);
@@ -410,7 +422,8 @@ function node(n, ctx, what) {
   } else if (t === "mesh" || t === "step") {
     if (typeof n.asset !== "string" || ctx.assets[n.asset] !== (t === "mesh" ? "mesh" : "step")) throw damaged("a model asset is missing");
   }
-  exprs(n);
+  exprs(n, ctx);
+  if (t === "coil") bounds(n, ctx, [["turns", LIMITS.TURNS, "turns"]]);
   if (n.mods !== undefined) {
     const mids = new Set();
     for (const m of arr(n.mods, "modifiers", LIMITS.NODES)) {
@@ -423,25 +436,46 @@ function node(n, ctx, what) {
         if (m.tool !== undefined) node(obj(m.tool, "a cutting shape"), ctx, what);
         if (m.m !== undefined) mat16(m.m, "a cutting shape placement");
       } else if (m.src !== undefined) throw damaged("a modifier source");
-      exprs(m);
-      counts(m);
+      exprs(m, ctx);
+      counts(m, ctx);
     }
   }
 }
-function exprs(o) {
-  if (o.exprs !== undefined) { obj(o.exprs, "expressions"); for (const [k, v] of Object.entries(o.exprs)) { if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) throw damaged("an expression name"); text(v, "an expression", LIMITS.EXPR); } }
+// A typed expression is worked out with the design's parameters (the arithmetic parser, nothing else) and held to the same limits as a
+// typed number. One that needs a name this check does not know (a sketch dimension) is left to the limits where that number comes from.
+const COUNTED = new Set(["n1", "n2", "cn", "count", "turns", "sides", "points"]);
+function exprs(o, ctx) {
+  if (o.exprs !== undefined) {
+    obj(o.exprs, "expressions");
+    for (const [k, v] of Object.entries(o.exprs)) {
+      if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) throw damaged("an expression name");
+      text(v, "an expression", LIMITS.EXPR);
+    }
+  }
   if (o.exprUnits !== undefined) { obj(o.exprUnits, "expression units"); for (const v of Object.values(o.exprUnits)) if (!UNITS.has(v)) throw damaged("an expression unit"); }
+  if (o.exprs) for (const k of Object.keys(o.exprs)) { const v = resolved(o, k, ctx, false); if (v !== undefined && k !== "angle" && !COUNTED.has(k) && Math.abs(v) > LIMITS.MEASURE) throw tooLarge(); }
+}
+// the number a value stands for: its expression worked out, else the typed number
+function resolved(o, k, ctx, literal = true) {
+  if (o.exprs && typeof o.exprs[k] === "string") {
+    let v = NaN;
+    try { v = evalExpr(o.exprs[k], ctx.scope, { unit: o.exprUnits && o.exprUnits[k], angle: k === "angle" }); } catch (e) { /* not resolvable here */ }
+    if (isFinite(v)) return v;
+  }
+  return literal && typeof o[k] === "number" ? o[k] : undefined;
+}
+const repeatsTooMany = () => tooBig("This design repeats a shape more times than the app allows (at most 200 in each direction, 2,000 in all, 360 around a circle). Use a project file for this design.");
+// each [key, most, what] is checked as the number it stands for; negative counts are refused too
+function bounds(o, ctx, keys) {
+  for (const [k, max, what] of keys) {
+    const v = resolved(o, k, ctx);
+    if (v !== undefined && !(v >= 0 && v <= max)) throw what ? tooBig(`This design has more ${what} than the app allows (at most ${max}). Use a project file for this design.`) : repeatsTooMany();
+  }
 }
 // repeat counts are bounded before any CAD work: each one, and two directions together
-function counts(m) {
-  let product = 1;
-  for (const k of ["n1", "n2", "cn", "count"]) {
-    if (m[k] === undefined) continue;
-    const v = num(m[k], k);
-    if (v < 0 || v > LIMITS.INSTANCES) throw tooBig("This design repeats a shape too many times to open from a link.");
-    if (k === "n1" || k === "n2") product *= Math.max(1, v);
-  }
-  if (product > LIMITS.INSTANCES) throw tooBig("This design repeats a shape too many times to open from a link.");
+function counts(m, ctx) {
+  bounds(m, ctx, [["n1", LIMITS.REPEAT], ["n2", LIMITS.REPEAT], ["cn", LIMITS.CIRCULAR], ["count", LIMITS.REPEAT]]);
+  if (Math.max(1, resolved(m, "n1", ctx) ?? 1) * Math.max(1, resolved(m, "n2", ctx) ?? 1) > LIMITS.REPEAT_TOTAL) throw repeatsTooMany();
 }
 
 // ---------------------------------------------------------------- the screens
