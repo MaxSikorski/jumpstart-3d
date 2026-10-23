@@ -178,6 +178,34 @@ async function setField(p, id, value) {
   await waitIdle(p);
 }
 
+// While Multi-select is on, the right panel is hidden on a phone (it would cover the shapes still to be tapped) but not on a tablet,
+// which has the room and is also a touch-ui screen.
+for (const [w, h, shown] of [[768, 1024, true], [375, 667, false]]) {
+  test(`${w} x ${h} touch: the right panel is ${shown ? "kept" : "hidden"} while Multi-select is on`, async ({ browser, browserName }, info) => {
+    test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
+    const ctx = await browser.newContext({ ...devices["Pixel 7"], viewport: { width: w, height: h }, screen: { width: w, height: h }, serviceWorkers: "block" });
+    const p = await ctx.newPage();
+    const errors = watchErrors(p);
+    try {
+      await boot(p, info);
+      expect(await p.evaluate(() => document.documentElement.classList.contains("touch-ui")), "the touch UI is on").toBe(true);
+      await p.locator("#dock-objects").tap();
+      await p.locator('#shapes .tile[data-kind="box"]').tap();
+      await waitIdle(p);
+      const inspector = p.locator("#inspector");
+      await expect(inspector, "the right panel with a shape selected").toBeVisible();
+      await tapTool(p, "#bb-multi");
+      await expect(p.locator("#bb-multi")).toHaveAttribute("aria-pressed", "true");
+      if (shown) await expect(inspector, "the right panel on a tablet with Multi-select on").toBeVisible();
+      else await expect(inspector, "the right panel on a phone with Multi-select on").toBeHidden();
+      await tapTool(p, "#bb-multi");
+      await expect(p.locator("#bb-multi")).toHaveAttribute("aria-pressed", "false");
+      await expect(inspector, "the right panel is back with Multi-select off").toBeVisible();
+      expect(errors).toEqual([]);
+    } finally { await ctx.close(); }
+  });
+}
+
 test("phone 375 x 667: the c-hole-block lesson is finished by taps alone and downloads a 40 x 40 x 8 mm block with a 10 mm through-hole", async ({ browser, browserName }, info) => {
   test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
   test.setTimeout(240_000);
@@ -274,20 +302,14 @@ test("phone 375 x 667: the c-hole-block lesson is finished by taps alone and dow
     expect(now[0].volume).toBeCloseTo(40 * 40 * 8 - Math.PI * 25 * 8, -1);
     await next();
 
-    // 7. Ungroup, then group the two pieces again; the text must say how to select them with a finger
+    // 7. Ungroup (both pieces stay selected), then group them again
     const s7 = await how(7, "Recover the original pieces");
     expect(s7.join(" "), "a keyboard shortcut in the step text").not.toMatch(KEYBOARD_ONLY);
     await small();
     await tapTool(p, "#bb-ungroup");
     await waitIdle(p);
     expect((await bodies(p)).map((b) => b.hole).sort(), "Ungroup returns the block and the cutter").toEqual([false, true]);
-    const [solidId, holeId] = await p.evaluate(() => { const bs = window.__store.doc.bodies; return [bs.find((b) => !b.hole).id, bs.find((b) => b.hole).id]; });
-    if (!(await p.evaluate(() => window.__app.sel.length === 2))) {
-      await tapTool(p, "#bb-multi");
-      await tapBody(p, holeId);
-      await tapBody(p, solidId);
-      await tapTool(p, "#bb-multi");
-    }
+    expect(await p.evaluate(() => window.__app.sel.length), "both pieces stay selected after Ungroup").toBe(2);
     await tapTool(p, "#bb-group");
     await waitIdle(p);
     now = await bodies(p);
