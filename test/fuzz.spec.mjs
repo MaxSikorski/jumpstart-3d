@@ -564,6 +564,7 @@ for (const seed of SEEDS) {
   test(`fuzz seed ${seed}: ${OPS} random steps keep the design sound`, async () => {
     test.setTimeout(Math.max(120_000, OPS * 15_000));
     const info = test.info(), rng = makeRng(seed), log = [];
+    quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit"); // quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
     findings.length = 0;
     if (seed === SEEDS[0]) { covered.clear(); seedsDone.clear(); } // coverage is counted per build
     // the steps are on record before each one runs, so a timeout or a crash still shows what led to it

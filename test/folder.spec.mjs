@@ -30,7 +30,7 @@ const refuse = (page) => page.addInitScript((name) => {
 
 // the single file is opened from disk, and Linux WebKit has no navigator.storage.getDirectory at all: if the browser has no private file system, the cases that need one are skipped
 const needOpfs = async (page, info) => {
-  const ok = await page.evaluate(() => navigator.storage.getDirectory().then(() => true, () => false));
+  const ok = await page.evaluate(() => Promise.resolve().then(() => navigator.storage.getDirectory()).then(() => true, () => false));
   test.skip(!ok && (buildOf(info) === "single" || browserOf(info) === "webkit"), "no origin private file system (OPFS) in this browser");
 };
 

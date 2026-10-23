@@ -24,10 +24,12 @@ export const browserOf = (info) => info.project.name.split("-")[1] || "chromium"
 // A quarantined test skips in the named projects only; the comment above it starts with "// quarantined:" (see test/README.md).
 export const quarantine = (info, projects, why) => test.skip(projects.includes(info.project.name), why);
 
+export const isKnownNoise = (project, text) => NOISE.some((n) => n.project.test(project) && n.message.test(text));
+
 export function watchErrors(page) {
   const errors = [];
   const project = test.info().project.name;
-  const noise = (text) => NOISE.some((n) => n.project.test(project) && n.message.test(text));
+  const noise = (text) => isKnownNoise(project, text);
   page.on("pageerror", (e) => { if (!noise(e.message)) errors.push("page: " + e.message); });
   page.on("console", (m) => { if (m.type() === "error" && !FONT_HOSTS.test(m.location().url || "") && !noise(m.text())) errors.push("console: " + m.text().slice(0, 300)); });
   return errors;

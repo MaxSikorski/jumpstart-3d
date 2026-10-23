@@ -5,7 +5,7 @@
 // The offline case does not assert on requestfailed: Chromium reports a worker request answered by the service worker a second time as a failed network leg.
 import { test, expect } from "@playwright/test";
 import { serve } from "../mcp/serve.mjs";
-import { watchErrors, buildOf } from "./helpers.mjs";
+import { watchErrors, buildOf, quarantine } from "./helpers.mjs";
 
 const NOT_SINGLE = "the single file embeds the engine";
 const SITE_ONLY = "the install manifest is part of the site build";
@@ -116,7 +116,9 @@ test("the single file has no web manifest link", async ({ page }, info) => {
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(0);
 });
 
+// quarantined: reloading a page with a service worker ends in "WebKit encountered an internal error" under Playwright on Linux
 test("a second visit loads from the service worker and works offline", async ({ browser }, info) => {
+  quarantine(info, ["site-webkit"], "WebKit's internal error on reload with a service worker");
   test.skip(buildOf(info) !== "site", NOT_SINGLE);
   test.setTimeout(240_000);
   const server = await serve("docs");
