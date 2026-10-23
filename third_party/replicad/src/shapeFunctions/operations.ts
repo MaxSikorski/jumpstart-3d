@@ -158,7 +158,7 @@ function simplifiedResult(builder: {
 // leave a zero-length edge whose tolerance grows to millimetres (5.78 mm in fuzz seed 32). The shape still measures
 // right, but every later boolean near that edge goes wrong: its intersect with an oval sphere came out empty although
 // they overlap by 44 mm3. Such a result is built again with a small fuzzy value, which resolves the touching point;
-// the first value that leaves no loose edge is kept (1e-4 in that case), and the first result when none does.
+// the first value that leaves no loose edge and the same volume is kept (1e-4 in that case), else the first result.
 type BooleanBuilder = {
   Shape(): TopoDS_Shape;
   SetArguments(shapes: any): void;
@@ -177,13 +177,22 @@ function withoutLooseEdges<B extends BooleanBuilder>(
   optimisation: BooleanOperationOptions["optimisation"]
 ): B {
   const oc = getOC();
-  const loosest = (shape: TopoDS_Shape) =>
-    oc.BRep_Tool.MaxTolerance(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE);
-  // a clean boolean's edges stay near the inputs' own (5e-6 mm there)
-  const limit = Math.max(1e-3, 100 * Math.max(loosest(left), loosest(right)));
-  if (builder.HasErrors() || loosest(builder.Shape()) <= limit) return builder;
   const [r, gc] = localGC();
   try {
+    const loosest = (shape: TopoDS_Shape) =>
+      oc.BRep_Tool.MaxTolerance(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE);
+    const volume = (shape: TopoDS_Shape) => {
+      const props = r(new oc.GProp_GProps());
+      oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
+      return props.Mass();
+    };
+    // a clean boolean's edges stay near the inputs' own (5e-6 mm there)
+    const limit = Math.max(1e-3, 100 * Math.max(loosest(left), loosest(right)));
+    if (builder.HasErrors()) return builder;
+    const first = r(builder.Shape());
+    if (loosest(first) <= limit) return builder;
+    // the rebuild only cleans the edge: a fuzzy value that changes the result's volume is not kept
+    const want = volume(first);
     for (const fuzzy of [1e-6, 1e-5, 1e-4]) {
       const retry = fresh();
       const args = r(new oc.NCollection_List_TopoDS_Shape());
@@ -195,9 +204,12 @@ function withoutLooseEdges<B extends BooleanBuilder>(
       retry.SetFuzzyValue(fuzzy);
       configureGlue(retry, optimisation);
       retry.Build();
-      if (!retry.HasErrors() && loosest(retry.Shape()) <= limit) {
-        builder.delete();
-        return retry;
+      if (!retry.HasErrors()) {
+        const got = r(retry.Shape());
+        if (loosest(got) <= limit && Math.abs(volume(got) - want) <= 1e-3 + 1e-4 * Math.abs(want)) {
+          builder.delete();
+          return retry;
+        }
       }
       retry.delete();
     }
