@@ -103,6 +103,27 @@ test.describe("version 2.3", () => {
     expect(gcode.split("\n").length).toBeGreaterThan(20);
     expect(gcode).toMatch(/^G[01] .*[XYZ]/m); // real cutting moves, not only a header
     expect(gcode).toMatch(/^M[35]\b/m); // spindle on
+    // the cuts sit on this 40 x 30 part: X and Y span at least the box less one bit, and at most the box plus the stock margin (or the bit's radius) each side
+    const cut = await page.evaluate(() => {
+      const u = window.__app.cam._ui();
+      return { margin: u.s.margin, dMax: Math.max(...u.result.prog.ops.map((o) => o.op.tool.d)) };
+    });
+    expect(gcode).toMatch(/^G21\b/m); // millimetres, so the numbers below are mm
+    let x = null, y = null;
+    const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+    for (const line of gcode.split("\n")) {
+      const g = /^G([01])\b/.exec(line);
+      if (!g) continue;
+      const mx = /\bX(-?[\d.]+)/.exec(line), my = /\bY(-?[\d.]+)/.exec(line);
+      if (mx) x = +mx[1];
+      if (my) y = +my[1];
+      if (g[1] === "1" && x !== null && y !== null) { lo[0] = Math.min(lo[0], x); hi[0] = Math.max(hi[0], x); lo[1] = Math.min(lo[1], y); hi[1] = Math.max(hi[1], y); }
+    }
+    const slack = 2 * Math.max(cut.margin, cut.dMax / 2);
+    for (const [i, size] of [[0, 40], [1, 30]]) {
+      expect(hi[i] - lo[i]).toBeGreaterThanOrEqual(size - cut.dMax);
+      expect(hi[i] - lo[i]).toBeLessThanOrEqual(size + slack + 0.01);
+    }
     await expect(page.locator("#cam-stats")).toContainText("lines of G-code");
     await expect(page.locator("#cam-side")).toContainText("Simulated: no crashes found");
     // Save G-code: the downloaded file is the same text

@@ -380,7 +380,7 @@ export function initBridge(app) {
     fit: () => app.fit(),
     mode: () => app.mode,
     setMode(mode) {
-      if (mode !== "beginner" && mode !== "advanced") throw new Error('mode must be "beginner" or "advanced"');
+      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architechies)');
       if (app.mode === mode) return;
       app.setMode(mode);
       if (store.doc.mode !== mode) { store.doc.mode = mode; app.projects.changed(); }

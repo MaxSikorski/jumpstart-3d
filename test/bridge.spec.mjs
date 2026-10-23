@@ -291,7 +291,8 @@ test("select, mode, fit and history", async () => {
   expect(await run(() => { JS3D.select([]); return JS3D.selection(); })).toEqual([]);
   expect(await run(() => JS3D.mode())).toBe("beginner");
   expect(await run(() => { JS3D.setMode("advanced"); return [JS3D.mode(), __store.doc.mode]; })).toEqual(["advanced", "advanced"]);
-  expect(await run(() => { JS3D.setMode("beginner"); return JS3D.mode(); })).toBe("beginner");
+  expect(await run(() => { JS3D.setMode("arch"); return [JS3D.mode(), __store.doc.mode]; })).toEqual(["arch", "arch"]); // Architechies
+  expect(await run(() => { JS3D.setMode("beginner"); return [JS3D.mode(), __store.doc.mode]; })).toEqual(["beginner", "beginner"]);
   expect(await failure(() => JS3D.setMode("chisel"))).toMatch(/mode must be/);
   expect(await run(() => { JS3D.fit(); return true; })).toBe(true);
   expect(await run(() => { const n = []; while (JS3D.undo()) n.push(1); return [n.length, JS3D.undo(), JS3D.redo()]; })).toEqual([1, null, "Add box"]);
