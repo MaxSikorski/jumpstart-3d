@@ -2,9 +2,7 @@
 // JS3D (see BRIDGE.md) and app in scope, so nobody has to open the browser console. The file runs
 // with the same trust as text pasted into the console: it is the user's own file, in their own page.
 // The runner itself is JS3D.run (bridge.js). Nothing runs on its own: no URL parameter, no auto-run on load, no remembered file.
-import { initCodeCad } from "./codecad.js"; // jumpstart-3d: Code CAD
 export function initRunScript(app) {
-  initCodeCad(app); // jumpstart-3d: Code CAD (until app.js can call it next to initRunScript)
   const button = document.querySelector('#menu-export button[data-act="runscript"]');
   if (!button) return;
   const input = document.createElement("input");

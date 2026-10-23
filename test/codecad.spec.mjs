@@ -75,6 +75,20 @@ test("the L bracket example builds as one STEP body with its recipe, and undo an
   expect((await bodyOf(r.id)).codeCad.code).toBe(b.codeCad.code);
 });
 
+test("JS3D.codeCad builds a body, waits for it to appear, and updates it by bodyId", async () => {
+  await fresh();
+  const out = await page.evaluate(async (code) => {
+    const id = await JS3D.codeCad({ code, name: "Scripted" });
+    const first = JS3D.get(id).volume;
+    const again = await JS3D.codeCad({ code: code.replace("[60, 30, 4]", "[60, 30, 8]"), bodyId: id });
+    return { id, again, first, second: JS3D.get(id).volume, version: JS3D.version };
+  }, await example(0));
+  expect(out.again).toBe(out.id);
+  near(out.first, L_BRACKET);
+  near(out.second, 14400 + 7200 - 60 * 4 * 8 - 2 * Math.PI * 9 * 8, 0.005); // a base 8 thick: its overlap with the wall and the holes grow
+  expect(out.version).toBe("1.7");
+});
+
 test("the parameter example builds with its defaults", async () => {
   await fresh();
   const r = await build({ code: await example(1), name: "Plate" });
@@ -379,7 +393,6 @@ test("the dialog builds a body from its example, shows errors in place, and reop
 
 test("Open/Export has a Code CAD… entry that opens the dialog", async () => {
   const entry = page.locator('#menu-export button[data-act="codecad"]');
-  test.skip(!(await entry.count()), "the menu entry is added to index.html together with the app.js hook");
   await fresh();
   await page.click("#btn-export");
   await entry.click();
