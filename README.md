@@ -90,13 +90,15 @@ at 5:08).
 The [r/Jumpstart3D subreddit](https://www.reddit.com/r/Jumpstart3D/) is where people ask questions
 and share prints and ideas. The JumpStart 3D
 [Show and tell](https://github.com/MaxSikorski/jumpstart-3d/discussions/categories/show-and-tell)
-category on GitHub Discussions is ready for pictures of what you designed; it has no posts yet, so
+category on GitHub Discussions is ready for pictures of what you designed. It has one
+[welcome thread](https://github.com/MaxSikorski/jumpstart-3d/discussions/13) and no replies yet, so
 yours could be the first. Questions go in [Discussions](https://github.com/MaxSikorski/jumpstart-3d/discussions).
 
 ### Learn it
 
-JumpStart 3D has seventy-five step-by-step tutorials with animations: forty-four from J.Siwek and
-thirty-one added by this community build for the toolbar buttons that had none.
+JumpStart 3D has seventy-five step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: forty-four from J.Siwek and thirty-one added by this community build for the
+toolbar buttons that had none.
 
 ### Add yours
 
@@ -123,7 +125,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 - **FlexiGen** for print-in-place articulated figures, and **Mesh to STEP** to turn STL or 3MF
   meshes into editable solids.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
-  STL, OBJ, 3MF, STEP and DXF.
+  STL, 3MF, STEP and DXF (Chisel also exports OBJ).
 - A projector window, pictures and video on objects, and Picture to 3D.
 
 ### Added by this community build
@@ -176,7 +178,9 @@ stays. The server has to be set up once: see
 JumpStart 3D has a built-in AI chat. Click the **AI** button in the top bar, pick a model, and type
 what you want ("a 40 by 30 by 20 block with an 8 mm hole through it"). The model edits the design
 you have open: it adds shapes, cuts holes, moves and sizes them, looks at the view and offers an
-export. You see every step in the chat and can undo it like any other edit.
+export. It acts only through the same tools as the
+[agent server](mcp/README.md#tools), you see every step in the chat, and you can undo it like any
+other edit.
 
 ### Chat providers
 
@@ -194,11 +198,12 @@ can. For a local model, pick one that supports tools; 9B or larger works best.
 
 A local model server has to allow the JumpStart 3D page to talk to it, once.
 
-- **Ollama:** run it with `OLLAMA_ORIGINS="*"` and restart it. On macOS:
-  `launchctl setenv OLLAMA_ORIGINS "*"`, then quit and reopen the Ollama app. On Linux:
-  `systemctl edit ollama.service` and add `Environment="OLLAMA_ORIGINS=*"` under `[Service]`. On
-  Windows: add the user environment variable `OLLAMA_ORIGINS` with the value `*`. The single file
-  needs the same setting.
+- **Ollama:** run it with `OLLAMA_ORIGINS="*"` and restart it. The single file needs the same
+  setting.
+  - macOS: `launchctl setenv OLLAMA_ORIGINS "*"`, then quit and reopen the Ollama app.
+  - Linux: `systemctl edit ollama.service` and add `Environment="OLLAMA_ORIGINS=*"` under
+    `[Service]`.
+  - Windows: add the user environment variable `OLLAMA_ORIGINS` with the value `*`.
 - **LM Studio:** Developer › Server Settings › turn on **Enable CORS** (or start it with
   `lms server start --cors`), then start the server.
 
@@ -295,12 +300,14 @@ upstream version stays easy to merge.
 
 ### Making things
 
-- Fasteners: hex bolts, hex nuts, threaded rods and tap cutters in metric and inch sizes, with a
-  print offset so printed parts screw together.
+- Fasteners: hex bolts, hex nuts, threaded rods and tap cutters in metric (M2.5 to M12) and inch
+  (#6 to 1/2) sizes, with a print offset so printed parts screw together.
 - Hole patterns: rows, staggered rows or a circle of round, square, hex or slot holes on a flat
-  face, plain, counterbored, countersunk or tapped.
+  face. Round holes can be plain, counterbored, countersunk or tapped; square, hex and slot holes
+  are cut through the part or to a depth.
 - Gears: spur gears, straight bevel gears and racks from a module and a tooth count, with a print
-  clearance and an optional bore and keyway.
+  clearance and an optional bore and keyway. Helical gears are not built yet, and to change a gear's
+  teeth you undo and make it again.
 - Name plates: a plate sized to one line of text, with the letters raised in a second colour or
   cut in, and optional hanging or screw holes.
 - Thirty-one more tutorials, for the toolbar buttons that had none.
@@ -324,22 +331,27 @@ upstream version stays easy to merge.
 
 ### Printing
 
-- Printer plate: pick your printer's build area; Beginner's mat and Advanced's grid take its size.
-  The sizes are the makers' stated build volumes, checked against their pages and not yet tried on
-  real printers.
-- Overhang shading: faces that lean out more than a limit you choose are painted red. The 3D
-  Print Sim uses the same rule.
+- Printer plate: pick your printer's build area; Beginner's mat takes its width and depth, and
+  Advanced keeps its grid and adds a thin outline of the plate. The sizes are the makers' stated
+  build volumes, checked against their pages and not yet tried on real printers.
+- Overhang shading: faces that lean out more than a limit you choose (10 to 80°) are painted red.
+  The 3D Print Sim uses the same rule. The choice is a viewing setting kept on your device, not
+  saved in the design.
 - Pre-painted 3MF: what you paint in the 3D Print Sim is written into the 3MF, so Orca and
-  PrusaSlicer open it with the colours already on the model. Not yet tried in the slicers
-  themselves.
+  PrusaSlicer open it with the colours already on the model. Not yet tried in Orca, Snapmaker
+  Orca or Bambu Studio themselves.
 - Mesh detail, in the Theme, performance and mesh detail menu: Normal, Fine, Extra fine, or a
-  custom level up to 32×, for smoother curves in the view and in exports.
+  custom level up to 32×, for smoother curves in the view and in exports. It asks before building
+  more than 500,000 triangles.
 
 ### Files and sharing
 
 - OBJ and glTF (`.glb`) export, and OBJ import in Beginner and Advanced.
 - Share link: puts a small design in a web address, which you copy and send. Nothing is uploaded,
-  the receiver is asked before it opens, and it opens as a new design, never over theirs.
+  the receiver is asked before it opens, and it opens as a new design, never over theirs. The link
+  holds the whole design, unencrypted, so anyone with it can open a copy. It is capped at 4096
+  characters, and designs made in Chisel or Architechies, or with joints, need a project file
+  instead.
 - Report a problem: opens a bug report on GitHub with the app details filled in, never your
   design. The app sends nothing; you press the link and then Create on GitHub.
 - Link previews: shared on Discord, Reddit, iMessage, Slack or X, the site shows a title and a
@@ -358,8 +370,8 @@ upstream version stays easy to merge.
 - No waiting at a splash screen: the workspace opens while the engine loads, and the website works
   offline after one visit.
 - Installable as an app, with the fonts included.
-- The website keeps the 7 MB kernel as a separate file, so the page itself is smaller than the
-  single file.
+- The website keeps the 7 MB kernel as a separate file, so the page itself is about 5 MB, against
+  about 16 MB for the single file.
 - The About dialog has **Check for updates**, **Visit the community build**, **Support** and
   **J.Siwek's site**. The update check contacts our GitHub releases only when you click it.
 
@@ -473,8 +485,10 @@ Nextcloud slows down repeated failed logins, so check the password before clicki
 
 ### Synology and other NAS boxes
 
-A Synology or other NAS is the same story as Nextcloud: it needs a proxy you control in front of
-it that adds the headers.
+A Synology or other NAS that serves WebDAV for JumpStart 3D is the same story as Nextcloud: it needs
+a reverse proxy you control in front of it that adds the headers listed in
+[What the server must allow](#what-the-server-must-allow) and answers OPTIONS before the NAS sees
+it.
 
 ### Fill in the address for everyone
 
