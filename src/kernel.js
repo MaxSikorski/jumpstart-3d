@@ -1442,7 +1442,7 @@ function thickSolid(shape, d, openHashes, vIn, grows) {
           const v = safeVolume(sh);
           // inside walls: less than the body; outside walls: more than... the walls alone are
           // smaller than the grown body, so only check they're a sensible solid
-          if (v > 1e-6 && (grows ? validSolid(sh) : v < vIn * 0.995)) res = sh; else sh.delete();
+          if (v > 1e-6 && (grows ? validSolid(sh) : v < vIn * 0.995)) res = inFixedOrder(sh); else sh.delete();
         }
       } catch (e) { res = null; }
       b.delete(); list.delete();
@@ -1471,7 +1471,7 @@ function offsetSolid(shape, d, vIn, grows) {
       if (b.IsDone()) {
         let sh = R.cast(b.Shape());
         sh = asSolid(sh);
-        if (sh && good(sh)) res = sh; else if (sh) sh.delete();
+        if (sh && good(sh)) res = inFixedOrder(sh); else if (sh) sh.delete();
       }
     } catch (e) { res = null; }
     b.delete();
@@ -1484,12 +1484,52 @@ function offsetSolid(shape, d, vIn, grows) {
     let res = null;
     try {
       b.PerformByJoin(u.wrapped, d, 1e-2, OC.BRepOffset_Mode.BRepOffset_Skin, true, false, OC.GeomAbs_JoinType.GeomAbs_Arc, false);
-      if (b.IsDone()) { const sh = asSolid(R.cast(b.Shape())); if (sh && good(sh)) res = sh; else if (sh) sh.delete(); }
+      if (b.IsDone()) { const sh = asSolid(R.cast(b.Shape())); if (sh && good(sh)) res = inFixedOrder(sh); else if (sh) sh.delete(); }
     } catch (e) {}
     b.delete(); u.delete();
     if (res) return res;
   }
   return null;
+}
+// jumpstart-3d: OpenCascade's offset builder returns a solid's faces (and shells) in an order that depends on where its
+// objects sit in memory, so the same shell exported different STL/OBJ/3MF bytes depending on what had been built before
+// (same shape, same triangles, other order). The solid is put back together with its shells and faces sorted by
+// position. Anything that is not a plain solid, or whose volume changes, is left as it was.
+function inFixedOrder(sh) {
+  if (!(sh instanceof R.Solid)) return sh; // not by constructor name: the build renames classes
+  const O = OC.TopAbs_Orientation, o = sh.wrapped.Orientation();
+  if (o !== O.TopAbs_FORWARD && o !== O.TopAbs_REVERSED) return sh;
+  const grab = (parent, kind, wrap) => {
+    const out = [], ex = new OC.TopExp_Explorer(parent, OC.TopAbs_ShapeEnum[kind], OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    try { for (; ex.More(); ex.Next()) out.push(wrap(ex.Current())); } finally { ex.delete(); }
+    return out;
+  };
+  const area = (f) => { try { return Math.round(R.measureArea(f) * 1e3); } catch (e) { return 0; } };
+  const parts = [], made = [];
+  try {
+    for (const shell of grab(sh.wrapped, "TopAbs_SHELL", (x) => OC.TopoDS.Shell(x))) {
+      const faces = grab(shell, "TopAbs_FACE", (x) => R.cast(OC.TopoDS.Face(x)));
+      made.push(...faces);
+      const keyed = faces.map((f) => { const c = f.center; return { f, k: [c.x, c.y, c.z].map((v) => Math.round(v * 1e3)), t: f.geomType, a: null }; });
+      keyed.sort((p, q) => p.k[0] - q.k[0] || p.k[1] - q.k[1] || p.k[2] - q.k[2] || (p.t < q.t ? -1 : p.t > q.t ? 1 : 0) || (p.a ??= area(p.f)) - (q.a ??= area(q.f)));
+      parts.push(keyed);
+    }
+    parts.sort((p, q) => { for (let i = 0; i < Math.min(p.length, q.length); i++) { const d = p[i].k[0] - q[i].k[0] || p[i].k[1] - q[i].k[1] || p[i].k[2] - q[i].k[2]; if (d) return d; } return p.length - q.length; });
+    const B = new OC.TopoDS_Builder(), solid = new OC.TopoDS_Solid();
+    B.MakeSolid(solid);
+    for (const keyed of parts) {
+      const shell = new OC.TopoDS_Shell();
+      B.MakeShell(shell);
+      // the explorer hands out faces with the solid's own orientation folded in: fold it back out
+      for (const { f } of keyed) B.Add(shell, o === O.TopAbs_REVERSED ? f.wrapped.Reversed() : f.wrapped);
+      B.Add(solid, shell);
+    }
+    if (o === O.TopAbs_REVERSED) solid.Orientation(O.TopAbs_REVERSED);
+    const out = R.cast(solid), v0 = safeVolume(sh), v1 = safeVolume(out);
+    if (!(Math.abs(v1 - v0) <= 1e-6 * Math.abs(v0))) { out.delete(); return sh; }
+    sh.delete();
+    return out;
+  } catch (e) { return sh; } finally { made.forEach((f) => f.delete()); }
 }
 // offset results can come back as a shell or compound: make a solid of them
 function asSolid(sh) {
