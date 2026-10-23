@@ -175,9 +175,14 @@ executable paths without flags. FreeCAD runs through the extracted
 `AppRun --console` with a Python script, since its GUI version flags crash
 headlessly, and (unlike a standalone Python) runs a script file under a name
 other than `__main__`. A fresh HOME/config directory keeps inherited slicer
-presets and post-processing scripts out. There is no cache: both downloads
-take 3 and 12 seconds including extraction, and a cache restore cost as much
-(measured: install 27 s without, 27 to 32 s with a warm cache).
+presets and post-processing scripts out. The AppImages are not cached: both
+downloads take 3 and 12 seconds including extraction, and a cache restore cost
+as much. The apt libraries (webkit, GL, xvfb) are cached as .deb files per
+runner image, because the runner's Ubuntu mirror sometimes serves them at a few
+KB/s (two runs stalled 12 minutes on a 25 MB package). A cache hit installs
+them with no network; a miss fetches under a 150-second clock per try, switches
+to archive.ubuntu.com after the first try, and fails with a plain message after
+three tries.
 
 `tools/judge-prusa.ini` fixes a virtual 1000 x 1000 x 1000 mm build space,
 0.4 mm nozzle, 1.75 mm filament, 0.2 mm layers, two perimeters, three top and
