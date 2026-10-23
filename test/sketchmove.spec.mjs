@@ -180,7 +180,7 @@ test("a revolve around an axis drawn in the sketch follows the sketch when it is
   sk.ents.push({ id: "ae5", t: "line", a: "ap0", b: "ap5" });
   doc.bodies[0].node.axis = "ae5";
   await loadDoc(page, doc);
-  const dims = () => run(() => { const b = __app.scene.bodyTightBox(__store.doc.bodies[0].id); return b ? b.max.clone().sub(b.min).toArray().map((v) => Math.round(v * 100) / 100) : null; });
+  const dims = () => run(() => { const b = __app.scene.bodyTightBox(__store.doc.bodies[0].id); return b ? b.max.clone().sub(b.min).toArray().map((v) => Math.round(v * 10) / 10) : null; }); // a round tube measures 29.99 across: faceted
   await expect.poll(dims, { timeout: 30_000 }).toEqual([30, 30, 20]); // a tube standing on its axis (z)
   await selectSketchInTree("s1");
   await openMove();
