@@ -92,6 +92,17 @@ test.describe("version 2.3", () => {
     await page.waitForFunction(() => window.__app.mode === "beginner");
   });
 
+  test("Your designs shows the Architechies tag on a design saved in that mode", async () => {
+    await loadDoc(page, newDoc("Upstream 2.3 tag", "beginner"));
+    await page.click("#mode-arch");
+    await page.waitForFunction(() => window.__app.mode === "arch");
+    await page.click("#btn-projects");
+    await expect(page.locator(".projgrid .pcard", { hasText: "Upstream 2.3 tag" }).locator(".tag.arch")).toHaveText("Architechies");
+    await page.click(".modal-back .xbtn");
+    await page.click("#mode-beginner");
+    await page.waitForFunction(() => window.__app.mode === "beginner");
+  });
+
   test("CAM Studio: opens from Advanced > Simulate and makes non-empty G-code for a box, which Save G-code downloads", async () => {
     await loadDoc(page, newDoc("Upstream 2.3 CAM", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 40, d: 30, h: 10, r: 0, c: 0 }))] }));
     expect((await bodies(page))[0].error).toBeNull();
