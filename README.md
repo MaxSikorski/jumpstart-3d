@@ -1,6 +1,6 @@
 # JumpStart 3D
 
-[![JumpStart 3D: 3D CAD in your browser](docs/og-image.png)](https://maxsikorski.github.io/jumpstart-3d/)
+[![JumpStart 3D: 3D CAD in your browser](src/og-image.png)](https://maxsikorski.github.io/jumpstart-3d/)
 
 A free 3D CAD tool that runs in your web browser. No install, no account,
 no server. Somewhere between Tinkercad and a real CAD program: drag shapes
@@ -105,7 +105,7 @@ location /dav/ {
 
 #### Self-hosting the page with a storage.json
 
-If you put the website on your own server (copy the contents of `docs/`), you can spare your users typing the address: put a file `storage.json` next to `index.html` containing `{ "webdav": "https://your.server/dav/jumpstart/" }` (or a short address such as `"designs/"`, taken from where the page is). The page reads it the first time Your server is opened and only fills in the address field. Passwords never go in it. An address someone has already typed and connected with wins over the file. `docs/` in this repository is rebuilt from scratch every time, so the file lives on your server only, not here.
+If you put the website on your own server (copy the contents of `docs/`), you can spare your users typing the address: put a file `storage.json` next to `index.html` containing `{ "webdav": "https://your.server/dav/jumpstart/" }` (or a short address such as `"designs/"`, taken from where the page is). The page reads it the first time Your server is opened and only fills in the address field. Passwords never go in it. An address someone has already typed and connected with wins over the file. `docs/` is rebuilt from scratch every time, so the file lives on your server only, not in this repository.
 
 The single file (`jumpstart-3d.html`) opened from your disk cannot read `storage.json`, so type the address. A page opened from disk has no web address of its own, so the server has to allow every origin (`*`). The saved password sits in the browser's storage for local files, which other local pages might be able to read: use an app password you can revoke.
 
@@ -326,7 +326,7 @@ node build.mjs
 `npm install` fetches one tool, esbuild, pinned to the version the author
 used. The build writes two things:
 
-- `docs/` the website (the same files GitHub Pages serves)
+- `docs/` the website (the same files GitHub Pages serves; not committed on `main`)
 - `dist/jumpstart-3d.html` the single offline file
 
 To try the website locally, serve the `docs/` folder with any static
@@ -392,7 +392,8 @@ tools/              helper page sources and the scripts that rebuild them
                     bridge-demo.js is a script for Open/Export › Run script… (or the console);
                     measure-load.mjs times a page load on a simulated slow connection
 BRIDGE.md           the `JS3D` calls and the project file format
-docs/               built website, committed so GitHub Pages can serve it
+docs/               built website: not on `main` (gitignored); `/ship` builds it onto the `release` branch,
+                    which GitHub Pages serves
 jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.3)
 UPSTREAM-README.md         the author's README from the source release
 ```
@@ -403,8 +404,9 @@ UPSTREAM-README.md         the author's README from the source release
   outputs yourself: the site in a browser and `dist/jumpstart-3d.html` opened
   from disk. The local site keeps its service worker, so after a rebuild reload
   twice: the first reload shows the old build and the "new version" message.
-- Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
-  single file is attached to releases instead.
+- Do not commit `docs/` or `dist/`. Pull requests carry source only: the
+  maintainer's release step builds `docs/` onto the `release` branch (the
+  site) and attaches the single file to the release.
 - Keep "Created by J.Siwek" in the About dialog. Our additions are listed
   below, not claimed as the original.
 

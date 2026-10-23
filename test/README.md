@@ -1,6 +1,7 @@
 # Regression tests
 
-Playwright drives the real app in headless Chromium: the site build in `docs/`,
+Playwright drives the real app in headless Chromium: the site build in `docs/`
+(built by `node build.mjs`, not committed on `main`),
 served locally, and the single file `dist/jumpstart-3d.html`, opened from disk
 the way users open it. `npm test` rebuilds both and runs the chat scorer's Node unit tests first.
 
@@ -335,7 +336,7 @@ This is on-demand Ollama support, not a measured real-model baseline or a nightl
 
 ## Measuring load time
 
-`node tools/measure-load.mjs [folder=docs] [runs=3]` serves a built copy of the site like GitHub Pages does (compressed files, ten minutes of caching), slows Chromium to about 10 Mbit with 40 ms delay, and visits twice in the same browser. The table has the median of the runs for each visit: **DOMContentLoaded** is when the app's script has loaded and run, **workspace usable** is when the loading splash no longer blocks the mouse, **kernel ready** is when the geometry engine can build shapes, and **network bytes** is what that visit downloaded from the site (an answer from the service worker or the browser's cache counts as zero; the service worker's own downloads are printed under the table). To compare a change, put the old build in a folder first (`git archive <commit> docs | tar -x -C <folder>`), measure that folder, then run `node build.mjs` and measure `docs`. Within ten minutes of a first visit the browser's own cache can serve a second visit even without a service worker, so the service worker's gain shows after ten minutes and offline. `tools/measure-load.mjs` is the hand tool for comparing builds at 10 Mbit; the phone budget in `mobile.spec.mjs` runs in every `npm test`.
+`node tools/measure-load.mjs [folder=docs] [runs=3]` serves a built copy of the site like GitHub Pages does (compressed files, ten minutes of caching), slows Chromium to about 10 Mbit with 40 ms delay, and visits twice in the same browser. The table has the median of the runs for each visit: **DOMContentLoaded** is when the app's script has loaded and run, **workspace usable** is when the loading splash no longer blocks the mouse, **kernel ready** is when the geometry engine can build shapes, and **network bytes** is what that visit downloaded from the site (an answer from the service worker or the browser's cache counts as zero; the service worker's own downloads are printed under the table). To compare a change, put the old build in a folder first (`git archive <release tag> docs | tar -x -C <folder>`: every release tag holds its built `docs/`), measure that folder, then run `node build.mjs` and measure `docs`. Within ten minutes of a first visit the browser's own cache can serve a second visit even without a service worker, so the service worker's gain shows after ten minutes and offline. `tools/measure-load.mjs` is the hand tool for comparing builds at 10 Mbit; the phone budget in `mobile.spec.mjs` runs in every `npm test`.
 
 ## Adding a design
 
