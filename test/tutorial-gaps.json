@@ -50,6 +50,7 @@
       "export-scope-sel",
       "export:3mf",
       "export:dxf",
+      "export:glb",
       "export:import",
       "export:json",
       "export:obj",
