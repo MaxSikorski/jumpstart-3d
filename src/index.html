@@ -153,7 +153,7 @@ button { cursor: pointer; }
 :root[data-ui="contrast"] .chisel-level button[aria-pressed="true"] { background: var(--accent); color: #000; }
 .chisel-host[hidden] { display: none; }
 .chisel-host iframe { width: 100%; height: 100%; border: 0; display: block; }
-.toasts { z-index: 45 !important; }
+.toasts { z-index: 80 !important; } /* jumpstart-3d: above the .modal-back scrim (60) and the snap menu (70), so a failed-save toast shows over an open dialog; the 3D print sim (90) and full-screen layers stay above */
 #app[data-mode="chisel"] .toasts { position: fixed; }
 .expbadge { font: 700 9.5px/1 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: #1b1407; background: #d6a44e; border-radius: 4px; padding: 3px 5px; margin-left: 6px; }
 .modeswitch button[aria-pressed="true"] { background: var(--block-ink); color: var(--block); }

@@ -45,9 +45,65 @@ are unlikely to fit.
 ### How the code is laid out
 
 The app is plain JavaScript modules under `src/`, from the author's source
-release of version 2.0, and one command bundles them. The README's "I want
-to change it or contribute" section explains the folders and the build. Read
-that first.
+release of version 2.3, and one command bundles them. The README's
+"[Build it yourself](README.md#build-it-yourself)" section has the build and
+test commands. The map of folders and the rules of thumb are below.
+
+### Where things are
+
+```
+src/index.html      page shell, CSS and menus
+src/app.js          the app's entry point; the other src/*.js files are its modules
+                    (beginner.js, advanced.js, sketcher.js, kernel.js, projects.js, ...)
+src/worker.js       geometry worker that runs the CAD kernel (kernel.js) via replicad
+src/occt-gz.wasm    OpenCascade kernel, gzipped
+src/flexigen.html, src/meshstep.html, src/chisel.html
+                    the helper pages, built; their source is in tools/
+src/meshdetail.js   our Mesh detail setting
+src/printerpresets.js where each bed size came from (added to the rows of printsim.js's printer list) and the saved Printer plate choice
+src/printerpreview.js our Printer plate dialog and the red overhang shading in the design view
+src/overhang.js     the one overhang rule, shared by the design view and the 3D Print Sim
+src/params.js       our named parameters (evaluator and the dimension and feature hooks)
+src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
+src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
+src/report.js       our "Report a problem" dialog (a prefilled GitHub bug report link)
+src/sharelink.js    our Share link: a small design in a web address, and opening one (Open/Export › Share link…)
+src/loadui.js       our loading note over the 3D view, and the start of the offline copy on the website
+src/sw.js           our service worker: the website's offline copy (the site build only)
+src/remote.js       our Your server tab in Your designs (designs on a WebDAV server)
+mcp/                our MCP server for AI agents, its Claude Code plugin and skill, the `jumpstart`
+                    command line and AGENT-SETUP.md, the page an agent reads to set itself up
+                    (see mcp/README.md); it has its own package.json, so `npm ci` inside
+                    mcp/ once; its tests run with `npm run test:mcp`
+skills/             a copy of the agent skill (mcp/skills/jumpstart-3d/SKILL.md) where `npx skills add`
+                    and other agents' skill folders look; a test keeps the two identical
+.claude-plugin/     marketplace.json, so `claude plugin marketplace add` finds the plugin in mcp/
+third_party/        the libraries the build bundles: three.js, replicad, opentype.js,
+                    Flatbush, Flatqueue, the OpenCascade loader
+LICENSES/, THIRD-PARTY-NOTICES.md
+                    licenses of everything in third_party/ and of the fonts
+build.mjs           the build (the author's dist.sh and standalone.py, in Node)
+tools/              helper page sources and the scripts that rebuild them
+                    (see tools/README-helpers.md); og-card/ renders the link-preview image;
+                    bridge-demo.js is a script for Open/Export › Run script… (or the console);
+                    measure-load.mjs times a page load on a simulated slow connection
+BRIDGE.md           the `JS3D` calls and the project file format
+docs/               built website: not on `main` (gitignored); the maintainer's release step builds it onto the
+                    `release` branch, which GitHub Pages serves
+jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.3)
+UPSTREAM-README.md         the author's README from the source release
+```
+
+### Rules of thumb
+
+- After any change run `node build.mjs`, then `npm test`, then try both
+  outputs yourself: the site in a browser and `dist/jumpstart-3d.html` opened
+  from disk. The local site keeps its service worker, so after a rebuild reload
+  twice: the first reload shows the old build and the "new version" message.
+- Do not commit `docs/` or `dist/`. Pull requests carry source only: the
+  maintainer's release step builds `docs/` onto the `release` branch (the
+  site) and attaches the single file to the release.
+- Keep "Created by J.Siwek" in the About dialog. Our additions are listed in the README, not claimed as the original.
 
 ### The short version
 
@@ -71,7 +127,7 @@ that first.
 ### Things we will ask you to keep
 
 - **The credit.** "Created by J.Siwek" in the About dialog stays. Our own
-  additions are listed in the README, not claimed as the original.
+  additions are listed in the README ("[What this repository adds on top of the original](README.md#what-this-repository-adds-on-top-of-the-original)"), not claimed as the original.
 - **One file, no install.** Any change must still work from the single
   offline file as well as the website.
 - **Small, focused pull requests.** One fix or one feature per PR is much
