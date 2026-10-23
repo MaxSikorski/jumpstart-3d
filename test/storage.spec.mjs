@@ -266,7 +266,7 @@ test("IndexedDB that opens late takes over from localStorage: nothing lost, noth
   await p1.addInitScript(() => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("mirror", { create: true }); });
   await slowOpen(p1);
   await boot(p1, info); // the app starts without waiting for the database any longer than 3 s
-  expect(await kind(p1)).toBe("local");
+  expect(await p1.evaluate(() => window.__app.projects._store.ready)).toBe("local"); // settles after the 3 s wait (a fresh profile starts at once, with the store still deciding)
 
   // saved while the database is still opening: they go to the old keys
   await save(p1, mk(A, "Late Alpha"));
