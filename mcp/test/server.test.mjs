@@ -95,6 +95,28 @@ test("export_file writes an STL to disk and says where and how big", async () =>
   assert.equal(bytes.length, 84 + 50 * triangles);
 });
 
+test("export_file writes a GLB: the glTF magic, version 2 and a length field equal to the file size", async () => {
+  const out = data(await call(s.client, "export_file", { kind: "glb", path: join(dir, "block.glb") }));
+  const bytes = await readFile(out.path);
+  assert.equal(out.bytes, bytes.length);
+  assert.equal(bytes.readUInt32LE(0), 0x46546c67); // "glTF"
+  assert.equal(bytes.subarray(0, 4).toString("latin1"), "glTF");
+  assert.equal(bytes.readUInt32LE(4), 2);
+  assert.equal(bytes.readUInt32LE(8), bytes.length);
+});
+
+test("set_mode switches to Architechies and back to Beginner", async () => {
+  const mode = async () => data(await call(s.client, "status")).designMode;
+  assert.equal(await mode(), "beginner");
+  assert.equal(data(await call(s.client, "run_script", { code: "return JS3D.mode();" })), "beginner");
+  await call(s.client, "set_mode", { mode: "arch" });
+  assert.equal(await mode(), "arch");
+  assert.equal(data(await call(s.client, "run_script", { code: "return JS3D.mode();" })), "arch");
+  await call(s.client, "set_mode", { mode: "beginner" });
+  assert.equal(await mode(), "beginner");
+  assert.equal(data(await call(s.client, "run_script", { code: "return JS3D.mode();" })), "beginner");
+});
+
 test("save_project then load_project keeps the STL hash", async () => {
   const stl = async () => sha256(await readFile(data(await call(s.client, "export_file", { kind: "stl", path: join(dir, "x.stl") })).path));
   const before = await stl();

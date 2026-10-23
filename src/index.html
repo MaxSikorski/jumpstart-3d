@@ -142,7 +142,7 @@ button { cursor: pointer; }
 .modeswitch #mode-arch::before { background: #c0574a; clip-path: polygon(50% 0, 100% 45%, 100% 100%, 0 100%, 0 45%); border-radius: 0; width: 9px; height: 9px; }
 .modeswitch .beta { font: 700 8.5px/1 var(--f-ui); letter-spacing: .06em; padding: 2px 4px; border-radius: 4px; background: #d6a44e; color: #1b1407; margin-left: -2px; vertical-align: super; }
 /* Chisel: the sculpting app over the work area, under the top bar */
-.chisel-host { position: fixed; left: 0; right: 0; bottom: 0; top: calc(46px + env(safe-area-inset-top, 0px)); z-index: 40; background: var(--paper); }
+.chisel-host { position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--topbar-h, 46px) + env(safe-area-inset-top, 0px)); z-index: 40; background: var(--paper); }
 /* Chisel's Easy / Pro switch, hanging just under the Chisel button */
 .chisel-level { position: fixed; z-index: 42; display: inline-flex; gap: 2px; padding: 3px; border-radius: 0 0 12px 12px; background: var(--block); box-shadow: 0 6px 16px var(--shadow); }
 .chisel-level[hidden] { display: none; }
@@ -848,6 +848,11 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 @media (max-width: 480px) { .modeswitch #mode-arch .ml { display: none; } .modeswitch #mode-arch .ms { display: inline; } }
 @media (max-width: 420px) { .modeswitch { gap: 0; padding: 2px; } .modeswitch button { padding: 4px 4px; font-size: 10px; } }
 @media (min-width: 861px) { .panel-toggle { display: none !important; } }
+/* jumpstart-3d: iPad width (issue #87). The top bar's controls sum to more than the screen in some window widths (899 px of controls at 801-898, 1029 at 961-1028, 1196 at 1101-1195 ...), which widened the whole page and scrolled it sideways. Tighter gaps keep a landscape iPad on one row; below that the bar wraps onto a second row instead of overflowing, and nothing is hidden */
+.topbar { flex-wrap: wrap; height: auto; min-height: 46px; row-gap: 4px; }
+.topbar .docname { flex: 4 1 60px; max-width: 220px; } /* a wrapping bar breaks lines by each item's basis: the name box starts small and takes what is left, as it did when it shrank */
+/* the two things below the bar (Chisel's host, the Lathe message) read its real height, --topbar-h, which app.js keeps; 46px is one row */
+@media (min-width: 561px) and (max-width: 1180px) { .topbar { gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
 /* simulate workspace */
@@ -980,7 +985,7 @@ body.s3d-on { overflow: hidden; }
 .lathe-pedal.down, .lathe-pedal.on { transform: translateY(4px); box-shadow: 0 1px 0 #15181b; background: linear-gradient(#3f8b4a, #26632f); }
 .lathe-lab { max-width: calc(100% - 24px); }
 .chisel-lathe-btn { margin-left: 6px; }
-.lathe-msg { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: #b33a00; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
+.lathe-msg { position: absolute; left: 50%; top: var(--topbar-h, 46px); transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: #b33a00; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
 .lathe-msg[hidden] { display: none; }
 .lathe-pedal.running { background: linear-gradient(#c8432b, #8f2a19); }
 body.s3d-on .tut-panel { z-index: 96; }
