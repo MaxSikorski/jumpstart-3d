@@ -270,7 +270,7 @@ export const COMMUNITY_TUTORIALS = [
         when: "Short strokes let you see each change before adding more clay.",
         tip: "Show me points at Chisel; its brush buttons are inside the sculpting area." },
       { title: "Bring the pebble back to the design", tool: "Beginner", icon: "box", show: { sel: "#mode-beginner" },
-        how: ["Click <b>Beginner</b> at the top and wait for the sculpt to appear.", "The sculpt is copied into the design when you leave Chisel. Select it and click Drop if it is above the ground."],
+        how: ["Click <b>Beginner</b> at the top and wait for the sculpt to appear.", "The sculpt joins the design when you leave Chisel. Press F to fit it in view."],
         when: "Return to the design before saving and exporting your sculpt." },
       saveStep(), exportStep(),
     ],
