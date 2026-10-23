@@ -217,6 +217,8 @@ app.voxel = initVoxel(app);
   // mm / inch switch, always in the status bar: changes every readout and typed value
   $("unit-toggle").onclick = () => setUnit(getUnit() === "in" ? "mm" : "in");
   initFineTurn(app); // jumpstart-3d: fine rotation
+  // jumpstart-3d: the top bar wraps to two rows on a narrow screen; Chisel and the Lathe message start below its real height
+  new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px")).observe(document.querySelector(".topbar"));
   onUnit(() => {
     fillSnapSizes();
     $("unit-toggle").textContent = unitName();
