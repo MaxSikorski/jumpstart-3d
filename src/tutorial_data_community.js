@@ -492,7 +492,7 @@ export const COMMUNITY_TUTORIALS = [
     steps: [
       nameStep("Room Study", "Lopez, Maria, Room Study"),
       { title: "Choose metric sizes", tool: "Units", icon: "archPlan", show: { sel: "#ar-units" },
-        how: ["In the Architechies toolbar, click <b>Metric</b>."],
+        how: ["In the Architect toolbar, click <b>Metric</b>."],
         when: "Choose the units before drawing so the grid and standard wall sizes suit the lesson." },
       { title: "Draw a small room", tool: "Room", icon: "archRoom", show: { sel: "#ar-room" },
         how: ["Click <b>Room</b>. Drag from one corner to the opposite corner to make a room about 4000 by 3000 mm.", "Use the size labels as you drag, then release."],

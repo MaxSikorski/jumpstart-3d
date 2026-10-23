@@ -96,8 +96,8 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has seventy-five step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: forty-four from J.Siwek and thirty-one added by this community build for the
+JumpStart 3D has eighty-two step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: fifty-one from J.Siwek and thirty-one added by this community build for the
 toolbar buttons that had none.
 
 ### Add yours
@@ -118,10 +118,15 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   a feature timeline, driven by a real CAD kernel (OpenCascade).
 - **3D Sketch** for tubes and pipes, **Lathe**, **Jump Brick Builder**, and **Chisel** for
   clay-style sculpting with Puppet Animator.
-- **Architechies** (new in 2.2): floor plans, walls, doors, windows and roofs, sent to Beginner or
-  Advanced as editable shapes.
+- **Architect** (new in 2.2, called Architechies until 2.4): floor plans, walls, doors, windows and
+  roofs, sent to Beginner or Advanced as editable shapes, scaled to fit the build plate. 2.4 and 2.5
+  add a landscape (hills, ponds, streams, 22 kinds of ground, 39 plants), weather and moving water,
+  a rain, river or sea flood test that shows whether water gets into the house, finishes (colours,
+  textures, face patterns), round-log and square-log walls, floor plans saved as PDF, SVG or DXF,
+  and export of the house with its landscape.
 - **CAM Studio** (new in 2.3): plan and simulate CNC router, mill or laser cuts and save G-code.
-  Sending it to a machine over USB asks the browser's own permission first.
+  Sending it to a machine over USB asks the browser's own permission first. 2.5 adds a 4th axis
+  (rotary) for round parts, with G-code that has A moves.
 - **FlexiGen** for print-in-place articulated figures, and **Mesh to STEP** to turn STL or 3MF
   meshes into editable solids.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
@@ -359,7 +364,7 @@ upstream version stays easy to merge.
 - Share link: puts a small design in a web address, which you copy and send. Nothing is uploaded,
   the receiver is asked before it opens, and it opens as a new design, never over theirs. The link
   holds the whole design, unencrypted, so anyone with it can open a copy. It is capped at 4096
-  characters, and designs made in Chisel or Architechies, or with joints, need a project file
+  characters, and designs made in Chisel or Architect, or with joints, need a project file
   instead.
 - Report a problem: opens a bug report on GitHub with the app details filled in, never your
   design. The app sends nothing; you press the link and then Create on GitHub.

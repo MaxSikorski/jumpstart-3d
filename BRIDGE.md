@@ -76,7 +76,7 @@ JS3D.get(id).volume;        // 24000
 | `JS3D.params()` | `[{ name, expr, value, unit }]`. `value` is mm (`null` when the expression fails), `unit` is `"mm"` or `"in"`. |
 | `JS3D.doc()` | A copy of the whole design document. |
 | `JS3D.save()` | `{ app: "jumpstart-3d", version: 1, doc }`: what the Export menu's project file holds. Nothing is downloaded or stored. See [Part 2](#part-2-the-project-file-format). |
-| `JS3D.mode()` | `"beginner"`, `"advanced"`, `"arch"` (Architechies) or `"chisel"`. |
+| `JS3D.mode()` | `"beginner"`, `"advanced"`, `"arch"` (Architect) or `"chisel"`. |
 | `JS3D.selection()` | The selected ids. |
 | `JS3D.internals` | `{ app, store }`, the same objects as `window.__app` and `window.__store`, for people who know the code. |
 
@@ -129,7 +129,7 @@ check them.
 | `JS3D.undo()` / `JS3D.redo()` → label or `null` | One step. Refused in Chisel mode. |
 | `JS3D.select(ids)` | Selects bodies (`[]` clears). |
 | `JS3D.fit()` | Frames the selection, or everything when nothing is selected. |
-| `JS3D.setMode("beginner" \| "advanced" \| "arch")` | Switches the mode. `"arch"` is Architechies; the building is kept in the design (`doc.arch`) and the other modes keep their shapes, but the bridge has no calls for walls and openings yet. `"chisel"` is refused here. |
+| `JS3D.setMode("beginner" \| "advanced" \| "arch")` | Switches the mode. `"arch"` is Architect; the building is kept in the design (`doc.arch`) and the other modes keep their shapes, but the bridge has no calls for walls and openings yet. Since 2.4, leaving Architect for Beginner or Advanced also brings a drawn house along as shapes in the design (scaled down to fit the 256 mm build plate) and sends the camera back to the home view, so the body list can hold shapes you did not add. `"chisel"` is refused here. |
 | `await JS3D.screenshot(opts)` → `Uint8Array` | A PNG of the 3D view, after waiting for `ready`. `opts.fit: true` frames everything shown first (ignoring the selection). `opts.width` (1 to 8192) makes the picture that many pixels wide with the same shape, drawn in the same step as the render; without it the picture is the size of the 3D view. |
 | `await JS3D.screenshotDataURL(opts)` → string | The same (`fit` and `width` too) as a `data:image/png;base64,...` string (also async). In a background tab the browser runs no animation frames; the camera move for `fit` is then jumped to its end. |
 
