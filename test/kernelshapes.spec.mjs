@@ -93,7 +93,7 @@ test("a capsule 36 x 12 x 6 is one solid with its exact volume and a closed STL"
   await run(() => JS3D.add("capsule", { size: { w: 36, d: 12, h: 6 } }));
   const [e] = await entries();
   expect(e.error).toBeNull();
-  // pi ry rz L + 4/3 pi cx ry rz, with ry 6, rz 3, L = 36 - 2 cx, cx 6
+  // pi ry rz L + 4/3 pi cx ry rz, with ry 6, rz 3, cx 3 (the smaller of ry, rz), L = 36 - 2 cx = 30
   near(e.volume, 1922.65, 0.002);
   expect(await solids()).toBe(1);
   const s = await stl();
@@ -113,6 +113,69 @@ test("a capsule 27 x 24 x 20 builds in seconds, not minutes", async () => {
   expect(e.error).toBeNull();
   near(e.volume, 7665.49, 0.002);
   expect(t, "ms to build").toBeLessThan(5000);
+});
+
+// capsule = two half-ellipsoids (cx by ry by rz) around a straight oval side of length L = w - 2 cx, cx = min(ry, rz, w / 2)
+const capsuleVolume = (w, d, h) => {
+  const ry = d / 2, rz = h / 2, cx = Math.min(ry, rz, w / 2);
+  return Math.PI * ry * rz * (w - 2 * cx) + (4 / 3) * Math.PI * cx * ry * rz;
+};
+for (const [w, d, h, why] of [[6, 12, 6, "no side, flat"], [4, 12, 6, "no side, flat, shorter"], [10, 12, 12, "short and round in section"]]) {
+  test(`a capsule ${w} x ${d} x ${h} (${why}) is one solid with its exact volume and a closed STL`, async () => {
+    await fresh();
+    await run(([w, d, h]) => JS3D.add("capsule", { size: { w, d, h } }), [w, d, h]);
+    const [e] = await entries();
+    expect(e.error).toBeNull();
+    near(e.volume, capsuleVolume(w, d, h), 0.002);
+    expect(await solids()).toBe(1);
+    const s = await stl();
+    expect(s.open).toBe(0);
+    near(s.volume, capsuleVolume(w, d, h), 0.01);
+  });
+}
+
+test("an oval hemisphere builds with half the sphere's volume and a closed STL", async () => {
+  await fresh();
+  await run(() => JS3D.add("hemisphere", { size: { w: 20, d: 12, h: 8 } }));
+  const [e] = await entries();
+  expect(e.error).toBeNull();
+  near(e.volume, (2 / 3) * Math.PI * 10 * 6 * 8, 0.002);
+  const s = await stl();
+  expect(s.open).toBe(0);
+  near(s.volume, e.volume, 0.01);
+});
+
+test("a body with a closed cavity, grouped with a torus and stretched, keeps its cavity", async () => {
+  await fresh();
+  const ids = await run(() => {
+    const box = JS3D.add("box", { size: { w: 40, d: 40, h: 40 } });
+    const hole = JS3D.add("sphere", { size: { w: 20, d: 20, h: 20 }, at: [0, 0, 10], hole: true });
+    const ring = JS3D.add("torus", { at: [80, 0, 0] });
+    return [box, hole, ring];
+  });
+  await run((ids) => JS3D.group(ids), ids);
+  const [before] = await entries();
+  expect(before.error).toBeNull();
+  await run((id) => JS3D.scale([id], [1.5, 1, 1]), before.id);
+  const [after] = await entries();
+  expect(after.error).toBeNull();
+  // the sphere's 4189 mm3 is still missing (scaled it is 6283): a filled cavity would add about 3 % to the whole
+  near(after.volume, 1.5 * before.volume, 0.01);
+  const s = await stl();
+  expect(s.open).toBe(0);
+  near(s.volume, after.volume, 0.02);
+});
+
+test("a torus stretched while the view is at its finest detail still works", async () => {
+  await fresh();
+  await run(() => __app.setMeshDetail("extra", true));
+  const id = await run(() => JS3D.add("torus"));
+  const [before] = await entries();
+  await run((id) => JS3D.scale([id], [2, 1, 1]), id);
+  const [after] = await entries();
+  await run(() => __app.setMeshDetail("normal", true));
+  expect(after.error).toBeNull();
+  near(after.volume, 2 * before.volume, 0.02);
 });
 
 // last in the file: on a corrupted engine every later test would fail for this reason

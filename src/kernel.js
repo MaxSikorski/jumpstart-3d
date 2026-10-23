@@ -2395,7 +2395,28 @@ function facetedScale(shape, k, o) {
   for (let t = 0; t < I.length; t += 3) { up[find(I[t])] = find(I[t + 1]); up[find(I[t + 1])] = find(I[t + 2]); }
   const pieces = new Map();
   for (let t = 0; t < I.length; t += 3) { const r = find(I[t]); if (!pieces.has(r)) pieces.set(r, []); pieces.get(r).push(I[t], I[t + 1], I[t + 2]); }
-  const solids = [...pieces.values()].map((tri) => solidFromMesh(V, tri));
+  // a piece whose triangles face inward (negative volume, the sign flipped back by a mirroring stretch) is a closed cavity inside another
+  // piece: solidFromMesh would turn it into a solid, so it is built as one and cut out of the smallest piece whose box holds it
+  const mirrored = k[0] * k[1] * k[2] < 0;
+  const solids = [], cavities = [];
+  for (const tri of pieces.values()) {
+    let vol = 0;
+    for (let t = 0; t < tri.length; t += 3) {
+      const a = tri[t] * 3, b = tri[t + 1] * 3, c = tri[t + 2] * 3;
+      vol += V[a] * (V[b + 1] * V[c + 2] - V[b + 2] * V[c + 1]) + V[a + 1] * (V[b + 2] * V[c] - V[b] * V[c + 2]) + V[a + 2] * (V[b] * V[c + 1] - V[b + 1] * V[c]);
+    }
+    (mirrored ? -vol : vol) < 0 ? cavities.push(solidFromMesh(V, tri)) : solids.push(solidFromMesh(V, tri));
+  }
+  const boxes = solids.map(bboxOf), boxVol = (b) => b.size[0] * b.size[1] * b.size[2];
+  for (const cav of cavities) {
+    const cb = bboxOf(cav);
+    let at = -1;
+    boxes.forEach((b, i) => { if ([0, 1, 2].every((c) => b.min[c] <= cb.min[c] + 1e-6 && b.max[c] >= cb.max[c] - 1e-6) && (at < 0 || boxVol(b) < boxVol(boxes[at]))) at = i; });
+    if (at < 0) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
+    const cut = solids[at].cut(cav);
+    solids[at].delete(); cav.delete();
+    solids[at] = cut;
+  }
   return solids.length === 1 ? solids[0] : R.makeCompound(solids);
 }
 // Rebuild a node so its geometry is stretched exactly, or return null when that
