@@ -34,7 +34,8 @@ export const expectMatrix = (got, want) => { expect(got).toHaveLength(16); want.
 
 
 export const boxNow = (p) => p.evaluate(() => { const b = window.__app.scene.bodyTightBox("b1"); return b ? [...b.min.toArray(), ...b.max.toArray()] : null; });
-export const expectBox = (want, p) => expect.poll(() => boxNow(p), { timeout: 20_000 }).toSatisfy((b) => !!b && b.every((v, i) => Math.abs(v - want[i]) < 1e-3));
+const boxGap = async (want, p) => { const b = await boxNow(p); return b ? Math.max(...b.map((v, i) => Math.abs(v - want[i]))) : Infinity; }; // the worst gap to the wanted box
+export const expectBox = (want, p) => expect.poll(() => boxGap(want, p), { timeout: 20_000 }).toBeLessThan(1e-3);
 export const settle = async (p) => { // the camera stops moving, twice in a row
   for (let ok = 0; ok < 2;) { await p.waitForTimeout(200); ok = (await p.evaluate(() => !window.__app.vp.isMoving())) ? ok + 1 : 0; }
 };

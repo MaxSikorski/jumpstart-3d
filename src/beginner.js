@@ -9,7 +9,7 @@ import { FACEPAT } from "./facepat.js";
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
-import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, fine } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { dragAngle, turnAbout, pivotOf, arcPoints, nearestArc, snapSwitch, fine } from "./rotationui.js"; // jumpstart-3d: rotation access
 import {
   M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodiesInDoc, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
@@ -699,7 +699,7 @@ export function initBeginner(app) {
   });
 
   function pickHandle(e) {
-    if (!H.visible) return null;
+    if (!H.visible || vp.tapping) return null; // jumpstart-3d: rotation access. a finger's tap (replayed by the viewport) is a click on what is under it, not on a handle
     vp.ray(e);
     const objs = [...footprint, topHandle, lift, ...rotHandles].filter((o) => o.visible);
     const hits = vp.raycaster.intersectObjects(objs, true);
@@ -808,8 +808,9 @@ export function initBeginner(app) {
         else app.select(d.add ? [...d.base, ...hits] : hits);
       } else if (d.up) d.up(e);
       vp.request();
+      if (d.kind === "rot" && vp.touchMode && !d.moved) return "tap"; // jumpstart-3d: rotation access. a finger on an arc that did not move: the viewport treats it as a tap on what is under it
     },
-    cancel() { if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); },
+    cancel() { if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching
@@ -949,8 +950,8 @@ export function initBeginner(app) {
     }
     if (info.type === "rot") {
       rotKeys = { id: body.id, axis: info.axis };
-      const wb = app.scene.bodyTightBox(body.id);
-      const center = wb.getCenter(new THREE.Vector3());
+      const center = pivotOf(app.scene, body.id, M4(body.m)); // jumpstart-3d: rotation access. the body's own middle, fixed under the turn
+      if (!center) return false;
       const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[info.axis];
       const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axisV, center);
       const u = info.axis === "z" ? new THREE.Vector3(1, 0, 0) : info.axis === "x" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
@@ -961,9 +962,11 @@ export function initBeginner(app) {
       const a0 = angOf(p0);
       const base = body.m;
       // (the shared up() clears drag before calling this one's up, so keep our own handle)
+      const s0 = vp.local(e);
       const rd = drag = {
-        kind: "rot", axis: info.axis, center, axisV, angle: 0, radius: h.scale.x,
+        kind: "rot", axis: info.axis, center, axisV, angle: 0, radius: h.scale.x, moved: false,
         move(ev) {
+          if (!rd.moved) { const [x, y] = vp.local(ev); if (Math.hypot(x - s0[0], y - s0[1]) < 3) return; rd.moved = true; } // jumpstart-3d: rotation access. a finger's jitter is not a turn
           const p = vp.rayPlane(ev, plane);
           if (!p) return;
           let a = ((angOf(p) - a0) * 180) / Math.PI;
@@ -973,7 +976,7 @@ export function initBeginner(app) {
           const R = turnAbout(center, axisV, a);
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it ${fine.step}° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } },
+        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told && !(vp.touchMode && !rd.moved)) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it ${fine.step}° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
       };
       return true;
     }
@@ -1190,7 +1193,7 @@ export function initBeginner(app) {
     body.append(el("div", { class: "subhead" }, "Rotate 90°"));
     const rr = el("div", { class: "seg" });
     for (const ax of ["x", "y", "z"]) rr.append(el("button", { onclick: () => rotate90(b.id, ax) }, "↻ " + ax.toUpperCase()));
-    rr.classList.add("rot-btn");
+    rr.classList.add("rot-btn"); // jumpstart-3d: rotation access
     body.append(rr);
     // jumpstart-3d: rotation access. Typed turns: a change of angle (not the shape's current angle) around the middle of its box
     body.append(el("div", { class: "subhead" }, "Turn by (°)"));
@@ -1199,17 +1202,17 @@ export function initBeginner(app) {
     body.append(tr, el("div", { class: "subhead" }, "Dragging an arc"), snapSwitch());
   }
   function turnBy(id, ax, deg) {
-    const box = app.scene.bodyTightBox(id);
-    if (!box || !deg || app.isLocked(id)) return;
+    const cur = findBody(store.doc, id), c = cur && pivotOf(app.scene, id, M4(cur.m));
+    if (!c || !deg || app.isLocked(id)) return;
     const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[ax];
-    transformBodies([id], turnAbout(box.getCenter(new THREE.Vector3()), axisV, deg), `Turn ${ax.toUpperCase()} ${deg}°`);
+    transformBodies([id], turnAbout(c, axisV, deg), `Turn ${ax.toUpperCase()} ${deg}°`);
   }
   function rotate90(id, ax) {
     const box = app.scene.bodyTightBox(id);
-    const c = box.getCenter(new THREE.Vector3());
+    const cur = findBody(store.doc, id);
+    const c = pivotOf(app.scene, id, M4(cur.m)); // jumpstart-3d: rotation access. the body's own middle (not the world box's)
     const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[ax];
     const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, -Math.PI / 2)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
-    const cur = findBody(store.doc, id);
     const next = M4(cur.m).premultiply(R);
     const nb = app.scene.boxWithMatrix(id, next);
     if (nb) next.premultiply(new THREE.Matrix4().makeTranslation(0, 0, box.min.z - nb.min.z));
@@ -1221,10 +1224,11 @@ export function initBeginner(app) {
   let rotKeys = null;
   function rotateByKey(e) {
     if (!rotKeys || app.sel.length !== 1 || app.sel[0] !== rotKeys.id || !findBody(store.doc, rotKeys.id) || app.isLocked(rotKeys.id)) { rotKeys = null; return false; }
-    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step); // jumpstart-3d: fine rotation. the step chosen in the status bar
-    const wb = app.scene.bodyTightBox(rotKeys.id); if (!wb) return false;
-    const c = wb.getCenter(new THREE.Vector3()), axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[rotKeys.axis];
-    transformBodies([rotKeys.id], turnAbout(c, axisV, s), `Rotate ${s > 0 ? "+" : ""}${s}°`);
+    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step);
+    const cur = findBody(store.doc, rotKeys.id), c = cur && pivotOf(app.scene, rotKeys.id, M4(cur.m)); if (!c) return false; // jumpstart-3d: rotation access. the body's own middle
+    const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[rotKeys.axis];
+    const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, (s * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+    transformBodies([rotKeys.id], R, `Rotate ${s > 0 ? "+" : ""}${s}°`);
     return true;
   }
   function key(e) {

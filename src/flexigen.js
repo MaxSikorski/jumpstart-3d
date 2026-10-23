@@ -2,6 +2,7 @@
 // It runs in its own window over the app, on a copy of the body's mesh, so the design is never changed.
 import * as THREE from "three";
 import FLEXI_HTML from "./flexigen.html";
+import { withFonts } from "./helperfonts.js";
 import { store } from "./store.js";
 
 export function initFlexiGen(app) {
@@ -50,7 +51,7 @@ export function initFlexiGen(app) {
       w.__flexi.theme(t === "contrast" ? "contrast" : t === "dark" ? "dark" : "light");
       w.__flexi.load(soup, name);
     };
-    ifr.srcdoc = FLEXI_HTML;
+    ifr.srcdoc = withFonts(FLEXI_HTML);
     frame.append(ifr);
     document.body.append(frame);
     app.flexiOpen = true;
