@@ -5,8 +5,8 @@
 //  - Advanced: one click on Modify > Move / Rotate shows the rings, the exact boxes, and OK commits one undo step.
 // Every turn is compared with a rotation worked out here from the box's own middle, never with the app's own matrix code.
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors, loadDoc, waitIdle, newDoc, body, prim } from "./helpers.mjs";
-import { tablet, touchPage, touch, touchTo, M0, design, mul, tr, rot, turned, turnedBox, angleOf, expectMatrix, boxNow as boxOf, expectBox as expectBoxOf, open as openOn, spotOnBox as spotOf } from "./rotation-oracle.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { tablet, touchPage, touch, touchTo, M0, BOX, settle, design, mul, tr, rot, turned, turnedBox, angleOf, expectMatrix, boxNow as boxOf, expectBox as expectBoxOf, open as openOn, spotOnBox as spotOf } from "./rotation-oracle.mjs";
 
 let page, errors;
 const boxNow = (p = page) => boxOf(p);
