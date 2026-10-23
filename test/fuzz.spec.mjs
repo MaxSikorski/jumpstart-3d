@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { boot, loadDoc, newDoc, watchErrors } from "./helpers.mjs";
 import {
-  makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, lostTorusExcused, stretchExcused, replayCommand, coneOpenExcused,
+  makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, stretchExcused, replayCommand, coneOpenExcused,
 } from "./fuzz-checks.mjs";
 
 const OPS = +(process.env.FUZZ_OPS || 18);
@@ -35,9 +35,7 @@ const check = (ok, what) => { if (!ok) throw new Fail(what); };
 // FUZZ_STRICT=1 turns them back into failures.
 const findings = [];
 const soft = (ok, what) => { if (ok) return; if (process.env.FUZZ_STRICT) throw new Fail(what); findings.push(what); };
-const RAW_EMPTY = "[object WebAssembly.Exception]";
-const NOTE_EMPTY = `a boolean that leaves nothing shows the error "${RAW_EMPTY}" instead of a message`;
-const NOTE_TORUS = "a torus grouped with a shape it does not touch is missing from the group's mesh, box and exports while its volume still counts it";
+const EMPTY_MSG = "Nothing is left: these shapes don't overlap, or the holes cut all of it away.";
 const NOTE_STRETCH = 'JS3D.scale with different factors on a body the kernel rebuilds from a fine mesh (over 4000 triangles) is accepted, then the body shows "can\'t be stretched unevenly"';
 const noteCurved = (kinds) => `booleans with a sphere, hemisphere, capsule or torus can disagree with each other, or give a negative volume (seen with ${kinds})`;
 const NOTE_STALL = "joining several shapes that include a torus can stall the geometry engine for 25 s (\"This shape stalled the geometry engine\")";
@@ -109,10 +107,7 @@ function sane(list, what) {
       check(b.volume > 0 || b.kind === "group", `${what}: ${b.name} has no volume`);
     }
     check(b.position.every(Number.isFinite), `${what}: ${b.name} position is ${b.position}`);
-    if (!b.hidden && ![...b.bbox.min, ...b.bbox.max].every(Number.isFinite)) {
-      check(b.solids > 1 && b.kinds.includes("torus"), `${what}: ${b.name} box is not finite`);
-      soft(false, NOTE_TORUS);
-    }
+    check(b.hidden || [...b.bbox.min, ...b.bbox.max].every(Number.isFinite), `${what}: ${b.name} box is not finite`);
   }
   check(new Set(list.map((b) => b.id)).size === list.length, `${what}: duplicate body ids`);
 }
@@ -219,11 +214,11 @@ const probeHoleCover = (solidIds, holeIds) => page.evaluate(async ([solidIds, ho
   return { U, all };
 }, [solidIds, holeIds]);
 
-// A boolean that leaves nothing comes back from the kernel as the raw error text, not a message (listed in test/README.md).
-// Any other error is a failure, and so is that one where the result is not really empty: it has to be proved, by the
-// results of other booleans of the same shapes, or the step fails.
+// A boolean that leaves nothing comes back with the plain "Nothing is left" message (src/kernel.js). Any other error is a
+// failure, and so is that one where the result is not really empty: it has to be proved, by the results of other
+// booleans of the same shapes, or the step fails.
 async function twoEmptyIsReal(how, picked, ids, err) {
-  check(err === RAW_EMPTY, `${how}: the kernel gave an error: ${err}`);
+  check(err === EMPTY_MSG, `${how}: the kernel gave an error: ${err}`);
   check(picked.length === 2 && picked.every((b) => b.volume !== null && !b.hole), `${how} left nothing, and that cannot be checked for these bodies`);
   const [a, b] = picked;
   if (how === "intersect") {
@@ -233,13 +228,11 @@ async function twoEmptyIsReal(how, picked, ids, err) {
     const i = await probe(ids, "intersect");
     check(!i.error && near(i.volume, a.volume, REL, 0.05), `cut failed with a kernel error although the first shape is not swallowed (overlap ${i.volume} of ${a.volume})`);
   }
-  soft(false, NOTE_EMPTY);
 }
 async function holeCutEmptyIsReal(solidIds, holeIds, err) {
-  check(err === RAW_EMPTY, `Group with holes: the kernel gave an error: ${err}`);
+  check(err === EMPTY_MSG, `Group with holes: the kernel gave an error: ${err}`);
   const { U, all } = await probeHoleCover(solidIds, holeIds);
   check(near(all, U, REL, 0.05), `Group with holes failed with a kernel error although the holes (${U}) do not cover the shapes (${all} together)`);
-  soft(false, NOTE_EMPTY);
 }
 
 // ---- running a step and checking it ---------------------------------------------------------------------------
@@ -510,12 +503,9 @@ async function exportCheck(kind, solids) {
   check(bytes.length > 200, `${kind} export is only ${bytes.length} bytes`);
   if (kind === "step") {
     // every solid of every body is one solid entity (a body of several separate solids gives several)
-    // (a torus lost from a body's mesh is lost from its STEP as well; such a body still gives at least one)
-    const lost = (b) => b.solids > 1 && b.kinds.includes("torus");
-    const want = solids.reduce((s, b) => s + b.solids, 0), least = solids.reduce((s, b) => s + (lost(b) ? 1 : b.solids), 0);
+    const want = solids.reduce((s, b) => s + b.solids, 0);
     const got = readStep(bytes).solids;
-    check(got <= want && got >= least, `STEP has ${got} solids; the ${solids.length} bodies are ${want} solids`);
-    if (got < want) soft(false, NOTE_TORUS);
+    check(got === want, `STEP has ${got} solids; the ${solids.length} bodies are ${want} solids`);
     return;
   }
   // Each body alone is checked against the kernel's exact volume; the whole export must then be those bodies and no others.
@@ -533,7 +523,7 @@ async function exportCheck(kind, solids) {
       soft(false, why);
     }
     if (!meshMatches(rep.volume, b.volume, b.kinds)) {
-      const why = lostTorusExcused(b, rep.volume) ? NOTE_TORUS : flat ? NOTE_FLAT_CAPSULE : flawed ? noteCurved(b.kinds) : null;
+      const why = flat ? NOTE_FLAT_CAPSULE : flawed ? noteCurved(b.kinds) : null;
       check(why, `STL of ${b.name} (${b.kinds}) encloses ${rep.volume.toFixed(3)} mm3, the kernel says ${b.volume} (${b.solids} solids)`);
       soft(false, why);
     } else check(rep.volume > 0, `STL of ${b.name} has volume ${rep.volume}: the faces point inward`);
@@ -727,16 +717,15 @@ if (!CUSTOM) {
     sane([{ ...body, kind: "group", kinds: ["group", "torus", "box"] }], "control");
     check(findings.some((f) => /torus/.test(f)), "control: a negative volume of a boolean with a torus was not noticed");
 
-    // Booleans must fit together: join + overlap = both parts. The two-sphere intersect is wrong in the kernel (it gives a
-    // whole sphere): noted for spheres, and a failure when strict. Boxes with a known overlap pass in strict mode.
+    // Booleans must fit together: join + overlap = both parts. The two-sphere intersect used to give a whole sphere (fixed
+    // in #98); it now passes even when strict and gives the lens, 2360.4 mm3.
     await fresh("control spheres");
     await add("sphere", [20, 20, 20], [0, 0, 0]); await add("sphere", [20, 20, 20], [6, 0, 0]);
     cur = await settled();
-    await strictly(() => fails(() => runStep({ op: "group", pick: [0, 1], how: "intersect" }, cur), /join .* \+ intersect .* is not the two parts/));
-    check((await snapshot()).length === 2, "control: the failed check left the design changed");
-    findings.length = 0;
-    await runStep({ op: "group", pick: [0, 1], how: "intersect" }, cur);
-    check(findings.some((f) => /sphere, hemisphere, capsule or torus/.test(f)), "control: two spheres' wrong intersect was not noticed");
+    await strictly(async () => {
+      const r = await runStep({ op: "group", pick: [0, 1], how: "intersect" }, cur);
+      check(near(r.after[0].volume, 2360.4, 0.01, 1), `control: two spheres overlapping by 14 should intersect in a lens of 2360, got ${r.after[0].volume}`);
+    });
     await fresh("control boxes");
     await add("box", [20, 20, 20], [0, 0, 0]); await add("box", [20, 20, 20], [10, 0, 0]);
     cur = await settled();
@@ -754,25 +743,23 @@ if (!CUSTOM) {
     check(cur.length === 1 && cur[0].solids === 1 && near(cur[0].volume, 7000, 1e-6, 0.01), `control: a box with a cavity should be one 7000 mm3 solid, got ${cur.map((c) => c.volume)}`);
     await exportCheck("step", cur);
 
-    // A torus in a group with something it does not touch is lost from the mesh: noted, and a failure when strict
+    // A torus in a group with something it does not touch used to be lost from the mesh (fixed in #98): it must now pass strict
     await fresh("control torus");
     await add("torus", [20, 20, 10], [-30, 0, 0]); await add("box", [20, 20, 10], [30, 0, 0]);
     await ready();
     await page.evaluate(() => { const [x, y] = JS3D.list().map((b) => b.id); JS3D.group([x, y]); });
     cur = await settled();
-    findings.length = 0;
-    await exportCheck("stl", cur);
-    check(findings.some((f) => /torus/.test(f)), "control: the missing torus was not noticed");
-    await strictly(() => fails(() => exportCheck("stl", cur), /torus grouped/));
+    sane(cur, "control torus");
+    await strictly(async () => { await exportCheck("stl", cur); await exportCheck("step", cur); });
 
     // A hole that does not cover the shape cannot excuse the raw empty-result error; one that does, can
     await fresh("control holes");
     await add("box", [10, 10, 10], [0, 0, 0]); await add("box", [10, 10, 10], [50, 0, 0], true); await add("box", [40, 40, 40], [0, 0, -10], true);
     cur = await settled();
     const [solid, apart, covering] = cur.map((x) => x.id);
-    await fails(() => holeCutEmptyIsReal([solid], [apart], RAW_EMPTY), /do not cover/);
+    await fails(() => holeCutEmptyIsReal([solid], [apart], EMPTY_MSG), /do not cover/);
     findings.length = 0;
-    await holeCutEmptyIsReal([solid], [covering], RAW_EMPTY);
+    await holeCutEmptyIsReal([solid], [covering], EMPTY_MSG);
     await fails(() => holeCutEmptyIsReal([solid], [covering], "memory access out of bounds"), /the kernel gave an error/);
     const swallowed = await runStep({ op: "uiGroup", pick: [0, 2] }, cur);
     check(swallowed.skipped, "control: a hole covering the shape should leave nothing, and the step should be skipped");
@@ -780,7 +767,7 @@ if (!CUSTOM) {
     await fresh("control overlap");
     await add("box", [20, 20, 20], [0, 0, 0]); await add("box", [20, 20, 20], [10, 0, 0]);
     cur = await settled();
-    await fails(() => twoEmptyIsReal("intersect", cur, cur.map((c) => c.id), RAW_EMPTY), /although the shapes overlap/);
-    await fails(() => twoEmptyIsReal("cut", cur, cur.map((c) => c.id), RAW_EMPTY), /not swallowed/);
+    await fails(() => twoEmptyIsReal("intersect", cur, cur.map((c) => c.id), EMPTY_MSG), /although the shapes overlap/);
+    await fails(() => twoEmptyIsReal("cut", cur, cur.map((c) => c.id), EMPTY_MSG), /not swallowed/);
   });
 }

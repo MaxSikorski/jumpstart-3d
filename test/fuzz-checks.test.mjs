@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, lostTorusExcused, stretchExcused, replayCommand, FINE_MESH_TRIANGLES, coneOpenExcused } from "./fuzz-checks.mjs";
+import { makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, stretchExcused, replayCommand, FINE_MESH_TRIANGLES, coneOpenExcused } from "./fuzz-checks.mjs";
 
 // a zip with the given entries (compressed, no checksum: the reader does not look at it)
 function zip(entries) {
@@ -62,11 +62,6 @@ test("volume tolerance: flat shapes are held to a hair, curved ones to the tesse
 });
 
 test("known kernel problems are excused only for what was shown", () => {
-  const group = { kind: "group", mods: 0, solids: 2, kinds: ["box", "group", "torus"], volume: 100, tris: 0 };
-  assert.equal(lostTorusExcused(group, 60), true);
-  assert.equal(lostTorusExcused({ ...group, kinds: ["box", "group", "sphere"] }, 60), false); // no torus in it
-  assert.equal(lostTorusExcused({ ...group, solids: 1 }, 60), false); // one solid has nothing to lose
-  assert.equal(lostTorusExcused(group, 100), false); // nothing is missing
   const big = { kind: "group", mods: 0, tris: FINE_MESH_TRIANGLES };
   assert.equal(stretchExcused([2, 1, 1], big), true);
   assert.equal(stretchExcused(2, big), false); // an even stretch never takes that path

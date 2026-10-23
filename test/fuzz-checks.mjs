@@ -156,10 +156,6 @@ export function meshMatches(mesh, exact, kinds) {
   return Number.isFinite(mesh) && Math.abs(mesh - exact) <= abs + rel * Math.max(Math.abs(mesh), Math.abs(exact));
 }
 
-// A body made of separate solids can lose a torus from its mesh (see test/README.md). Excused only for that: the body
-// holds a torus and several solids, and its mesh is smaller than the kernel's volume.
-export const lostTorusExcused = (body, mesh) => body.solids > 1 && body.kinds.includes("torus") && mesh < body.volume;
-
 // "This body can't be stretched unevenly" is the kernel giving up on rebuilding a stretched body from a fine mesh of more
 // than 4000 triangles (src/kernel.js, facetedScale). Excused only for that: factors that differ, a body that is rebuilt
 // that way (a group, a torus or text) and a mesh that is big.
