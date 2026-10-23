@@ -848,6 +848,10 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 @media (max-width: 480px) { .modeswitch #mode-arch .ml { display: none; } .modeswitch #mode-arch .ms { display: inline; } }
 @media (max-width: 420px) { .modeswitch { gap: 0; padding: 2px; } .modeswitch button { padding: 4px 4px; font-size: 10px; } }
 @media (min-width: 861px) { .panel-toggle { display: none !important; } }
+/* jumpstart-3d: iPad width (issue #87). The top bar's controls sum to more than the screen in some window widths (899 px of controls at 801-898, 1029 at 961-1028, 1196 at 1101-1195 ...), which widened the whole page and scrolled it sideways. Tighter gaps keep a landscape iPad on one row; below that the bar wraps onto a second row instead of overflowing, and nothing is hidden */
+.topbar { flex-wrap: wrap; height: auto; min-height: 46px; row-gap: 4px; }
+.topbar .docname { flex: 4 1 60px; max-width: 220px; } /* a wrapping bar breaks lines by each item's basis: the name box starts small and takes what is left, as it did when it shrank */
+@media (min-width: 561px) and (max-width: 1180px) { .topbar { gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
 /* simulate workspace */
