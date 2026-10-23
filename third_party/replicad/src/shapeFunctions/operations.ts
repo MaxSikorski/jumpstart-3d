@@ -203,13 +203,17 @@ function withoutLooseEdges<B extends BooleanBuilder>(
       retry.SetTools(tools);
       retry.SetFuzzyValue(fuzzy);
       configureGlue(retry, optimisation);
-      retry.Build();
-      if (!retry.HasErrors()) {
-        const got = r(retry.Shape());
-        if (loosest(got) <= limit && Math.abs(volume(got) - want) <= 1e-3 + 1e-4 * Math.abs(want)) {
-          builder.delete();
-          return retry;
+      try {
+        retry.Build();
+        if (!retry.HasErrors()) {
+          const got = r(retry.Shape());
+          if (loosest(got) <= limit && Math.abs(volume(got) - want) <= 1e-3 + 1e-4 * Math.abs(want)) {
+            return retry; // the caller registers the builder it gets back and the one it passed in
+          }
         }
+      } catch (e) {
+        retry.delete();
+        throw e;
       }
       retry.delete();
     }
@@ -228,11 +232,12 @@ export function fuseShapes(
   const oc = getOC();
   const r = GCWithScope();
   const left = unwrapShape(leftInput), right = unwrapShape(rightInput); // jumpstart-3d: loose edges
-  const builder = new oc.BRepAlgoAPI_Fuse(left, right);
+  const builder = r(new oc.BRepAlgoAPI_Fuse(left, right));
 
   configureGlue(builder, optimisation);
   builder.Build();
-  const done = r(withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Fuse(), left, right, optimisation)); // jumpstart-3d: loose edges
+  const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Fuse(), left, right, optimisation); // jumpstart-3d: loose edges
+  if (done !== builder) r(done);
   return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
@@ -245,11 +250,12 @@ export function cutShape(
   const oc = getOC();
   const r = GCWithScope();
   const shape = unwrapShape(shapeInput), tool = unwrapShape(toolInput); // jumpstart-3d: loose edges
-  const builder = new oc.BRepAlgoAPI_Cut(shape, tool);
+  const builder = r(new oc.BRepAlgoAPI_Cut(shape, tool));
 
   configureGlue(builder, optimisation);
   builder.Build();
-  const done = r(withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Cut(), shape, tool, optimisation)); // jumpstart-3d: loose edges
+  const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Cut(), shape, tool, optimisation); // jumpstart-3d: loose edges
+  if (done !== builder) r(done);
   return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
@@ -261,10 +267,11 @@ export function intersectShapes(
   const oc = getOC();
   const r = GCWithScope();
   const left = unwrapShape(leftInput), right = unwrapShape(rightInput); // jumpstart-3d: loose edges
-  const builder = new oc.BRepAlgoAPI_Common(left, right);
+  const builder = r(new oc.BRepAlgoAPI_Common(left, right));
 
   builder.Build();
-  const done = r(withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Common(), left, right, "none")); // jumpstart-3d: loose edges
+  const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Common(), left, right, "none"); // jumpstart-3d: loose edges
+  if (done !== builder) r(done);
   return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
