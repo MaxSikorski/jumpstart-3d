@@ -61,4 +61,5 @@ Get-FileHash jumpstart-3d.html -Algorithm SHA256
 
 If someone re-hosts the file elsewhere, the digest is how you tell whether
 it is unchanged. The website itself needs no checking: it is served over
-HTTPS from this repository's `docs/` folder.
+HTTPS from the `docs/` folder of this repository's `release` branch, which the
+release step builds from `main`.

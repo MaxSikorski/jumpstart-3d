@@ -63,8 +63,9 @@ that first.
    drag a box, run a fillet in Advanced mode, export an STL, and open each
    of the three helpers (Chisel, FlexiGen, Mesh to STEP). Check the browser
    console for errors.
-6. Commit the rebuilt `docs/` together with your change. Do not commit
-   `dist/`.
+6. Commit only your source change. `docs/` and `dist/` are build output and
+   are not committed on `main` (CI refuses a pull request that adds `docs/`);
+   the maintainer's release step builds the site onto the `release` branch.
 7. Open a pull request. Say what you changed, why, and what you tested.
 
 ### Things we will ask you to keep
