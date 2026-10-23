@@ -277,6 +277,9 @@ async function runUntilKill(w, page, plan) {
   return outcome;
 }
 const closeClean = (page) => page.close().catch(() => {});
+// close as a person does, unload handlers run. page.close({ runBeforeUnload: true }) returns BEFORE they have run (Playwright docs), so a step
+// after it could overtake the closing tab's rescue copy; wait for the page to be gone.
+const closeUnloading = async (page) => { const gone = page.waitForEvent("close"); await page.close({ runBeforeUnload: true }); await gone; };
 const noErrors = (w) => { for (const e of w.errors) expect(e).toEqual([]); };
 
 // A scenario retries from scratch (a new context) when the browser lost storage by itself, and is skipped, with a note, if it keeps doing so.
@@ -415,7 +418,7 @@ scenario("IndexedDB refusing writes (quota exceeded): the saved design stays who
   expect(inBackup && sig(inBackup.doc), "the backup file holds the edit the browser could not store").toBe(w.known.get(A).get(big.n));
   await page.click(".modal-back .xbtn");
   // closing the tab keeps the edit as a rescue copy in localStorage
-  await page.close({ runBeforeUnload: true });
+  await closeUnloading(page);
   w.tokens = [];
   // the next visit still has no room: the saved design is whole and the rescue copy waits
   page = await openPage(w, { failWrites: true });
@@ -489,7 +492,7 @@ scenario("reload or close at seeded moments after an edit: the edit is there aft
     const edit = step(w, A, "soon", pick(r, [1, 40]));
     await page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, edit); // left to the autosave
     await page.waitForTimeout(delays[i]);
-    if (i % 3 === 2) { await page.close({ runBeforeUnload: true }); w.tokens = []; page = await openPage(w); }
+    if (i % 3 === 2) { await closeUnloading(page); w.tokens = []; page = await openPage(w); }
     else await reloadPage(w, page);
     const snap = await readAll(page);
     const it = snap.items.find((x) => x.entry.id === A);
@@ -511,7 +514,7 @@ scenario("closed right after an edit while localStorage is full: the edit is not
   const edit = step(w, A, "soon", 5);
   // closed straight after the edit: the unload handler starts its IndexedDB write before it returns, so nothing waits for it
   await page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, edit);
-  await page.close({ runBeforeUnload: true });
+  await closeUnloading(page);
   page = await openPage(w);
   const it = (await readAll(page)).items.find((x) => x.entry.id === A);
   // the unload save into IndexedDB carries it (the rescue copy cannot be written)
@@ -638,7 +641,7 @@ scenario("beforeunload queues the rescue write in IndexedDB before it returns, w
   expect(seen.txs, "a read-write transaction was opened inside the handler").toContain("readwrite");
   const queued = seen.puts.find((p) => p.store === "meta" && String(p.key).startsWith(RESCUE + "."));
   expect(queued, `the rescue put was queued inside the handler (saw ${JSON.stringify(seen.puts)})`).toBeTruthy();
-  await page.close({ runBeforeUnload: true });
+  await closeUnloading(page);
   w.tokens = [];
   page = await openPage(w);
   const snap = await readAll(page);
@@ -871,7 +874,7 @@ scenario("one tab saving and reloading never makes a copy", async (w) => {
   await page.evaluate(drive, { plan: [step(w, D, "now", 5), step(w, D, "now", 5)] });
   await reloadPage(w, page);
   await page.evaluate(drive, { plan: [step(w, D, "now", 5), step(w, D, "soon", 5)] });
-  await page.close({ runBeforeUnload: true });
+  await closeUnloading(page);
   w.tokens = [];
   page = await openPage(w);
   await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
@@ -890,7 +893,7 @@ scenario("two tabs closed at once with unsaved edits to one design: both edits a
   const ea = step(w, D, "soon", 5), eb = step(w, D, "soon", 5);
   await editOnly(pa, ea);
   await editOnly(pb, eb);
-  await Promise.all([pa.close({ runBeforeUnload: true }), pb.close({ runBeforeUnload: true })]); // before either autosave runs
+  await Promise.all([closeUnloading(pa), closeUnloading(pb)]); // before either autosave runs
   w.tokens = [];
   const page = await openPage(w);
   const snap = await readAll(page);
@@ -908,7 +911,7 @@ scenario("a tab closed with unsaved edits while another tab saved the design mea
   const pb = await openPage(w);
   const ea = step(w, D, "soon", 5);
   await editOnly(pa, ea);
-  await pa.close({ runBeforeUnload: true }); // its rescue copy is older than what tab B saves next
+  await closeUnloading(pa); // its rescue copy is older than what tab B saves next
   await pb.waitForTimeout(5);
   const b = step(w, D, "now", 5);
   await pb.evaluate(drive, { plan: [b] });
@@ -982,7 +985,7 @@ scenario("a tab's unsaved edit made in the same millisecond as its last save is 
   await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
   const e = step(w, D, "soon", 5);
   await editOnly(page, e);
-  await page.close({ runBeforeUnload: true });
+  await closeUnloading(page);
   w.tokens = [];
   page = await openPage(w);
   const snap = await readAll(page);
@@ -1140,7 +1143,7 @@ scenario("on the older storage, closing the tab with no room for a second copy o
   const e = step(w, D, "soon", 60);
   await editOnly(page, e);
   await fillStorage(page, 6000); // room to replace the design by its next version, not to hold another copy of it
-  await page.close({ runBeforeUnload: true });
+  await closeUnloading(page);
   w.tokens = [];
   page = await openPage(w, { refuse: true });
   const it = (await readAll(page)).items.find((i) => i.entry.id === D);
@@ -1157,7 +1160,7 @@ for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: t
     const pb = await openPage(w, cfg);
     expect(await pb.evaluate(async (id) => { const s = window.__app.projects._store; await s.ready; return s.del(id); }, D), "deleted in the other tab").toBe(true);
     await editOnly(pa, step(w, D, "soon", 5));
-    await pa.close({ runBeforeUnload: true });
+    await closeUnloading(pa);
     w.tokens = [];
     await pb.close({ runBeforeUnload: false });
     w.tokens = [];
