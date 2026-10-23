@@ -371,6 +371,7 @@ src/params.js       our named parameters (evaluator and the dimension and featur
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
 src/report.js       our "Report a problem" dialog (a prefilled GitHub bug report link)
+src/sharelink.js    our Share link: a small design in a web address, and opening one (see below)
 src/loadui.js       our loading note over the 3D view, and the start of the offline copy on the website
 src/sw.js           our service worker: the website's offline copy (the site build only)
 src/remote.js       our Your server tab in Your designs (designs on a WebDAV server)
@@ -491,6 +492,17 @@ UPSTREAM-README.md         the author's README from the source release
   and the last error message only if you tick the box, with names and paths taken out) and what you typed; never your design. You
   can save a copy of the design to attach. The app sends nothing: you press the
   link and then Create on GitHub
+- Open/Export › Share link…: puts a small design into a web address (after the `#`)
+  that you copy and send. Nothing is uploaded and no service stores it; the
+  browser does not send that part to any server. Whoever opens the link is asked
+  first and the design opens as a new design, never over theirs. The whole
+  project goes in (hidden shapes, names, parameters, embedded models), it is not
+  encrypted, and anyone with the link can open a copy. The link is capped at
+  4096 characters; a bigger design is offered as a project file instead. In the
+  downloaded file, Share link… makes a link to the community website, and
+  Import shared link (in the same box) opens a pasted link without the website.
+  Designs that use features a link cannot carry (Chisel, Architechies, joints,
+  textures and a few others) are refused with "Use a project file for this design"
 - An MCP server for AI agents (`mcp/`): Claude Code or any MCP client can build
   and edit designs through tools that mirror `JS3D`, either in the tab you have
   open (theme menu › Connect to AI agent, off unless you turn it on) or in a

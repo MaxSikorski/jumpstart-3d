@@ -225,6 +225,33 @@ export function initProjects(app) {
     const gen = loads; setTimeout(() => { if (gen !== loads) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: only the latest load's
     return true;
   }
+  // jumpstart-3d: share link. Adds a checked design from a share link as a NEW design (own id, version 0, own creation time) and opens it.
+  // The open design is saved first and stays as it is; nothing is replaced until the new one is safely stored. Returns "ok", "save-failed"
+  // (the open design could not be saved: nothing happens), "stale" (the person changed designs while this waited: nothing happens),
+  // "storage" (the new design could not be stored: the open one stays) or "chisel" (Chisel keeps its own copy of the open design).
+  async function importShared(shared) {
+    if (app.mode === "chisel") return "chisel";
+    const gen = loads;
+    if (app.command) app.command.cancel();
+    const open0 = store.doc;
+    if (!await saveNow()) return "save-failed";
+    if (store.doc !== open0 || loads !== gen) return "stale"; // an edit or another design while the save ran: the person is asked again
+    const id = uid("d"), now = Date.now(), doc = { ...structuredClone(shared), id, created: now, ver: 0 };
+    delete doc._updated;
+    if (!await ps.put(id, JSON.stringify({ ...doc, _updated: now }), { id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null })) return "storage";
+    if (store.doc !== open0 || loads !== gen) { await ps.del(id); return "stale"; }
+    app.select([]);
+    if (app.command) app.command.cancel();
+    app.exitSketch();
+    store.load(doc);
+    ls.set(LS_PREF + ".last", id);
+    setState("Saved");
+    mirror.soon();
+    saveNow();
+    const b = app.scene.allBox(); app.vp.setView("home", b.isEmpty() ? null : b);
+    const g2 = loads; setTimeout(() => { if (g2 !== loads) return; const bx = app.scene.allBox(); if (!bx.isEmpty()) app.vp.fit(bx); }, 900);
+    return "ok";
+  }
   function createNew(doc, mode = "beginner") {
     app.select([]);
     if (app.command) app.command.cancel();
@@ -685,16 +712,17 @@ export function initProjects(app) {
       }
       started = true; openGate(); // jumpstart-3d: designs storage (saves wait for this)
       // offer back any work that was never saved (a crash, a closed tab)
-      Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => rec.check(), 300));
+      Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => { if (app.sharelink) app.sharelink.afterDecision(() => rec.check()); else rec.check(); }, 300)); // jumpstart-3d: share link (the recovery offer waits for the person's decision)
       capP.then(async () => {
         if (!remoteOk) { if (!stateEl.textContent) setState("Saved in this browser"); return; }
         // the account may hold a newer copy of this design (edited on another device)
         try {
-          const s = await col().doc(store.doc.id).get();
+          const id0 = store.doc.id, gen0 = loads; // jumpstart-3d: share link. a design opened while this waited (a shared one) is not replaced
+          const s = await col().doc(id0).get();
           if (s.exists && !store.undoStack.length) {
             const v = s.data();
-            const local = await getDoc(store.doc.id);
-            if (v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
+            const local = await getDoc(id0);
+            if (store.doc.id === id0 && loads === gen0 && v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
           }
           setState("Saved");
         } catch (e) {}
@@ -707,6 +735,7 @@ export function initProjects(app) {
     version: () => verOf(),
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
+    exportJSON, liveDoc: () => store.doc, importShared, // jumpstart-3d: share link
     stlBytes, objBytes, threeMFBytes, stepBytes, glbBytes: glbBytesOf, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
     get started() { return started; }, _store: ps, _folder: mirror, _remote: remote, // jumpstart-3d: designs storage, copies in a folder, remote (tests read these)

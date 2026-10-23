@@ -507,7 +507,7 @@ export function initBridge(app) {
     s.onopen = () => {
       link.state = "connected";
       linkChanged();
-      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, app: VERSION, url: location.href }));
+      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
       setTimeout(() => { if (sock === s) app.toast("Connected to an AI agent."); }, 500); // the server may refuse right away (another tab has the link)
     };
     s.onmessage = (ev) => { queue = queue.then(() => answer(s, ev.data)); };

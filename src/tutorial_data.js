@@ -205,6 +205,16 @@ export const TUTORIALS = [
         how: ["With the keychain selected, click a color in the panel on the right."],
         when: "Colors help you tell parts apart on screen. (The printer uses whatever filament is loaded.)",
       },
+      {
+        title: "Share it as a link", tool: "Export → Share link…", icon: "copy", show: { sel: "#btn-share-link", via: "#btn-export" },
+        how: [
+          "Click the <b>Export</b> button (the down-arrow at the top right), then choose <b>Share link…</b>.",
+          "Press <b>Copy link</b> and paste it into a message. A small design fits in the link itself: nothing is uploaded anywhere.",
+          "Whoever opens the link is asked first, and the design opens as a new design, so it never replaces theirs.",
+        ],
+        when: "Use a link for a small design you want a friend to try. For a big design the box offers a project file instead.",
+        tip: "Anyone who has the link can open a copy of the design. It is not a secret.",
+      },
       saveStep(),
       exportStep(),
     ],
