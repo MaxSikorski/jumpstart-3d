@@ -1,0 +1,11 @@
+{
+  "lighthouse": "13.5.0",
+  "runs": 3,
+  "rules": {
+    "lcp": { "label": "Largest Contentful Paint", "unit": "ms", "percent": 20, "floor": 300 },
+    "tbt": { "label": "Total Blocking Time", "unit": "ms", "percent": 20, "floor": 100 },
+    "cls": { "label": "Cumulative Layout Shift", "unit": "", "percent": 0, "floor": 0.02 },
+    "bytes": { "label": "Transferred bytes", "unit": "bytes", "percent": 5, "floor": 0 }
+  },
+  "baseline": null
+}

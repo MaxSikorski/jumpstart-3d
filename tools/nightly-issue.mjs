@@ -28,7 +28,8 @@ export function failingSpecs(report) {
 // reports: { "<job id>": [spec strings] }; needs: the `needs` object (job id -> { result }).
 export function buildReport({ needs, reports, quarantined = [], runUrl, ref, crossBlocking = false }) {
   const failedJobs = Object.entries(needs).filter(([, v]) => v.result !== "success" && v.result !== "skipped").map(([id]) => id);
-  const blockingJobs = failedJobs.filter((id) => id !== "cross" || crossBlocking);
+  // jumpstart-3d: the Lighthouse loading check only reports until a CI baseline is committed; delete "lighthouse" from this list when enforcement goes on (test/README.md)
+  const blockingJobs = failedJobs.filter((id) => (id !== "cross" || crossBlocking) && id !== "lighthouse");
   const crossSpecs = reports.cross ?? [];
   const lines = [`Latest failing run: ${runUrl} (branch \`${ref}\`).`, ""];
   const list = (specs) => {
