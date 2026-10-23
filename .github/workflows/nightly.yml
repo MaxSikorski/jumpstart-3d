@@ -277,7 +277,14 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       # these two browsers need the system libraries, unlike Chromium on the runner image
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # the runner's apt mirror now and then stalls this step for the whole 14 minutes (3 of 12 jobs on 2026-10-23): try it three times, 4 minutes each
+      - run: |
+          for try in 1 2 3; do
+            timeout 240 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
+            echo "install attempt $try did not finish"
+            sudo dpkg --configure -a || true
+          done
+          exit 1
         timeout-minutes: 14
       # Headless Firefox on the runner finds no GL driver at all; under a virtual screen (Xvfb) it gets WebGL from Mesa's software renderer (probed 2026-10-23)
       - if: ${{ matrix.browser == 'firefox' }}

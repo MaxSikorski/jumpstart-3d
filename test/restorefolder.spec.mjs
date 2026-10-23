@@ -245,7 +245,7 @@ test("of two files with one id, the newest keeps the id and the older becomes a 
 });
 
 test("with copies in a folder on, a restored design is copied to the folder, and the copier does not rewrite it", async ({ browser }, info) => {
-  test.skip(buildOf(info) === "single" || browserOf(info) === "webkit", "no origin private file system (OPFS) on file:// in this browser, or at all in Linux WebKit");
+  test.skip(buildOf(info) === "single" || browserOf(info) !== "chromium", "the fake folder is an OPFS handle: none on file:// or in Linux WebKit, and Firefox handles have no queryPermission");
   const ctx = await browser.newContext();
   const p = await ctx.newPage();
   const errs = watchErrors(p);
