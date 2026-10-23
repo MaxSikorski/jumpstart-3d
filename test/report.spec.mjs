@@ -79,7 +79,7 @@ test("the details hold the build, where, browser and mode, and nothing of the de
   expect(text).toContain(`community build ${BUILD}`);
   expect(text).toContain(`upstream ${VERSION}`);
   expect(text).toContain(buildOf(info) === "single" ? "Where: the downloaded jumpstart-3d.html file" : "Where: the website");
-  expect(text).toMatch(new RegExp("Browser: .*" + BROWSER_NAME[browserOf(info)]));
+  expect(text).toMatch(new RegExp("Browser: .*" + BROWSER_NAME[browserOf(info)].source));
   expect(text).toContain("Mode: Beginner");
   expect(text).toContain("Design file:");
   for (const secret of [DESIGN, "file://", "/Users", page.url()]) expect(text).not.toContain(secret);
