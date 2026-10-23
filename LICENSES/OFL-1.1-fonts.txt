@@ -1,4 +1,4 @@
-Fonts: Poppins (Copyright 2020 The Poppins Project Authors), Liberation (Digitized data copyright © 2010 Google Corporation; Copyright © 2012 Red Hat, Inc.), IBM Plex (Copyright © 2017 IBM Corp.), Barlow (Copyright 2017 The Barlow Project Authors).
+Fonts: Poppins (Copyright 2020 The Poppins Project Authors), Liberation (Digitized data copyright © 2010 Google Corporation; Copyright © 2012 Red Hat, Inc.), IBM Plex (Copyright © 2017 IBM Corp.; Plex Sans Condensed Copyright © 2019 IBM Corp.), Barlow (Copyright 2017 The Barlow Project Authors), Chakra Petch (Copyright 2018 The Chakra Petch Project Authors).
 
 SIL OPEN FONT LICENSE
 
