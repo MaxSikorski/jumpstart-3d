@@ -352,7 +352,7 @@ scenario("killed while the older localStorage designs are copied into IndexedDB:
     try {
       const killed = w2.expectKill();
       const page = await openPage(w2, { dieEarly: true, seedLs, kill: { kind, at, armed: true } });
-      const out = await Promise.race([killed, started(page).then(() => "booted", () => "gone")]);
+      const out = await Promise.race([killed, new Promise((res) => setTimeout(() => res("booted"), 8000))]); // no page call is left waiting on a page that may be spinning
       console.log(`chaos migration kill ${kind} #${at} -> ${out}${w2.killWhy ? " at " + w2.killWhy : ""}`);
       if (out !== "killed") continue;
       fired = true;
