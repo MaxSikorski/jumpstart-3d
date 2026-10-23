@@ -522,7 +522,7 @@ and runs on most NAS boxes and cloud drives.
 ## Build it yourself
 
 This section is for building JumpStart 3D from source. You need [Node.js](https://nodejs.org/) 20
-or newer.
+or newer (22.19 or newer to run the Lighthouse loading check; Node 20 still builds, with warnings from the dev tools).
 
 ### Build the app
 

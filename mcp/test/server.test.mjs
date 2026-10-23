@@ -57,7 +57,8 @@ test("add_shape, wait_ready and list_bodies give a block of 24000 mm3", async ()
   assert.equal(list[0].id, id);
   assert.ok(Math.abs(list[0].volume - 24000) < 0.5, "volume " + list[0].volume);
   const st = data(await call(s.client, "status"));
-  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.7"]);
+  assert.deepEqual([st.page, st.designMode, st.bodies], ["headless", "beginner", 1]);
+  assert.match(st.js3d, /^1\.\d+$/); // any 1.x: a new bridge call bumps the minor version without an mcp/ change
   assert.match(st.app, /^\d/);
 });
 

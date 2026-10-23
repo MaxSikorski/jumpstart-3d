@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "pretest": "node build.mjs && node --test test/bench/*.test.mjs test/objimport.test.mjs test/combinesplit.test.mjs test/upstream-merge.test.mjs test/fuzz-checks.test.mjs test/nightly-issue.test.mjs test/size-budget.test.mjs test/overhang.test.mjs test/printerpresets.test.mjs test/printerpreview.test.mjs test/sharelink.test.mjs test/ci-select-specs.test.mjs test/assolid.test.mjs",
+    "pretest": "node build.mjs && node --test test/bench/*.test.mjs test/objimport.test.mjs test/combinesplit.test.mjs test/upstream-merge.test.mjs test/fuzz-checks.test.mjs test/nightly-issue.test.mjs test/size-budget.test.mjs test/overhang.test.mjs test/printerpresets.test.mjs test/printerpreview.test.mjs test/sharelink.test.mjs test/ci-select-specs.test.mjs test/lighthouse.test.mjs test/assolid.test.mjs",
     "test": "playwright test",
     "test:site": "playwright test --project=site",
     "test:single": "playwright test --project=single",
     "test:mobile": "playwright test --project=mobile",
+    "lighthouse": "node tools/lighthouse.mjs",
     "fuzz": "FUZZ_RUNS=50 playwright test test/fuzz.spec.mjs --project=site",
     "test:update": "UPDATE_GOLDEN=1 playwright test --project=site",
     "test:mcp": "cd mcp && npm test",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@playwright/test": "1.62.1",
     "esbuild": "0.28.2",
+    "lighthouse": "13.5.0",
     "ws": "8.22.0"
   }
 }
