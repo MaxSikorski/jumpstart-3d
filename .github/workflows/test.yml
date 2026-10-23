@@ -1,5 +1,5 @@
 # The merge gate: builds both outputs, then runs the smoke spec and the golden exports on each (about 3 minutes), beside the MCP server tests.
-# A pull request's own new or changed test/*.spec.mjs files (at most 10) also run on both builds, and the phone walk (test/mobile.spec.mjs) runs when it or a file it guards changed; each in jobs of its own beside the rest (tools/ci-select-specs.mjs picks them).
+# A pull request's own new or changed test/*.spec.mjs files (at most 10) also run on both builds, and the phone walk (test/mobile.spec.mjs) runs on every pull request that is not docs-only; one job per spec and build, in parallel with the rest (tools/ci-select-specs.mjs picks the specs).
 # Everything slower runs in the nightly workflow (nightly.yml): the full Playwright suite, the export judge, the chat judge, the fuzzer, Firefox and WebKit (see test/README.md).
 # Runs on every pull request and on pushes to main. A pull request that changes only root-level Markdown files skips everything but the MCP tests. Public repository: Actions minutes are free.
 name: test
@@ -59,7 +59,7 @@ jobs:
           echo "changed files: $count, not root Markdown: $other"
           if [ "$count" -gt 0 ] && [ "$other" -eq 0 ]; then code=false; else code=true; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
-      # Extra checks for a pull request (into any branch): the spec files it adds or changes, and whether the phone walk must run. A push or a manual run adds nothing.
+      # Extra checks for a pull request (into any branch): the spec files it adds or changes, and the phone walk (every pull request, docs-only ones are cut by the code output). A push or a manual run adds nothing.
       # The changed paths reach the script as a file of NUL-separated names; no pull request data is put into a shell line.
       - id: select
         env:
@@ -75,6 +75,7 @@ jobs:
           fi
           git diff --name-only --no-renames -z "$BASE...$HEAD" > "$RUNNER_TEMP/select.list"
           CHANGED_LIST="$RUNNER_TEMP/select.list" node tools/ci-select-specs.mjs
+          echo "mobile=true" >> "$GITHUB_OUTPUT"
 
   # One job per build and spec, side by side (each is about 1.5 minutes of tests). pretest builds both outputs and runs the Node unit tests.
   gate:
@@ -117,20 +118,22 @@ jobs:
           retention-days: 7
           overwrite: true
 
-  # The pull request's own new or changed spec files (not smoke or golden, which the gate runs; not mobile or chatjudge), at most 10, all in one job per build.
+  # The pull request's own new or changed spec files (not smoke or golden, which the gate runs; not mobile or chatjudge), at most 10: one job per spec and build, in parallel.
   # Skipped when nothing qualifies, on a docs-only pull request, on a push and on a manual run. Without it a new spec could merge without ever running.
+  # The matrix is never empty: fromJSON gets a placeholder when the list is [] (the job is skipped by its "if" then; an empty matrix would be an error).
   changed-specs:
-    name: changed specs (${{ matrix.build }})
+    name: changed spec (${{ matrix.build }}, ${{ matrix.spec }})
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.specs != '[]' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         build: [site, single]
+        spec: ${{ fromJSON(needs.changes.outputs.specs != '[]' && needs.changes.outputs.specs || '["none"]') }}
     env:
-      SPECS: ${{ needs.changes.outputs.specs }}
+      SPEC: ${{ matrix.spec }}
       BUILD: ${{ matrix.build }}
     steps:
       - uses: actions/checkout@v7
@@ -141,18 +144,16 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npx playwright install chromium
-      - name: Run the changed specs
+      - name: Run the changed spec
         run: |
-          # the list is JSON; read it back one NUL-ended path at a time so a name with spaces stays one argument
-          specs=()
-          while IFS= read -r -d "" path; do specs+=("$path"); done < <(jq -j '.[] + "\u0000"' <<< "$SPECS")
-          [ "${#specs[@]}" -gt 0 ] || { echo "no specs in the list"; exit 1; }
-          printf 'running: %s\n' "${specs[@]}"
-          npm test -- "${specs[@]}" --project="$BUILD"
+          # Playwright reads a file argument as a case-insensitive regular expression: escape every regex character so a name such as c++.spec.mjs matches only itself
+          pattern="$(printf '%s' "$SPEC" | sed -E 's/[][\\.*+?^${}()|]/\\&/g')\$"
+          echo "spec: $SPEC  filter: $pattern"
+          npm test -- "$pattern" --project="$BUILD"
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: changed-specs-report-${{ matrix.build }}
+          name: changed-spec-report-${{ matrix.build }}-${{ strategy.job-index }}
           path: |
             playwright-report/
             test-results/
@@ -160,7 +161,7 @@ jobs:
           overwrite: true
 
   # The phone walk (375 px touch, simulated 4G, size and time budgets) catches layout and touch regressions the desktop specs cannot.
-  # Runs when the pull request changes test/mobile.spec.mjs or a file it guards: the viewport, the Beginner and Advanced panels, the page shell, the turn and pivot controls.
+  # Runs on every pull request that is not docs-only: a regression can come from any file that changes what the page loads or how it lays out (about 15 seconds on the runner).
   phone-walk:
     name: phone walk (mobile project)
     needs: changes
@@ -210,7 +211,7 @@ jobs:
   # Passes only when "changes" succeeded and either
   #   - code=true:  the gate and the MCP tests succeeded, or
   #   - code=false: the MCP tests succeeded and the gate was skipped (exactly "skipped", not failed or cancelled).
-  # The changed-specs and phone-walk jobs must have succeeded when they were wanted (code=true and a non-empty spec list, or mobile=true) and be exactly "skipped" otherwise.
+  # The changed-specs and phone-walk jobs must have succeeded when they were wanted (code=true and a non-empty spec list, or code=true on a pull request for the phone walk) and be exactly "skipped" otherwise.
   test:
     needs: [changes, gate, changed-specs, phone-walk, mcp]
     if: ${{ always() }}
