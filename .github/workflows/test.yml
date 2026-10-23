@@ -29,6 +29,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # docs/ is built onto the release branch by /ship, never committed on main. Runs on every event; a failure here fails "test".
+      - name: docs/ must not be tracked
+        run: |
+          if git ls-files docs | grep -q .; then echo "docs/ is built onto release by /ship; remove it from this PR"; exit 1; fi
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
