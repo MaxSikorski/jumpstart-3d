@@ -11,12 +11,35 @@ export class KernelClient {
     this.req = 0;
     this.stepWaiters = new Map();
     this.assets = new Map(); // imported files (STL/STEP), sent to the worker once
+    this.probes = new Map(); // jumpstart-3d: Code CAD. key -> function that takes the answer for a one-off build
   }
   hasAsset(id) { return this.assets.has(id); }
   addAsset(id, kind, bytes) {
     if (this.assets.has(id)) return;
     this.assets.set(id, { kind, bytes });
     if (this.ready) this.sendAsset(id);
+  }
+  // jumpstart-3d: Code CAD. forget a file nothing in the open design uses any more (the worker keeps an empty stand-in; an undo that needs it sends it again)
+  dropAsset(id) {
+    if (!this.assets.delete(id)) return;
+    if (this.ready) this.worker.postMessage({ type: "dropasset", id });
+  }
+  // jumpstart-3d: Code CAD. builds one node in the design's own worker, outside the scene, and answers with its result (or a failure after ms)
+  probe(item, ms = 120000) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.probes.delete(item.key); this.queue.delete(item.key); resolve({ ok: false, error: "The geometry engine did not answer in time." }); }, ms);
+      this.probes.set(item.key, (r) => { clearTimeout(timer); resolve(r); });
+      this.request([{ ...item, pinned: true }]);
+    });
+  }
+  settleProbes(results) {
+    for (const r of results) {
+      const done = this.probes.get(r.key);
+      if (!done) continue;
+      this.probes.delete(r.key);
+      this.meshes.delete(r.key);
+      done(r);
+    }
   }
   sendAsset(id) {
     const a = this.assets.get(id);
@@ -44,6 +67,7 @@ export class KernelClient {
       }
       this.inflight = null;
       this.perf && this.perf.done(msg.results); // jumpstart-3d: perf panel
+      this.settleProbes(msg.results); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(msg.results);
       this.pump();
     } else if (msg.type === "step") {
@@ -61,6 +85,7 @@ export class KernelClient {
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
       res.forEach((r) => this.meshes.set(r.key, r));
       this.perf && this.perf.done(res); // jumpstart-3d: perf panel
+      this.settleProbes(res); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(res);
       this.pump();
     }
@@ -83,7 +108,7 @@ export class KernelClient {
   // drop queued work nobody needs any more
   prune(neededKeys) {
     this.needed = neededKeys; // jumpstart-3d: stalled() skips timed-out bodies that a newer edit replaced
-    for (const k of [...this.queue.keys()]) if (!neededKeys.has(k)) { this.queue.delete(k); this.solo.delete(k); }
+    for (const k of [...this.queue.keys()]) if (!neededKeys.has(k) && !this.queue.get(k).pinned) { this.queue.delete(k); this.solo.delete(k); }
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
@@ -132,6 +157,7 @@ export class KernelClient {
     });
     res.forEach((r) => this.meshes.set(r.key, r));
     this.inflight = null;
+    this.settleProbes(res); // jumpstart-3d: Code CAD
     this.onResults && this.onResults(res);
     this.start();
   }

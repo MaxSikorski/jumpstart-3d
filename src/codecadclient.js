@@ -4,9 +4,11 @@
 // cannot stop itself. Nothing here touches the design's own geometry worker.
 export const LIMITS = { startMs: 90000, runMs: 25000 }; // the start limit covers loading the engine; the run limit starts once it is ready. Tests lower them.
 
+const MAX_BYTES = 50e6; // the largest STEP file taken from a build
+const text = (v) => String(v).slice(0, 2000); // an error message is shown as plain text, but not unlimited text
 function fail(kind, message) { return Object.assign(new Error(message), { kind }); }
 
-// kernel: the app's KernelClient (only its workerUrl, workerType and parts are read). Returns { done, cancel }; done resolves to { bytes, volume, bbox }.
+// kernel: the app's KernelClient (only its workerUrl, workerType and parts are read). Returns { done, cancel }; done resolves to { bytes } (not yet checked: the caller does that).
 export function runCodeJob(kernel, { code, params }, limits = LIMITS) {
   let stop;
   const done = new Promise((resolve, reject) => {
@@ -23,13 +25,20 @@ export function runCodeJob(kernel, { code, params }, limits = LIMITS) {
     stop = (err) => end(reject, err);
     worker.onmessage = (ev) => {
       const m = ev.data;
-      if (m.type === "ready") {
+      if (!m || typeof m !== "object") return;
+      if (m.type === "ready" && !running) {
         clearTimeout(startTimer);
         running = true;
         runTimer = setTimeout(() => end(reject, fail("timeout", `The code ran for more than ${Math.round(limits.runMs / 1000)} seconds, so it was stopped. Check for a loop that never ends, or simplify the shape.`)), limits.runMs);
         worker.postMessage({ type: "code", req: 1, code, params });
-      } else if (m.type === "coded") end(resolve, { bytes: new Uint8Array(m.bytes), volume: m.volume, bbox: m.bbox });
-      else if (m.type === "error") end(reject, fail(running ? "code" : "start", m.error));
+      } else if (!running) {
+        if (m.type === "error") end(reject, fail("start", text(m.error)));
+      } else if (m.type === "coded" && m.req === 1) { // the first reply wins; the code itself can post anything, so only a plain buffer of sane size is taken, and the page checks it again
+        const b = m.bytes;
+        if (!(b instanceof ArrayBuffer)) return;
+        if (!b.byteLength || b.byteLength > MAX_BYTES) end(reject, fail("code", b.byteLength ? `The solid's STEP file is larger than ${MAX_BYTES / 1e6} MB, so it was not used. Simplify the shape.` : "The code produced an empty file."));
+        else end(resolve, { bytes: new Uint8Array(b) });
+      } else if (m.type === "error" && m.req === 1) end(reject, fail("code", text(m.error)));
     };
     worker.onerror = (e) => end(reject, fail(running ? "crash" : "start", running ? "The geometry engine stopped while running the code. Simplify the shape and try again." : "The geometry engine could not start for this build" + (e && e.message ? " (" + e.message + ")" : "") + "."));
     startTimer = setTimeout(() => end(reject, fail("start", "The geometry engine took too long to start for this build.")), limits.startMs);

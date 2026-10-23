@@ -16,11 +16,12 @@ test.beforeAll(async ({ browser }, info) => {
   await page.addInitScript(() => {
     try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {}
     // count the workers the page starts and stops: a build starts one and always stops it
-    window.__w = { made: 0, ended: 0 };
+    window.__w = { made: 0, ended: 0, dropped: 0 };
     const W = window.Worker;
     window.Worker = class extends W {
       constructor(...a) { super(...a); window.__w.made++; }
       terminate() { window.__w.ended++; super.terminate(); }
+      postMessage(m, ...rest) { if (m && m.type === "dropasset") window.__w.dropped++; return super.postMessage(m, ...rest); }
     };
     window.__toasts = [];
     document.addEventListener("DOMContentLoaded", () => {
@@ -398,4 +399,134 @@ test("Open/Export has a Code CAD… entry that opens the dialog", async () => {
   await entry.click();
   await expect(page.locator(".modal-back.codecad")).toHaveCount(1);
   await page.click("#cc-close");
+});
+
+test("a recipe that posts its own answer cannot put bytes into the design", async () => {
+  await fresh();
+  const h = await history();
+  const clients = await page.evaluate(() => window.__app.kernel.assets.size);
+  // a made-up file in place of the real answer: the design's own worker cannot read it as a solid
+  const bad = await build({ code: "self.postMessage({ type: 'coded', req: 1, bytes: new TextEncoder().encode('BAD').buffer }); while (true) {}" });
+  expect(bad.error).toMatch(/could not be read back as one closed solid/);
+  // a made-up file that is real STEP, but of nothing solid (a single point)
+  const empty = await build({ code: "self.postMessage({ type: 'coded', req: 1, bytes: new TextEncoder().encode('ISO-10303-21;\\nHEADER;\\nENDSEC;\\nDATA;\\nENDSEC;\\nEND-ISO-10303-21;').buffer }); while (true) {}" });
+  expect(empty.error).toMatch(/could not be read back|closed solid/);
+  expect(await history()).toEqual(h);
+  expect(await page.evaluate(() => window.__app.kernel.assets.size), "the refused file is forgotten").toBe(clients);
+  // the wrong kind of message is ignored, and the code's real answer still counts
+  const ok = await build({ code: "self.postMessage({ type: 'coded', req: 1, bytes: 1e9 }); self.postMessage({ type: 'ready' }); self.postMessage(null); return replicad.makeBox([0, 0, 0], [10, 10, 10]);" });
+  expect(ok.error).toBeUndefined();
+  near(await volumeOf(ok.id), 1000);
+  // a file over the size limit is refused before anything looks at it
+  const big = await build({ code: "self.postMessage({ type: 'coded', req: 1, bytes: new ArrayBuffer(51e6) }); while (true) {}" });
+  expect(big.error).toMatch(/larger than 50 MB/);
+});
+
+test("a body made from code is reopened by selecting it and choosing Code CAD…, where Update is", async () => {
+  await fresh();
+  await page.evaluate(() => JS3D.setParam("width", "50"));
+  const r = await build({ code: await example(1), name: "Plate", bindings: { width: "width" } });
+  await volumeOf(r.id);
+  // another body selected, or nothing: a new recipe
+  await page.evaluate(() => window.__app.select([]));
+  await page.click("#btn-export"); await page.click("#btn-codecad");
+  await expect(page.locator("#cc-run")).toHaveText("Build");
+  await page.click("#cc-close");
+  // the body selected: its own recipe, with Update
+  await page.evaluate((id) => { window.__app.select([id]); JS3D.setParam("width", "60"); }, r.id);
+  await page.click("#btn-export"); await page.click("#btn-codecad");
+  await expect(page.locator("#cc-run")).toHaveText("Update");
+  await expect(page.locator("#cc-code")).toHaveValue(/params\.width/);
+  await expect(page.locator("#cc-hints")).toContainText("Update needed: width changed");
+  await page.click("#cc-run");
+  await expect(page.locator(".modal-back.codecad")).toHaveCount(0, { timeout: 90_000 });
+  near(await volumeOf(r.id), plate(60));
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(1);
+  expect(await page.evaluate((id) => window.__app.codeCad.status(id).needsUpdate, r.id)).toBe(false);
+});
+
+test("a result is also thrown away when a linked name moves to another parameter, the body gets locked, or the same design is opened again", async () => {
+  // a parameter renamed and a new one made with its old name and the same value
+  await fresh();
+  await page.evaluate(() => JS3D.setParam("w", "10"));
+  let started = page.evaluate((code) => window.__app.codeCad.build({ code, bindings: { w: "w" } }).then((id) => ({ id }), (e) => ({ error: e.message })), SPIN(2500));
+  await page.waitForFunction(() => window.__app.codeCad.busy);
+  await page.evaluate(() => { window.__store.update((d) => { d.params[0].name = "old"; }, "rename"); JS3D.setParam("w", "10"); });
+  expect((await started).error).toMatch(/design changed/);
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(0);
+
+  // the body being updated is locked meanwhile
+  await fresh();
+  const r = await build({ code: await example(0) });
+  await volumeOf(r.id);
+  const code = (await bodyOf(r.id)).codeCad.code;
+  started = page.evaluate(([code, id]) => window.__app.codeCad.build({ code: "const t = Date.now(); while (Date.now() - t < 2500) {}\n" + code, bodyId: id }).then((x) => ({ id: x }), (e) => ({ error: e.message })), [code, r.id]);
+  await page.waitForFunction(() => window.__app.codeCad.busy);
+  await page.evaluate((id) => window.__store.update((d) => { window.__findBody(d, id).locked = true; }, "lock"), r.id);
+  expect((await started).error).toMatch(/design changed/);
+
+  // the same design (same id) is loaded again
+  await fresh();
+  started = page.evaluate((code) => window.__app.codeCad.build({ code }).then((id) => ({ id }), (e) => ({ error: e.message })), SPIN(2500));
+  await page.waitForFunction(() => window.__app.codeCad.busy);
+  await page.evaluate(() => window.__store.load(JSON.parse(JSON.stringify(window.__store.doc))));
+  expect((await started).error).toMatch(/design changed/);
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(0);
+});
+
+test("an Update keeps a file another body still uses, even when its id has a quote in it", async () => {
+  await fresh();
+  const r = await build({ code: await example(0) });
+  await volumeOf(r.id);
+  // a project file can hold any text as an asset id: rename this one and let a second body share the file
+  await page.evaluate((id) => {
+    const doc = JSON.parse(JSON.stringify(window.__store.doc));
+    const b = doc.bodies[0], old = b.node.asset, odd = 'a"b\\c';
+    doc.assets[odd] = doc.assets[old]; delete doc.assets[old];
+    b.node.asset = odd;
+    doc.bodies.push({ ...JSON.parse(JSON.stringify(b)), id: "second", name: "Second", seq: 99 });
+    window.__store.load(doc);
+  }, r.id);
+  await waitIdle(page);
+  const code = (await bodyOf(r.id)).codeCad.code;
+  const u = await build({ code, bodyId: r.id });
+  expect(u.error).toBeUndefined();
+  await waitIdle(page);
+  const list = await bodies(page);
+  expect(list.map((b) => b.error)).toEqual([null, null]);
+  near(list[1].volume, L_BRACKET);
+  expect(await page.evaluate(() => Object.keys(window.__store.doc.assets).sort())).toHaveLength(2);
+  expect(await page.evaluate(() => window.__store.doc.assets['a"b\\c'] !== undefined)).toBe(true);
+});
+
+test("ten Updates keep one file in the design and in the engine's list, and undo still finds the older ones", async () => {
+  await fresh();
+  const r = await build({ code: await example(0) });
+  await volumeOf(r.id);
+  const code = (await bodyOf(r.id)).codeCad.code;
+  const before = await page.evaluate(() => ({ client: window.__app.kernel.assets.size, doc: Object.keys(window.__store.doc.assets).length, dropped: window.__w.dropped }));
+  for (let i = 0; i < 10; i++) expect((await build({ code: code.replace("[60, 30, 4]", "[60, 30, " + (5 + i) + "]"), bodyId: r.id })).error).toBeUndefined();
+  await waitIdle(page);
+  const after = await page.evaluate(() => ({ client: window.__app.kernel.assets.size, doc: Object.keys(window.__store.doc.assets).length, dropped: window.__w.dropped }));
+  expect(after.client).toBe(before.client);
+  expect(after.doc).toBe(before.doc);
+  expect(after.dropped - before.dropped).toBe(10);
+  // undo goes back through the dropped files: each is sent again from the older design
+  for (let i = 0; i < 3; i++) await page.evaluate(() => window.__store.undo());
+  await waitIdle(page);
+  expect((await bodies(page))[0].error).toBeNull();
+  expect(await page.evaluate(() => window.__app.kernel.assets.size)).toBe(before.client + 3); // the three older files come back; the current one stays
+});
+
+test("scripts, the agent link and Run script reach Code CAD through JS3D", async () => {
+  await fresh();
+  const out = await page.evaluate(async (code) => {
+    const viaRun = await JS3D.run("return await JS3D.codeCad({ code: " + JSON.stringify(code) + ", name: 'Run' })");
+    const viaLink = await JS3D.invoke("codeCad", [{ code, name: "Link" }]);
+    return { viaRun, viaLink, names: JS3D.list().map((b) => b.name) };
+  }, await example(0));
+  expect(out.names).toEqual(["Run 1", "Link 1"]);
+  await waitIdle(page);
+  const list = await bodies(page);
+  list.forEach((b) => near(b.volume, L_BRACKET));
 });

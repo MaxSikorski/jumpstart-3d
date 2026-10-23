@@ -71,7 +71,9 @@ self.onmessage = async (ev) => {
     } else if (msg.type === "code") { // jumpstart-3d: Code CAD. only the temporary worker that codecadclient.js starts is sent this
       await ready;
       const r = await runCodeCad(msg);
-      self.postMessage({ type: "coded", req: msg.req, ...r }, [r.bytes]);
+      self.postMessage({ type: "coded", req: msg.req, bytes: r.bytes }, [r.bytes]);
+    } else if (msg.type === "dropasset") { // jumpstart-3d: Code CAD. frees the bytes of a file the design no longer has
+      setAsset(msg.id, "step", new Uint8Array(0));
     } else if (msg.type === "asset") {
       setAsset(msg.id, msg.kind, new Uint8Array(msg.bytes));
     } else if (msg.type === "clear") {

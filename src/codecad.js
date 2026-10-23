@@ -68,8 +68,12 @@ function resolveLinks(doc, bindings) {
   return { ids, values };
 }
 
+// does any node in the value (a body's node tree, tools and children included) point at this asset?
+const usesAsset = (v, id) => !!v && typeof v === "object" && (v.asset === id || Object.values(v).some((x) => usesAsset(x, id)));
+
 export function initCodeCad(app) {
-  let job = null;
+  let job = null, working = false, loads = 0; // job: the temporary worker while the code runs; working: until the result is in the design or refused
+  store.on((kind) => { if (kind === "load") loads++; }); // a design opened or started over: a result made for the one before is not used
 
   // what a parameter change did to a body's recipe: { needsUpdate, why[] }, or null for a body that has none
   function status(bodyId) {
@@ -88,47 +92,61 @@ export function initCodeCad(app) {
   // spec: { code, bindings?: { alias: parameter name or id }, name?, bodyId? } -> the body's id. With bodyId the body is updated in place.
   async function build(spec) {
     const s = resolveSpec(spec);
-    if (job) throw new Error("A Code CAD build is already running. Cancel it or wait for it to finish.");
+    if (working) throw new Error("A Code CAD build is already running. Cancel it or wait for it to finish.");
+    working = true;
+    try { return await run(s); } finally { working = false; }
+  }
+  async function run(s) {
     if (!app.kernel || !app.kernel.ready) throw new Error("The geometry engine is still starting. Try again in a moment.");
     const doc = store.doc;
     const target = s.bodyId ? findBody(doc, s.bodyId) : null;
     if (s.bodyId && !(target && target.codeCad)) throw new Error("bodyId must be a body made with Code CAD");
     if (target && target.locked) throw new Error("This body is locked. Unlock it to update it.");
-    const start = resolveLinks(doc, s.bindings);
+    const start = resolveLinks(doc, s.bindings), gen = loads;
     const mine = (job = runCodeJob(app.kernel, { code: s.code, params: start.values }, LIMITS));
     let out;
     try { out = await mine.done; } finally { if (job === mine) job = null; }
 
-    // the answer is only used if the design and the inputs are still the ones it was made for
-    const stale = () => new Error("The design changed while the code was running, so nothing was changed. Run it again.");
-    if (store.doc.id !== doc.id) throw stale();
-    let again;
-    try { again = resolveLinks(store.doc, s.bindings); } catch (e) { throw stale(); }
-    if (JSON.stringify(again.values) !== JSON.stringify(start.values)) throw stale();
-    if (target) {
-      const now = findBody(store.doc, target.id);
-      if (!now || now.node.asset !== target.node.asset || JSON.stringify(now.codeCad) !== JSON.stringify(target.codeCad)) throw stale();
+    // What came back is not trusted (the code ran in that worker and can post anything): the design's own worker builds the file as a
+    // step body first, and it must be one solid with a volume.
+    const asset = uid("a"); // a new id each time: an asset id always means the same bytes
+    app.kernel.addAsset(asset, "step", out.bytes);
+    const node = { t: "step", asset, keepPos: true, mods: [] };
+    const seen = await app.kernel.probe({ id: asset, key: "codecad:" + asset, node });
+    if (!seen.ok || seen.mesh.solidCount !== 1 || seen.mesh.hasNonSolidFaces || !(seen.mesh.volume > 1e-6)) {
+      app.kernel.dropAsset(asset);
+      throw new Error("The result could not be read back as one closed solid" + (seen.ok ? "." : ": " + seen.error));
     }
 
-    let id;
+    // and it is only used if the design and the inputs are still the ones it was made for
+    const stale = () => { app.kernel.dropAsset(asset); return new Error("The design changed while the code was running, so nothing was changed. Run it again."); };
+    if (store.doc.id !== doc.id || loads !== gen) throw stale();
+    let again;
+    try { again = resolveLinks(store.doc, s.bindings); } catch (e) { throw stale(); }
+    if (JSON.stringify([again.ids, again.values]) !== JSON.stringify([start.ids, start.values])) throw stale();
+    if (target) {
+      const now = findBody(store.doc, target.id);
+      if (!now || now.locked || now.node.asset !== target.node.asset || JSON.stringify(now.codeCad) !== JSON.stringify(target.codeCad)) throw stale();
+    }
+
+    let id, dropped = null;
     const recipe = { version: VERSION, code: s.code, bindings: start.ids, lastValues: start.values };
     store.update((d) => {
       d.assets = d.assets || {};
-      const asset = uid("a"); // a new id each time: an asset id always means the same bytes
       if (target) {
         const b = findBody(d, target.id), old = b.node.asset;
         d.assets[asset] = { kind: "step", name: b.name, data: toB64(out.bytes) };
         b.node.asset = asset;
         b.codeCad = recipe;
         id = b.id;
-        if (!JSON.stringify(d.bodies).includes(`"asset":"${old}"`)) delete d.assets[old]; // undo brings it back with the older design
+        if (!d.bodies.some((x) => usesAsset(x.node, old))) { delete d.assets[old]; dropped = old; } // undo brings it back with the older design
       } else {
         const label = s.name || "Code CAD";
         d.assets[asset] = { kind: "step", name: label, data: toB64(out.bytes) };
-        d.bodies.push({ id: (id = uid("b")), name: nextName(d, label), seq: nextSeq(d), color: nextColor(), hole: false, hidden: false, m: IDENTITY.slice(),
-          node: { t: "step", asset, keepPos: true, mods: [] }, codeCad: recipe });
+        d.bodies.push({ id: (id = uid("b")), name: nextName(d, label), seq: nextSeq(d), color: nextColor(), hole: false, hidden: false, m: IDENTITY.slice(), node, codeCad: recipe });
       }
-    }, target ? "Update " + target.name : "Code CAD " + (s.name || ""));
+    }, target ? "Update " + target.name : "Add " + (s.name || "Code CAD"));
+    if (dropped) app.kernel.dropAsset(dropped);
     app.select([id]);
     return id;
   }
@@ -142,9 +160,9 @@ export function initCodeCad(app) {
     const st = body
       ? { code: body.codeCad.code, links: Object.entries(body.codeCad.bindings || {}).map(([alias, id]) => ({ alias, id })) }
       : { code: first.code, links: [] };
-    let closed = false;
+    let closed = false, building = false; // building: this dialog started the build that is running
 
-    const close = () => { closed = true; api.cancel(); back.remove(); };
+    const close = () => { closed = true; if (building) api.cancel(); back.remove(); };
     const back = el("div", { class: "modal-back codecad", onclick: (e) => { if (e.target === back) close(); } });
     const err = el("div", { class: "err-msg", id: "cc-err", role: "alert", hidden: true, style: { marginTop: "8px", whiteSpace: "pre-wrap" } });
     const showErr = (text) => { err.textContent = text; err.hidden = !text; };
@@ -164,6 +182,7 @@ export function initCodeCad(app) {
     const state = el("div", { class: "hint", id: "cc-state", role: "status", style: { padding: 0, marginTop: "8px" } });
     const run = el("button", { class: "btn primary", id: "cc-run", onclick: () => go() }, body ? "Update" : "Build");
     const cancel = el("button", { class: "btn", id: "cc-cancel", hidden: true, onclick: () => api.cancel() }, "Cancel build");
+    const add = el("button", { class: "btn", id: "cc-add-link", style: { marginTop: "6px" }, onclick: () => { if (st.links.length < MAX_LINKS) { st.links.push({ alias: "", id: "" }); renderLinks(); } } }, "Link a parameter");
     const shut = el("button", { class: "btn", id: "cc-close", onclick: close }, "Close");
 
     example.onchange = () => {
@@ -182,7 +201,7 @@ export function initCodeCad(app) {
           ...(l.id && !p ? [el("option", { value: l.id, selected: true }, "(deleted parameter)")] : []),
           ...(store.doc.params || []).map((q) => el("option", { value: q.id, selected: q.id === l.id }, `${q.name} = ${isFinite(q.value) ? +q.value.toFixed(4) : "?"}`)));
         const alias = el("input", { class: "num", value: l.alias, placeholder: "name in code", "aria-label": "Name in the code", style: { maxWidth: "9em" }, oninput: (e) => { l.alias = e.target.value.trim(); renderHints(); } });
-        alias.addEventListener("keydown", (e) => e.stopPropagation());
+        alias.addEventListener("keydown", (e) => { if (e.key !== "Escape") e.stopPropagation(); });
         return el("div", { class: "cc-link", style: { display: "flex", gap: "6px", alignItems: "center" } }, "params.", alias, pick,
           el("button", { class: "xbtn", "aria-label": "Remove link", html: ICON.close, onclick: () => { st.links.splice(i, 1); renderLinks(); renderHints(); } }));
       }));
@@ -200,7 +219,7 @@ export function initCodeCad(app) {
     function busy(on) {
       run.disabled = on;
       cancel.hidden = !on;
-      for (const x of [name, example, code]) x.disabled = on;
+      for (const x of [name, example, code, add, ...links.querySelectorAll("input, select, button")]) x.disabled = on;
       state.textContent = on ? "Starting a fresh geometry engine and running the code… this can take several seconds." : "";
     }
     async function go() {
@@ -213,6 +232,7 @@ export function initCodeCad(app) {
         bindings[l.alias] = l.id;
       }
       busy(true);
+      building = true;
       try {
         await api.build({ code: code.value, bindings, name: name.value, bodyId: body ? body.id : null });
         if (closed) return;
@@ -220,7 +240,7 @@ export function initCodeCad(app) {
         app.toast(body ? "Updated " + body.name + "." : "Built " + (name.value.trim() || "Code CAD") + ". Press Update after you change its code or parameters.");
       } catch (e) {
         if (!closed) { busy(false); showErr(e.message || String(e)); }
-      }
+      } finally { building = false; }
     }
 
     const field = (label, ...kids) => el("label", { style: { display: "block", marginTop: "10px", fontSize: "12.5px" } }, label, ...kids);
@@ -233,9 +253,9 @@ export function initCodeCad(app) {
         field("Code", code),
         el("div", { style: { marginTop: "10px", fontSize: "12.5px" } }, "Parameters the code can read"),
         links,
-        el("button", { class: "btn", id: "cc-add-link", style: { marginTop: "6px" }, onclick: () => { if (st.links.length < MAX_LINKS) { st.links.push({ alias: "", id: "" }); renderLinks(); } } }, "Link a parameter"),
+        add,
         hints,
-        el("div", { class: "hint", id: "cc-trust", style: { padding: 0, marginTop: "10px" } }, el("b", {}, "Only run code you trust. "), "It runs as written in a background worker, which is not a sandbox: the code can reach the internet. Nothing runs when a design is opened."),
+        el("div", { class: "hint", id: "cc-trust", style: { padding: 0, marginTop: "10px" } }, el("b", {}, "Only run code you trust. "), "It runs as written in a background worker, which is not a sandbox: the code can use the network, this site's saved designs and caches in the browser, and start other workers. The time limit stops a loop that never ends; it does not limit memory. Nothing runs when a design is opened."),
         err,
         el("div", { style: { display: "flex", gap: "8px", marginTop: "12px" } }, run, cancel, shut),
         state));
@@ -247,9 +267,10 @@ export function initCodeCad(app) {
     code.focus();
   }
 
-  const api = { build, open, status, cancel() { if (job) job.cancel(); }, get busy() { return !!job; }, examples: EXAMPLES, limits: LIMITS }; // limits: the time limits, which tests lower
+  const api = { build, open, status, cancel() { if (job) job.cancel(); }, get busy() { return working; }, examples: EXAMPLES, limits: LIMITS }; // limits: the time limits, which tests lower
   app.codeCad = api;
   const entry = document.querySelector('#menu-export button[data-act="codecad"]'); // projects.js closes the menu for any data-act
-  if (entry) entry.addEventListener("click", () => open());
+  // a selected Code CAD body opens its own recipe (that is where Update is); anything else starts a new one
+  if (entry) entry.addEventListener("click", () => { const mine = app.sel.length === 1 && findBody(store.doc, app.sel[0]); open(mine && mine.codeCad ? { bodyId: mine.id } : {}); });
   return api;
 }

@@ -2,10 +2,10 @@
 // by src/codecadclient.js), checks that it made one closed solid, writes it as STEP and proves the app can read that STEP
 // back through the same step-body path the design will use. The temporary worker is thrown away afterwards, so code that
 // misuses the engine cannot damage the design's own worker. This is trusted code, not a sandbox: a worker can fetch.
+// Everything below is only a friendly early check: the page re-checks the STEP bytes itself (src/codecad.js).
 import * as replicad from "replicad";
-import { setAsset, buildBodies, errorText } from "./kernel.js";
+import { errorText } from "./kernel.js";
 
-let probes = 0; // the kernel caches a shape by its node, so each probe gets its own asset id
 const WRONG_TYPE = "The code must return one solid, not a drawing, sketch, face, line, list or nothing. Extrude or revolve a sketch to make a solid.";
 
 function solidsOf(shape, OC) {
@@ -37,7 +37,7 @@ export async function runCodeCad({ code, params }) {
   const OC = replicad.getOC();
   const solids = solidsOf(result, OC);
   if (!solids.length) throw new Error("The code returned a surface, not a closed solid. Close it, or extrude a sketch to make a solid.");
-  if (solids.length > 1) throw new Error(`The code returned ${solids.length} separate pieces. Return one solid for now: join them with .fuse() so they touch.`);
+  if (solids.length > 1) throw new Error(`The code returned ${solids.length} separate pieces. Move them so they touch, then join them with .fuse().`);
   if (hasLooseFaces(result, OC)) throw new Error("The code returned a solid with loose surfaces next to it. Return the solid alone.");
   const solid = solids[0];
   const check = new OC.BRepCheck_Analyzer(solid.wrapped, true, false);
@@ -47,13 +47,6 @@ export async function runCodeCad({ code, params }) {
   const volume = replicad.measureVolume(solid);
   if (!(volume > 1e-6)) throw new Error("The solid has no volume (it is flat, empty, or turned inside out).");
 
-  const bytes = new Uint8Array(await solid.blobSTEP().arrayBuffer());
-  // the proof: build the saved bytes the way the design will (a step body that keeps its position)
-  const probe = "codecad-probe-" + ++probes;
-  setAsset(probe, "step", bytes.slice());
-  const [back] = buildBodies([{ id: probe, rev: probe, node: { t: "step", asset: probe, keepPos: true, mods: [] } }], 1);
-  if (!back.ok) throw new Error("The solid was made but could not be read back from its STEP file: " + back.error);
-  const v = back.mesh.volume;
-  if (!(Math.abs(v - volume) <= 0.01 * volume + 1e-6)) throw new Error("The solid changed when saved as STEP, so it was not added. Simplify the shape and try again.");
-  return { bytes: bytes.buffer, volume: v, bbox: back.mesh.bbox };
+  // The page does not trust this answer (the code above can post any message): it builds the bytes again in the design's own worker before using them.
+  return { bytes: await solid.blobSTEP().arrayBuffer() };
 }
