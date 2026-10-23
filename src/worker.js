@@ -1,7 +1,7 @@
 // Web Worker hosting the OpenCascade kernel.
 import opencascade from "replicad-opencascadejs";
 import { gunzip } from "./inflate.js";
-import { initKernel, buildBodies, exportStep, clearCache, setAsset } from "./kernel.js";
+import { initKernel, buildBodies, exportStep, clearCache, setAsset, errorText } from "./kernel.js";
 
 let ready = null;
 
@@ -73,6 +73,6 @@ self.onmessage = async (ev) => {
       clearCache();
     }
   } catch (e) {
-    self.postMessage({ type: "error", req: msg.req, error: (e && e.message) || String(e) });
+    self.postMessage({ type: "error", req: msg.req, error: errorText(e) }); // jumpstart-3d: errorText reads engine exceptions
   }
 };

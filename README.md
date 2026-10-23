@@ -420,6 +420,7 @@ UPSTREAM-README.md         the author's README from the source release
 - Underside view: seen from below the plate, the Beginner workplane and the Advanced dark-theme ground turn nearly clear (faint lines stay), so you can see the underside of your part (a few lines in `src/viewport.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
   design through the same 38 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
+- Boolean fixes in the geometry engine: a torus no longer disappears from a group, two spheres offset along x intersect and cut to the right volume, and an empty result says "Nothing is left" instead of showing a raw engine message (a marked block in `third_party/replicad/src/shapeFunctions/operations.ts` and `src/kernel.js`; `test/booleans.spec.mjs`)
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view
