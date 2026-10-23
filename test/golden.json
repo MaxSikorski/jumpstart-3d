@@ -444,5 +444,18 @@
     "obj": "8c393a0f5d2b291fab031894528d65999e537ce614467a616e56b4602f7f474a",
     "3mf": "53b1d3627ded9a6e0698d0d713a80a8ec6f24547f2f7f328772f1a24aaae3e6c",
     "step": "94ad7d1a5420b1d72993c45a7a2225872e9b568cc87badb14c4c557c1cfb0c2a"
+  },
+  "spring.json": {
+    "volumes": {
+      "b0 Open spring": 892.6,
+      "b1 Flat spring": 880.3,
+      "b2 Fine left spring": 215.3,
+      "b3 Heavy spring": 2728.1
+    },
+    "stlTriangles": 219632,
+    "stl": "66a8c3491824599ac33780fe28f7882206a908b13570a2456742a112bdc7fcdc",
+    "obj": "a1db5a21bf4a206318583f3be2119750ea36b6317a907c004f3cbc92bc0c2478",
+    "3mf": "b6374cb8a815367fa877fd83791b7e8372830d8615cb7764f26d54b5aa7e4af8",
+    "step": "1299eae9c78158bca6be4ab803ed872c147d5e1144b664c8e74b2035890917f0"
   }
 }

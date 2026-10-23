@@ -134,6 +134,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   changes.
 - **Bolts, nuts, gears, hole patterns, name plates and knurled knobs**, ready to drop into a design.
 - **Code CAD** (Open/Export › Code CAD…): write replicad code that builds one solid, and keep the code with the part.
+- **Bolts, nuts, gears, hole patterns, name plates, knurled knobs and springs**, ready to drop into a design.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.
 - **Your printer's plate size**, with steep undersides shaded red.
 - **glTF and OBJ export, OBJ import**, and a pre-painted 3MF for multi-colour printing.
@@ -319,6 +320,8 @@ upstream version stays easy to merge.
   temporary background engine and becomes an ordinary STEP body that keeps its code. Opening a design never runs the
   code; press Update to run it again, for instance after a linked named parameter changed. The code is trusted, not
   sandboxed: it can reach the internet, so run only code you trust. Scripts call `JS3D.codeCad`.
+- Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
+  right or left hand, with open ends or ends cut flat.
 - Thirty-one more tutorials, for the toolbar buttons that had none.
 
 ### Editing
@@ -525,7 +528,7 @@ and runs on most NAS boxes and cloud drives.
 ## Build it yourself
 
 This section is for building JumpStart 3D from source. You need [Node.js](https://nodejs.org/) 20
-or newer.
+or newer (22.19 or newer to run the Lighthouse loading check; Node 20 still builds, with warnings from the dev tools).
 
 ### Build the app
 
