@@ -243,6 +243,11 @@ export function initTutorials(app) {
     const { tut, i } = cur, step = tut.steps[i], n = tut.steps.length;
     const doneN = cur.done.size, isDone = cur.done.has(i);
     panel.classList.toggle("mini", !!cur.mini);
+    // jumpstart-3d: on a phone the small panel sits at the top of the 3D view, clear of the shapes in the middle that the step asks you to tap; the open panel goes back where it was
+    if (innerWidth < 700) {
+      if (cur.mini) { if (cur.openTop == null) cur.openTop = panel.style.top; panel.style.top = (document.getElementById("viewport").getBoundingClientRect().top + 6) + "px"; }
+      else if (cur.openTop != null) { panel.style.top = cur.openTop; cur.openTop = null; }
+    }
     panel.innerHTML = "";
     const head = el("div", { class: "tut-head" },
       el("span", { class: "tut-level " + tut.level.toLowerCase() }, tut.level),
