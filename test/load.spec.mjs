@@ -5,7 +5,7 @@
 // The offline case does not assert on requestfailed: Chromium reports a worker request answered by the service worker a second time as a failed network leg.
 import { test, expect } from "@playwright/test";
 import { serve } from "../mcp/serve.mjs";
-import { watchErrors } from "./helpers.mjs";
+import { watchErrors, buildOf } from "./helpers.mjs";
 
 const NOT_SINGLE = "the single file embeds the engine";
 const SITE_ONLY = "the install manifest is part of the site build";
@@ -22,7 +22,7 @@ test("the engine note and the splash are gone once the kernel is ready", async (
 });
 
 test("the workspace works while the engine downloads; shapes appear when it is ready", async ({ page }, info) => {
-  test.skip(info.project.name !== "site", NOT_SINGLE);
+  test.skip(buildOf(info) !== "site", NOT_SINGLE);
   const errors = watchErrors(page);
   let open;
   const gate = new Promise((r) => { open = r; });
@@ -50,7 +50,7 @@ test("the workspace works while the engine downloads; shapes appear when it is r
 });
 
 test("a failed engine download says so and leaves the workspace usable", async ({ page }, info) => {
-  test.skip(info.project.name !== "site", NOT_SINGLE);
+  test.skip(buildOf(info) !== "site", NOT_SINGLE);
   watchErrors(page); // the 404 and the engine's error are expected here
   await page.route("**/occt-gz.wasm", (r) => r.fulfill({ status: 404, body: "" }));
   await page.goto(info.project.use.baseURL);
@@ -63,7 +63,7 @@ test("a failed engine download says so and leaves the workspace usable", async (
 });
 
 test("the site manifest and its icons load at their declared sizes", async ({ page }, info) => {
-  test.skip(info.project.name !== "site", NOT_SINGLE);
+  test.skip(buildOf(info) !== "site", NOT_SINGLE);
   const baseURL = info.project.use.baseURL;
   await page.goto(baseURL);
   const manifestResponse = await page.request.get(new URL("manifest.webmanifest", baseURL).href);
@@ -111,13 +111,13 @@ test("the site manifest and its icons load at their declared sizes", async ({ pa
 });
 
 test("the single file has no web manifest link", async ({ page }, info) => {
-  test.skip(info.project.name !== "single", SITE_ONLY);
+  test.skip(buildOf(info) !== "single", SITE_ONLY);
   await page.goto(info.project.use.baseURL);
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(0);
 });
 
 test("a second visit loads from the service worker and works offline", async ({ browser }, info) => {
-  test.skip(info.project.name !== "site", NOT_SINGLE);
+  test.skip(buildOf(info) !== "site", NOT_SINGLE);
   test.setTimeout(240_000);
   const server = await serve("docs");
   let context;

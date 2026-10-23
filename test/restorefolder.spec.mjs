@@ -5,7 +5,7 @@ import { test, expect } from "@playwright/test";
 import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { boot, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, buildOf, browserOf } from "./helpers.mjs";
 
 const box = (w, d, h) => prim("box", { w, d, h, r: 0, c: 0 });
 const NONE = "No JumpStart 3D designs found in that folder.";
@@ -245,7 +245,7 @@ test("of two files with one id, the newest keeps the id and the older becomes a 
 });
 
 test("with copies in a folder on, a restored design is copied to the folder, and the copier does not rewrite it", async ({ browser }, info) => {
-  test.skip(info.project.name === "single", "no origin private file system (OPFS) on file:// in this browser");
+  test.skip(buildOf(info) === "single" || browserOf(info) === "webkit", "no origin private file system (OPFS) on file:// in this browser, or at all in Linux WebKit");
   const ctx = await browser.newContext();
   const p = await ctx.newPage();
   const errs = watchErrors(p);

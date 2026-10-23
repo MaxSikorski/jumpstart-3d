@@ -3,10 +3,11 @@
 // design, never a path), and a saved copy of the design is there to attach. Both builds.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, waitIdle, newDoc, body, prim } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, waitIdle, newDoc, body, prim, buildOf, browserOf } from "./helpers.mjs";
 import { VERSION, BUILD } from "../src/version.js";
 
 const DESIGN = "Secret Widget Name";
+const BROWSER_NAME = { chromium: /Chrome/, firefox: /Firefox/, webkit: /Safari/ }; // what the app calls each engine in the details
 const box = (id, w) => body(id, "Part " + id, prim("box", { w, d: 10, h: 10, r: 0, c: 0 }));
 const CUT_NOTE = "…(cut here: paste the rest on GitHub)";
 
@@ -77,8 +78,8 @@ test("the details hold the build, where, browser and mode, and nothing of the de
   const text = await page.inputValue("#rp-details");
   expect(text).toContain(`community build ${BUILD}`);
   expect(text).toContain(`upstream ${VERSION}`);
-  expect(text).toContain(info.project.name === "single" ? "Where: the downloaded jumpstart-3d.html file" : "Where: the website");
-  expect(text).toMatch(/Browser: .*Chrome/);
+  expect(text).toContain(buildOf(info) === "single" ? "Where: the downloaded jumpstart-3d.html file" : "Where: the website");
+  expect(text).toMatch(new RegExp("Browser: .*" + BROWSER_NAME[browserOf(info)]));
   expect(text).toContain("Mode: Beginner");
   expect(text).toContain("Design file:");
   for (const secret of [DESIGN, "file://", "/Users", page.url()]) expect(text).not.toContain(secret);
@@ -159,7 +160,7 @@ test("a ticked error has its names, paths, addresses and keys taken out first", 
   await closeDialog();
 });
 
-test("the link carries the browser, what was typed and the edited details, and never the person's own words about the outcome", async () => {
+test("the link carries the browser, what was typed and the edited details, and never the person's own words about the outcome", async ({}, info) => {
   await openFromMenu();
   await page.fill("#rp-steps", "1. Drag a box\n2. Press Fillet & OK");
   const edited = (await page.inputValue("#rp-details")).split("\n").filter((l) => !l.startsWith("- Mode:")).join("\n") + "\nExtra note: it happens on every design";
@@ -167,7 +168,7 @@ test("the link carries the browser, what was typed and the edited details, and n
   const url = await pressOpen();
   expect(url.pathname).toBe("/MaxSikorski/jumpstart-3d/issues/new");
   expect(url.searchParams.get("template")).toBe("bug_report.yml");
-  expect(url.searchParams.get("browser")).toMatch(/Chrome/);
+  expect(url.searchParams.get("browser")).toMatch(BROWSER_NAME[browserOf(info)]);
   expect(url.searchParams.get("browser")).not.toMatch(/Mozilla|AppleWebKit/); // a short name, never the raw user agent
   expect(url.searchParams.get("steps")).toBe("1. Drag a box\n2. Press Fillet & OK");
   expect(url.searchParams.get("extra")).toBe(edited);
@@ -227,7 +228,9 @@ test("details that nearly fill the link never push it over the limit, with or wi
 });
 
 test("Copy the details copies what was typed and the details, even when the link had to leave the steps out", async ({}, info) => {
-  if (info.project.name === "site") await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: info.project.use.baseURL });
+  // quarantined: Playwright grants the clipboard permissions in Chromium only; Firefox and WebKit refuse the name
+  test.skip(browserOf(info) !== "chromium", "clipboard permissions can only be granted in Chromium");
+  if (buildOf(info) === "site") await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: info.project.use.baseURL });
   else await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const read = () => page.evaluate(() => navigator.clipboard.readText());
   await openFromMenu();

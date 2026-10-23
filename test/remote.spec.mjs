@@ -3,7 +3,7 @@
 // stateful WebDAV folder (PROPFIND, MKCOL, GET, PUT with If-Match, DELETE, Basic login) that records every request.
 // CORS is NOT tested: Playwright answers the preflight itself and adds the headers to every answer. The README covers it.
 import { test, expect } from "@playwright/test";
-import { boot, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { boot, loadDoc, newDoc, body, prim, buildOf, quarantine } from "./helpers.mjs";
 
 const HOST = "https://dav.example.test/";
 const PATH = "/dav/jumpstart/";
@@ -98,7 +98,7 @@ let page, errors, info0, fake, single;
 
 test.beforeAll(async ({ browser }, info) => {
   info0 = info;
-  single = info.project.name === "single";
+  single = buildOf(info) === "single";
   fake = makeFake();
   page = await browser.newPage();
   errors = watchErrors(page);
@@ -733,7 +733,9 @@ test("a 401 on a remembered password drops it, shows the form and is not repeate
   await closeDesigns();
 });
 
-test("a redirect is refused with a plain text, nothing is kept and the new place is not asked", async () => {
+// quarantined: WebKit refuses route.fulfill with a 3xx status, so the fake server cannot send a redirect
+test("a redirect is refused with a plain text, nothing is kept and the new place is not asked", async ({}, info) => {
+  quarantine(info, ["site-webkit", "single-webkit"], "WebKit refuses route.fulfill with a 3xx status, so the fake server cannot send a redirect");
   fake.redirect = true;
   await openRemote();
   const text = "The server sent this address somewhere else (a redirect). Type the address it moves to.";

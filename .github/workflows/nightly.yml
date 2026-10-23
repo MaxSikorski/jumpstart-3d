@@ -279,12 +279,12 @@ jobs:
       # these two browsers need the system libraries, unlike Chromium on the runner image
       - run: npx playwright install --with-deps ${{ matrix.browser }}
         timeout-minutes: 14
-      # Firefox gets WebGL from Mesa's software renderer (playwright.config.mjs forces it on); --with-deps does not always bring the driver
+      # Headless Firefox on the runner finds no GL driver at all; under a virtual screen (Xvfb) it gets WebGL from Mesa's software renderer (probed 2026-10-23)
       - if: ${{ matrix.browser == 'firefox' }}
-        run: sudo apt-get install -y --no-install-recommends libgl1-mesa-dri libglx-mesa0 libegl1
+        run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
         timeout-minutes: 5
       - run: node build.mjs
-      - run: npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
+      - run: ${{ matrix.browser == 'firefox' && 'xvfb-run -a -s "-screen 0 1400x900x24" ' || '' }}npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

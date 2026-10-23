@@ -22,7 +22,7 @@ if (process.env.JS3D_SKIP_CHATJUDGE === "1") BUILDS_IGNORE.push(/chatjudge\.spec
 if (process.env.JS3D_SKIP_GOLDEN === "1") BUILDS_IGNORE.push(/golden\.spec\.mjs/);
 
 const CROSS = process.env.JS3D_CROSS === "1";
-// Firefox on a Linux runner has no WebGL in headless unless it is forced on (it then uses Mesa's software renderer, installed by the nightly workflow)
+// Firefox on a Linux runner gets WebGL only from Mesa's software renderer under a virtual screen (the nightly workflow runs it with xvfb-run); the prefs force it on
 const firefoxPrefs = { "webgl.force-enabled": true, "webgl.disable-fail-if-major-performance-caveat": true };
 const crossProject = (build, browser, baseURL) => ({
   name: `${build}-${browser}`,

@@ -9,12 +9,20 @@ export const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 // "Failed to load resource" text has no URL in it, so the check is on the message's location.
 const FONT_HOSTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 
-// Known noise in one browser, matched by the exact message: WebKit reports a harmless ResizeObserver note as a page error, and on a file:// page it
-// logs a refused blob:null worker fetch (the engine still starts; the kernel test would fail if it did not).
+// Known noise in one browser, matched by the exact message: WebKit reports a harmless ResizeObserver note as a page error, logs a refused blob:null
+// fetch on a file:// page (the engine still starts; the kernel test would fail if it did not), and refuses port 1, which chat.spec uses as "no server there".
 const NOISE = [
   { project: /-webkit$/, message: /^ResizeObserver loop completed with undelivered notifications\.$/ },
-  { project: /^single-webkit$/, message: /^Cannot load blob:null\/[0-9a-f-]+ due to access control checks\.$/ },
+  { project: /^single-webkit$/, message: /^Cannot load blob:null\/[0-9a-f-]{36}\.$/ },
+  { project: /-webkit$/, message: /^Not allowed to use restricted network port 1: http:\/\/127\.0\.0\.1:1\/api\/chat$/ },
 ];
+
+// The projects are named <build> or <build>-<browser>: "site", "single-firefox", "site-webkit".
+export const buildOf = (info) => info.project.name.split("-")[0];
+export const browserOf = (info) => info.project.name.split("-")[1] || "chromium";
+
+// A quarantined test skips in the named projects only; the comment above it starts with "// quarantined:" (see test/README.md).
+export const quarantine = (info, projects, why) => test.skip(projects.includes(info.project.name), why);
 
 export function watchErrors(page) {
   const errors = [];

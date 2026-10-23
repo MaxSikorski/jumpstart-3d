@@ -3,7 +3,7 @@
 // showDirectoryPicker hands out a real directory handle from the browser's private file system (OPFS), which can be
 // stored in IndexedDB like a picked folder. OPFS never asks for permission, so a lapsed permission is stubbed.
 import { test, expect } from "@playwright/test";
-import { boot, reload, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { boot, reload, buildOf, browserOf, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
 
 const DB = "jumpstart3d-projects";
 const box = (w, d, h) => prim("box", { w, d, h, r: 0, c: 0 });
@@ -31,7 +31,7 @@ const refuse = (page) => page.addInitScript((name) => {
 // the single file is opened from disk, and Linux WebKit has no navigator.storage.getDirectory at all: if the browser has no private file system, the cases that need one are skipped
 const needOpfs = async (page, info) => {
   const ok = await page.evaluate(() => navigator.storage.getDirectory().then(() => true, () => false));
-  test.skip(!ok && (info.project.name === "single" || info.project.name.endsWith("-webkit")), "no origin private file system (OPFS) in this browser");
+  test.skip(!ok && (buildOf(info) === "single" || browserOf(info) === "webkit"), "no origin private file system (OPFS) in this browser");
 };
 
 const save = (page, doc) => loadDoc(page, doc).then(() => page.evaluate(() => window.__app.projects.saveNow()));

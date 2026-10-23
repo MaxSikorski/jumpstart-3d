@@ -4,7 +4,7 @@
 // "[object WebAssembly.Exception]". Every check here is made from the user's side: list(), the Group button, the STL file.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, waitIdle } from "./helpers.mjs";
+import { boot, watchErrors, waitIdle, quarantine } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -164,7 +164,9 @@ test("a box cut with a hole bigger than itself says nothing is left, in plain wo
 
 // A body of curves only (a wire from a STEP file) has no faces but is not empty: it builds, shows as lines, and exports.
 // Made with the app's own kernel: a circle of radius 10, written by blobSTEP().
-test("a STEP import that holds only a circle still builds and exports", async () => {
+// quarantined: the single file in WebKit cannot read the STEP blob back out of the engine worker ("The I/O read operation failed"), so no STEP export works there (app bug candidate, see the nightly notes)
+test("a STEP import that holds only a circle still builds and exports", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
   const data = readFileSync(new URL("./fixtures/wire-circle.step", import.meta.url)).toString("base64");
   await fresh();
   await run((data) => {

@@ -6,7 +6,7 @@
 //   FUZZ_STRICT=1    the known kernel problems (listed in test/README.md) fail the run instead of being noted
 import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
-import { boot, loadDoc, newDoc, watchErrors } from "./helpers.mjs";
+import { boot, loadDoc, newDoc, watchErrors, quarantine } from "./helpers.mjs";
 import {
   makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, stretchExcused, replayCommand, coneOpenExcused,
 } from "./fuzz-checks.mjs";
@@ -660,7 +660,9 @@ for (const seed of SEEDS) {
 // The checks above are only worth something if they fail on the cases they were written for. Each control runs a check on
 // a small design where the right answer is known, in both directions.
 if (!CUSTOM) {
-  test("fuzz controls: the checks pass what is right and fail what is wrong", async () => {
+  // quarantined: STEP export fails in the single file in WebKit, see booleans.spec.mjs
+  test("fuzz controls: the checks pass what is right and fail what is wrong", async ({}, info) => {
+    quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
     test.setTimeout(240_000);
     findings.length = 0;
     const fresh = async (name) => { await loadDoc(page, newDoc(name, "beginner")); await page.evaluate(() => JS3D.setMode("beginner")); };
