@@ -326,6 +326,8 @@ upstream version stays easy to merge.
 - Move and turn sketches, and the features built from them follow.
 - Turning shapes: typed angles, 15° steps or free turning, fine steps from the status bar, and a
   movable pivot with snapping.
+- A hidden rebuild-times panel for slow designs (Ctrl+Alt+P, or add `?perf` to the address): the last
+  rebuild body by body, slowest first, with batch, triangles, total and a Copy button for bug reports.
 - An underside view: the plate turns nearly clear when you look from below.
 - Boolean fixes: a torus no longer disappears from a group, two offset spheres cut to the right
   volume, an empty result says "Nothing is left", and joined torus groups export at the right

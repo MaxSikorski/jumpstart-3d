@@ -43,6 +43,7 @@ export class KernelClient {
         if (this.meshes.size > 160) this.meshes.delete(this.meshes.keys().next().value);
       }
       this.inflight = null;
+      this.perf && this.perf.done(msg.results); // jumpstart-3d: perf panel
       this.onResults && this.onResults(msg.results);
       this.pump();
     } else if (msg.type === "step") {
@@ -59,6 +60,7 @@ export class KernelClient {
       items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
       res.forEach((r) => this.meshes.set(r.key, r));
+      this.perf && this.perf.done(res); // jumpstart-3d: perf panel
       this.onResults && this.onResults(res);
       this.pump();
     }
@@ -97,6 +99,7 @@ export class KernelClient {
       if (batch.length >= 4 || alone(it)) break;
     }
     this.inflight = batch;
+    this.perf && this.perf.start(batch); // jumpstart-3d: perf panel
     const req = ++this.req;
     this.worker.postMessage({ type: "build", req, quality: this.quality || 1, bodies: batch.map((b) => ({ id: b.id, rev: b.key, node: b.node })) });
     // map results back by rev = key
@@ -107,6 +110,7 @@ export class KernelClient {
     this.onBusy && this.onBusy(true);
   }
   stalled(batch) {
+    this.perf && this.perf.abort(); // jumpstart-3d: perf panel
     // OpenCascade occasionally loops forever on extreme fillets; restart the worker.
     try { this.worker.terminate(); } catch (e) {}
     // jumpstart-3d: load. a restart drops the old worker's STEP jobs: say so instead of waiting forever
