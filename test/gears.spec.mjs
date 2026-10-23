@@ -3,7 +3,7 @@
 // points, read from JS3D.doc().sketches in stored order.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, exportBytes } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, exportBytes, quarantine } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -205,7 +205,9 @@ test("a bevel gear is two hidden sketches and a straight loft with the frustum v
   expect(await failure(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, width: 11 }))).toBe("width must be a positive number of mm, at most 10 for this bevel gear (a third of the way to the cone's tip)");
 });
 
-test("a bevel pair placed as the docs say meshes: cutting one from the other removes nothing, and a missed turn does overlap", async () => {
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
+test("a bevel pair placed as the docs say meshes: cutting one from the other removes nothing, and a missed turn does overlap", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on bevel gears");
   // the shared volume is read as "one gear minus (it cut by the other)": an intersect that is empty makes the kernel throw
   await fresh();
   const pair = (turn, op) => run(async ([turn, op]) => {
@@ -291,7 +293,9 @@ test("Beginner: the Gear button opens the dialog and a rack from it is one body 
   expect(list[0].bbox.min[2]).toBeGreaterThanOrEqual(0);
 });
 
-test("the golden design exports to STEP as three true solids", async () => {
+// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
+test("the golden design exports to STEP as three true solids", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/gears.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();

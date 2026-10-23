@@ -153,7 +153,7 @@ button { cursor: pointer; }
 :root[data-ui="contrast"] .chisel-level button[aria-pressed="true"] { background: var(--accent); color: #000; }
 .chisel-host[hidden] { display: none; }
 .chisel-host iframe { width: 100%; height: 100%; border: 0; display: block; }
-.toasts { z-index: 45 !important; }
+.toasts { z-index: 80 !important; } /* jumpstart-3d: above the .modal-back scrim (60) and the snap menu (70), so a failed-save toast shows over an open dialog; the 3D print sim (90) and full-screen layers stay above */
 #app[data-mode="chisel"] .toasts { position: fixed; }
 .expbadge { font: 700 9.5px/1 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: #1b1407; background: #d6a44e; border-radius: 4px; padding: 3px 5px; margin-left: 6px; }
 .modeswitch button[aria-pressed="true"] { background: var(--block-ink); color: var(--block); }
@@ -175,6 +175,8 @@ button { cursor: pointer; }
 .menu .menu-head { padding: 6px 10px 2px; font: 600 11px/1.2 var(--f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
 .menu .menu-note { padding: 4px 10px 6px; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); max-width: 250px; }
 #menu-theme { min-width: 270px; }
+/* jumpstart-3d: a menu taller than the space under the toolbar scrolls inside itself (46px toolbar + notch inset + 20px gap) instead of running off the window */
+.menu { max-height: calc(100vh - 46px - env(safe-area-inset-top, 0px) - 20px); max-height: calc(100dvh - 46px - env(safe-area-inset-top, 0px) - 20px); overflow-y: auto; overscroll-behavior: contain; }
 .exhead { font: 600 10.5px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding: 6px 10px 4px; }
 .menu .exopt { padding: 6px 10px; }
 .menu .exopt::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink-3); flex: none; align-self: center; box-sizing: border-box; }
