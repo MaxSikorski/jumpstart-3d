@@ -4,9 +4,7 @@
     "Advanced toolbar": [
       "ad-ins-dxf",
       "ad-ins-img",
-      "ad-ins-model",
       "ad-ins-svg",
-      "ad-insert",
       "ad-moverot",
       "ad-pipe",
       "ad-plane-ang",
@@ -16,7 +14,6 @@
     ],
     "Beginner toolbar": [
       "bb-extrude",
-      "bb-facepat",
       "bb-import",
       "bb-sketch",
       "bb-sketch3d"
@@ -30,9 +27,7 @@
       "btn-projects",
       "btn-tutorials",
       "mode-advanced",
-      "mode-arch",
-      "mode-beginner",
-      "mode-chisel"
+      "mode-arch"
     ],
     "Beginner shape strip": [
       "dock-help-btn",
@@ -82,7 +77,6 @@
       "nav-appear",
       "nav-light",
       "nav-media",
-      "nav-projector",
       "nav-sketches"
     ],
     "Advanced 3D print sim toolbar": [
@@ -97,17 +91,13 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
-      "sim-bricks",
       "sim-drive",
-      "sim-flexigen",
       "sim-joint",
-      "sim-meshstep",
       "sim-motion",
       "sim-print",
       "sim-render",
       "sim-reset",
-      "sim-stress",
-      "sim-voxel"
+      "sim-stress"
     ],
     "Advanced sketch toolbar": [
       "sk-arc3",

@@ -519,6 +519,13 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .menu button { padding: 12px 10px; }
   .pcard .acts button { padding: 8px 8px; }
 }
+/* jumpstart-3d: pivot (issue #100). The pivot dot's labels, the angle pill beside the pointer while turning, and the Advanced Pivot panel */
+.vp-label.pivot-tag { font-family: var(--f-ui); font-size: 11px; }
+.vp-label.pivot-snap { font-family: var(--f-ui); background: #e8a317; border-color: #c98a0c; color: #1d1404; font-weight: 600; }
+.turn-pill { position: absolute; left: 0; top: 0; pointer-events: none; background: var(--accent); color: var(--on-accent); border-radius: 12px; padding: 3px 9px; font: 600 13px/1.2 var(--f-mono); box-shadow: 0 3px 10px rgba(0,0,0,.25); white-space: nowrap; z-index: 6; }
+.pivpanel { top: 10px; left: 10px; width: 236px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.pivot-fields { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 860px) { .pivpanel { top: auto; bottom: 54px; left: 10px; } }
 /* jumpstart-3d: rotation access (issue #100). The turn buttons and the Snap 15° / Free switch are 44 px targets for a finger */
 .rot-btn button { min-width: 44px; min-height: 44px; }
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }

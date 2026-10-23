@@ -42,6 +42,7 @@ import { initReport } from "./report.js"; // jumpstart-3d: report
 import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
 captureShare(); // jumpstart-3d: share link. first thing: a design link's fragment goes into memory and off the address bar, before boot() or the bridge can see it
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
+import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -140,6 +141,7 @@ function boot() {
 
   // on small screens the side panels start tucked away (toggle from the toolbar)
   if (window.matchMedia("(max-width: 860px)").matches) { $("shapes").classList.add("collapsed"); $("browser").classList.add("collapsed"); }
+  app.pivot = initPivot(app); // jumpstart-3d: pivot. before the two modes: both draw and use it
   app.beginner = initBeginner(app);
   app.advanced = initAdvanced(app);
   if (IS_IOS) document.documentElement.classList.add("ios");
@@ -778,6 +780,7 @@ app.onShapeClosed = function (skId, regionKeys) {
 
 app.select = function (ids) {
   app.sel = [...new Set(ids)];
+  app.pivot && app.pivot.selection(app.sel); // jumpstart-3d: pivot. a different set of bodies starts from its middle again
   app.scene.setSelected(app.sel);
   app.refreshUI("select");
 };
