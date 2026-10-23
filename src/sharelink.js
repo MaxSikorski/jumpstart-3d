@@ -13,6 +13,7 @@ import { el } from "./util.js";
 import { ICON } from "./icons.js";
 import { inflateRaw } from "./inflate.js";
 import { evalExpr } from "./params.js";
+import { MAX_SLOTS } from "./paint3mf.js";
 
 // ---------------------------------------------------------------- limits (named, and tested at their edges)
 export const LIMITS = {
@@ -22,7 +23,7 @@ export const LIMITS = {
   PAYLOAD_BYTES: 3072, // decoded bytes of either codec
   JSON_BYTES: 512 * 1024, // JSON text, after inflating
   DEPTH: 64, ENTRIES: 50000, BODIES: 256, SKETCHES: 256, PARAMS: 256, NODES: 4096, SKETCH_ITEMS: 20000,
-  NAME: 256, EXPR: 512, STRING: 2048, ASSET_BYTES: 256 * 1024,
+  PAINT_FACES: 4096, NAME: 256, EXPR: 512, STRING: 2048, ASSET_BYTES: 256 * 1024,
   // the most the app's own controls allow (advanced.js pattern box, beginner.js sliders, kernel.js coil and thread), so a link cannot ask the engine for more
   REPEAT: 200, REPEAT_TOTAL: 2000, CIRCULAR: 360, TURNS: 400, MEASURE: 1e5, SIDES: 24, PYRAMID_SIDES: 12, POINTS: 16,
 };
@@ -174,7 +175,7 @@ const B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; // SVG, http(s), blob:, file: and the rest are not in it
 
 // explicit tables, taken from what the app writes and the kernel reads (kernel.js evalNode and applyMod)
-const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver"]);
+const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint"]);
 const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked"]);
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
 const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op"]);
@@ -385,7 +386,27 @@ export function validateEnvelope(env) {
     node(obj(b.node, "a body shape"), ctx, "a shape");
   }
   for (const r of ctx.bodyRefs) if (!bid.has(r)) throw damaged("a mirror points at a missing body");
+  if (doc.printPaint !== undefined) printPaint(doc.printPaint, bid);
   return doc;
+}
+
+// jumpstart-3d: painted 3MF. The 3D Print Sim's filaments (paint3mf.js): { slots: ["#rrggbb"], of: { bodyId: slot }, faces: { bodyId: { n, f: { face: slot } } } }
+function printPaint(pp, bid) {
+  obj(pp, "the print paint"); allow(pp, new Set(["slots", "of", "faces"]), "the print paint");
+  const slots = arr(pp.slots, "the filaments", MAX_SLOTS), slot = (v) => { if (!Number.isInteger(v) || v < 0 || v >= slots.length) throw damaged("a filament number"); };
+  for (const c of slots) if (typeof c !== "string" || !COLOR.test(c)) throw damaged("a filament colour");
+  for (const [k, v] of Object.entries(obj(pp.of, "the filament of each body"))) { if (!bid.has(k)) throw damaged("print paint for a missing body"); slot(v); }
+  let painted = 0;
+  for (const [k, e] of Object.entries(pp.faces === undefined ? {} : obj(pp.faces, "the painted faces"))) {
+    if (!bid.has(k)) throw damaged("print paint for a missing body");
+    obj(e, "painted faces"); allow(e, new Set(["n", "f"]), "painted faces");
+    if (!Number.isInteger(e.n) || e.n < 1 || e.n > LIMITS.PAINT_FACES) throw damaged("a face count");
+    for (const [f, v] of Object.entries(obj(e.f, "painted faces"))) {
+      if (!/^(?:0|[1-9]\d{0,3})$/.test(f) || +f >= e.n) throw damaged("a face number");
+      slot(v);
+      if (++painted > LIMITS.PAINT_FACES) throw tooBig("This design has too many painted faces for a link.");
+    }
+  }
 }
 
 // node: one shape-building step and its modifiers. Only the types and fields the kernel reads are in the tables.

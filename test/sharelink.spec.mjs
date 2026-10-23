@@ -60,6 +60,8 @@ const storedDesigns = (page) => page.evaluate(async () => { const s = window.__a
 const noLinkPending = (page) => page.evaluate(() => !window.__app.sharelink.busy());
 const withoutStamp = ({ _updated, ...rest }) => rest;
 const openDoc = (page) => page.evaluate(() => ({ id: window.__store.doc.id, name: window.__store.doc.name, mode: window.__store.doc.mode, ver: window.__store.doc.ver, created: window.__store.doc.created, bodies: window.__store.doc.bodies.length }));
+// how many triangles of a 3MF carry slicer paint (the model entry is stored, not compressed)
+const paintedTriangles = (bytes) => (Buffer.from(bytes).toString("latin1").match(/ paint_color="/g) || []).length;
 async function stlOf(page) {
   await waitIdle(page);
   expect((await bodies(page)).filter((b) => b.error), "kernel errors").toEqual([]);
@@ -72,6 +74,7 @@ async function share(doc) {
   const list = await bodies(sender);
   expect(list.filter((b) => b.error), "kernel errors on the sender").toEqual([]);
   const stl = sha256((await exportBytes(sender, "stl")).bytes);
+  const paint = doc.printPaint ? paintedTriangles((await exportBytes(sender, "3mf")).bytes) : 0;
   await sender.click("#btn-export");
   await sender.click("#btn-share-link");
   await expect(sender.locator("#share-dialog")).toBeVisible();
@@ -80,7 +83,7 @@ async function share(doc) {
   const note = await sender.textContent("#share-note");
   await sender.keyboard.press("Escape");
   await expect(sender.locator("#share-dialog")).toHaveCount(0);
-  return { link, frag: fragmentOf(link), note, stl, volumes: volumesOf(list), params: doc.params || [] };
+  return { link, frag: fragmentOf(link), note, stl, paint, volumes: volumesOf(list), params: doc.params || [] };
 }
 const unicodeName = "Café ✓ 日本語 — ブラケット 🔩";
 const unicode = (doc) => { const d = structuredClone(doc); d.name = unicodeName; d.bodies.forEach((b, i) => { b.name = `${unicodeName} ${i + 1}`; }); return d; };
@@ -90,6 +93,7 @@ const CASES = [
   { file: "advanced-wall-bracket", make: (f) => unicode(fixture(f)), what: "Advanced, with Unicode names" },
   { file: "parametric-features", make: fixture, what: "parameters" },
   { file: "import-stl-mesh", make: fixture, what: "an embedded model" },
+  { file: "painted-cube", make: fixture, what: "3D Print Sim filament paint" },
 ];
 
 for (const c of CASES) {
@@ -128,6 +132,11 @@ for (const c of CASES) {
       const received = await page.evaluate(() => window.__store.doc);
       expect(received.params.map((p) => [p.name, p.expr])).toEqual((doc.params || []).map((p) => [p.name, p.expr]));
       expect(Object.keys(received.assets || {})).toEqual(Object.keys(doc.assets || {}));
+      expect(received.printPaint, "the paint comes back exactly").toEqual(doc.printPaint);
+      if (doc.printPaint) { // and the receiver's 3MF carries it as the sender's does
+        expect(s.paint).toBeGreaterThan(0);
+        expect(paintedTriangles((await exportBytes(page, "3mf")).bytes)).toBe(s.paint);
+      }
       expect((await storedDesigns(r.page)).map((d) => d.id)).toContain(open.id);
       expect(r.errors, "console or page errors on the receiver").toEqual([]);
     } finally { await r.context.close(); }

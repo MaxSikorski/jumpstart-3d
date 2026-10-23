@@ -403,6 +403,39 @@ test("pictures and models: embedded raster data only, 256 KiB in all, nothing fr
   bad((d) => { asset(MAX)(d); img(png)(d); }, "toolarge", /too big/);
 });
 
+test("print paint (painted 3MF): a painted design round-trips; anything outside the shape the 3D Print Sim writes is refused", async () => {
+  const name = "painted-cube", doc = fixture(name);
+  const link = await makeLink(doc, BASE);
+  assert.equal(link.ok, true);
+  assert.deepEqual((await readFragment(link.url.slice(link.url.indexOf("#") + 1))).printPaint, doc.printPaint);
+  validateEnvelope(valid((d) => { delete d.printPaint.faces; }, name)); // the sim always writes faces, but a design without is read as before
+  const n = LIMITS.PAINT_FACES;
+  validateEnvelope(valid((d) => { d.printPaint.faces.b1 = { n, f: { [n - 1]: 1 } }; }, name)); // the edges
+  bad((d) => { d.printPaint.extra = 1; }, "unsupported", /print paint/, name);
+  bad((d) => { d.printPaint.faces.b1.extra = 1; }, "unsupported", /painted faces/, name);
+  bad((d) => { d.printPaint.of = { nope: 0 }; }, "damaged", /missing body/, name);
+  bad((d) => { d.printPaint.faces = { nope: { n: 6, f: { 0: 1 } } }; }, "damaged", /missing body/, name);
+  bad((d) => { d.printPaint.faces.b1.f = { "-1": 1 }; }, "damaged", /face number/, name);
+  bad((d) => { d.printPaint.faces.b1.f = { 1.5: 1 }; }, "damaged", /face number/, name);
+  bad((d) => { d.printPaint.faces.b1.f = { 6: 1 }; }, "damaged", /face number/, name); // n is 6: faces are 0 to 5
+  bad((d) => { d.printPaint.faces.b1 = { n: n + 1, f: {} }; }, "damaged", /face count/, name);
+  bad((d) => { d.printPaint.faces.b1 = { n: 6.5, f: {} }; }, "damaged", /face count/, name);
+  bad((d) => { d.printPaint.faces.b1 = { n: 99999999, f: { 99999998: 1 } }; }, "toolarge", undefined, name); // caught by the measurement cap first
+  bad((d) => { d.printPaint.faces.b1.f = { 99999998: 1 }; }, "damaged", /face number/, name);
+  bad((d) => { d.printPaint.slots[1] = "red"; }, "damaged", /colour/, name);
+  bad((d) => { d.printPaint.slots[1] = "url(http://x)"; }, "damaged", /colour/, name);
+  bad((d) => { d.printPaint.slots[1] = 5; }, "damaged", /colour/, name);
+  bad((d) => { d.printPaint.of.b1 = 5; }, "damaged", /filament number/, name); // 5 slots: 0 to 4
+  bad((d) => { d.printPaint.of.b1 = -1; }, "damaged", /filament number/, name);
+  bad((d) => { d.printPaint.of.b1 = "1"; }, "damaged", /filament number/, name);
+  bad((d) => { d.printPaint.faces.b1.f[0] = 1.5; }, "damaged", /filament number/, name);
+  bad((d) => { d.printPaint.slots = Array.from({ length: 16 }, () => "#112233"); }, "damaged", /filaments/, name); // the file codes 15
+  bad((d) => { d.printPaint = []; }, "damaged", /print paint/, name);
+  bad((d) => { d.printPaint.of = null; }, "damaged", /filament of each body/, name);
+  bad((d) => { d.printPaint.faces.b1.f = []; }, "damaged", /painted faces/, name);
+  throwsShare(() => validateEnvelope(JSON.parse(JSON.stringify(env(doc)).replace('"of":{', '"of":{"__proto__":1,'))), "damaged");
+});
+
 test("names are only ever text: a literal element in a name survives as text", async () => {
   const name = '<img src=x onerror="alert(1)">';
   const r = await makeLink(valid((d) => { d.name = name; }, "beginner-box").doc, BASE);
