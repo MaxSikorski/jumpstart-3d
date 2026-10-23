@@ -132,7 +132,6 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 
 - **Named parameters:** type `w` or `w/2` instead of a number, and everything follows when it
   changes.
-- **Bolts, nuts, gears, hole patterns, name plates and knurled knobs**, ready to drop into a design.
 - **Code CAD** (Open/Export › Code CAD…): write replicad code that builds one solid, and keep the code with the part.
 - **Bolts, nuts, gears, hole patterns, name plates, knurled knobs and springs**, ready to drop into a design.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.

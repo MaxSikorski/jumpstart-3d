@@ -87,7 +87,7 @@ test("JS3D.codeCad builds a body, waits for it to appear, and updates it by body
   expect(out.again).toBe(out.id);
   near(out.first, L_BRACKET);
   near(out.second, 14400 + 7200 - 60 * 4 * 8 - 2 * Math.PI * 9 * 8, 0.005); // a base 8 thick: its overlap with the wall and the holes grow
-  expect(out.version).toBe("1.7");
+  expect(out.version).toBe(await page.evaluate(() => JS3D.version)); // this branch adds a call without a version change
 });
 
 test("the parameter example builds with its defaults", async () => {
