@@ -1,6 +1,6 @@
 # Everything too slow to hold up a pull request, every night at 07:00 UTC and on demand (see test/README.md):
 # the full Playwright suite on both builds, the golden exports with the export judge, the chat geometry scorer, the fuzzer,
-# and the same suite in Firefox and WebKit (not blocking yet).
+# the loading check (Lighthouse, not blocking yet), and the same suite in Firefox and WebKit (not blocking yet).
 # When a blocking job fails, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
 # Run it by hand on any branch, a pull request's too: `gh workflow run nightly.yml --ref <branch>`. No secrets, no model: the chat judge drives a mock.
 # To prove a branch with one job instead of the full run: `gh workflow run nightly.yml --ref <branch> -f specs="test/gltf.spec.mjs"` (job `selected specs`; see test/README.md).
@@ -29,7 +29,7 @@ jobs:
   # With `specs` set this is the only job that runs: the chosen spec files on the chosen projects, about two jobs of runner instead of the full run's twenty.
   selected:
     name: selected specs
-    if: ${{ inputs.specs != '' }}
+    if: ${{ inputs.specs != '' && inputs.specs != 'lighthouse' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -318,6 +318,37 @@ jobs:
           retention-days: 7
           overwrite: true
 
+  # Loading check: Lighthouse (mobile preset) on the built site, three cold loads, medians against lighthouse-budget.json (tools/lighthouse.mjs, test/README.md).
+  # NOT BLOCKING until a baseline recorded on this runner is committed: with no baseline the script only reports and exits 0.
+  # To switch enforcement on: collect summary.json from five runs, `node tools/lighthouse.mjs --record-from <the five>`, review and commit lighthouse-budget.json, then delete the continue-on-error line below.
+  # Also runs alone with `-f specs=lighthouse`. Needs Node 22.19 or newer (Lighthouse 13), which setup-node's "22" gives.
+  lighthouse:
+    name: lighthouse loading check
+    if: ${{ inputs.specs == '' || inputs.specs == 'lighthouse' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: node build.mjs
+      - run: node tools/lighthouse.mjs
+      - if: ${{ !cancelled() }}
+        run: test -f lighthouse-report/summary.md && cat lighthouse-report/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-report
+          path: lighthouse-report/
+          retention-days: 30
+          overwrite: true
+
   # The same suite in Firefox and WebKit, on the site and the single file. NOT BLOCKING while it settles: continue-on-error keeps the run green
   # and the report job lists the failing specs in a section of their own. To make them count, drop continue-on-error and set CROSS_BLOCKING=1 on the report job.
   # The golden exports and the chat judge stay Chromium only (the export files and the mock clock do not depend on the browser).
@@ -388,7 +419,7 @@ jobs:
 
   report:
     name: nightly failures issue
-    needs: [playwright, golden, judge, chat-judge, fuzz, cross]
+    needs: [playwright, golden, judge, chat-judge, fuzz, lighthouse, cross]
     # only the scheduled or full run on main writes the issue, never a selected-specs run or another branch
     if: ${{ always() && !cancelled() && inputs.specs == '' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04

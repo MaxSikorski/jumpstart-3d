@@ -1,6 +1,6 @@
 // Times a page load of a built copy of the site on a simulated 10 Mbit / 40 ms connection.
 //   node tools/measure-load.mjs [dir=docs] [runs=3]
-// A small static server stands in for GitHub Pages (gzip for html/js/wasm, application/wasm, max-age=600, weak ETags
+// A small static server (tools/pages-server.mjs) stands in for GitHub Pages (gzip for html/js/wasm, application/wasm, max-age=600, weak ETags
 // with 304). Every run starts a new browser and visits twice in the same page. If <dir>/sw.js exists, the run waits
 // for the service worker to take over between the visits. Columns, in milliseconds from the start of the visit:
 //   DOMContentLoaded   the page's own scripts are loaded and have run
@@ -11,35 +11,14 @@
 // because Chromium's throttle does not slow them). Within 10 minutes of a first visit the browser's own cache serves a second visit even
 // without a service worker, so the second-visit row only differs clearly after 10 minutes or offline.
 // To compare: put the old build in a folder (git archive <release tag> docs | tar -x -C <folder>; docs/ is not committed on main), run this on it, then run it on docs/ after node build.mjs.
-import { createServer } from "node:http";
-import { readFileSync, statSync, existsSync } from "node:fs";
-import { join, extname, normalize, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
+import { startServer } from "./pages-server.mjs";
 
 const dir = resolve(process.argv[2] || "docs");
 const runs = +(process.argv[3] || 3);
-const types = { ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".wasm": "application/wasm", ".png": "image/png" };
-const zipped = /\.(html|js|wasm)$/, cache = new Map();
-
-const server = createServer((req, res) => {
-  const p = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
-  let file = join(dir, p);
-  try { if (statSync(file).isDirectory()) file = join(file, "index.html"); statSync(file); } catch { res.writeHead(404); res.end(); return; }
-  const st = statSync(file);
-  const h = { "content-type": types[extname(file)] || "application/octet-stream", "cache-control": "max-age=600", vary: "Accept-Encoding",
-    etag: `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"` };
-  if (req.headers["if-none-match"] === h.etag) { res.writeHead(304, h); res.end(); return; }
-  let body = cache.get(file) || readFileSync(file); cache.set(file, body);
-  if (zipped.test(file) && /gzip/.test(req.headers["accept-encoding"] || "")) {
-    const k = file + "#gz"; let z = cache.get(k); if (!z) { z = gzipSync(body, { level: 6 }); cache.set(k, z); }
-    body = z; h["content-encoding"] = "gzip";
-  }
-  h["content-length"] = body.length;
-  res.writeHead(200, h); res.end(body);
-});
-await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
-const origin = `http://127.0.0.1:${server.address().port}`;
+const { origin, close: closeServer } = await startServer(dir);
 
 const med = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
 const hasSW = existsSync(join(dir, "sw.js"));
@@ -99,7 +78,7 @@ for (let i = 0; i < runs; i++) {
   console.log(`run ${i + 1}: ` + JSON.stringify({ first: r.first, second: r.second, serviceWorkerBytes: r.sw }, (k, v) => (typeof v === "number" ? Math.round(v) : v)));
   await browser.close();
 }
-server.close(); server.closeAllConnections();
+closeServer();
 
 console.log(`\nChromium ${version}, ${dir}, ${runs} runs, median, 10 Mbit / 40 ms${hasSW ? ", service worker present" : ""}\n`);
 console.log("| visit | DOMContentLoaded ms | workspace usable ms | kernel ready ms | network bytes |");

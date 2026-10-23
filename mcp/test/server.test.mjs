@@ -24,7 +24,7 @@ test("--help prints the environment variables and exits 0", () => {
 test("the tools are listed, with the contract names", async () => {
   const { tools } = await s.client.listTools();
   const names = tools.map((t) => t.name);
-  for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "add_hole_pattern", "add_gear", "add_name_plate", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
+  for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "add_hole_pattern", "add_gear", "add_name_plate", "add_knurl", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
     "scale_bodies", "set_hole", "set_color", "rename_body", "set_hidden", "group_bodies", "ungroup_body", "list_params", "set_param", "remove_param", "bind_size", "undo", "redo",
     "select_bodies", "fit_view", "set_mode", "screenshot", "export_file", "save_project", "load_project", "new_design", "run_script"]) assert.ok(names.includes(n), "missing tool " + n);
   assert.ok(tools.every((t) => t.description && t.description.length > 10), "every tool is described");
@@ -32,7 +32,7 @@ test("the tools are listed, with the contract names", async () => {
 
 test("no tool's input schema has a $ref or a tuple (items array): Gemini-family clients and small local servers reject them", async () => {
   const { tools } = await s.client.listTools();
-  assert.ok(tools.length >= 38);
+  assert.ok(tools.length >= 39);
   for (const t of tools) {
     const json = JSON.stringify(t.inputSchema);
     assert.ok(!json.includes('"$ref"'), t.name + " has a $ref: " + json);
@@ -57,7 +57,8 @@ test("add_shape, wait_ready and list_bodies give a block of 24000 mm3", async ()
   assert.equal(list[0].id, id);
   assert.ok(Math.abs(list[0].volume - 24000) < 0.5, "volume " + list[0].volume);
   const st = data(await call(s.client, "status"));
-  assert.deepEqual([st.page, st.designMode, st.bodies, st.js3d], ["headless", "beginner", 1, "1.6"]);
+  assert.deepEqual([st.page, st.designMode, st.bodies], ["headless", "beginner", 1]);
+  assert.match(st.js3d, /^1\.\d+$/); // any 1.x: a new bridge call bumps the minor version without an mcp/ change
   assert.match(st.app, /^\d/);
 });
 
@@ -243,6 +244,23 @@ test("add_name_plate makes a plate and its raised letters, refuses a style the s
   const bad2 = await call(s.client, "add_name_plate", { text: "A\nB" });
   assert.equal(bad2.isError, true);
   assert.match(bad2.content[0].text, /^text must be one line/);
+});
+
+test("add_knurl makes a knurled knob, refuses a bore the schema does not list and a bore too big for the root", async () => {
+  await call(s.client, "new_design");
+  const id = data(await call(s.client, "add_knurl", { grooves: 60, bore: "round" }));
+  assert.equal(typeof id, "string");
+  assert.deepEqual(data(await call(s.client, "wait_ready")), { ready: true });
+  const bodies = data(await call(s.client, "list_bodies"));
+  assert.deepEqual(bodies.map((b) => b.name), ["Knurled knob 20 x 15"]);
+  assert.equal(bodies[0].error, null);
+  assert.ok(Math.abs(bodies[0].volume / 4168.9 - 1) < 0.01, "knob volume " + bodies[0].volume);
+  const bad = await call(s.client, "add_knurl", { bore: "square" });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /square/);
+  const bad2 = await call(s.client, "add_knurl", { grooves: 60, bore: "round", boreSize: 17 });
+  assert.equal(bad2.isError, true);
+  assert.match(bad2.content[0].text, /^boreSize must be a number from 1 to 16\.952 mm/);
 });
 
 test("a bad JS3D_WS_PORT or JS3D_MODE exits with code 2 and a plain message", () => {

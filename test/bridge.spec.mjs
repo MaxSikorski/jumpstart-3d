@@ -30,7 +30,7 @@ test("JS3D exists, lists the shape kinds, and does nothing until called", async 
   // the page is as it was after boot: the bridge edited nothing
   const state = await run(() => ({ bodies: __store.doc.bodies.length, undo: __store.undoStack.length, app: !!window.__app, findBody: typeof window.__findBody }));
   expect(state).toEqual({ bodies: 0, undo: 0, app: true, findBody: "function" });
-  expect(await run(() => JS3D.version)).toBe("1.6");
+  expect(await run(() => JS3D.version)).toBe("1.8");
   const kinds = await run(() => JS3D.kinds());
   expect(kinds.length).toBe(20);
   expect(kinds.find((k) => k.kind === "box").defaults).toEqual({ w: 20, d: 20, h: 20, r: 0, c: 0 });
