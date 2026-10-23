@@ -110,9 +110,9 @@ test.describe("desktop", () => {
     expectMatrix(await matrix(), M0);
   });
 
-  test("Beginner: − and + with two boxes selected turn both about the middle of their combined box; +5 then −5 puts back both exact matrices", async () => {
-    const M1 = tr(30 + 46, -12, 5);
-    await loadDoc(page, newDoc("fine two", "beginner", { bodies: [body("b1", "Box", prim("box", BOX), M0), body("b2", "Box 2", prim("box", BOX), M1)] }));
+  test("Beginner: − and + with two different boxes selected turn both about the pivot (the combined middle, taken once), so +5 then −5 puts back both exact matrices", async () => {
+    const M1 = tr(110, 30, 0), REF = { w: 30, d: 30, h: 30, r: 0, c: 0 }; // a lopsided pair: the combined box's middle moves when they turn
+    await loadDoc(page, newDoc("fine two", "beginner", { bodies: [body("b1", "Box", prim("box", BOX), M0), body("b2", "Cube", prim("box", REF), M1)] }));
     await run(() => { window.__app.vp.fit(window.__app.scene.allBox()); window.__app.select(["b1", "b2"]); });
     const mats = () => run(() => window.__store.doc.bodies.map((b) => b.m));
     const union = await run(() => { const u = window.__app.scene.bodyTightBox("b1").clone().union(window.__app.scene.bodyTightBox("b2")); return [...u.min.toArray(), ...u.max.toArray()]; });
@@ -129,6 +129,28 @@ test.describe("desktop", () => {
     got = await mats();
     expectMatrix(got[0], M0);
     expectMatrix(got[1], M1);
+  });
+
+  test("Beginner: − / + turn about a pivot typed in the Pivot X / Y / Z fields (the dot the user sees), not the shape's middle", async () => {
+    const box0 = await open("beginner", page);
+    await run(() => window.__app.select(["b1"]));
+    const P = [12.5, -7.25, 3.125];
+    for (const [i, v] of P.entries()) { await page.fill("#insp-piv" + i, String(v)); await page.locator("#insp-piv" + i).blur(); }
+    await page.selectOption("#turn-step", "5");
+    const depth = await undoDepth();
+    await page.click("#turn-plus");
+    await expect.poll(() => undoDepth()).toBe(depth + 1);
+    expectMatrix(await matrix(), turned("z", 5, P, M0));
+    // the world box equals the eight corners turned about P (worked out here)
+    const R = rot("z", 5), lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    for (const x of [box0[0], box0[3]]) for (const y of [box0[1], box0[4]]) for (const z of [box0[2], box0[5]]) {
+      const d = [x - P[0], y - P[1], z - P[2]];
+      [0, 1, 2].forEach((r) => { const v = R[r] * d[0] + R[4 + r] * d[1] + R[8 + r] * d[2] + P[r]; lo[r] = Math.min(lo[r], v); hi[r] = Math.max(hi[r], v); });
+    }
+    await expectBox([...lo, ...hi]);
+    await page.click("#turn-minus");
+    await expect.poll(() => undoDepth()).toBe(depth + 2);
+    expectMatrix(await matrix(), M0);
   });
 
   test("Beginner: Snap back keeps a mirrored shape mirrored (determinant stays -1); a mirrored shape already square says so", async () => {
