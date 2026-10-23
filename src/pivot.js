@@ -382,3 +382,5 @@ export function liveGizmo(app, host) {
   };
   return live;
 }
+
+// gate probe (reverted)

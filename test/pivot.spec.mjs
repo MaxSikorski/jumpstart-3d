@@ -743,3 +743,5 @@ test("touch (tablet, beginner): a tap on the pivot dot where another body is sel
   } finally { await ctx.close(); }
   expect(errs).toEqual([]);
 });
+
+// gate probe (reverted)
