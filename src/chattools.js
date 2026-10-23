@@ -92,7 +92,7 @@ export const TOOLS = [
   tool("redo", "Redoes the last undone edit. Returns its label, or null.", {}, [], () => J().redo()),
   tool("select_bodies", "Selects bodies in the view (an empty list clears the selection).", { ids: ids("A list of body ids; empty clears the selection") }, ["ids"], ({ ids }) => J().select(ids)),
   tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, [], () => J().fit()),
-  tool("set_mode", "Switches the app between Beginner and Advanced mode.", { mode: { type: "string", enum: ["beginner", "advanced"], description: "The mode" } }, ["mode"], ({ mode }) => J().setMode(mode)),
+  tool("set_mode", "Switches the app between Beginner, Advanced and Architechies (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet. Arch mode hides the shapes: switch back to beginner or advanced before editing shapes or taking a screenshot of them.", { mode: { type: "string", enum: ["beginner", "advanced", "arch"], description: "The mode" } }, ["mode"], ({ mode }) => J().setMode(mode)),
 
   tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels. If this model cannot see images you get a one-line text note instead of the picture.",
     { width: { type: "integer", description: "1 to 8192, default 800" }, fit: bool("default true") }, [],
