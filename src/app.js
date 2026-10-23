@@ -44,6 +44,7 @@ captureShare(); // jumpstart-3d: share link. first thing: a design link's fragme
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 import { initFineTurn } from "./fineturn.js"; // jumpstart-3d: fine rotation
 import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
+import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -230,6 +231,7 @@ app.voxel = initVoxel(app);
   // mm / inch switch, always in the status bar: changes every readout and typed value
   $("unit-toggle").onclick = () => setUnit(getUnit() === "in" ? "mm" : "in");
   initFineTurn(app); // jumpstart-3d: fine rotation
+  initPerfPanel(app); // jumpstart-3d: perf panel
   // jumpstart-3d: the top bar wraps to two rows on a narrow screen; Chisel and the Lathe message start below its real height
   new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px")).observe(document.querySelector(".topbar"));
   onUnit(() => {

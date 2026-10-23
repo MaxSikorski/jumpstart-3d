@@ -182,6 +182,8 @@ export function initBeginner(app) {
     btn("thread", "Fastener", "Bolts, nuts, threaded rods and tap cutters, metric and inch", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners
     btn("gear", "Gear", "Spur gears, bevel gears and racks by module and tooth count", () => app.advanced.gear(), "bb-gear", true); // jumpstart-3d: gears
     btn("tag", "Name plate", "A tag or name plate sized to its text, with raised or cut-in letters", () => app.advanced.namePlate(), "bb-nameplate", true); // jumpstart-3d: name plates
+    btn("knurl", "Knurled knob", "A knob or grip with straight V grooves all round and an optional round, hex or D bore", () => app.advanced.knurl(), "bb-knurl", true); // jumpstart-3d: knurl
+    btn("spring", "Coil spring", "A compression spring of round wire, with open ends or ends cut flat", () => app.advanced.spring(), "bb-spring", true); // jumpstart-3d: spring
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);

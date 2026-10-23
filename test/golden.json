@@ -110,10 +110,10 @@
       "b1 b1": 7152
     },
     "stlTriangles": 28,
-    "stl": "5625b2bd058a301db57847af9a6e220289261cc04f91dd58543f9f3a4bd9483d",
-    "obj": "b8d305d9cd9946b5b1466ff736ef69e22fb134ff26749cd870cd4990b89007d7",
-    "3mf": "c088d8e94f2917929893d833510a0d0064f42f0243131d12994a035e969e32e3",
-    "step": "e42719b78d8be2e6da625f36406c03d6736355c05e0f9818a93ce62cb9669c3f"
+    "stl": "d3df6ee379cf7e0894434af1cc5e6b12585dfdf32101801e3ecb7be374fbe76b",
+    "obj": "c72aea4177f2916988ef68494289b34b319aa95f9b623a46ea09185703518818",
+    "3mf": "1d52024cd1197e56e1b4c2a0c30c2995636892b46056e4830f583f5d85b42d7c",
+    "step": "e8656a970da17970d7ae3b3567f77b88ce107957551997cae4a7e63381d84e0d"
   },
   "advanced-sketch-extrude.json": {
     "volumes": {
@@ -406,10 +406,10 @@
       "b1 Cone": 1629.1
     },
     "stlTriangles": 1600,
-    "stl": "952bca0ac2fff4cfa0b74ecf87ce7fb455a1ff91e011b79c47f285d10f42c8fb",
-    "obj": "852b7bf5bc7fe35404d7bb95e502600d1e4b39b0cc0df051705f75f08f59c632",
-    "3mf": "1d4451efa1b7eda62f67a1a5f190ff35e08956bfe2b9ae1e2d5cdc31d8ce8b97",
-    "step": "a8d018afd89f312978822421dd36b5659d71998d96c7fb92fb95bf223b2a6a3d"
+    "stl": "a19ba7a45f83162e0b666b68da1a355fe96d4dbac2fa98f9f2073edcf2531a7a",
+    "obj": "1b862275e022bc2d8d11ea5abf1435974d49d575151363c276f43009d2924c46",
+    "3mf": "8873eaea191cc64d7b2e0856591f027b14c10b82c887684e4a2ab82f18998508",
+    "step": "72061a8c05cb120f181e33baae6a1c48fd84dcb4fcfafaa07180169a04097f3c"
   },
   "painted-cube.json": {
     "volumes": {
@@ -420,5 +420,32 @@
     "obj": "250e61e153e01975331572717f35ef65ae2a25db523fd4e4b91637527b43bcab",
     "3mf": "8b5dc0598cacd12becbac374bc4ef7e61cedd3b676c14363b6866722b7142e0b",
     "step": "dbbfa1389e1093e0a90cb36ebe046665aee8d0f36d4933442921c254c24bf9d0"
+  },
+  "knurl.json": {
+    "volumes": {
+      "b3y1vjo0rq6x Knurled knob 20 x 15": 4168.9,
+      "b3y1vx85axhb Hex knob": 7145.1,
+      "b3y1w3a8auk6 D knob": 663.1,
+      "b3y1wkg4ftxk Fine knob": 24471.5
+    },
+    "stlTriangles": 2832,
+    "stl": "7a0a7effb996792a68ad3775081cb3bddf7a8d765f6a3553e5a6dce095239e4e",
+    "obj": "fe765f1bdf398539e7a87cda565178671176e0044959eb1200b10b26327affc9",
+    "3mf": "7f3611d2e87a60fc010ab24778df008b6aeb0b455a4b9289694f913a98a79ef2",
+    "step": "2a013002c11f0cb943cee78ec7a16466c163e0d07d47df2b164781a645aba774",
+    "dxf": "eb6326c48fc24821a54cef40fcca977d1a16e73cfbc61245e8f3b0ecee58b174"
+  },
+  "spring.json": {
+    "volumes": {
+      "b0 Open spring": 892.6,
+      "b1 Flat spring": 880.3,
+      "b2 Fine left spring": 215.3,
+      "b3 Heavy spring": 2728.1
+    },
+    "stlTriangles": 219632,
+    "stl": "66a8c3491824599ac33780fe28f7882206a908b13570a2456742a112bdc7fcdc",
+    "obj": "a1db5a21bf4a206318583f3be2119750ea36b6317a907c004f3cbc92bc0c2478",
+    "3mf": "b6374cb8a815367fa877fd83791b7e8372830d8615cb7764f26d54b5aa7e4af8",
+    "step": "1299eae9c78158bca6be4ab803ed872c147d5e1144b664c8e74b2035890917f0"
   }
 }
