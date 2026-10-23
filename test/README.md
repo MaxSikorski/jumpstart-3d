@@ -14,28 +14,36 @@ npm run test:mobile   the phone budget only
 ```
 
 First time: `npm install`, then `npx playwright install chromium`. Set `JS3D_PORT` (default 8765) to serve the site build on another port, so two checkouts can run the tests at the same time. The same
-suite runs on GitHub Actions for every pull request (`.github/workflows/test.yml`).
+suite runs on GitHub Actions: the smoke and golden specs gate every pull request (`.github/workflows/test.yml`) and the rest runs nightly (`.github/workflows/nightly.yml`).
 
 ## How CI runs it
 
-The workflow splits the work over parallel jobs (a full run takes about 4 to 6 minutes). The chat judge and the fuzzer are not part of it: they run every night (see below).
+The merge gate (`.github/workflows/test.yml`) is small on purpose: it builds both outputs, then runs the smoke spec and the golden exports on each, and takes about 3 minutes. Everything slower runs every night (see below). The jobs:
 
-- `changes` looks at what a pull request touched. If every changed file is a Markdown file in the repository root (`README.md`, `NOTICE.md`, `CHANGELOG.md` and so on), only the MCP tests run (they read the README), and the pull request is done in about a minute. The lane is only for pull requests into `main` (a pull request into another branch always runs all the per-pull-request checks, so a green check that came from that branch stays a full run when the pull request is later retargeted to `main`). Anything else, an empty list, a deleted or renamed non-Markdown file, a push to `main` or a manual run means the full set; a git error fails the job and so the whole run. It uses plain `git` and no extra actions.
-- `playwright (1/8)` to `(8/8)`: the Playwright tests (`--shard=N/8`, one worker each; every part builds both outputs itself in about a second). Playwright splits by spec file and build, so a part is a mix of whole files and the parts differ by about a minute. Two spec files are left out of the parts: `golden.spec.mjs` runs whole in its own jobs (`JS3D_SKIP_GOLDEN=1`; only the value `1` counts, see `playwright.config.mjs`) and `chatjudge.spec.mjs` runs in the nightly workflow (`JS3D_SKIP_CHATJUDGE=1`). Each pull request runs every test except the 24 chat judge tests, which run nightly (641 tests: 545 in the parts, 72 golden, 24 chat judge).
-- `golden exports (site)` and `(single)`: the golden spec for one build each, uploading the exports it wrote (`JUDGE_EXPORTS=1`, kept 30 days, the longest GitHub allows a rerun). `export judge` then downloads both, installs the two consumer tools and checks all 216 files.
-- `mcp server`: its own `npm ci`, Chromium and `npm run test:mcp`.
-- `test`: waits for all of the above and is the one check the branch rules on `main` require, because the others report under other names. It passes only when `changes` succeeded and either every job succeeded, or the pull request was docs-only and the MCP tests succeeded while the Playwright, golden and judge jobs were all exactly "skipped". A failed or cancelled job always fails it.
+- `changes` looks at what a pull request touched. If every changed file is a Markdown file in the repository root (`README.md`, `NOTICE.md`, `CHANGELOG.md` and so on), only the MCP tests run (they read the README), and the pull request is done in about a minute. The lane is only for pull requests into `main` (a pull request into another branch always runs the whole gate, so a green check that came from that branch stays a full run when the pull request is later retargeted to `main`). Anything else, an empty list, a deleted or renamed non-Markdown file, a push to `main` or a manual run means the full gate; a git error fails the job and so the whole run. It uses plain `git` and no extra actions.
+- `gate (site, smoke)`, `gate (site, golden)`, `gate (single, smoke)` and `gate (single, golden)`, side by side: `npm test -- test/<spec>.spec.mjs --project=<build>`. `pretest` builds both outputs and runs the Node unit tests first. The single file from the `single` job is uploaded as `jumpstart-3d-single-file` when it passed (14 days), so someone who reported an issue can try a pull request's file before a release exists. A failed job uploads `gate-report-<build>-<spec>`.
+- `mcp server`: its own `npm ci`, Chromium and `npm run test:mcp` (under a minute, in parallel with the gate).
+- `test`: waits for all of the above and is the one check this workflow adds to the branch rules on `main` (CodeQL's `analyze` and `CodeQL` are the others), because the other jobs report under other names. It passes only when `changes` and the MCP tests succeeded and either the gate succeeded, or the pull request was docs-only and the gate jobs were exactly "skipped". A failed or cancelled job always fails it.
 
 ### Nightly
 
-`.github/workflows/nightly.yml` runs every day at 07:00 UTC (and on `workflow_dispatch`), with read-only permissions and no secrets:
+`.github/workflows/nightly.yml` runs every day at 07:00 UTC and on `workflow_dispatch`. It holds everything the gate leaves out:
 
-- `chat judge`: `npm run test:chat-judge`, both builds in one job, because its eight-minute mock clock is shared across both builds and only one runner can hold one clock. It moved out of the pull request run on 2026-10-22 (Max): it tests the scorer, which rarely changes.
+- `playwright (1/8)` to `(8/8)`: the whole suite on both builds (`--shard=N/8`, one worker each). Playwright splits by spec file and build. The golden spec and the chat judge run in their own jobs (`JS3D_SKIP_GOLDEN=1`, `JS3D_SKIP_CHATJUDGE=1`; only the value `1` counts, see `playwright.config.mjs`).
+- `golden exports (site)` and `(single)`, then `export judge`: the golden spec with `JUDGE_EXPORTS=1`, then the judge downloads both builds' exports, installs the two consumer tools and checks all 216 files (see "Slicer and STEP judge").
+- `chat judge`: `npm run test:chat-judge`, both builds in one job, because its eight-minute mock clock is shared across both builds and only one runner can hold one clock.
 - `fuzz`: `FUZZ_RUNS=50 npm run fuzz`, only when `test/fuzz.spec.mjs` and the `fuzz` script exist (the step skips cleanly before then).
+- `firefox` and `webkit` (job `cross`): the suite on the site and the single file, 3 parts each, through the `site-firefox`, `single-firefox`, `site-webkit` and `single-webkit` projects (they exist only with `JS3D_CROSS=1`, which the job sets; locally run `npx playwright install firefox webkit` first). **Not blocking yet:** the job has `continue-on-error`, so its failures never make the run red and never open an issue by themselves; they are listed in their own section of the "Nightly failures" issue whenever something else opens it, and the full list is in the run's `results-cross-*` artifacts. The golden exports and the chat judge stay Chromium only. When the list is short enough to fix, drop `continue-on-error` and set `CROSS_BLOCKING=1` on the `report` job.
+- `report`: if a blocking job failed, `tools/nightly-issue.mjs` opens (or updates) one open issue titled **Nightly failures** with the failing specs (read from each job's Playwright JSON report, `PLAYWRIGHT_JSON_OUTPUT_NAME`), the run link and the quarantined tests. It uses the run's `GITHUB_TOKEN` (`issues: write` on that job only), edits the existing issue rather than adding a second, and closes nothing: the maintainer closes it once the cause is fixed.
 
-A failure opens no issue and posts nothing; it is a red run in the Actions tab. Look with `gh run list --workflow nightly`, and fix the cause as the next piece of work. Run it by hand with `gh workflow run nightly.yml --ref <branch>` (the workflow must exist on that branch, and GitHub only lists a manual run for a workflow file that is on the default branch).
+Run it by hand on any branch, a pull request's too, with `gh workflow run nightly.yml --ref <branch>` (the workflow must exist on that branch; GitHub only lists a manual run for a workflow file that is on the default branch). A run on a branch also writes the issue if it fails. No secrets and no model are involved.
 
-The single file (`jumpstart-3d-single-file`) is uploaded once per run, from part 1, and only when part 1 passed. A failed part uploads its own `playwright-report-N`. If one flaky test fails, `gh run rerun --failed` reruns only that part and what depends on it; the judge run ID is the workflow run ID alone (no attempt number), so the exports of golden jobs that already passed stay valid. Chromium comes from `npx playwright install chromium` (about 10 seconds; a cache was not worth it).
+### Flaky tests are quarantined, not merge blockers
+
+A flaky test does not block a merge: the gate is only smoke and golden, and everything else is the nightly's to find. When a test flakes, quarantine it in the same piece of work that saw it: change `test(` to `test.skip(` (or tag it `@quarantined` and exclude it) and put a comment on the line above that starts `// quarantined:` and gives an issue link or the reason. The nightly issue lists every `// quarantined:` comment under `test/`, `grep -rn "quarantined:" test` finds them, and each one is on the fix list until its cause is fixed and the skip removed. Never quarantine a smoke or golden test to get a merge through; if one of those flakes, fix it first (they are the gate).
+
+
+If a gate job fails, `gh run rerun --failed` reruns only that job (the gate jobs do not depend on each other). Chromium comes from `npx playwright install chromium` (about 10 seconds; a cache was not worth it).
 
 The config sets `serviceWorkers: "block"` for every spec, because a service worker would answer `page.reload()` from its cache; only `load.spec.mjs` allows one, in its own context. Your own browser on `http://127.0.0.1:8765/` keeps the service worker, so after a rebuild the first reload shows the old build and the "new version" message, and the second reload shows the new one.
 
@@ -128,7 +136,7 @@ The checks themselves are tested: `fuzz-checks.test.mjs` (Node, run by `npm test
 
 Problems the fuzzer found that are not fixed are noted, not failed (a `fuzz finding` line in the log and in the report): the run keeps going to find new things. Each is excused only for the case shown (the body must contain the shape named, and so on); anything else fails. They are all kernel results, not test mistakes:
 
-- Booleans with a sphere, hemisphere, capsule or torus can disagree with each other, or give a negative volume or a mesh with open edges. Smallest case: a torus (27 by 27 by 8 at `[4, 8, 14]`) cut by a wedge (13 by 17 by 8 at `[12, -10, 8]`) has volume -8.8. (The two-sphere intersect and the torus lost from a group were fixed in #98.) Only noted when an operand holds one of those four; for box, wedge, pyramid, prism, roof, star, cylinder, cone, tube and groups of them a disagreement fails.
+- Booleans with a sphere, hemisphere or capsule can disagree with each other, or give a negative volume or a mesh with open edges (oval spheres and capsules that are not round in section are the known causes). The two-sphere intersect and the torus lost from a group were fixed in #98, and a torus group's STL coming out about 3 percent short (a boolean leaving a torus face with its outline split in two loops) in the fix that followed. Only noted when an operand holds one of those three; for box, wedge, pyramid, prism, roof, star, cylinder, cone, tube, torus and groups of them a disagreement fails.
 - `JS3D.scale` with different factors on a body the kernel rebuilds from a fine mesh (over 4000 triangles: a group or a torus, here drawn with 2000 or more triangles) is accepted, then the body shows "can't be stretched unevenly" (src/kernel.js, `facetedScale`). The fuzzer undoes it and checks the undo.
 - A capsule flatter than it is wide (height under depth, for example 36 by 12 by 6, or a 36 by 12 by 12 one stretched by 2, 1, 0.5) is built wrongly: kernel volume 1770 for a mesh of 598 mm3, 97 open edges. Stretched flat from a squarer capsule it can also stall the engine for 25 s (a 16 by 8 by 8 capsule stretched by 1, 1.5, 0.5). The fuzzer never stretches a capsule flatter.
 - A cone's STL is not watertight: the edges near the apex are cut differently on the two sides of the seam (12 open edges for 20 by 20 by 20). Excused up to 12 open edges for each cone a body holds, and in the 3MF only for a body whose own STL is open.
@@ -140,7 +148,7 @@ Not checked, on purpose: the exact triangle count (the golden test owns it), the
 <!-- J1: Consumer checks require original downloads and separately reviewed expectations. -->
 ## Slicer and STEP judge
 
-The CI Playwright parts collect the normal golden run's original STL, 3MF
+The nightly golden jobs collect the normal golden run's original STL, 3MF
 and STEP downloads from **both** builds. Playwright streams the downloads;
 there is no object-URL interception or second export pass. `JUDGE_EXPORTS=1`
 requires a nonempty `JUDGE_RUN_ID` and refuses `UPDATE_GOLDEN`.
@@ -155,8 +163,8 @@ npm run test:judge:integration          # same
 Mac contributors can collect exports and run the Node unit tests without
 native consumers. The full consumer judge is **CI-only**: the pinned Linux
 AppImages and console launcher are not a supported Mac installation. The
-workflow runs on every PR, push to main and manual dispatch; there is
-no nightly substitute and no successful skip for missing tools.
+nightly workflow runs it (07:00 UTC and manual dispatch); there is no
+successful skip for missing tools. A failure opens or updates the "Nightly failures" issue.
 
 Inputs live in `test-results/judge/site/` and `test-results/judge/single/`.
 Each build clears only its own directory. Only a complete successful golden
