@@ -1366,10 +1366,13 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   expect((await bodies(page))[0].volume).toBeCloseTo(80 * 40 * 8, 0);
 });
 
-test("About says forty-four tutorials and lists what the community build adds", async () => {
+test("Tutorials lists sixty-four projects and About lists what the community build adds", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText("forty-four step-by-step projects (nineteen in Beginner, twenty in Advanced, five in Architechies");
+  expect(await page.evaluate(() => {
+    const list = window.__app.tutorials.list;
+    return [list.length, ...["beginner", "advanced", "arch"].map((mode) => list.filter((t) => t.mode === mode).length)];
+  })).toEqual([64, 28, 31, 5]);
   await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();

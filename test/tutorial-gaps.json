@@ -2,13 +2,9 @@
   "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
   "gaps": {
     "Advanced toolbar": [
-      "ad-fastener",
-      "ad-gear",
       "ad-ins-dxf",
       "ad-ins-img",
-      "ad-ins-model",
       "ad-ins-svg",
-      "ad-insert",
       "ad-pipe",
       "ad-plane-ang",
       "ad-plane-mid",
@@ -20,7 +16,6 @@
     ],
     "Beginner toolbar": [
       "bb-extrude",
-      "bb-facepat",
       "bb-import",
       "bb-sketch",
       "bb-sketch3d"
@@ -35,9 +30,7 @@
       "btn-theme",
       "btn-tutorials",
       "mode-advanced",
-      "mode-arch",
-      "mode-beginner",
-      "mode-chisel"
+      "mode-arch"
     ],
     "Beginner shape strip": [
       "dock-help-btn",
@@ -86,7 +79,6 @@
       "nav-appear",
       "nav-light",
       "nav-media",
-      "nav-projector",
       "nav-sketches"
     ],
     "Advanced 3D print sim toolbar": [
@@ -101,20 +93,14 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
-      "sim-bricks",
       "sim-cam",
       "sim-drive",
-      "sim-flexigen",
       "sim-joint",
-      "sim-meshstep",
       "sim-motion",
       "sim-print",
       "sim-render",
       "sim-reset",
-      "sim-stress",
-      "sim-voxel",
-      "ws-design",
-      "ws-simulate"
+      "sim-stress"
     ],
     "Advanced sketch toolbar": [
       "sk-arc3",
