@@ -7,6 +7,7 @@ export class KernelClient {
     this.inflight = null;
     this.ready = false;
     this.bad = new Set();
+    this.solo = new Set(); // jumpstart-3d: keys of bodies a timed-out batch is retrying one at a time
     this.req = 0;
     this.stepWaiters = new Map();
     this.assets = new Map(); // imported files (STL/STEP), sent to the worker once
@@ -35,6 +36,7 @@ export class KernelClient {
     else if (msg.type === "built") {
       clearTimeout(this.watchdog);
       for (const r of msg.results) {
+        this.solo.delete(r.rev); // jumpstart-3d
         r.key = r.rev;
         delete r.rev;
         this.meshes.set(r.key, r);
@@ -77,7 +79,7 @@ export class KernelClient {
   }
   // drop queued work nobody needs any more
   prune(neededKeys) {
-    for (const k of [...this.queue.keys()]) if (!neededKeys.has(k)) this.queue.delete(k);
+    for (const k of [...this.queue.keys()]) if (!neededKeys.has(k)) { this.queue.delete(k); this.solo.delete(k); }
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
@@ -87,9 +89,10 @@ export class KernelClient {
     const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
     const batch = [];
     for (const [k, it] of this.queue) {
-      if (batch.length && (heavy(it) || heavy(batch[0]))) break;
+      const alone = (b) => heavy(b) || this.solo.has(b.key); // jumpstart-3d: a retried body also goes alone
+      if (batch.length && (alone(it) || alone(batch[0]))) break;
       batch.push(it); this.queue.delete(k);
-      if (batch.length >= 4 || heavy(it)) break;
+      if (batch.length >= 4 || alone(it)) break;
     }
     this.inflight = batch;
     const req = ++this.req;
@@ -98,7 +101,7 @@ export class KernelClient {
     clearTimeout(this.watchdog);
     // imported meshes take longer to turn into solids: give them more time
     const slow = batch.some(heavy);
-    this.watchdog = setTimeout(() => this.stalled(batch), (slow ? 120000 : 25000) * (this.quality || 1));
+    this.watchdog = setTimeout(() => this.stalled(batch), this.watchdogMs || (slow ? 120000 : 25000) * (this.quality || 1)); // jumpstart-3d: watchdogMs is a test-only override
     this.onBusy && this.onBusy(true);
   }
   stalled(batch) {
@@ -107,6 +110,15 @@ export class KernelClient {
     // jumpstart-3d: load. a restart drops the old worker's STEP jobs: say so instead of waiting forever
     for (const w of this.stepWaiters.values()) w.reject(new Error("the geometry engine restarted. Try the export again"));
     this.stepWaiters.clear();
+    // jumpstart-3d: a slow device or busy runner can push a healthy batch of several bodies past the limit. Retry each body alone with its own full limit; only a body that stalls alone is marked bad.
+    if (batch.length > 1) {
+      for (const b of batch) this.solo.add(b.key);
+      this.queue = new Map([...batch.map((b) => [b.key, b]), ...this.queue]);
+      this.inflight = null;
+      this.start();
+      return;
+    }
+    this.solo.delete(batch[0].key);
     const res = batch.map((b) => {
       this.bad.add(b.key);
       return { id: b.id, key: b.key, ok: false, error: "This shape stalled the geometry engine. Undo the last change or adjust its values." };
