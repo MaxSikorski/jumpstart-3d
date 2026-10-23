@@ -52,8 +52,8 @@ test.beforeAll(async ({ browser }, info) => {
 });
 test.afterAll(async () => { await page.close(); });
 test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
-// quarantined: on the site build in WebKit the toast cases time out now and then (a different one on each run: 137, 234); the single file passes
-test.beforeEach(({}, info) => quarantine(info, ["site-webkit"], "restore cases time out intermittently in WebKit on the site build"));
+// quarantined: in WebKit the restore cases time out now and then, a different one each run (lines 137, 223, 234)
+test.beforeEach(({}, info) => quarantine(info, ["site-webkit", "single-webkit"], "restore cases time out intermittently in WebKit"));
 
 async function toast(prefix, timeout = 20_000) {
   await page.waitForFunction((p) => window.__toasts.some((t) => t.text.startsWith(p)), prefix, { timeout });
