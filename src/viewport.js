@@ -8,7 +8,7 @@ varying vec3 vPos;
 void main(){ vec4 w = modelMatrix * vec4(position,1.0); vPos = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const GRID_FS = `
 uniform vec3 cMinor; uniform vec3 cMajor; uniform vec3 cBg; uniform vec3 cAxisX; uniform vec3 cAxisY;
-uniform float minor; uniform float major; uniform float halfSize; uniform float bgAlpha; uniform float fade; uniform vec3 center;
+uniform float minor; uniform float major; uniform vec2 halfSize; uniform float bgAlpha; uniform float fade; uniform vec3 center;
 uniform float showAxes;
 uniform float under; // jumpstart-3d: #96, 1 while the camera is below the plate
 varying vec3 vPos;
@@ -21,7 +21,7 @@ float line(vec2 p, float s, float w){
 }
 void main(){
   vec2 p = vPos.xy;
-  if (abs(p.x) > halfSize || abs(p.y) > halfSize) discard;
+  if (abs(p.x) > halfSize.x || abs(p.y) > halfSize.y) discard; // jumpstart-3d: printer plate. a rectangle (halfSize is a vec2)
   float mi = line(p, minor, 1.0);
   float ma = line(p, major, 1.3);
   vec3 col = cBg; float a = bgAlpha;
@@ -38,7 +38,7 @@ void main(){
   float d = length(p - center.xy);
   a *= 1.0 - smoothstep(fade * 0.55, fade, d);
   // border of a finite workplane
-  if (halfSize < 10000.0) {
+  if (halfSize.x < 10000.0) {
     vec2 e = (halfSize - abs(p)) / fwidth(p);
     float b = 1.0 - min(min(e.x, e.y) / 2.0, 1.0);
     col = mix(col, cMajor, b); a = max(a, b);
@@ -103,8 +103,11 @@ export class Viewport {
     this._shadowSig = null;
     this.realistic = false;
 
+    this.plate = { w: 256, d: 256, on: true }; // jumpstart-3d: printer plate. X × Y in mm of the finite mat (Beginner) or boundary (Advanced); on:false = no boundary
     this.grid = this.makeGrid();
     this.scene.add(this.grid);
+    this.plateLine = this.makePlateLine(); // jumpstart-3d: printer plate
+    this.scene.add(this.plateLine);
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
@@ -158,7 +161,7 @@ export class Viewport {
         cAxisY: { value: new THREE.Color("#3f9b52") },
         minor: { value: 1 },
         major: { value: 10 },
-        halfSize: { value: 20000 },
+        halfSize: { value: new THREE.Vector2(20000, 20000) },
         bgAlpha: { value: 0 },
         fade: { value: 3000 },
         center: { value: new THREE.Vector3() },
@@ -175,14 +178,14 @@ export class Viewport {
   setGridStyle(style) {
     const u = this.grid.material.uniforms;
     const T = theme.c;
-    if (style === "workplane") {
+    if (style === "workplane" && this.plate.on) {
       // Tinkercad-style blue workplane
       u.cBg.value.setStyle(T.wp.bg, THREE.LinearSRGBColorSpace);
       u.cMinor.value.setStyle(T.wp.minor, THREE.LinearSRGBColorSpace);
       u.cMajor.value.setStyle(T.wp.major, THREE.LinearSRGBColorSpace);
       u.bgAlpha.value = 0.96;
-      u.halfSize.value = 128; // a 256 × 256 mm workplane (a typical 3D printer bed)
-      this.grid.scale.set(256, 256, 1);
+      u.halfSize.value.set(this.plate.w / 2, this.plate.d / 2); // jumpstart-3d: printer plate. the mat is the chosen printer's X × Y (256 × 256 mm by default, a typical 3D printer bed)
+      this.grid.scale.set(this.plate.w, this.plate.d, 1);
       u.showAxes.value = 0;
       this.bg.set(T.wpBg);
     } else {
@@ -190,13 +193,33 @@ export class Viewport {
       u.cMinor.value.setStyle(T.lines.minor, THREE.LinearSRGBColorSpace);
       u.cMajor.value.setStyle(T.lines.major, THREE.LinearSRGBColorSpace);
       u.bgAlpha.value = T.lines.alpha || 0; // dark mode: a lighter gray ground so the workplane stands out
-      u.halfSize.value = 20000;
+      u.halfSize.value.set(20000, 20000);
       this.grid.scale.set(40000, 40000, 1);
       u.showAxes.value = 1;
       this.bg.set(T.bg);
     }
     this.gridStyle = style;
+    this.updatePlateLine();
     this.request();
+  }
+  // jumpstart-3d: printer plate. The chosen printer's usable X × Y, centred on X=0, Y=0 at Z=0. width/depth of 0 (or null) = no boundary.
+  // Beginner draws it as the finite mat, Advanced keeps its construction grid and adds a thin rectangle. Nothing in the design moves.
+  setPlateSize(width, depth) {
+    this.plate = width > 0 && depth > 0 ? { w: width, d: depth, on: true } : { w: this.plate.w, d: this.plate.d, on: false };
+    if (this.gridStyle) this.setGridStyle(this.gridStyle);
+    else this.updatePlateLine();
+  }
+  makePlateLine() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3));
+    const l = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x2f7de1, transparent: true, opacity: 0.85, depthWrite: false }));
+    l.renderOrder = -9; l.visible = false; l.frustumCulled = false; l.raycast = () => {};
+    l.userData.isPlateLine = true;
+    return l;
+  }
+  updatePlateLine() {
+    const a = this.plateLine.geometry.getAttribute("position"), x = this.plate.w / 2, y = this.plate.d / 2;
+    a.set([-x, -y, 0.02, x, -y, 0.02, x, y, 0.02, -x, y, 0.02]); a.needsUpdate = true;
   }
   setGridSpacing(minor) {
     const u = this.grid.material.uniforms;
@@ -268,7 +291,7 @@ export class Viewport {
     u.center.value.copy(v.target);
     u.fade.value = Math.max(400, v.dist * 6);
     u.under.value = (this.useOrtho ? dir.z < 0 : this.persp.position.z < this.grid.position.z) ? 1 : 0; // jumpstart-3d: #96 the camera is below the plate (orthographic: the view looks up)
-    if (this.gridStyle === "workplane") {
+    if (this.gridStyle === "workplane" && this.plate.on) {
       // Tinkercad-style mat: 1 mm / 10 mm, or 1/8 in / 1 in
       const inch = this.gridUnit === "in";
       u.minor.value = inch ? 25.4 / 8 : 1; u.major.value = inch ? 25.4 : 10;
@@ -355,6 +378,7 @@ export class Viewport {
   render() {
     this.dirty = false;
     this.updateCamera();
+    this.plateLine.visible = this.plate.on && this.gridStyle === "lines" && this.grid.visible && !!(this.plateOK && this.plateOK()); // jumpstart-3d: printer plate. Advanced's thin boundary; plateOK says the mode shows one
     if (this.realistic) { this.scene.updateMatrixWorld(); this.fitSun(); }
     for (const f of this.afterRender) f();
     const r = this.renderer;

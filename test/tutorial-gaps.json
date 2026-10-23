@@ -68,7 +68,6 @@
       "btn-keys",
       "btn-projects",
       "btn-redo",
-      "btn-theme",
       "btn-tutorials",
       "mode-advanced",
       "mode-arch",
@@ -83,6 +82,7 @@
       "dock-prev"
     ],
     "top bar menus": [
+      "btn-plate",
       "btn-report",
       "export-scope-all",
       "export-scope-sel",
