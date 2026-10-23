@@ -205,7 +205,7 @@ export const TUTORIALS = [
         how: ["With the keychain selected, click a color in the panel on the right."],
         when: "Colors help you tell parts apart on screen. (The printer uses whatever filament is loaded.)",
       },
-      {
+      { // jumpstart-3d: share link
         title: "Share it as a link", tool: "Export → Share link…", icon: "copy", show: { sel: "#btn-share-link", via: "#btn-export" },
         how: [
           "Click the <b>Export</b> button (the down-arrow at the top right), then choose <b>Share link…</b>.",

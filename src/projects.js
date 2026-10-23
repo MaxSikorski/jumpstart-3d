@@ -118,7 +118,7 @@ export function initProjects(app) {
       const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
       dirty = false;
-      if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
+      if (await ps.put(...r)) { if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
     if (remoteOk) {
@@ -225,6 +225,17 @@ export function initProjects(app) {
     const gen = loads; setTimeout(() => { if (gen !== loads) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: only the latest load's
     return true;
   }
+  // jumpstart-3d: share link. A design opened from a link becomes the one a reload reopens only after it has built without an error,
+  // so a design that stalls or breaks the engine is not reopened (and stalls it again) on the next load.
+  let unproven = null;
+  function proveShared(id) {
+    unproven = id;
+    const timer = setInterval(() => {
+      if (store.doc.id !== id) { clearInterval(timer); if (unproven === id) unproven = null; return; }
+      if (app.scene.busy() || store.doc.bodies.some((b) => app.scene.errors.has(b.id))) return;
+      clearInterval(timer); unproven = null; ls.set(LS_PREF + ".last", id);
+    }, 400);
+  }
   // jumpstart-3d: share link. Adds a checked design from a share link as a NEW design (own id, version 0, own creation time) and opens it.
   // The open design is saved first and stays as it is; nothing is replaced until the new one is safely stored. Returns "ok", "save-failed"
   // (the open design could not be saved: nothing happens), "stale" (the person changed designs while this waited: nothing happens),
@@ -243,8 +254,8 @@ export function initProjects(app) {
     app.select([]);
     if (app.command) app.command.cancel();
     app.exitSketch();
+    proveShared(id);
     store.load(doc);
-    ls.set(LS_PREF + ".last", id);
     setState("Saved");
     mirror.soon();
     saveNow();
