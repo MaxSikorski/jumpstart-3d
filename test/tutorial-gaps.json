@@ -9,10 +9,7 @@
       "ad-plane-ang",
       "ad-plane-mid",
       "ad-sketch3d",
-      "ad-splitbody",
-      "ad-splitface",
-      "ad-sweep",
-      "ad-thread-offset"
+      "ad-sweep"
     ],
     "Beginner toolbar": [
       "bb-extrude",
@@ -93,7 +90,6 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
-      "sim-cam",
       "sim-drive",
       "sim-joint",
       "sim-motion",
@@ -114,24 +110,14 @@
       "sk-c-perpendicular",
       "sk-c-tangent",
       "sk-c-vertical",
-      "sk-circle",
-      "sk-cons",
       "sk-constraints",
-      "sk-dim",
-      "sk-finish",
       "sk-ins-dxf",
       "sk-ins-img",
       "sk-ins-svg",
       "sk-insert",
       "sk-point",
-      "sk-polygon",
-      "sk-rect",
-      "sk-rect-more",
-      "sk-rect3",
-      "sk-rectc",
       "sk-spline",
-      "sk-text",
-      "sk-trim"
+      "sk-text"
     ],
     "snap controls": [
       "snap-more",
@@ -153,8 +139,7 @@
     ],
     "Architechies toolbar": [
       "Architechies toolbar:text:Metric",
-      "Architechies toolbar:text:ft · in",
-      "ar-xray"
+      "Architechies toolbar:text:ft · in"
     ]
   }
 }
