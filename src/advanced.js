@@ -4462,7 +4462,7 @@ export function initAdvanced(app) {
       const first = hits.map(pickOf).find((o) => o && !o.userData.ring);
       if (first) return first;
       // jumpstart-3d: rotation access. A finger gets the ring drawn nearest the touch (a 44 px wide zone), never an invisible one
-      if (vp.touchMode) return nearestArc(vp, e, rings.filter((r) => r.visible).map((r) => ({ key: r, pts: arcPoints(r, 0.95) })));
+      if (vp.touchMode && !vp.tapping) return nearestArc(vp, e, rings.filter((r) => r.visible).map((r) => ({ key: r, pts: arcPoints(r, 0.95) })));
       return hits.length ? pickOf(hits[0]) : null;
     };
     // the rotation center comes from where the bodies are now (not the preview)
@@ -4593,7 +4593,13 @@ export function initAdvanced(app) {
           if (restore) restore();
           changed();
         },
-        up(e) { if (e && e.type === "pointercancel") return def.handler.cancel(); if (drag) { drag = null; ringReadout = null; tag.hidden = true; app.clearSnapGuides(); vp.canvas.style.cursor = "default"; def.render(); } },
+        up(e) {
+          if (e && e.type === "pointercancel") return def.handler.cancel();
+          if (!drag) return;
+          const tap = vp.touchMode && drag.ring && !drag.moved; // jumpstart-3d: rotation access. a finger on a ring that did not move: the viewport treats it as a tap on what is under it
+          drag = null; ringReadout = null; tag.hidden = true; app.clearSnapGuides(); vp.canvas.style.cursor = "default"; def.render();
+          if (tap) return "tap";
+        },
       },
     };
     const angInputs = [];
@@ -4642,11 +4648,12 @@ export function initAdvanced(app) {
       // positive depends on whether the axis faces the viewer
       const facing = Math.sign(axis.dot(vp.camera.position.clone().sub(center))) || 1;
       const angAt = (ev) => { const [mx, my] = vp.local(ev); const [cx, cy] = cs(); return Math.atan2(-(my - cy), mx - cx); };
-      const a0 = angAt(e);
+      const a0 = angAt(e), s0 = vp.local(e);
       let total = 0, prev = a0;
       drag = {
-        ring: ringObj,
+        ring: ringObj, moved: false,
         move(ev) {
+          if (!drag.moved) { const [x, y] = vp.local(ev); if (Math.hypot(x - s0[0], y - s0[1]) < 3) return; drag.moved = true; } // jumpstart-3d: rotation access. a finger's jitter is not a turn
           const a = angAt(ev);
           let da = a - prev;
           if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
