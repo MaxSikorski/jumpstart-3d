@@ -131,18 +131,24 @@ jobs:
           pattern: judge-exports-*
           merge-multiple: true
           path: test-results/judge
-      # J1: Both consumers are downloaded from their release pages and checksum-verified; a cache saved nothing measurable (see test/README.md).
-      - name: Install export judge consumers
-        timeout-minutes: 14
-        # J1: The runner's apt mirror sometimes serves a package at a crawl; a new try gets a new connection.
-        # A killed try can leave dpkg half-finished, so each new try repairs that first; apt also retries and gives up on a stalled connection by itself.
+      # J1: Both consumers are downloaded from their release pages and checksum-verified (they download in seconds, so they are not cached).
+      # The apt libraries are the slow part when the runner's Ubuntu mirror crawls (runs 39847011980, 39896805061), so their .deb files are cached per runner image;
+      # tools/install-judge-tools.sh installs them offline on a hit and, on a miss, fetches under a hard clock with a mirror fallback.
+      - name: Runner image version
+        id: image
         run: |
-          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries >/dev/null
-          for attempt in 1 2 3 4; do
-            sudo dpkg --configure -a || true
-            timeout 180 bash tools/install-judge-tools.sh && exit 0
-          done
-          exit 1
+          # The cache key must follow the runner image; an empty value would share one key across images.
+          [ -n "${ImageVersion:-}" ] || { echo "ImageVersion is empty on this runner; the apt cache key needs it" >&2; exit 1; }
+          echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/js3d-judge-apt
+          key: judge-apt-${{ steps.image.outputs.version }}-${{ hashFiles('tools/install-judge-tools.sh') }}
+      - name: Install export judge consumers
+        timeout-minutes: 10
+        run: |
+          sudo dpkg --configure -a || true
+          bash tools/install-judge-tools.sh
       - run: npm run test:judge:unit
       - name: Native negative controls
         timeout-minutes: 5

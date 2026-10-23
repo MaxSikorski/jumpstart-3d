@@ -10,6 +10,7 @@ const GRID_FS = `
 uniform vec3 cMinor; uniform vec3 cMajor; uniform vec3 cBg; uniform vec3 cAxisX; uniform vec3 cAxisY;
 uniform float minor; uniform float major; uniform float halfSize; uniform float bgAlpha; uniform float fade; uniform vec3 center;
 uniform float showAxes;
+uniform float under; // jumpstart-3d: #96, 1 while the camera is below the plate
 varying vec3 vPos;
 float line(vec2 p, float s, float w){
   vec2 q = p / s; vec2 fw = fwidth(q);
@@ -24,6 +25,7 @@ void main(){
   float mi = line(p, minor, 1.0);
   float ma = line(p, major, 1.3);
   vec3 col = cBg; float a = bgAlpha;
+  a *= 1.0 - 0.9 * under; // jumpstart-3d: #96 the mat nearly clear from below
   col = mix(col, cMinor, mi * 0.9); a = max(a, mi * 0.55);
   col = mix(col, cMajor, ma); a = max(a, ma * 0.85);
   if (showAxes > 0.5) {
@@ -41,6 +43,7 @@ void main(){
     float b = 1.0 - min(min(e.x, e.y) / 2.0, 1.0);
     col = mix(col, cMajor, b); a = max(a, b);
   }
+  if (under > 0.5) a = min(a, 0.4); // jumpstart-3d: #96 faint lines from below, as in Tinkercad
   gl_FragColor = vec4(col, a);
 }`;
 
@@ -160,6 +163,7 @@ export class Viewport {
         fade: { value: 3000 },
         center: { value: new THREE.Vector3() },
         showAxes: { value: 1 },
+        under: { value: 0 }, // jumpstart-3d: #96
       },
     });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
@@ -263,6 +267,7 @@ export class Viewport {
     const u = this.grid.material.uniforms;
     u.center.value.copy(v.target);
     u.fade.value = Math.max(400, v.dist * 6);
+    u.under.value = (this.useOrtho ? dir.z < 0 : this.persp.position.z < this.grid.position.z) ? 1 : 0; // jumpstart-3d: #96 the camera is below the plate (orthographic: the view looks up)
     if (this.gridStyle === "workplane") {
       // Tinkercad-style mat: 1 mm / 10 mm, or 1/8 in / 1 in
       const inch = this.gridUnit === "in";
