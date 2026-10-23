@@ -170,7 +170,10 @@ jobs:
       # tools/install-judge-tools.sh installs them offline on a hit and, on a miss, fetches under a hard clock with a mirror fallback.
       - name: Runner image version
         id: image
-        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+        run: |
+          # The cache key must follow the runner image; an empty value would share one key across images.
+          [ -n "${ImageVersion:-}" ] || { echo "ImageVersion is empty on this runner; the apt cache key needs it" >&2; exit 1; }
+          echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v5
         with:
           path: ~/.cache/js3d-judge-apt

@@ -49,20 +49,40 @@ if apt_ready; then
 elif [ -f "$debs/COMPLETE" ] && sudo env DEBIAN_FRONTEND=noninteractive dpkg -i "$debs"/*.deb && apt_ready; then
   echo "apt prerequisites installed from the cached .deb files in $debs"
 else
+  if [ -f "$debs/COMPLETE" ]; then
+    echo 'Installing from the cached .deb files failed; repairing dpkg, then fetching fresh'
+    sudo dpkg --configure -a || true
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get -f install -y || true
+  fi
   rm -rf "$debs"; mkdir -p "$debs"
   sudo apt-get clean
   fetched=
   for try in 1 2 3; do
     if [ "$try" -ge 2 ]; then
-      echo "Switching apt to archive.ubuntu.com (try $try)"
-      sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+      if sudo grep -qs 'mirror+file:/etc/apt/apt-mirrors.txt' /etc/apt/sources.list.d/*.sources /etc/apt/sources.list; then
+        echo "Switching apt to archive.ubuntu.com (try $try)"
+        sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+      else
+        echo "No mirror+file line left in the apt sources to switch (try $try); trying the same sources again"
+      fi
     fi
-    if sudo timeout -k 10 "$apt_try_seconds" bash -c "apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=20 && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --download-only -o Acquire::Retries=3 -o Acquire::http::Timeout=20 $apt_pkgs"; then
-      fetched=1; break
+    rc=0
+    sudo timeout -k 10 "$apt_try_seconds" bash -c "apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=20 && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --download-only -o Acquire::Retries=3 -o Acquire::http::Timeout=20 $apt_pkgs" || rc=$?
+    [ "$rc" -eq 0 ] && { fetched=1; break; }
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      echo "apt try $try did not finish within ${apt_try_seconds}s (slow or stalled mirror)"
+    else
+      echo "apt try $try failed with exit code $rc (see the apt error above)"
     fi
-    echo "apt try $try did not finish within ${apt_try_seconds}s (slow or stalled mirror)"
   done
-  [ -n "$fetched" ] || { echo "FAILED: could not download $apt_pkgs in 3 tries of ${apt_try_seconds}s; the Ubuntu mirror is too slow. Rerun the job." >&2; exit 1; }
+  if [ -z "$fetched" ]; then
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      echo "FAILED: could not download $apt_pkgs in 3 tries of ${apt_try_seconds}s; the Ubuntu mirror is too slow. Rerun the job." >&2
+    else
+      echo "FAILED: apt exited with code $rc while fetching $apt_pkgs; the error is above. This is not a slow mirror." >&2
+    fi
+    exit 1
+  fi
   sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --no-download $apt_pkgs
   cp /var/cache/apt/archives/*.deb "$debs"/
   touch "$debs/COMPLETE"
