@@ -210,8 +210,9 @@ export function initAdvanced(app) {
   const defaultHandler = {
     wantsTouch: (e) => !!(live.pick(e) || app.beginner.pickHandle(e)),
     hover(e) {
-      if (live.hover(e)) { scene.setHovered(null); return; }
-      if (app.beginner.hoverHandle(e)) { scene.setHovered(null); return; }
+      if (live.hover(e, "dot")) { scene.setHovered(null); return; }
+      if (app.beginner.hoverHandle(e)) { live.unhot(); scene.setHovered(null); return; }
+      if (live.hover(e, "parts")) { scene.setHovered(null); return; }
       const f = scene.pickFace(e);
       scene.setHovered(f ? f.body : null);
       vp.canvas.style.cursor = "default";
@@ -219,8 +220,12 @@ export function initAdvanced(app) {
     leave() { scene.setHovered(null); },
     down(e) {
       selSketch = null;
-      if (live.down(e)) { liveOn = true; return true; } // jumpstart-3d: pivot. the dot first, then the resize handles, then the arrows and rings
+      // jumpstart-3d: pivot. The dot first, then the resize handles, then the arrows and rings. Not with Shift, Ctrl or Meta held (that toggles
+      // the body) and not for the tap a finger lets the viewport route after pressing a handle without moving
+      const plain = !(e.shiftKey || e.ctrlKey || e.metaKey) && !vp.tapping;
+      if (plain && live.down(e, "dot")) { liveOn = true; return true; }
       if (app.beginner.handleDown(e)) { delegated = true; return true; }
+      if (plain && live.down(e, "parts")) { liveOn = true; return true; }
       const f = scene.pickFace(e);
       const add = e.shiftKey || e.ctrlKey || e.metaKey;
       if (f) {
@@ -246,7 +251,7 @@ export function initAdvanced(app) {
       if (delegated) app.beginner.handler.move(e);
     },
     up(e) {
-      if (liveOn) { liveOn = false; live.up(e); renderBrowser(); return; } // jumpstart-3d: pivot
+      if (liveOn) { liveOn = false; const r = live.up(e); renderBrowser(); return r; } // jumpstart-3d: pivot
       if (pressOn) {
         const { id, add } = pressOn;
         pressOn = null;

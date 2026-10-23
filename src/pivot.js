@@ -9,7 +9,7 @@ import { M4, arr } from "./ops.js";
 import { pivotOf, turnAbout, axisAlong, ringDrag, turnFeedback, makeGizmo } from "./rotationui.js";
 
 export const DOT_PICK_PX = 22; // half of the 44 px wide zone around the dot
-const SNAP_PX = 12, SNAP_TOUCH_PX = 22;
+const SNAP_PX = 12, SNAP_TOUCH_PX = 22, DEAD_PX = 3; // DEAD_PX: a press must move this far before anything changes
 const RANK = { box: 0, face: 1, edge: 2, corner: 3 };
 const WHAT = ["Box centre", "Face centre", "Edge middle", "Corner"];
 
@@ -25,7 +25,7 @@ export function initPivot(app) {
   // custom: a point the user chose (world coordinates). anchor: the default for several bodies, the union box's middle taken once
   // when they were selected and kept in the first body's own frame, so it stays put when they turn about it. lend: Move / Copy
   // shows its own pose of the pivot while it is open.
-  const S = { key: "", custom: null, anchor: null, lend: null };
+  const S = { key: "", custom: null, anchor: null, lend: null, moves: [], seen: store.doc };
   const keyOf = (ids) => app.mode + "|" + [...ids].sort().join(",");
   const movable = (ids) => ids.filter((id) => { const v = scene.views.get(id); return v && v.data && v.group.visible && !app.isLocked(id); });
   function sync(ids) { const k = keyOf(ids); if (k !== S.key) { S.key = k; S.custom = null; S.anchor = null; } }
@@ -77,9 +77,12 @@ export function initPivot(app) {
   tag.textContent = "Pivot"; tag.hidden = snapTag.hidden = true;
   const dot = { owner: null, p: new THREE.Vector3(), snap: null };
   // each owner calls this every frame with its point (or null): the dot is drawn for the last one that gave a point
+  // (a redraw is asked for only when something changed: this runs inside every frame, and asking each time would never let it rest)
   function show(p, owner) {
-    if (!p) { if (dot.owner === owner) { dot.owner = null; dotGroup.visible = false; } return; }
+    if (!p) { if (dot.owner === owner) { dot.owner = null; dotGroup.visible = false; vp.request(); } return; }
+    const same = dot.owner === owner && dotGroup.visible && dot.p.equals(p);
     dot.owner = owner; dot.p.copy(p); dotGroup.visible = true;
+    if (same) return;
     dotGroup.children.forEach((c) => c.position.copy(p));
     vp.request();
   }
@@ -141,21 +144,24 @@ export function initPivot(app) {
     const start = dot.p.clone(), prev = { custom: S.custom && S.custom.clone(), anchor: S.anchor };
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(vp.camera.getWorldDirection(new THREE.Vector3()), start);
     const off = start.clone().sub(vp.rayPlane(e, plane) || start); // pressing beside the dot does not make it jump
-    const cands = allAnchors();
-    let dead = false;
+    const cands = allAnchors(), shot = vp.project.bind(vp);
+    const proj = cands.map((c) => { const s = shot(c.p); return s[2] < -1 || s[2] > 1 ? null : s; }); // the view cannot move during the drag: project once
+    const [x0, y0] = vp.local(e);
+    let dead = false, began = false;
     const stopEsc = onEscape(() => g.cancel());
     const g = {
       move(ev) {
         if (dead) return;
+        if (!began) { const [x, y] = vp.local(ev); if (Math.hypot(x - x0, y - y0) < DEAD_PX) return; began = true; } // a press with a little jitter is a tap, not a move
         const hit = vp.rayPlane(ev, plane);
         if (!hit) return;
         let p = hit.add(off), snap = null;
         if (app.objectSnap) {
           const s0 = vp.project(p), tol = vp.touchMode ? SNAP_TOUCH_PX : SNAP_PX;
           let bd = Infinity;
-          for (const c of cands) {
-            const s = vp.project(c.p);
-            if (s[2] < -1 || s[2] > 1) continue;
+          for (let i = 0; i < cands.length; i++) {
+            const s = proj[i], c = cands[i];
+            if (!s) continue;
             const d = Math.hypot(s[0] - s0[0], s[1] - s0[1]);
             if (d > tol) continue;
             if (!snap || d < bd - 0.5 || (d <= bd + 0.5 && c.rank > snap.rank)) { snap = c; bd = d; }
@@ -167,6 +173,7 @@ export function initPivot(app) {
         set(p);
         vp.request();
       },
+      moved: () => began,
       finish() { stopEsc(); dot.snap = null; vp.request(); },
       cancel() {
         if (dead) return;
@@ -213,7 +220,13 @@ export function initPivot(app) {
     set,
     setBase(p) { S.custom = p.clone(); },
     // after the selected bodies moved by delta: a chosen pivot goes with them
-    shift(delta) { if (S.custom) S.custom.add(delta); },
+    // before: the document as it was before the move was committed; Undo and Redo of that step then carry the pivot back and forth
+    moved(before, delta) {
+      if (!S.custom) return;
+      S.custom.add(delta);
+      S.moves.push({ before, after: store.doc, delta: delta.clone() });
+      if (S.moves.length > 120) S.moves.shift();
+    },
     isCustom(ids) { sync(movable(ids)); return !!S.custom; },
     // back to the middle of the selection: the body's own middle, or the union box's middle now
     reset(ids) {
@@ -228,7 +241,17 @@ export function initPivot(app) {
     dotDown,
     fields,
   };
-  store.on((kind) => { if (kind === "load") api.load(); });
+  store.on((kind) => {
+    if (kind === "load") { api.load(); S.moves = []; }
+    if (kind === "change" || kind === "load") {
+      // Undo or Redo of a live move: the chosen pivot goes with the bodies
+      if (S.custom) for (const m of S.moves) {
+        if (m.after === S.seen && m.before === store.doc) S.custom.sub(m.delta);
+        else if (m.before === S.seen && m.after === store.doc) S.custom.add(m.delta);
+      }
+      S.seen = store.doc;
+    }
+  });
   return api;
 }
 
@@ -297,8 +320,16 @@ export function liveGizmo(app, host) {
         d.delta = delta;
         preview(ids, base, new THREE.Matrix4().makeTranslation(delta.x, delta.y, delta.z));
       };
-      d.finish = () => { app.clearSnapGuides(); if (d.delta.lengthSq() > 0) { pv.shift(d.delta); store.commitPreview("Move"); } else store.setPreview(null); };
+      d.finish = () => { app.clearSnapGuides(); if (d.delta.lengthSq() > 0) { const before = store.doc; store.commitPreview("Move"); pv.moved(before, d.delta); } else store.setPreview(null); };
     }
+    // nothing is previewed until the pointer has moved a few px: a finger's jitter is not a move
+    const [x0, y0] = vp.local(e), moveNow = d.move;
+    let began = false;
+    d.move = (ev) => {
+      if (!began) { const [x, y] = vp.local(ev); if (Math.hypot(x - x0, y - y0) < DEAD_PX) return; began = true; }
+      moveNow(ev);
+    };
+    d.moved = () => began;
     d.up = () => { if (dead) return; dead = true; stopEsc(); d.finish(); end(); };
     drag = d;
     vp.canvas.style.cursor = "grabbing";
@@ -307,34 +338,44 @@ export function liveGizmo(app, host) {
 
   const live = {
     panel,
-    // is something of the gizmo (the dot or a handle) under the pointer?
-    pick(e) {
+    // is something of the gizmo under the pointer? stage "dot": only the pivot dot; "parts": only the arrows, rings and pad; none: either.
+    // (Advanced asks for the dot first, then the resize handles, then the parts, so the small body's resize handles stay reachable.)
+    pick(e, stage) {
       frame();
       if (!shown) return null;
-      return pv.dot.at(e, "live") ? "dot" : G.pick(e);
+      if (stage !== "parts" && pv.dot.at(e, "live")) return "dot";
+      return stage === "dot" ? null : G.pick(e);
     },
-    hover(e) {
+    hover(e, stage) {
       if (drag) return true;
-      const h = live.pick(e);
+      const h = live.pick(e, stage);
       const part = h && h !== "dot" ? h : null;
       if (part !== hot) { hot = part; vp.request(); }
       if (h) vp.canvas.style.cursor = "grab";
       return !!h;
     },
+    unhot() { if (hot) { hot = null; vp.request(); } },
     // a press on the dot or a handle: true when it was one (the body under it is not picked)
-    down(e) {
-      const h = live.pick(e);
+    down(e, stage) {
+      const h = live.pick(e, stage);
       if (!h) return false;
       if (h === "dot") {
         const g = pv.dotDown(e, "live");
-        drag = { part: null, move: g.move, up: () => { g.finish(); end(); }, cancel: () => { g.cancel(); end(); } };
+        drag = { part: null, move: g.move, moved: g.moved, up: () => { g.finish(); end(); }, cancel: () => { g.cancel(); end(); } };
         return true;
       }
       startPart(e, h);
       return true;
     },
     move(e) { if (drag) drag.move(e); },
-    up(e) { if (!drag) return; if (e && e.type === "pointercancel") drag.cancel(); else drag.up(e); },
+    // returns "tap" when a finger pressed a handle and let go without moving: the caller then treats it as a tap on whatever is there
+    up(e) {
+      if (!drag) return;
+      if (e && e.type === "pointercancel") return drag.cancel();
+      const tap = vp.touchMode && !drag.moved();
+      drag.up(e);
+      return tap ? "tap" : undefined;
+    },
     cancel() { if (drag) drag.cancel(); },
     get dragging() { return !!drag; },
     dispose() { vp.afterRender.delete(frame); G.dispose(); fb.dispose(); panel.remove(); pv.dot.show(null, "live"); },

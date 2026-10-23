@@ -114,7 +114,7 @@ const ringPlan = (p, axis, deg, off = 0) => p.evaluate(([axis, deg, off]) => {
   vp.overlay.traverseVisible((o) => { if (/^rot-/.test(o.userData.axis || "") && o !== obj) { o.updateWorldMatrix(true, false); for (let i = 0; i < 96; i++) others.push(vp.project(V(Math.cos(i * Math.PI / 48) * 0.95, Math.sin(i * Math.PI / 48) * 0.95, 0).applyMatrix4(o.matrixWorld))); } });
   const arrows = [];
   vp.overlay.traverseVisible((o) => { if (/^[xyz]$/.test(o.userData.axis || "") && o.userData.dir) for (const t of [0.25, 0.5, 0.75, 1, 1.2]) { o.updateWorldMatrix(true, false); arrows.push(vp.project(V(0, 0, 0).copy(o.userData.dir).multiplyScalar(t * 0.95).applyMatrix4(o.parent.matrixWorld))); } });
-  const pad = []; vp.overlay.traverseVisible((o) => { if (o.userData.axis === "free") pad.push(vp.project(o.getWorldPosition(V(0, 0, 0)))); });
+  const pad = []; vp.overlay.traverseVisible((o) => { if (o.userData.axis === "free" || (o.userData.handle && o.userData.handle.type !== "rot")) pad.push(vp.project(o.getWorldPosition(V(0, 0, 0)))); }); // (the pad, and the resize handles, which come before the ring)
   for (const s of [0.125, 0.375, 0.625, 0.875, 0.0625, 0.25, 0.5, 0.75, 0.1875, 0.3125, 0.4375, 0.5625, 0.6875, 0.8125, 0.9375]) {
     const t = s * Math.PI * 2, [px, py] = vp.project(V(Math.cos(t) * 0.95, Math.sin(t) * 0.95, 0).applyMatrix4(obj.matrixWorld));
     const d = Math.hypot(px - cx, py - cy) || 1, sx = px + (off * (px - cx)) / d, sy = py + (off * (py - cy)) / d;
@@ -127,7 +127,7 @@ const ringPlan = (p, axis, deg, off = 0) => p.evaluate(([axis, deg, off]) => {
   }
   return null;
 }, [axis, deg, off]);
-// the arrow of an axis: a press 60 % along it and the point 12 mm further along it
+// the arrow of an axis: a press 110 % of a gizmo radius along it (out by the tip, clear of the resize handles) and the point 12 mm further along it
 const arrowPlan = (p, axis, mm = 12) => p.evaluate(([axis, mm]) => {
   const { vp } = window.__app, rect = vp.canvas.getBoundingClientRect();
   let obj = null;
@@ -135,7 +135,7 @@ const arrowPlan = (p, axis, mm = 12) => p.evaluate(([axis, mm]) => {
   if (!obj) return null;
   vp.updateCamera(); obj.parent.updateMatrixWorld(true);
   const g = obj.parent, s = g.scale.x, c = g.position.clone(), d = obj.userData.dir.clone();
-  const [sx, sy] = vp.project(c.clone().addScaledVector(d, 0.6 * s)), [ex, ey] = vp.project(c.clone().addScaledVector(d, 0.6 * s + mm));
+  const [sx, sy] = vp.project(c.clone().addScaledVector(d, 1.1 * s)), [ex, ey] = vp.project(c.clone().addScaledVector(d, 1.1 * s + mm));
   return { start: { x: rect.left + sx, y: rect.top + sy }, end: { x: rect.left + ex, y: rect.top + ey } };
 }, [axis, mm]);
 async function mouseDrag(pl, { release = true } = {}) {
@@ -262,8 +262,8 @@ test("Beginner: the arcs are drawn round the pivot, a drag turns about it in 15 
   await setPivotField("beginner", 2, "8");
   const P = [70, 10, 8], depth = await undoDepth();
   // the Z arc is where the pivot is, not at the bottom plane
-  const arcZ = await run(() => { let z = null; window.__app.vp.overlay.traverseVisible((o) => { if (o.userData.handle && o.userData.handle.axis === "z") z = o.position.toArray(); }); return z; });
-  expectPoint(arcZ, P);
+  const arcZ = () => run(() => { let z = null; window.__app.vp.overlay.traverseVisible((o) => { if (o.userData.handle && o.userData.handle.axis === "z") z = o.position.toArray(); }); return z; });
+  await expect.poll(async () => { const z = await arcZ(); return z && z.every((v, i) => Math.abs(v - P[i]) < 1e-6); }).toBe(true);
   // press on the Z arc and drag 25 degrees' worth: it lands on 30
   const pl = await run(() => {
     const { vp } = window.__app, rect = vp.canvas.getBoundingClientRect();
@@ -522,6 +522,85 @@ test("Advanced: with a sketch open the live handles are not drawn; they come bac
   await run(() => window.__app.select(["b1"]));
   await expect.poll(rings).toEqual(["x", "y", "z"]);
 });
+
+// ------------------------------------------------------------------------------------------------ review fixes
+for (const mode of ["beginner", "advanced"]) {
+  test(`${mode}: with a body selected and nothing happening the view rests (no redraw loop from the pivot dot)`, async () => {
+    await open(mode);
+    await clickBody("b1");
+    await expect.poll(dotShown).toBe(true);
+    await page.waitForTimeout(1000);
+    await run(() => { const vp = window.__app.vp, o = vp.render.bind(vp); window.__renders = 0; vp.render = function () { window.__renders++; return o(); }; });
+    await page.waitForTimeout(1200);
+    expect(await run(() => window.__renders), "renders in 1.2 s of a selected body at rest").toBeLessThanOrEqual(2);
+  });
+}
+
+// a small flat body next to another: the picture is big, the gizmo's X arrow runs over the +X resize handle
+const smallDoc = () => design("advanced", { bodies: [body("b1", "Chip", prim("box", { w: 14, d: 14, h: 1, r: 0, c: 0 }), tr(0, 0, 0)), body("b2", "Chip 2", prim("box", { w: 14, d: 14, h: 1, r: 0, c: 0 }), tr(40, 0, 0))] });
+test("Advanced: a resize handle that lies under a gizmo arrow is still grabbed (the dot, then the resize handles, then the arrows)", async () => {
+  await loadDoc(page, smallDoc());
+  await run(() => window.__app.vp.fit(window.__app.scene.allBox()));
+  await settle();
+  await clickBody("b1");
+  await expect.poll(rings).toEqual(["x", "y", "z"]);
+  const depth = await undoDepth();
+  const h = await run(() => {
+    const { vp } = window.__app, r = vp.canvas.getBoundingClientRect();
+    let o = null; vp.overlay.traverseVisible((x) => { const i = x.userData.handle; if (i && i.type === "size" && i.sx === 1 && i.sy === 0) o = x; });
+    vp.updateCamera(); const w = o.getWorldPosition(vp.view.target.clone()), s = vp.project(w), d = window.__app.pivot.dot.position, ds = vp.project(d);
+    return { x: r.left + s[0], y: r.top + s[1], fromDot: Math.hypot(s[0] - ds[0], s[1] - ds[1]) };
+  });
+  expect(h.fromDot, "the handle is beyond the dot's own zone").toBeGreaterThan(30);
+  await page.mouse.move(h.x, h.y); await page.mouse.down(); await page.mouse.move(h.x + 40, h.y, { steps: 8 }); await page.mouse.up();
+  const w = await run(() => window.__store.doc.bodies[0].node.p.w);
+  expect(w, "the chip was widened by its handle").toBeGreaterThan(14);
+  expect(await undoDepth()).toBe(depth + 1);
+});
+
+test("Advanced: Shift-click on the pivot dot toggles the body under it (the dot is not grabbed)", async () => {
+  const { b2 } = await open("advanced");
+  await clickBody("b1");
+  await dragDot(await clientOf(centreOf(b2))); // the pivot now sits on the other box, on screen
+  expectPoint(await pivotNow(), centreOf(b2));
+  const d = await dotClient();
+  const depth = await undoDepth();
+  await page.keyboard.down("Shift");
+  await page.mouse.click(d.x, d.y);
+  await page.keyboard.up("Shift");
+  expect(await selected(), "b2 was added to the selection").toBe("b1,b2");
+  expect(await undoDepth()).toBe(depth);
+  expect(await matrixOf("b2")).toEqual(M2);
+});
+
+test("Advanced: a press on an arrow with a pixel of jitter adds no step", async () => {
+  await open("advanced");
+  await run(() => window.__app.setSnap(false, true)); // free movement: a pixel would otherwise be rounded away by the grid
+  await clickBody("b1");
+  await expect.poll(rings).toEqual(["x", "y", "z"]);
+  const depth = await undoDepth(), pl = await arrowPlan(page, "x", 12);
+  await page.mouse.move(pl.start.x, pl.start.y); await page.mouse.down(); await page.mouse.move(pl.start.x + 1, pl.start.y, { steps: 2 }); await page.mouse.up();
+  expect(await undoDepth()).toBe(depth);
+  expect(await matrixOf("b1")).toEqual(M0);
+  expect(await run(() => window.__store.preview)).toBeNull();
+});
+
+test("Advanced: Undo and Redo of a live move carry a pivot you chose with the bodies", async () => {
+  await open("advanced");
+  await clickBody("b1");
+  await setPivotField("advanced", 0, "12.5");
+  await setPivotField("advanced", 1, "-7.25");
+  await setPivotField("advanced", 2, "3.125");
+  await expect.poll(rings).toEqual(["x", "y", "z"]);
+  await mouseDrag(await arrowPlan(page, "x", 12));
+  expectMatrix(await matrixOf("b1"), mul(tr(12, 0, 0), M0));
+  expectPoint(await pivotNow(), [24.5, -7.25, 3.125]); // went with the body
+  await page.click("#btn-undo");
+  expect(await matrixOf("b1")).toEqual(M0);
+  expectPoint(await pivotNow(), [12.5, -7.25, 3.125]);
+  await page.click("#btn-redo");
+  expectPoint(await pivotNow(), [24.5, -7.25, 3.125]);
+});
 });
 
 // ------------------------------------------------------------------------------------------------ touch (Chromium: real touch events through the DevTools protocol)
@@ -596,3 +675,49 @@ for (const mode of ["beginner", "advanced"]) {
     expect(errs).toEqual([]);
   });
 }
+
+// a tap on a handle that does not move is a tap on whatever is under it: a double-tap edits the body, a tap on another body selects it
+test("touch (tablet, advanced): a double-tap on a selected body under its handles opens the editor; a tap on another body under a ring selects it", async ({ browser, browserName }, info) => {
+  test.skip(browserName !== "chromium", "touch events through the DevTools protocol");
+  const { ctx, p, cdp, errs } = await touchPage(browser, info, tablet);
+  try {
+    await loadDoc(p, design("advanced", { bodies: [body("b1", "Box", prim("box", BOX), M0), body("b2", "Reference", prim("box", { w: 60, d: 10, h: 12, r: 0, c: 0 }), tr(30, -34, 0))] }));
+    await p.evaluate(() => { const { vp, scene } = window.__app; vp.fit(scene.allBox()); });
+    await settle(p);
+    await p.evaluate(() => { const { vp, scene } = window.__app, c = scene.allBox().getCenter(vp.view.target.clone()), y = vp.project(c)[1]; vp.panBy(0, 0.25 * vp.h - y); });
+    await settle(p);
+    const s = await spotOn("b1", p);
+    await p.touchscreen.tap(s.x, s.y);
+    await expect.poll(() => p.evaluate(() => window.__app.sel.join(","))).toBe("b1");
+    await expect.poll(() => rings(p)).toEqual(["x", "y", "z"]);
+    const depth = await undoDepth(p);
+
+    // a tap on b2 where a ring of b1's gizmo is: b2 is selected
+    const spot = await p.evaluate(() => {
+      const { vp, scene } = window.__app, r = vp.canvas.getBoundingClientRect(), ds = vp.project(window.__app.pivot.dot.position);
+      for (let rad = 40; rad <= 100; rad += 6) for (let k = 0; k < 24; k++) {
+        const px = ds[0] + rad * Math.cos((k * Math.PI) / 12), py = ds[1] + rad * Math.sin((k * Math.PI) / 12), e = { clientX: r.left + px, clientY: r.top + py };
+        if (document.elementFromPoint(e.clientX, e.clientY) !== vp.canvas) continue;
+        const hit = scene.pickFace(e);
+        if (hit && hit.body === "b2" && vp.handler.wantsTouch(e)) return { x: e.clientX, y: e.clientY };
+      }
+      return null;
+    });
+    expect(spot, "a spot on the other body that lies under a handle of the selected one").not.toBeNull();
+    await p.touchscreen.tap(spot.x, spot.y);
+    await expect.poll(() => p.evaluate(() => window.__app.sel.join(","))).toBe("b2");
+    expect(await undoDepth(p)).toBe(depth);
+
+    // a double-tap on the selected body right on its pivot dot opens the editor and moves nothing
+    await p.evaluate(() => window.__app.select(["b1"]));
+    await expect.poll(() => dotShown(p)).toBe(true);
+    const d = await dotClient(p);
+    await touch(cdp, "touchStart", [d]); await touch(cdp, "touchEnd", []);
+    await touch(cdp, "touchStart", [d]); await touch(cdp, "touchEnd", []);
+    await expect.poll(() => p.evaluate(() => !!window.__app.command)).toBe(true);
+    expect(await p.evaluate(() => window.__app.command.title)).toMatch(/box/i);
+    expect(await matrixOf("b1", p)).toEqual(M0);
+    expect(await undoDepth(p)).toBe(depth);
+  } finally { await ctx.close(); }
+  expect(errs).toEqual([]);
+});
