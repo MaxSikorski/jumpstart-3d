@@ -289,6 +289,53 @@ test("Cancel stops the build, leaves the design alone and lets the next build ru
   near(await volumeOf(ok.id), L_BRACKET);
 });
 
+test("Cancel also stops the read-back after the code has finished, for a new body and for an update", async () => {
+  await fresh();
+  const slow = () => page.evaluate(() => { const k = window.__app.kernel; if (!k.__probe) k.__probe = k.probe; k.probe = (...a) => new Promise((r) => setTimeout(() => r(k.__probe(...a)), 3000)); });
+  const unslow = () => page.evaluate(() => { const k = window.__app.kernel; if (k.__probe) k.probe = k.__probe; });
+  try {
+    // a new body: cancel while the read-back is slow
+    await slow();
+    const h = await history();
+    const w = await workers();
+    const started = page.evaluate((code) => window.__app.codeCad.build({ code }).then((id) => ({ id }), (e) => ({ error: e.message, kind: e.kind })), await example(0));
+    await page.waitForFunction((n) => window.__w.ended > n, w.ended); // the code has finished and its worker is gone
+    await page.evaluate(() => window.__app.codeCad.cancel());
+    expect(await started).toMatchObject({ kind: "cancelled", error: expect.stringMatching(/Cancelled/) });
+    expect(await page.evaluate(() => window.__app.codeCad.busy)).toBe(false);
+    await page.waitForTimeout(3500); // the slow read-back answers late and is ignored
+    expect(await history()).toEqual(h);
+    expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(0);
+    await unslow();
+
+    // an update: the existing body and its file stay exactly as they were
+    const r = await build({ code: await example(0) });
+    await volumeOf(r.id);
+    const before = await history();
+    const code = (await bodyOf(r.id)).codeCad.code;
+    await slow();
+    const w2 = await workers();
+    const upd = page.evaluate(([code, id]) => window.__app.codeCad.build({ code: code + "\n// changed", bodyId: id }).then((x) => ({ id: x }), (e) => ({ error: e.message, kind: e.kind })), [code, r.id]);
+    await page.waitForFunction((n) => window.__w.ended > n, w2.ended);
+    await page.evaluate(() => window.__app.codeCad.cancel());
+    expect(await upd).toMatchObject({ kind: "cancelled" });
+    await page.waitForTimeout(3500);
+    expect(await history()).toEqual(before);
+    await unslow();
+    near(await volumeOf(r.id), L_BRACKET);
+  } finally { await unslow(); }
+});
+
+test("Update is refused for a body whose shape is not a STEP file, whatever its recipe says", async () => {
+  await fresh();
+  const r = await build({ code: await example(0) });
+  await volumeOf(r.id);
+  await page.evaluate((id) => window.__store.update((d) => { window.__findBody(d, id).node = { t: "box", w: 10, d: 10, h: 10, mods: [] }; }, "swap"), r.id);
+  const h = await history();
+  expect(await build({ code: await example(0), bodyId: r.id })).toMatchObject({ error: expect.stringMatching(/made with Code CAD/) });
+  expect(await history()).toEqual(h);
+});
+
 test("a result that arrives after the design or its inputs changed is thrown away", async () => {
   // 1. a linked parameter changes while the code runs
   await fresh();

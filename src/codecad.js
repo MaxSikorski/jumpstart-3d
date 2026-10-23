@@ -72,7 +72,7 @@ function resolveLinks(doc, bindings) {
 const usesAsset = (v, id) => !!v && typeof v === "object" && (v.asset === id || Object.values(v).some((x) => usesAsset(x, id)));
 
 export function initCodeCad(app) {
-  let job = null, working = false, loads = 0; // job: the temporary worker while the code runs; working: until the result is in the design or refused
+  let job = null, token = null, working = false, loads = 0; // job: the temporary worker while the code runs; token: { cancelled } for the whole build, read-back included; working: until the result is in the design or refused
   store.on((kind) => { if (kind === "load") loads++; }); // a design opened or started over: a result made for the one before is not used
 
   // what a parameter change did to a body's recipe: { needsUpdate, why[] }, or null for a body that has none
@@ -94,25 +94,29 @@ export function initCodeCad(app) {
     const s = resolveSpec(spec);
     if (working) throw new Error("A Code CAD build is already running. Cancel it or wait for it to finish.");
     working = true;
-    try { return await run(s); } finally { working = false; }
+    const mine = (token = { cancelled: false });
+    try { return await run(s, mine); } finally { working = false; if (token === mine) token = null; }
   }
-  async function run(s) {
+  async function run(s, mine) {
     if (!app.kernel || !app.kernel.ready) throw new Error("The geometry engine is still starting. Try again in a moment.");
     const doc = store.doc;
     const target = s.bodyId ? findBody(doc, s.bodyId) : null;
-    if (s.bodyId && !(target && target.codeCad)) throw new Error("bodyId must be a body made with Code CAD");
+    if (s.bodyId && !(target && target.codeCad && target.node.t === "step")) throw new Error("bodyId must be a body made with Code CAD");
     if (target && target.locked) throw new Error("This body is locked. Unlock it to update it.");
     const start = resolveLinks(doc, s.bindings), gen = loads;
-    const mine = (job = runCodeJob(app.kernel, { code: s.code, params: start.values }, LIMITS));
+    const running = (job = runCodeJob(app.kernel, { code: s.code, params: start.values }, LIMITS));
     let out;
-    try { out = await mine.done; } finally { if (job === mine) job = null; }
+    try { out = await running.done; } finally { if (job === running) job = null; }
+    const cancelled = () => Object.assign(new Error("Cancelled. Nothing was changed."), { kind: "cancelled" });
+    if (mine.cancelled) throw cancelled();
 
     // What came back is not trusted (the code ran in that worker and can post anything): the design's own worker builds the file as a
     // step body first, and it must be one solid with a volume.
     const asset = uid("a"); // a new id each time: an asset id always means the same bytes
     app.kernel.addAsset(asset, "step", out.bytes);
     const node = { t: "step", asset, keepPos: true, mods: [] };
-    const seen = await app.kernel.probe({ id: asset, key: "codecad:" + asset, node });
+    const seen = await Promise.race([app.kernel.probe({ id: asset, key: "codecad:" + asset, node }), new Promise((r) => { mine.stop = () => r(null); })]);
+    if (mine.cancelled || !seen) { app.kernel.dropAsset(asset); throw cancelled(); } // Cancel or closing the dialog also stops the read-back
     if (!seen.ok || seen.mesh.solidCount !== 1 || seen.mesh.hasNonSolidFaces || !(seen.mesh.volume > 1e-6)) {
       app.kernel.dropAsset(asset);
       throw new Error("The result could not be read back as one closed solid" + (seen.ok ? "." : ": " + seen.error));
@@ -267,7 +271,7 @@ export function initCodeCad(app) {
     code.focus();
   }
 
-  const api = { build, open, status, cancel() { if (job) job.cancel(); }, get busy() { return working; }, examples: EXAMPLES, limits: LIMITS }; // limits: the time limits, which tests lower
+  const api = { build, open, status, cancel() { if (token) { token.cancelled = true; if (token.stop) token.stop(); } if (job) job.cancel(); }, get busy() { return working; }, examples: EXAMPLES, limits: LIMITS }; // limits: the time limits, which tests lower
   app.codeCad = api;
   const entry = document.querySelector('#menu-export button[data-act="codecad"]'); // projects.js closes the menu for any data-act
   // a selected Code CAD body opens its own recipe (that is where Update is); anything else starts a new one
