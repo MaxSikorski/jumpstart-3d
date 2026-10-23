@@ -37,3 +37,25 @@ for (const [width, height] of SIZES) {
     } finally { await ctx.close(); }
   });
 }
+
+// The top bar wraps to two rows at 820 px, so it is taller than 46 px: Chisel's full-window host and the Lathe message must start below it, not over its second row.
+test("tablet 820 x 1180: in Chisel mode the host starts below the wrapped top bar and Export can still be tapped", async ({ browser, browserName }, info) => {
+  test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
+  const ctx = await browser.newContext({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1, serviceWorkers: "block" });
+  const p = await ctx.newPage();
+  try {
+    await p.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} }); // skip Chisel's first-visit notice
+    await boot(p, info);
+    await loadDoc(p, newDoc("tablet chisel", "beginner"));
+    await p.locator("#mode-chisel").tap();
+    await expect(p.locator("#chisel-host")).toBeVisible();
+    const r = await p.evaluate(() => {
+      const bar = document.querySelector(".topbar").getBoundingClientRect(), host = document.getElementById("chisel-host").getBoundingClientRect();
+      const ex = document.getElementById("btn-export"), b = ex.getBoundingClientRect(), hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { barBottom: bar.bottom, barHeight: bar.height, hostTop: host.top, exportHit: !!hit && (hit === ex || ex.contains(hit)) };
+    });
+    expect(r.barHeight, "the bar wraps to two rows here").toBeGreaterThan(46);
+    expect(r.hostTop, "Chisel's host starts below the top bar").toBeGreaterThanOrEqual(r.barBottom - 0.5);
+    expect(r.exportHit, "Export is not covered").toBe(true);
+  } finally { await ctx.close(); }
+});
