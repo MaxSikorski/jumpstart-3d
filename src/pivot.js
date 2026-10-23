@@ -58,7 +58,7 @@ export function initPivot(app) {
     return p;
   }
   const get = (ids) => (S.lend ? S.lend.get() : base(ids));
-  const set = (p) => { if (S.lend) S.lend.set(p); else S.custom = p.clone(); };
+  const set = (p) => { if (S.lend) S.lend.set(p); else S.custom = p.clone(); vp.request(); };
 
   // ------------------------------------------------------------------------------------------ the dot
   const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]);
@@ -231,7 +231,7 @@ export function initPivot(app) {
     // back to the middle of the selection: the body's own middle, or the union box's middle now
     reset(ids) {
       if (S.lend) { const p = middle(ids); if (p) S.lend.set(p); return; }
-      sync(movable(ids)); S.custom = null; S.anchor = null;
+      sync(movable(ids)); S.custom = null; S.anchor = null; vp.request();
     },
     // the selection changed (or may have): a different set of bodies starts again from its middle
     selection(ids) { sync(movable(ids)); },
