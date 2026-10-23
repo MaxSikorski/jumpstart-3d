@@ -25,8 +25,8 @@ export class KernelClient {
   }
   start() {
     this.ready = false;
-    this.worker = new Worker(this.workerUrl, this.workerType === "classic" ? {} : { type: "module" });
-    this.worker.onmessage = (ev) => this.handle(ev.data);
+    const w = (this.worker = new Worker(this.workerUrl, this.workerType === "classic" ? {} : { type: "module" })); // jumpstart-3d: w
+    this.worker.onmessage = (ev) => w === this.worker && this.handle(ev.data); // jumpstart-3d: ignore a late reply from a terminated worker
     this.worker.onerror = (e) => { this.onFail && this.onFail(e.message || "The geometry engine failed to start"); };
     this.worker.postMessage({ type: "init", parts: this.parts });
   }
@@ -56,6 +56,7 @@ export class KernelClient {
       clearTimeout(this.watchdog);
       const items = this.inflight || [];
       this.inflight = null;
+      items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
       res.forEach((r) => this.meshes.set(r.key, r));
       this.onResults && this.onResults(res);
@@ -79,6 +80,7 @@ export class KernelClient {
   }
   // drop queued work nobody needs any more
   prune(neededKeys) {
+    this.needed = neededKeys; // jumpstart-3d: stalled() skips timed-out bodies that a newer edit replaced
     for (const k of [...this.queue.keys()]) if (!neededKeys.has(k)) { this.queue.delete(k); this.solo.delete(k); }
   }
   pump() {
@@ -112,8 +114,9 @@ export class KernelClient {
     this.stepWaiters.clear();
     // jumpstart-3d: a slow device or busy runner can push a healthy batch of several bodies past the limit. Retry each body alone with its own full limit; only a body that stalls alone is marked bad.
     if (batch.length > 1) {
-      for (const b of batch) this.solo.add(b.key);
-      this.queue = new Map([...batch.map((b) => [b.key, b]), ...this.queue]);
+      const current = batch.filter((b) => !this.needed || this.needed.has(b.key)); // replaced bodies are dropped, not marked bad
+      for (const b of current) this.solo.add(b.key);
+      this.queue = new Map([...current.map((b) => [b.key, b]), ...this.queue]);
       this.inflight = null;
       this.start();
       return;

@@ -13,10 +13,12 @@ test.beforeAll(async ({ browser }, info) => {
     const W = window.Worker;
     window.__workers = 0;
     window.__slow = null;
+    window.__sent = []; // every body sent to a worker to build, as JSON
     window.Worker = class extends W {
       constructor(...a) { super(...a); window.__workers++; }
       postMessage(m, t) {
         const s = window.__slow;
+        if (m && m.type === "build") for (const b of m.bodies) window.__sent.push(JSON.stringify(b.node));
         if (s && m && m.type === "build") {
           if (s.hang && m.bodies.some((b) => JSON.stringify(b.node).includes(s.hang))) return; // never answered
           setTimeout(() => super.postMessage(m, t), s.perBody * m.bodies.length);
@@ -67,4 +69,24 @@ test("a body that stalls alone is final: one restart, no retry loop", async () =
   const r = await page.evaluate(async () => { await JS3D.ready(); await new Promise((r) => setTimeout(r, 1500)); return { e: JS3D.list()[0].error, restarts: window.__workers - window.__before }; });
   expect(r.e).toContain("stalled");
   expect(r.restarts).toBe(1);
+});
+
+test("bodies replaced by a newer edit while their batch stalls are dropped, not rebuilt one by one", async () => {
+  const old = [[61.1, 12, 13], [64.2, 15, 16], [67.3, 18, 19], [70.4, 21, 22]];
+  const now = [[71.5, 12, 13], [74.6, 15, 16], [77.7, 18, 19], [80.8, 21, 22]];
+  await page.evaluate(() => JS3D.newDesign("beginner"));
+  await page.evaluate(() => { window.__slow = { perBody: 1000 }; window.__app.kernel.watchdogMs = 2500; window.__before = window.__workers; window.__sent = []; });
+  await page.evaluate((sizes) => { for (const s of sizes) JS3D.add("box", { size: s }); }, old); // the first goes out alone (1 s), the other three as a batch held back 3 s: the limit is 2.5 s
+  await page.waitForFunction(() => window.__app.kernel.inflight && window.__app.kernel.inflight.length === 3); // the first body went out alone, the other three are now out together and will pass the limit
+  await page.evaluate((sizes) => {
+    JS3D.newDesign("beginner"); // the old four are no longer wanted
+    window.__slow = { perBody: 100 };
+    for (const s of sizes) JS3D.add("box", { size: s });
+  }, now);
+  const r = await page.evaluate(async () => { await JS3D.ready(); return { list: JS3D.list(), restarts: window.__workers - window.__before, sent: window.__sent }; });
+  expect(r.list.map((b) => b.error)).toEqual([null, null, null, null]);
+  r.list.forEach((b, i) => expect(b.volume).toBeCloseTo(now[i][0] * now[i][1] * now[i][2], 1));
+  expect(r.restarts).toBe(1);
+  expect(r.sent.filter((j) => /"(61\.1|64\.2|67\.3|70\.4)"?[,}]|:(61\.1|64\.2|67\.3|70\.4)[,}]/.test(j)), "old shapes sent once, in the batch that stalled").toHaveLength(4);
+  expect(r.sent, "four old, four new, nothing rebuilt alone").toHaveLength(8);
 });
