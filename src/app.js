@@ -34,6 +34,7 @@ import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
+import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
@@ -128,7 +129,7 @@ function boot() {
   const scene = (app.scene = new SceneSync(vp, kernel));
   vp.zoomTargets = () => scene.meshes();
   app.sketcher = new Sketcher(app);
-  scene.onRefresh = () => app.onSceneRefresh && app.onSceneRefresh();
+  scene.onRefresh = () => { app.onSceneRefresh && app.onSceneRefresh(); app.plateView && app.plateView.update(); }; // jumpstart-3d: printer plate. overhang shading follows the shapes
   // a shape's size and position boxes need its finished geometry: show them once it arrives
   let drawnKey; // jumpstart-3d: fix. redraw when a new mesh lands, not only when the position boxes are missing
   app.onSceneRefresh = () => {
@@ -166,6 +167,7 @@ app.voxel = initVoxel(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
   app.cam = initCam(app);
+  app.plateView = initPrinterPreview(app); // jumpstart-3d: printer plate. Printer plate… in the Settings menu, overhang shading
 
   store.on((kind) => {
     const doc = store.view;
@@ -748,7 +750,7 @@ app.showShortcuts = function () {
       rows("Architechies", [["W", "Wall (click each corner)"], ["R", "Room (drag corner to corner)"], ["E", "Raise walls"], ["D", "Door"], ["N", "Window"], ["O", "Roof"], ["G", "Floor"], ["V", "Select"], ["0-9 Enter", "While drawing a wall: type its exact length (12' 6\" or 3600)"], ["Enter", "Finish the walls you are drawing"], ["Shift", "Draw at any angle"], ["Alt", "Turn snapping off for a moment"], ["P", "Plan view / 3D"], ["X", "See-through on or off"], ["Arrows", "Nudge the selected door or window"], ["Delete", "Delete the selection"], ["Esc", "Stop drawing, back to Select"]]),
       rows("Chisel (Pro)", [["D", "Standard brush"], ["C", "Clay"], ["S", "Smooth"], ["T", "Flatten"], ["G", "Move brush"], ["N", "Snakehook"], ["Q", "Mask"], ["J", "Paint"], ["M", "Select & move"], ["[ ]", "Brush size"], ["Shift drag", "Smooth"], ["Alt drag", "Invert brush"], ["Ctrl drag", "Mask"], ["X", "Mirror X"], ["F", "Frame"], ["Drag right / left", "Window / crossing select (Select & move)"], ["Tab", "Type sizes (Select & move)"], ["R C P", "Rectangle, circle, polygon (Sketch)"], ["E", "Extrude the sketch"], ["Esc", "Cancel the shape / sketch"]]),
       ...(IS_MAC ? [rows("Mac trackpad", [["Option drag", "Orbit"], ["Option Shift drag", "Pan"], ["Pinch", "Zoom"], ["Two-finger scroll", "Zoom"], ["Control click", "Right-click menu (drag to orbit)"]])] : []),
-      rows("Everywhere", [[", .", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
+      rows("Everywhere", [[", .", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Shift drag", "On a rotation arc or ring: turn by any angle (otherwise 15° steps)"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
   back.append(modal);
   document.body.append(back);
   back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });

@@ -519,6 +519,8 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .menu button { padding: 12px 10px; }
   .pcard .acts button { padding: 8px 8px; }
 }
+/* jumpstart-3d: rotation access (issue #100). The turn buttons and the Snap 15° / Free switch are 44 px targets for a finger */
+.rot-btn button { min-width: 44px; min-height: 44px; }
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
 .lockbar svg { width: 18px; height: 18px; flex: none; }
 .lockbar .btn { margin-left: auto; padding: 4px 10px; }
@@ -628,6 +630,18 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .snapctl .unit-toggle { margin-right: 6px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--accent, #1f4fa8); background: transparent; color: var(--accent, #1f4fa8); font: 700 12px/1.2 var(--f-ui, sans-serif); cursor: pointer; white-space: nowrap; }
 .section-chip { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 12.5px; font-weight: 600; }
 .section-chip[hidden] { display: none; }
+/* jumpstart-3d: printer plate dialog and overhang legend */
+.modal.plate-dlg { width: min(560px, 100%); }
+.plate-dlg .plate-row { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-weight: 600; }
+.plate-dlg .plate-row select, .plate-dlg .plate-row input[type="range"] { flex: 1; min-width: 0; }
+.plate-dlg .plate-facts { font-weight: 600; margin: 4px 0 2px; }
+.plate-dlg .plate-note { padding: 0; margin: 2px 0 8px; }
+.plate-dlg .plate-note a { color: var(--accent); }
+.plate-dlg .plate-fit { margin: 0 0 8px; color: var(--ink-2); }
+.oh-chip { position: absolute; left: 12px; top: 10px; z-index: 9; display: flex; align-items: center; gap: 8px; max-width: min(380px, calc(100% - 24px)); padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 12px; line-height: 1.35; }
+.oh-chip[hidden] { display: none; }
+.oh-chip .oh-sw { flex: none; width: 12px; height: 12px; border-radius: 3px; background: #ff2d2d; }
+.oh-chip .btn { flex: none; padding: 3px 10px; font-size: 12px; }
 .section-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a317; }
 .section-chip .btn { padding: 3px 10px; font-size: 12px; }
 .section-chip .xbtn { width: 26px; height: 26px; }
@@ -1250,6 +1264,10 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
           <label class="mc-row" title="Type the triangle count you want for the whole design and press Enter"><span>Triangles</span><input type="number" id="detail-tris" min="1" step="1" inputmode="numeric"><small id="detail-est"></small></label>
         </div>
         <div class="menu-note">Applies to the view and to STL, OBJ and 3MF exports. STEP is exact at every level. Above 500,000 triangles you are asked first; very fine levels can take many minutes to build.</div>
+        <!-- jumpstart-3d: printer plate -->
+        <hr>
+        <div class="menu-head">Printer</div>
+        <button id="btn-plate" role="menuitem" title="Pick your printer's build area and show steep undersides in red">Printer plate… <small>build area, overhangs</small></button>
         <!-- jumpstart-3d: agent link -->
         <hr>
         <div class="menu-head">AI agent</div>
