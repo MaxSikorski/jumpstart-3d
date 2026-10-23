@@ -307,9 +307,9 @@ upstream version stays easy to merge.
 - Hole patterns: rows, staggered rows or a circle of round, square, hex or slot holes on a flat
   face. Round holes can be plain, counterbored, countersunk or tapped; square, hex and slot holes
   are cut through the part or to a depth.
-- Gears: spur gears, straight bevel gears and racks from a module and a tooth count, with a print
-  clearance and an optional bore and keyway. Helical gears are not built yet, and to change a gear's
-  teeth you undo and make it again.
+- Gears: spur gears, helical gears (12 to 30 teeth, 5 to 30 degrees, right or left hand), straight
+  bevel gears and racks from a module and a tooth count, with a print clearance and an optional
+  bore and keyway (spur gears). To change a gear's teeth you undo and make it again.
 - Name plates: a plate sized to one line of text, with the letters raised in a second colour or
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an

@@ -421,6 +421,18 @@
     "3mf": "8b5dc0598cacd12becbac374bc4ef7e61cedd3b676c14363b6866722b7142e0b",
     "step": "dbbfa1389e1093e0a90cb36ebe046665aee8d0f36d4933442921c254c24bf9d0"
   },
+  "gears-helical.json": {
+    "volumes": {
+      "b8za7c3bot34d Helical gear 16 teeth m2": 8760.3,
+      "b8zab5i68w7sl Helical gear 24 teeth m2": 19531.5
+    },
+    "stlTriangles": 10328,
+    "stl": "81b48e3dc40ff5d479f628a37882a1ff2f3483c76bcfc0b1020138e3ae2ad471",
+    "obj": "17552987be8503f2b2197f6d546b3cd6da4a147ccfd4f7b99b71090cbbab9b29",
+    "3mf": "b5aef7b087cdaf1f6ea478724d4f2f63771e783e9055124d0a581e068dcae461",
+    "step": "944ae65a86b5f30cc8cf8f25d1ff3bed9e7659dee0a04795aaae0c6133d659b1",
+    "dxf": "1b9b0105e9eeac700dec1cc095d70a5e6fd48f0b2844166a6673d71dc9d9fd2b"
+  },
   "knurl.json": {
     "volumes": {
       "b3y1vjo0rq6x Knurled knob 20 x 15": 4168.9,
