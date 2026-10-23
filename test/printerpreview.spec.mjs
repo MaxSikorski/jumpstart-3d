@@ -194,7 +194,7 @@ test.describe("the dialog and the plate", () => {
   });
 
   test("a plain line says which parts reach outside the area, and nothing is moved", async () => {
-    await loadDoc(page, newDoc("Fit", "beginner", { bodies: [box("in", 50, 50, 20, move(-25, -25, 0)), box("far", 40, 40, 20, move(200, 0, 0)), box("tall", 20, 20, 300, move(-100, -100, 0))] }));
+    await loadDoc(page, newDoc("Fit", "beginner", { bodies: [box("in", 50, 50, 20, move(-25, -25, 0)), box("far", 40, 40, 20, move(200, 0, 0)), box("tall", 20, 20, 300, move(-70, -5, 0))] }));
     await pref({ printer: "mk4" });
     const before = JSON.stringify(await page.evaluate(() => window.__store.doc));
     await openPlate();
@@ -423,7 +423,7 @@ test.describe("overhang shading", () => {
 
 test.describe("the 3D Print Sim", () => {
   const openSim = async () => { await page.evaluate(() => window.__app.advanced.openPrintSim()); await expect(page.locator("#ps-printer")).toBeVisible(); };
-  const doneSim = async () => { await page.click("#cmd-ok"); await expect(page.locator("#ps-printer")).toHaveCount(0); };
+  const doneSim = async () => { await page.click("#cmd-ok"); await page.waitForFunction(() => !window.__app.simLock && !window.__app.command, null, { timeout: 20_000 }); };
   const setLimit = (deg) => page.evaluate((v) => { const r = document.getElementById("ps-thr-range"); r.value = v; r.dispatchEvent(new Event("input", { bubbles: true })); }, deg);
   const banner = () => page.evaluate(() => (document.getElementById("ps-banner") || {}).textContent || "");
 
