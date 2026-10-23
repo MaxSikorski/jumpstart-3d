@@ -57,7 +57,8 @@ These skips concern where to report findings, not whether to test both builds.
 A change that touches any of these waits for the maintainer's explicit go
 before it merges, even with every gate green: `.github/workflows/`, the
 service worker (`src/sw.js` and its handling in `build.mjs`), the update
-check, release and build scripts, the MCP server's tools and permissions
+check, release and build scripts, the CI spec selector
+(`tools/ci-select-specs.mjs`), the MCP server's tools and permissions
 (`mcp/`), and this file. An automated review never counts as that go.
 
 ## How a review reads
@@ -103,15 +104,19 @@ that could lose a design or send data off the machine get more. The PR's
 
 ## The flake rule
 
-A flaky test does not block a merge. The merge gate is only the build, the
-smoke spec and the golden exports; everything else runs nightly. When a test
+A flaky test does not block a merge. The merge gate is the build, the smoke
+spec, the golden exports, every spec file the PR itself adds or changes (at
+most 10) and the phone walk (`test/mobile.spec.mjs`, on every PR that is not
+docs-only); everything else runs nightly. When a test
 flakes anywhere, quarantine it in the same piece of work: skip it
 (`test.skip`) or tag it and exclude it, with a comment on the line above that
 starts `// quarantined:` and gives an issue link or the reason. Quarantined
 tests are on the fix list (`grep -rn "quarantined:" test`, and the nightly
 issue lists them); the root cause is the next piece of work and the skip is
 removed with the fix. Never quarantine a smoke or golden test to get a merge
-through: those two are the gate, so fix them first. See
+through: those two are the gate, so fix them first. A spec the PR itself
+adds or changes also runs in the gate; if one of those flakes, quarantine it in
+the same PR like any other test. See
 [test/README.md](test/README.md).
 
 ## The gates
@@ -140,7 +145,10 @@ through: those two are the gate, so fix them first. See
    for the maintainer. Rank verified findings HIGH/MEDIUM/LOW, remove
    duplicates, fix them as appropriate, and record their disposition.
 4. **CI.** The merge gate is the check named `test` (with CodeQL): both
-   builds, the smoke spec and the golden exports on each, about 3 minutes.
+   builds, the smoke spec and the golden exports on each, about 3 minutes. The
+   same check also waits for each `test/*.spec.mjs` file the PR adds or changes
+   (at most 10, one job per file and build, in parallel) and for the phone walk
+   (`--project mobile`, every PR that is not docs-only).
    The full Playwright suite, the export judge, the chat scorer, the fuzzer and
    the Firefox and WebKit runs happen nightly
    (`.github/workflows/nightly.yml`), not on each PR; a red nightly run opens
