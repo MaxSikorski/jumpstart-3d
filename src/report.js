@@ -45,7 +45,7 @@ const clean = (text) => SCRUB.reduce((t, [re, to]) => t.replace(re, to), String(
 
 export function initReport(app) {
   // the last error the person saw: an error toast (hook in app.toast) or an uncaught error, text only
-  window.addEventListener("error", (e) => { if (e.message) app.lastError = e.message; });
+  window.addEventListener("error", (e) => { if (e.message && !/^ResizeObserver loop/.test(e.message)) app.lastError = e.message; }); // jumpstart-3d: Safari reports the harmless ResizeObserver note as an error
   window.addEventListener("unhandledrejection", (e) => { app.lastError = (e.reason && e.reason.message) || String(e.reason); });
 
   function details() {

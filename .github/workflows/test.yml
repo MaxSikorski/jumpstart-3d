@@ -1,4 +1,5 @@
 # The merge gate: builds both outputs, then runs the smoke spec and the golden exports on each (about 3 minutes), beside the MCP server tests.
+# A pull request's own new or changed test/*.spec.mjs files (at most 10) also run on both builds, and the phone walk (test/mobile.spec.mjs) runs on every pull request that is not docs-only; one job per spec and build, in parallel with the rest (tools/ci-select-specs.mjs picks the specs).
 # Everything slower runs in the nightly workflow (nightly.yml): the full Playwright suite, the export judge, the chat judge, the fuzzer, Firefox and WebKit (see test/README.md).
 # Runs on every pull request and on pushes to main. A pull request that changes only root-level Markdown files skips everything but the MCP tests. Public repository: Actions minutes are free.
 name: test
@@ -25,6 +26,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      specs: ${{ steps.select.outputs.specs }}
+      mobile: ${{ steps.select.outputs.mobile }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -56,6 +59,23 @@ jobs:
           echo "changed files: $count, not root Markdown: $other"
           if [ "$count" -gt 0 ] && [ "$other" -eq 0 ]; then code=false; else code=true; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
+      # Extra checks for a pull request (into any branch): the spec files it adds or changes, and the phone walk (every pull request, docs-only ones are cut by the code output). A push or a manual run adds nothing.
+      # The changed paths reach the script as a file of NUL-separated names; no pull request data is put into a shell line.
+      - id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            echo "not a pull request: no extra specs"
+            printf 'specs=[]\nmobile=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only --no-renames -z "$BASE...$HEAD" > "$RUNNER_TEMP/select.list"
+          CHANGED_LIST="$RUNNER_TEMP/select.list" node tools/ci-select-specs.mjs
+          echo "mobile=true" >> "$GITHUB_OUTPUT"
 
   # One job per build and spec, side by side (each is about 1.5 minutes of tests). pretest builds both outputs and runs the Node unit tests.
   gate:
@@ -98,6 +118,76 @@ jobs:
           retention-days: 7
           overwrite: true
 
+  # The pull request's own new or changed spec files (not smoke or golden, which the gate runs; not mobile or chatjudge), at most 10: one job per spec and build, in parallel.
+  # Skipped when nothing qualifies, on a docs-only pull request, on a push and on a manual run. Without it a new spec could merge without ever running.
+  # The matrix is never empty: fromJSON gets a placeholder when the list is [] (the job is skipped by its "if" then; an empty matrix would be an error).
+  changed-specs:
+    name: changed spec (${{ matrix.build }}, ${{ matrix.spec }})
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.specs != '[]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [site, single]
+        spec: ${{ fromJSON(needs.changes.outputs.specs != '[]' && needs.changes.outputs.specs || '["none"]') }}
+    env:
+      SPEC: ${{ matrix.spec }}
+      BUILD: ${{ matrix.build }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      - name: Run the changed spec
+        run: |
+          # Playwright reads a file argument as a case-insensitive regular expression: escape every regex character so a name such as c++.spec.mjs matches only itself
+          pattern="$(printf '%s' "$SPEC" | sed -E 's/[][\\.*+?^${}()|]/\\&/g')\$"
+          echo "spec: $SPEC  filter: $pattern"
+          npm test -- "$pattern" --project="$BUILD"
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: changed-spec-report-${{ matrix.build }}-${{ strategy.job-index }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  # The phone walk (375 px touch, simulated 4G, size and time budgets) catches layout and touch regressions the desktop specs cannot.
+  # Runs on every pull request that is not docs-only: a regression can come from any file that changes what the page loads or how it lays out (about 15 seconds on the runner).
+  phone-walk:
+    name: phone walk (mobile project)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.mobile == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm test -- test/mobile.spec.mjs --project=mobile
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: phone-walk-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
   mcp:
     name: mcp server
     runs-on: ubuntu-24.04
@@ -121,8 +211,9 @@ jobs:
   # Passes only when "changes" succeeded and either
   #   - code=true:  the gate and the MCP tests succeeded, or
   #   - code=false: the MCP tests succeeded and the gate was skipped (exactly "skipped", not failed or cancelled).
+  # The changed-specs and phone-walk jobs must have succeeded when they were wanted (code=true and a non-empty spec list, or code=true on a pull request for the phone walk) and be exactly "skipped" otherwise.
   test:
-    needs: [changes, gate, mcp]
+    needs: [changes, gate, changed-specs, phone-walk, mcp]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -131,11 +222,22 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           CODE: ${{ needs.changes.outputs.code }}
           GATE: ${{ needs.gate.result }}
+          SPECS: ${{ needs.changes.outputs.specs }}
+          SPECS_RESULT: ${{ needs.changed-specs.result }}
+          MOBILE: ${{ needs.changes.outputs.mobile }}
+          MOBILE_RESULT: ${{ needs.phone-walk.result }}
           MCP: ${{ needs.mcp.result }}
         run: |
-          echo "changes=$CHANGES code=$CODE gate=$GATE mcp=$MCP"
+          echo "changes=$CHANGES code=$CODE gate=$GATE specs=$SPECS changed-specs=$SPECS_RESULT mobile=$MOBILE phone-walk=$MOBILE_RESULT mcp=$MCP"
           [ "$CHANGES" = success ] || { echo "the changes job did not succeed"; exit 1; }
           [ "$MCP" = success ] || { echo "the MCP tests did not succeed"; exit 1; }
+          want_specs=skipped; want_mobile=skipped
+          if [ "$CODE" = true ]; then
+            if [ "$SPECS" != '[]' ]; then want_specs=success; fi
+            if [ "$MOBILE" = true ]; then want_mobile=success; fi
+          fi
+          [ "$SPECS_RESULT" = "$want_specs" ] || { echo "the changed-specs jobs are $SPECS_RESULT, expected $want_specs"; exit 1; }
+          [ "$MOBILE_RESULT" = "$want_mobile" ] || { echo "the phone walk is $MOBILE_RESULT, expected $want_mobile"; exit 1; }
           if [ "$CODE" = true ]; then
             [ "$GATE" = success ] && exit 0
           elif [ "$CODE" = false ]; then

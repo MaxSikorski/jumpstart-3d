@@ -23,7 +23,7 @@ import { test, expect } from "@playwright/test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { newDoc, body, prim, watchErrors } from "./helpers.mjs";
+import { newDoc, body, prim, watchErrors, buildOf } from "./helpers.mjs";
 
 const DB = "jumpstart3d-projects", RECOVERY_DB = "jumpstart3d-recovery";
 const RESCUE = "workplane.rescue.v1", LS_INDEX = "workplane.index.v1", LS_DOC = "workplane.doc.v1.", LAST = "workplane.pref.v1.last";
@@ -58,7 +58,7 @@ async function newWorld(browser, info) {
   const context = await browser.newContext({ viewport: info.project.use.viewport, serviceWorkers: "block", acceptDownloads: true });
   const w = { context, info, url: info.project.use.baseURL, known: new Map(), ledger: [], token: null, prevToken: null, tokens: [], onKill: null, killWhy: null, ver: new Map(), errors: [], dirs: [],
     expectKill() { this.killWhy = null; return new Promise((res) => { this.onKill = () => res("killed"); }); } };
-  w.origin = info.project.name === "single" ? "file://" : new URL(w.url).origin;
+  w.origin = buildOf(info) === "single" ? "file://" : new URL(w.url).origin;
   await context.exposeFunction("__chaosAck", (r) => { w.ledger.push(r); });
   await context.exposeFunction("__chaosKill", (why) => { w.killWhy = why; if (w.onKill) w.onKill(); });
   w.anchor = await context.newPage(); // keeps the context alive and gives CDP a session
@@ -288,7 +288,7 @@ function scenario(title, fn, { onlySite = false } = {}) {
   test(title, async ({ browser, browserName }, info) => {
     test.setTimeout(240_000);
     test.skip(browserName !== "chromium", "uses the Chrome DevTools Protocol (CDP), which only Chromium has");
-    test.skip(onlySite && info.project.name === "single", "no origin private file system (OPFS) on file:// in this browser");
+    test.skip(onlySite && buildOf(info) === "single", "no origin private file system (OPFS) on file:// in this browser");
     for (let attempt = 1; ; attempt++) {
       const w = await newWorld(browser, info);
       try { await fn(w, info); return; }
