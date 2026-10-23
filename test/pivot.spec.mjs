@@ -57,7 +57,7 @@ const rings = (p = page) => p.evaluate(() => { const out = []; window.__app.vp.o
 const arcs = (p = page) => p.evaluate(() => { const out = []; window.__app.vp.overlay.traverseVisible((o) => { if (o.userData.handle && o.userData.handle.type === "rot") out.push(o.userData.handle.axis); }); return out.sort(); });
 const settle = async (p = page) => { for (let ok = 0; ok < 2;) { await p.waitForTimeout(200); ok = (await p.evaluate(() => !window.__app.vp.isMoving())) ? ok + 1 : 0; } };
 const clientOf = (pt, p = page) => p.evaluate(([x, y, z]) => { const { vp } = window.__app, r = vp.canvas.getBoundingClientRect(); vp.updateCamera(); const s = vp.project(vp.view.target.clone().set(x, y, z)); return { x: r.left + s[0], y: r.top + s[1] }; }, pt);
-const dotClient = async (p = page) => clientOf(await p.evaluate(() => window.__app.pivot.dot.position.toArray()), p);
+const dotClient = async (p = page) => { await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))); return clientOf(await p.evaluate(() => window.__app.pivot.dot.position.toArray()), p); };
 
 async function open(mode, p = page, extra) {
   await loadDoc(p, design(mode, extra));
@@ -102,7 +102,9 @@ async function dragDot(to, { release = true } = {}) {
 
 // A press on the named ring and the point to let go at to turn by deg: the pointer's angle round the ring's centre on screen (the
 // other way round when the axis points away from the viewer). off pushes the press that many px outward (a finger is not on the line).
-const ringPlan = (p, axis, deg, off = 0) => p.evaluate(([axis, deg, off]) => {
+// (the gizmo is redrawn only when something changed, so let the frame after the last change be drawn before reading where it is)
+const frames = (p) => p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+const ringPlan = async (p, axis, deg, off = 0) => { await frames(p); return p.evaluate(([axis, deg, off]) => {
   const { vp } = window.__app, rect = vp.canvas.getBoundingClientRect();
   let obj = null;
   vp.overlay.traverseVisible((o) => { if (o.userData.axis === "rot-" + axis) obj = o; });
@@ -126,9 +128,9 @@ const ringPlan = (p, axis, deg, off = 0) => p.evaluate(([axis, deg, off]) => {
     if (free(sx, sy) && free(ex, ey)) return { start: { x: rect.left + sx, y: rect.top + sy }, end: { x: rect.left + ex, y: rect.top + ey } };
   }
   return null;
-}, [axis, deg, off]);
+}, [axis, deg, off]); };
 // the arrow of an axis: a press 110 % of a gizmo radius along it (out by the tip, clear of the resize handles) and the point 12 mm further along it
-const arrowPlan = (p, axis, mm = 12) => p.evaluate(([axis, mm]) => {
+const arrowPlan = async (p, axis, mm = 12) => { await frames(p); return p.evaluate(([axis, mm]) => {
   const { vp } = window.__app, rect = vp.canvas.getBoundingClientRect();
   let obj = null;
   vp.overlay.traverseVisible((o) => { if (o.userData.axis === axis && o.userData.dir) obj = o; });
@@ -137,7 +139,7 @@ const arrowPlan = (p, axis, mm = 12) => p.evaluate(([axis, mm]) => {
   const g = obj.parent, s = g.scale.x, c = g.position.clone(), d = obj.userData.dir.clone();
   const [sx, sy] = vp.project(c.clone().addScaledVector(d, 1.1 * s)), [ex, ey] = vp.project(c.clone().addScaledVector(d, 1.1 * s + mm));
   return { start: { x: rect.left + sx, y: rect.top + sy }, end: { x: rect.left + ex, y: rect.top + ey } };
-}, [axis, mm]);
+}, [axis, mm]); };
 async function mouseDrag(pl, { release = true } = {}) {
   await page.mouse.move(pl.start.x, pl.start.y);
   await page.mouse.down();
