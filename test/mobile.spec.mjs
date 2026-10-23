@@ -68,12 +68,12 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
     }
     expect(await page.evaluate(() => window.__store.doc.bodies.find((b) => b.hole).node.p)).toMatchObject({ w: 8, d: 8 });
 
-    // At 375 x 667 the inspector covers the view centre, where every new shape lands (a finding for the mobile card, not fixed here), so the view is panned with two fingers over the free strip left of it (probed at y 430: the touch status bar has two rows on a phone, so the dock sits higher than at 500).
-    const free = await page.evaluate(() => [[15, 430], [70, 430]].every(([x, y]) => document.elementFromPoint(x, y) === window.__app.vp.canvas));
+    // At 375 x 667 the inspector covers the view centre, where every new shape lands (a finding for the mobile card, not fixed here), so the view is panned with two fingers over the free strip left of it.
+    const free = await page.evaluate(() => [[15, 500], [70, 500]].every(([x, y]) => document.elementFromPoint(x, y) === window.__app.vp.canvas));
     expect(free, "no free canvas left of the inspector at 375 px").toBe(true);
-    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 15, y: 430, id: 0 }, { x: 70, y: 430, id: 1 }] });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 15, y: 500, id: 0 }, { x: 70, y: 500, id: 1 }] });
     for (let i = 1; i <= 10; i++) {
-      const y = 430 - 14 * i;
+      const y = 500 - 14 * i;
       await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 15, y, id: 0 }, { x: 70, y, id: 1 }] });
     }
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });

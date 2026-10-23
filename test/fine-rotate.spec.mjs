@@ -7,7 +7,7 @@
 // compared with a rotation worked out in test/rotation-oracle.mjs, never with the app's own matrix code.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
-import { tablet, touchPage, M0, BOX, mul, rot, turned, turnedBox, expectMatrix, expectBox as expectBoxOf, open, spotOnBox } from "./rotation-oracle.mjs";
+import { tablet, touchPage, M0, BOX, mul, rot, tr, turned, turnedBox, expectMatrix, expectBox as expectBoxOf, open, spotOnBox } from "./rotation-oracle.mjs";
 
 let page, errors;
 const expectBox = (want, p = page) => expectBoxOf(want, p);
@@ -108,6 +108,27 @@ test.describe("desktop", () => {
     await page.click("#turn-back");
     await expect.poll(async () => Math.abs((await matrix())[1])).toBeLessThan(1e-9);
     expectMatrix(await matrix(), M0);
+  });
+
+  test("Beginner: − and + with two boxes selected turn both about the middle of their combined box; +5 then −5 puts back both exact matrices", async () => {
+    const M1 = tr(30 + 46, -12, 5);
+    await loadDoc(page, newDoc("fine two", "beginner", { bodies: [body("b1", "Box", prim("box", BOX), M0), body("b2", "Box 2", prim("box", BOX), M1)] }));
+    await run(() => { window.__app.vp.fit(window.__app.scene.allBox()); window.__app.select(["b1", "b2"]); });
+    const mats = () => run(() => window.__store.doc.bodies.map((b) => b.m));
+    const union = await run(() => { const u = window.__app.scene.bodyTightBox("b1").clone().union(window.__app.scene.bodyTightBox("b2")); return [...u.min.toArray(), ...u.max.toArray()]; });
+    const C = centre(union);
+    await page.selectOption("#turn-step", "5");
+    const depth = await undoDepth();
+    await page.click("#turn-plus");
+    await expect.poll(() => undoDepth()).toBe(depth + 1);
+    let got = await mats();
+    expectMatrix(got[0], turned("z", 5, C, M0));
+    expectMatrix(got[1], turned("z", 5, C, M1));
+    await page.click("#turn-minus");
+    await expect.poll(() => undoDepth()).toBe(depth + 2);
+    got = await mats();
+    expectMatrix(got[0], M0);
+    expectMatrix(got[1], M1);
   });
 
   test("Beginner: Snap back keeps a mirrored shape mirrored (determinant stays -1); a mirrored shape already square says so", async () => {
@@ -234,22 +255,19 @@ test("touch (tablet): tapping − and + turns by the chosen step, and the status
   expect(errs).toEqual([]);
 });
 
-test("phone: the Turn controls fit the status bar and are 44 px", async ({ browser, browserName }, info) => {
+test("phone: the Turn row is hidden and the status bar stays as on main (30 px or less, size readout visible)", async ({ browser, browserName }, info) => {
   test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
   const { ctx, p, errs } = await touchPage(browser, info, { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2, serviceWorkers: "block" });
   try {
     await open("beginner", p);
     await p.touchscreen.tap(8, 400); // any touch puts the page in touch mode
     await expect(p.locator("html")).toHaveClass(/touch-ui/);
-    const r = await p.evaluate(() => {
-      const bar = document.querySelector("footer.status").getBoundingClientRect();
-      return { bar: [bar.left, bar.right], items: ["turn-axis", "turn-step", "turn-minus", "turn-plus", "turn-back"].map((id) => { const q = document.getElementById(id).getBoundingClientRect(); return [id, q.width, q.height, q.left, q.right]; }) };
-    });
+    await p.evaluate(() => window.__app.select(["b1"]));
+    await expect(p.locator("#turnctl")).toBeHidden();
+    await expect(p.locator("#selinfo")).toBeVisible();
+    await expect(p.locator("#selinfo")).not.toHaveText("");
+    expect(await p.evaluate(() => document.querySelector("footer.status").getBoundingClientRect().height), "status bar height").toBeLessThanOrEqual(30);
     expect(await p.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]), "no sideways scroll").toEqual([375, 375]);
-    for (const [id, w, h, left, right] of r.items) {
-      expect(w, id + " width").toBeGreaterThanOrEqual(44); expect(h, id + " height").toBeGreaterThanOrEqual(44);
-      expect(left, id + " inside the bar").toBeGreaterThanOrEqual(r.bar[0] - 0.5); expect(right, id + " inside the bar").toBeLessThanOrEqual(r.bar[1] + 0.5);
-    }
   } finally { await ctx.close(); }
   expect(errs).toEqual([]);
 });

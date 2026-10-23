@@ -523,13 +523,15 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .rot-btn button { min-width: 44px; min-height: 44px; }
 /* jumpstart-3d: fine rotation (issue #87). The Turn control in the status bar; on a touch screen the bar gets taller and every target is 44 px */
 .turnctl { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
-:root.touch-ui .status { min-width: 0; height: auto; min-height: 56px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; white-space: normal; overflow: visible; }
-:root.touch-ui .status .hintline { flex: 1 1 220px; min-height: 18px; } /* hidden below 600 px */
-:root.touch-ui .status .hintline, :root.touch-ui .status #selinfo, :root.touch-ui .status .busy { white-space: nowrap; }
-:root.touch-ui .status .snapctl { flex: 1 1 100%; flex-wrap: wrap; row-gap: 4px; } /* the controls always get their own row under the hint, so the bar keeps one height */
-:root.touch-ui .turnctl button, :root.touch-ui .turnctl select { min-width: 44px; min-height: 44px; font-size: 16px; }
-:root.touch-ui .turnctl button { padding: 0 10px; }
-@media (max-width: 600px) { :root.touch-ui .turnctl { order: 1; } :root.touch-ui .status #selinfo { display: none; } :root.touch-ui .status, :root.touch-ui .status .snapctl { row-gap: 0; } :root.touch-ui .status { padding-top: 0; padding-bottom: env(safe-area-inset-bottom, 0px); } } /* on a phone the Turn row goes last, so the unit and snap controls share one short row above it, and the size readout (also in the inspector) gives its row up: the bar stays low */
+@media (min-width: 601px) {
+  :root.touch-ui .status { min-width: 0; height: auto; min-height: 56px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; white-space: normal; overflow: visible; }
+  :root.touch-ui .status .hintline { flex: 1 1 220px; min-height: 18px; }
+  :root.touch-ui .status .hintline, :root.touch-ui .status #selinfo, :root.touch-ui .status .busy { white-space: nowrap; }
+  :root.touch-ui .status .snapctl { flex: 1 1 100%; flex-wrap: wrap; row-gap: 4px; } /* the controls always get their own row under the hint, so the bar keeps one height */
+  :root.touch-ui .turnctl button, :root.touch-ui .turnctl select { min-width: 44px; min-height: 44px; font-size: 16px; }
+  :root.touch-ui .turnctl button { padding: 0 10px; }
+}
+@media (max-width: 600px) { .turnctl { display: none; } } /* a phone keeps the plain status bar and turns with the rings and the Snap 15 / Free switch */
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
 .lockbar svg { width: 18px; height: 18px; flex: none; }
 .lockbar .btn { margin-left: auto; padding: 4px 10px; }
