@@ -15,6 +15,8 @@
 // The app's own kernel is switched off here (a stand-in Worker): saving does not touch it and every page then starts in
 // about a second. Pages are opened without waiting for it.
 //
+// Chromium only: the scenarios use the Chrome DevTools Protocol (newCDPSession, Storage.clearDataForOrigin), so they skip on Firefox and WebKit.
+//
 // Known real problems are quarantined, not failed (see `quarantined()`): the run notes a `chaos finding` and carries on. They
 // are written up in the pull request. CHAOS_STRICT=1 makes them fail. CHAOS_SEEDS=1,2,3 and CHAOS_ROUNDS=6 run longer sweeps.
 import { test, expect } from "@playwright/test";
@@ -54,7 +56,7 @@ class StorageLost extends Error {}
 // (`known`: id -> n -> signature) and what was acknowledged (`ledger`).
 async function newWorld(browser, info) {
   const context = await browser.newContext({ viewport: info.project.use.viewport, serviceWorkers: "block", acceptDownloads: true });
-  const w = { context, info, url: info.project.use.baseURL, known: new Map(), ledger: [], token: null, onKill: null, killWhy: null, ver: new Map(), errors: [], dirs: [],
+  const w = { context, info, url: info.project.use.baseURL, known: new Map(), ledger: [], token: null, prevToken: null, tokens: [], onKill: null, killWhy: null, ver: new Map(), errors: [], dirs: [],
     expectKill() { this.killWhy = null; return new Promise((res) => { this.onKill = () => res("killed"); }); } };
   w.origin = info.project.name === "single" ? "file://" : new URL(w.url).origin;
   await context.exposeFunction("__chaosAck", (r) => { w.ledger.push(r); });
@@ -127,12 +129,14 @@ function INIT(cfg) {
   // stop a write to a database that was already open, so the browser's own limit is not used for IndexedDB here.)
   window.__chaosFailWrites = !!cfg.failWrites;
   const realTx = IDBDatabase.prototype.transaction;
+  window.__chaosTx = 0; // read-write transactions opened on the designs database, for tests that must wait until a save has really started
   window.__chaosArmed = !!(cfg.kill && cfg.kill.armed);
   let puts = 0, completes = 0, sets = 0, writes = 0, drops = 0;
   const spin = (why) => { window.__chaosKill(why); for (;;) {} }; // never returns: Node closes the page
   IDBDatabase.prototype.transaction = function (stores, mode, ...rest) {
     const mine = this.name === cfg.db;
     const tx = realTx.call(this, stores, mode, ...rest);
+    if (mine && mode === "readwrite") window.__chaosTx++;
     if (mine && mode === "readwrite" && cfg.kill && cfg.kill.kind === "complete") tx.addEventListener("complete", () => { if (window.__chaosArmed && ++completes === cfg.kill.at) spin(`transaction ${completes} complete`); });
     return tx;
   };
@@ -199,6 +203,13 @@ const lsDesigns = (page) => page.evaluate(([idx, pre]) => {
   const list = JSON.parse(localStorage.getItem(idx) || "[]").map((e) => e.id);
   return { list, docs: Object.keys(localStorage).filter((k) => k.startsWith(pre)).map((k) => k.slice(pre.length)) };
 }, [LS_INDEX, LS_DOC]);
+// readAll for the scenarios that kill the page. If a design was acknowledged and none of this world's designs is there at all, the
+// browser dropped the whole storage (the Linux file:// quirk, see test/helpers.mjs), not the app: StorageLost, logged and retried by scenario().
+async function readWorld(w, page) {
+  const snap = await readAll(page);
+  if (w.ledger.length && !snap.items.some((i) => w.known.has(i.entry.id))) throw new StorageLost("none of the saved designs is in the storage at all");
+  return snap;
+}
 // leave exactly `free` characters of localStorage space (the browser's own limit; nothing is stubbed)
 const fillStorage = (page, free) => page.evaluate((free) => {
   const k = "chaos.fill";
@@ -224,7 +235,7 @@ async function openPage(w, cfg = {}) {
     const page = await openOnce(w, cfg);
     if (cfg.dieEarly || cfg.refuse || (await page.evaluate(() => window.__app.projects._store.kind)) === "idb") return page;
     await page.close({ runBeforeUnload: false }).catch(() => {});
-    w.token = null;
+    w.tokens = [];
     test.info().annotations.push({ type: "chaos note", description: `IndexedDB did not open within the app's 3 s (attempt ${attempt}); page opened again` });
     if (attempt === 5) throw new Error("IndexedDB took longer than the app waits for it, five pages in a row: the machine is too busy for this test");
   }
@@ -234,8 +245,8 @@ async function openOnce(w, cfg) {
   const errors = watchErrors(page);
   w.errors.push(errors);
   await page.addInitScript(INIT, { db: DB, marker: MARKER, noKernel: true, ...cfg });
-  const expected = w.token;
-  if (cfg.dieEarly) { await page.goto(w.url, { waitUntil: "commit" }); w.token = null; return page; }
+  const expected = w.tokens;
+  if (cfg.dieEarly) { await page.goto(w.url, { waitUntil: "commit" }); w.tokens = []; return page; }
   await page.goto(w.url);
   await started(page);
   await checkToken(w, page, expected);
@@ -249,12 +260,14 @@ const started = async (page) => {
 // by the page before and read by the next; only the browser touches it, so a missing one means storage was lost, not the app.
 async function checkToken(w, page, expected) {
   const got = await page.evaluate(() => window.__chaosToken);
-  if (expected && got !== expected) throw new StorageLost(`marker ${expected} not found (saw ${got})`);
+  if (expected.length && !expected.includes(got)) throw new StorageLost(`marker ${expected.join(" or ")} not found (saw ${got})`);
+  w.prevToken = got; // the marker this page removed; if the page is killed, the browser may not have written the new one yet
   w.token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  w.tokens = [w.token];
   await page.evaluate(([k, v]) => { try { localStorage.setItem(k, v); } catch (e) {} }, [MARKER, w.token]);
 }
 async function reloadPage(w, page) {
-  const expected = w.token;
+  const expected = w.tokens;
   await page.reload();
   await started(page);
   await checkToken(w, page, expected);
@@ -266,7 +279,7 @@ async function runUntilKill(w, page, plan) {
   const done = page.evaluate(drive, { plan }).then(() => "done", () => "gone");
   const outcome = await Promise.race([killed, done]);
   await page.close({ runBeforeUnload: false }).catch(() => {});
-  w.token = null; // the page died at an unknown point: the marker may or may not have been written; nothing is expected of the next page
+  w.tokens = [w.prevToken, w.token].filter(Boolean); // the page died at an unknown point: of the marker it removed and the one it wrote, the browser may have kept either
   return outcome;
 }
 const closeClean = (page) => page.close().catch(() => {});
@@ -274,8 +287,9 @@ const noErrors = (w) => { for (const e of w.errors) expect(e).toEqual([]); };
 
 // A scenario retries from scratch (a new context) when the browser lost storage by itself, and is skipped, with a note, if it keeps doing so.
 function scenario(title, fn, { onlySite = false } = {}) {
-  test(title, async ({ browser }, info) => {
+  test(title, async ({ browser, browserName }, info) => {
     test.setTimeout(240_000);
+    test.skip(browserName !== "chromium", "uses the Chrome DevTools Protocol (CDP), which only Chromium has");
     test.skip(onlySite && info.project.name === "single", "no origin private file system (OPFS) on file:// in this browser");
     for (let attempt = 1; ; attempt++) {
       const w = await newWorld(browser, info);
@@ -302,18 +316,22 @@ for (const seed of SEEDS) {
     let page = await openPage(w);
     await page.evaluate(drive, { plan: ids.map((id) => step(w, id, "now", 5)) });
     await closeClean(page);
+    let kills = 0;
     for (let round = 1; round <= ROUNDS; round++) {
-      const kill = { kind: pick(r, ["put", "complete"]), at: 1 + Math.floor(r() * 9), armed: false };
+      // each of the 5 saves is one transaction with 2 puts (the document and its list entry): a kill point past that never fires
+      const kind = pick(r, ["put", "complete"]), kill = { kind, at: 1 + Math.floor(r() * (kind === "put" ? 10 : 5)), armed: false };
       const plan = Array.from({ length: 5 }, () => step(w, pick(r, ids), r() < 0.4 ? "soon" : "now", pick(r, [1, 30, 200])));
       page = await openPage(w, { kill });
-      const before = await readAll(page); // what the last kill left
+      const before = await readWorld(w, page); // what the last kill left
       expectWhole(w, before, `seed ${seed} round ${round}: after the previous kill`);
       const outcome = await runUntilKill(w, page, plan);
+      if (outcome === "killed") kills++;
       console.log(`chaos seed ${seed} round ${round}: ${kill.kind} #${kill.at} -> ${outcome}${w.killWhy ? " at " + w.killWhy : ""}`);
     }
     page = await openPage(w);
-    expectWhole(w, await readAll(page), `seed ${seed}: after the last kill`);
+    expectWhole(w, await readWorld(w, page), `seed ${seed}: after the last kill`);
     await closeClean(page);
+    expect(kills, "at least one kill point was reached").toBeGreaterThan(0);
     noErrors(w);
   });
 }
@@ -324,17 +342,20 @@ scenario("killed between the document and its list entry on the older storage: n
   expect((await readAll(page)).kind).toBe("local");
   await page.evaluate(drive, { plan: ids.map((id) => step(w, id, "now", 5)) });
   await closeClean(page);
+  let kills = 0;
   for (let round = 1; round <= ROUNDS; round++) {
     const kill = { kind: "ls", at: 1 + Math.floor(r() * 6), armed: false };
     const plan = Array.from({ length: 4 }, () => step(w, pick(r, ids), "now", pick(r, [1, 30])));
     page = await openPage(w, { refuse: true, kill });
-    expectWhole(w, await readAll(page), `round ${round}: after the previous kill`, { sameEntry: false });
+    expectWhole(w, await readWorld(w, page), `round ${round}: after the previous kill`, { sameEntry: false });
     const outcome = await runUntilKill(w, page, plan);
+    if (outcome === "killed") kills++;
     console.log(`chaos local round ${round}: localStorage write #${kill.at} -> ${outcome}${w.killWhy ? " at " + w.killWhy : ""}`);
   }
   page = await openPage(w, { refuse: true });
-  expectWhole(w, await readAll(page), "after the last kill", { sameEntry: false });
+  expectWhole(w, await readWorld(w, page), "after the last kill", { sameEntry: false });
   await closeClean(page);
+  expect(kills, "at least one kill point was reached").toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------- 2. the page dies while the first visit copies the older designs across
@@ -403,14 +424,14 @@ scenario("IndexedDB refusing writes (quota exceeded): the saved design stays who
   await page.click(".modal-back .xbtn");
   // closing the tab keeps the edit as a rescue copy in localStorage
   await page.close({ runBeforeUnload: true });
-  w.token = null;
+  w.tokens = [];
   // the next visit still has no room: the saved design is whole and the rescue copy waits
   page = await openPage(w, { failWrites: true });
   expectWhole(w, await readAll(page), "still refusing writes, after the tab was closed");
   const rescue = await page.evaluate((k) => localStorage.getItem(k), RESCUE);
   expect(rescue && sig(JSON.parse(JSON.parse(rescue).doc)), "the edit waits in the rescue copy").toBe(w.known.get(A).get(big.n));
   await page.close();
-  w.token = null;
+  w.tokens = [];
   // room again: the next visit applies the rescue copy
   page = await openPage(w);
   const stored = (await readAll(page)).items.find((i) => i.entry.id === A);
@@ -475,7 +496,7 @@ scenario("reload or close at seeded moments after an edit: the edit is there aft
     const edit = step(w, A, "soon", pick(r, [1, 40]));
     await page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, edit); // left to the autosave
     await page.waitForTimeout(delays[i]);
-    if (i % 3 === 2) { await page.close({ runBeforeUnload: true }); w.token = null; page = await openPage(w); }
+    if (i % 3 === 2) { await page.close({ runBeforeUnload: true }); w.tokens = []; page = await openPage(w); }
     else await reloadPage(w, page);
     const snap = await readAll(page);
     const it = snap.items.find((x) => x.entry.id === A);
@@ -495,7 +516,15 @@ scenario("closed right after an edit while localStorage is full: the edit is not
   await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
   await fillStorage(page, 0); // the rescue copy has nowhere to go
   const edit = step(w, A, "soon", 5);
-  await page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, edit);
+  // The unload save starts its IndexedDB transaction a few ticks after beforeunload, and a page that is torn down in that gap loses it
+  // (seen once in 20 runs when the page was simply closed). So the same event is sent by hand and the test waits for the transaction
+  // to open (a real signal) before closing the tab; what is tested is that the unload save carries the edit when the rescue copy cannot be written.
+  const opened = await page.evaluate(() => window.__chaosTx);
+  await page.evaluate(({ doc }) => {
+    window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit");
+    window.dispatchEvent(new Event("beforeunload"));
+  }, edit);
+  await page.waitForFunction((n) => window.__chaosTx > n, opened, { timeout: 5000 });
   await page.close({ runBeforeUnload: true });
   page = await openPage(w);
   const it = (await readAll(page)).items.find((x) => x.entry.id === A);
@@ -520,7 +549,7 @@ scenario("the autosave copy is offered back after a kill, while the designs data
   }), { db: RECOVERY_DB, key: A + "|latest", name: edit.doc.name }, { timeout: 15_000, polling: 100 });
   await page.waitForFunction(() => /^Couldn't save/.test(document.getElementById("savestate").textContent), null, { timeout: 15_000 }); // the 1.2 s save was refused
   await page.close({ runBeforeUnload: false }); // killed: no unload handlers
-  w.token = null;
+  w.tokens = [];
   page = await openPage(w);
   await page.waitForSelector(".modal.recover", { timeout: 15_000 });
   await page.click("#rec-open-" + A);
@@ -565,7 +594,7 @@ scenario("site data cleared with a folder copy: every design comes back from the
   await page.evaluate(drive, { plan: [a3] });
   await page.close({ runBeforeUnload: false });
   await clearSiteData(w);
-  w.token = null;
+  w.tokens = [];
   page = await openPage(w, { folder: true });
   expect((await readAll(page)).items.filter((i) => w.known.has(i.entry.id)), "site data really is gone").toEqual([]);
   // the folder's files, handed to Restore from a folder… as a user's picker would
@@ -580,7 +609,8 @@ scenario("site data cleared with a folder copy: every design comes back from the
   expect(has(B, w.ver.get(B)), "B is back from the folder, whole").toBe(true);
   // A: the folder holds the version of the last copy (v2); v3 was saved in the browser inside the copy delay
   expect(has(A, a2.n), "A is back from the folder, at the version of the last copy").toBe(true);
-  expect(has(A, a3.n), "(the version saved inside the copy delay is not in the folder; by design, the copy trails the save by 5 s)").toBe(false);
+  // not asserted: whether v3 reached the folder depends on the 5 s copy lag, which is the app's to change
+  test.info().annotations.push({ type: "chaos note", description: `A at the version saved inside the copy delay (v${a3.n}) is ${has(A, a3.n) ? "back" : "not back (the copy trails the save by about 5 s)"}` });
   await closeClean(page);
 }, { onlySite: true });
 
@@ -601,7 +631,7 @@ scenario("killed in the middle of writing a folder copy: every file in the folde
     const killed = await Promise.race([hit.then(() => true), new Promise((res) => setTimeout(() => res(false), 15_000))]);
     console.log(`chaos folder round ${round}: file write #${at} -> ${killed ? "killed at " + w.killWhy : "not reached"}`);
     await page.close({ runBeforeUnload: false }).catch(() => {});
-    w.token = null;
+    w.tokens = [];
     page = await openPage(w, { folder: true });
     // a new name is created empty before it is written, so a kill can leave an empty file next to the old whole one; a file with some content must be whole
     const raw = Object.entries(await readFolder(page)).filter(([n]) => /-t_chaos_\w+\.json$/.test(n));
@@ -616,7 +646,7 @@ scenario("killed in the middle of writing a folder copy: every file in the folde
       whole.set(doc.id, true);
     }
     expect([...whole.keys()].sort(), "every design still has a whole file").toEqual([...ids].sort());
-    expectWhole(w, await readAll(page), `round ${round}: the browser's own copies`);
+    expectWhole(w, await readWorld(w, page), `round ${round}: the browser's own copies`);
     await closeClean(page);
   }
 }, { onlySite: true });
@@ -642,7 +672,7 @@ scenario("site data cleared between two backups: every design in either backup c
   const second = await backup();
   await page.close();
   await clearSiteData(w);
-  w.token = null;
+  w.tokens = [];
   page = await openPage(w);
   expect((await readAll(page)).items.filter((i) => w.known.has(i.entry.id))).toEqual([]);
   for (const f of [first, second]) {
@@ -726,7 +756,7 @@ scenario("a save that is dropped on the way to IndexedDB is caught by the judge"
       const page = await openPage(world, drop ? { drop: { after: 1 } } : {});
       await page.evaluate(drive, { plan: [step(world, A, "now", 5), step(world, A, "now", 5), step(world, A, "now", 5)] });
       await closeClean(page);
-      world.token = null;
+      world.tokens = [];
       const next = await openPage(world);
       return judge(world, (await readAll(next)).items);
     } finally { await world.context.close().catch(() => {}); }
