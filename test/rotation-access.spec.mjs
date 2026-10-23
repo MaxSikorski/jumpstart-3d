@@ -453,7 +453,7 @@ test("touch (tablet): the Snap 15 / Free switch changes what a finger drag turns
       expect(pl, axis + " arc on screen").not.toBeNull();
       await touch(cdp, "touchStart", [pl.start]); // sets the touch mode
       const picked = await p.evaluate(({ x, y }) => { const h = window.__app.beginner.pickHandle({ clientX: x, clientY: y }); return h && h.userData.handle.type === "rot" ? h.userData.handle.axis : null; }, pl.start);
-      await touch(cdp, "touchEnd", []);
+      await touch(cdp, "touchCancel", []); // (a lift with no movement is a tap, which would deselect the box)
       expect(picked, `a finger 14 px from the ${axis} arc`).toBe(axis);
     }
 
@@ -567,6 +567,61 @@ test("phone: the turn buttons and the Snap 15 / Free switch are 44 px targets", 
     const advanced = await measure("#cmd .rot-btn button");
     expect(advanced.length).toBe(2);
     for (const [name, w, h] of advanced) { expect(w, name).toBeGreaterThanOrEqual(44); expect(h, name).toBeGreaterThanOrEqual(44); }
+  } finally { await ctx.close(); }
+  expect(errs).toEqual([]);
+});
+
+test("touch (tablet): a tap on another box that lands inside a selected box's arc pick zone selects that box (Multi-select adds it); a drag from the same spot still turns", async ({ browser, browserName }, info) => {
+  test.skip(browserName !== "chromium", "touch events through the DevTools protocol");
+  const { ctx, p, cdp, errs } = await touchPage(browser, info, tablet);
+  try {
+    await loadDoc(p, newDoc("rotation tap", "beginner", { bodies: [body("b1", "Box", prim("box", BOX), M0), body("b2", "Box 2", prim("box", BOX), tr(30 + 46, -12, 5))] }));
+    await p.evaluate(() => window.__app.vp.fit(window.__app.scene.allBox()));
+    await settle(p);
+    const sel = () => p.evaluate(() => window.__app.sel.join(","));
+    const selectB1 = async () => {
+      await p.evaluate(() => window.__app.select(["b1"]));
+      await expect.poll(() => rotHandles(p)).toEqual(["x", "y", "z"]); // the arcs are redrawn on a frame after the selection
+    };
+    await selectB1();
+    // a spot on the second box that the finger-sized arc pick would claim (so the arc would win the press)
+    const spot = await p.evaluate(() => {
+      const { vp, scene, beginner } = window.__app, r = vp.canvas.getBoundingClientRect();
+      vp.touchMode = true;
+      for (let y = 0; y < r.height; y += 3) for (let x = 0; x < r.width; x += 3) {
+        const e = { clientX: r.left + x, clientY: r.top + y }, f = scene.pickFace(e), h = beginner.pickHandle(e);
+        if (f && f.body === "b2" && h && h.userData.handle.type === "rot" && document.elementFromPoint(e.clientX, e.clientY) === vp.canvas) return { x: e.clientX, y: e.clientY };
+      }
+      return null;
+    });
+    expect(spot, "a spot on the second box inside the arc pick zone").not.toBeNull();
+    const tapAt = async () => { await p.waitForTimeout(450); /* (two taps closer than 380 ms are a double-tap) */ await touch(cdp, "touchStart", [spot]); await touch(cdp, "touchEnd", []); };
+
+    await tapAt(); // plain tap: the box under the finger is selected, nothing turned
+    await expect.poll(sel).toBe("b2");
+    expect(await p.evaluate(() => window.__store.undoStack.length)).toBe(0);
+    expect(await p.evaluate(() => window.__store.doc.bodies.map((b) => b.m))).toEqual([M0, tr(30 + 46, -12, 5)]);
+
+    await selectB1();
+    await p.evaluate(() => document.getElementById("bb-multi").click()); // Multi-select on: the tap adds the box
+    await expect(p.locator("#bb-multi")).toHaveAttribute("aria-pressed", "true");
+    await tapAt();
+    await expect.poll(sel).toBe("b1,b2");
+    await tapAt(); // and a second tap on it takes it out again
+    await expect.poll(sel).toBe("b1");
+    await p.evaluate(() => document.getElementById("bb-multi").click());
+
+    // a drag that starts on the same spot is still the arc's: it turns the first box
+    await expect.poll(() => rotHandles(p)).toEqual(["x", "y", "z"]);
+    const arc = await p.evaluate(({ x, y }) => { const h = window.__app.beginner.pickHandle({ clientX: x, clientY: y }); return h && h.userData.handle.axis; }, spot);
+    expect(arc, "the press picks an arc").toBeTruthy();
+    const pl = await plan(p, "arc", arc, 30, 6);
+    expect(pl, "the arc on screen").not.toBeNull();
+    await touch(cdp, "touchStart", [pl.start]);
+    await touchTo(cdp, pl.start, pl.end);
+    await touch(cdp, "touchEnd", []);
+    await expect.poll(() => p.evaluate(() => window.__store.doc.bodies[0].m)).not.toEqual(M0);
+    expect(await sel()).toBe("b1");
   } finally { await ctx.close(); }
   expect(errs).toEqual([]);
 });

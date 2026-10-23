@@ -214,7 +214,7 @@ export function makeGizmo(vp) {
       const pickOf = (h) => { let o = h.object; while (o && !o.userData.axis) o = o.parent; return o; };
       const first = hits.map(pickOf).find((o) => o && !o.userData.ring);
       if (first) return first;
-      if (vp.touchMode) {
+      if (vp.touchMode && !vp.tapping) { // (a finger's tap replayed by the viewport is a click on what is under it: only a handle it hits exactly counts)
         const arc = nearestArcAt(vp, e, rings.filter((r) => r.visible).map((r) => ({ key: r, pts: arcPoints(r, 0.95) })));
         if (dp <= PAD_TOUCH_PX && (!arc || dp < arc.d)) return pad;
         return arc && arc.key;

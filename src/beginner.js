@@ -690,7 +690,7 @@ export function initBeginner(app) {
   });
 
   function pickHandle(e) {
-    if (!H.visible) return null;
+    if (!H.visible || vp.tapping) return null; // jumpstart-3d: rotation access. a finger's tap (replayed by the viewport) is a click on what is under it, not on a handle
     vp.ray(e);
     const objs = [...footprint, topHandle, lift, ...rotHandles].filter((o) => o.visible);
     const hits = vp.raycaster.intersectObjects(objs, true);
@@ -804,8 +804,9 @@ export function initBeginner(app) {
       } else if (d.up) d.up(e);
       vp.request();
       if (d.kind === "pivot" && vp.touchMode && !d.moved()) return "tap"; // a finger on the dot that did not move: the viewport treats it as a tap on what is under it
+      if (d.kind === "rot" && vp.touchMode && !d.moved) return "tap"; // jumpstart-3d: rotation access. a finger on an arc that did not move: the viewport treats it as a tap on what is under it
     },
-    cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); },
+    cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching
@@ -959,9 +960,11 @@ export function initBeginner(app) {
       // (the shared up() clears drag before calling this one's up, so keep our own handle)
       const orbit = app.scene.bodyTightBox(body.id), stopEsc = onEscape(() => handler.cancel()); // jumpstart-3d: pivot
       fb.show(center, axisV, orbit ? orbit.getCenter(new THREE.Vector3()) : center); // jumpstart-3d: pivot. the dashed ring
+      const s0 = vp.local(e);
       const rd = drag = {
-        kind: "rot", axis: info.axis, center, axisV, angle: 0, radius: h.scale.x, restore: stopEsc,
+        kind: "rot", axis: info.axis, center, axisV, angle: 0, radius: h.scale.x, restore: stopEsc, moved: false,
         move(ev) {
+          if (!rd.moved) { const [x, y] = vp.local(ev); if (Math.hypot(x - s0[0], y - s0[1]) < 3) return; rd.moved = true; } // jumpstart-3d: rotation access. a finger's jitter is not a turn
           const p = vp.rayPlane(ev, plane);
           if (!p) return;
           let a = ((angOf(p) - a0) * 180) / Math.PI;
@@ -972,7 +975,7 @@ export function initBeginner(app) {
           const R = turnAbout(center, axisV, a);
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; stopEsc(); fb.hide(); if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
+        up() { const a = rd.angle; drag = null; stopEsc(); fb.hide(); if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told && !(vp.touchMode && !rd.moved)) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
       };
       return true;
     }

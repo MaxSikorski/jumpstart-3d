@@ -4574,7 +4574,14 @@ export function initAdvanced(app) {
           if (restore) restore();
           changed();
         },
-        up(e) { if (e && e.type === "pointercancel") return def.handler.cancel(); if (drag) { if (drag.finish) drag.finish(); fb.hide(); drag = null; ringReadout = null; tag.hidden = true; app.clearSnapGuides(); vp.canvas.style.cursor = "default"; def.render(); } },
+        up(e) {
+          if (e && e.type === "pointercancel") return def.handler.cancel();
+          if (!drag) return;
+          const tap = vp.touchMode && drag.ring && !drag.moved; // jumpstart-3d: rotation access. a finger on a ring that did not move: the viewport treats it as a tap on what is under it
+          if (drag.finish) drag.finish();
+          fb.hide(); drag = null; ringReadout = null; tag.hidden = true; app.clearSnapGuides(); vp.canvas.style.cursor = "default"; def.render();
+          if (tap) return "tap";
+        },
       },
     };
     const angInputs = [];
@@ -4622,9 +4629,11 @@ export function initAdvanced(app) {
       const orbit = new THREE.Box3();
       for (const id of st.ids) { const x = scene.bodyTightBox(id); if (x) orbit.union(x); }
       fb.show(center, axis, orbit.isEmpty() ? center : orbit.getCenter(new THREE.Vector3())); // jumpstart-3d: pivot. the dashed ring through the selection's orbit
+      const s0 = vp.local(e);
       drag = {
-        ring: ringObj,
+        ring: ringObj, moved: false,
         move(ev) {
+          if (!drag.moved) { const [x, y] = vp.local(ev); if (Math.hypot(x - s0[0], y - s0[1]) < 3) return; drag.moved = true; } // jumpstart-3d: rotation access. a finger's jitter is not a turn
           const deg = turn(ev); // 15° steps; Shift or Free: the pointer's own angle
           st.rot.copy(new THREE.Quaternion().setFromAxisAngle(axis, (deg * Math.PI) / 180).multiply(q0));
           ringReadout = deg;

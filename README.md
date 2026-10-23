@@ -27,7 +27,7 @@ Pick one:
 - **Offline:** download
   [jumpstart-3d.html](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)
   and double-click it. That one file is the whole app. It works without an
-  internet connection (only the fonts come from the web).
+  internet connection; the fonts are inside the file too.
 - **macOS app:** the Electron wrapper shared by a community member in
   [issue #11](https://github.com/MaxSikorski/jumpstart-3d/issues/11) also
   works. In a folder containing `jumpstart-3d.html`, a `main.js` that loads it,
@@ -137,7 +137,7 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
   permission first
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Forty-four step-by-step tutorials with built-in animations
+- Forty-four step-by-step tutorials with built-in animations (the community build adds ten more; see below)
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
@@ -430,13 +430,14 @@ UPSTREAM-README.md         the author's README from the source release
 - Hole patterns: a Hole pattern dialog (Advanced › Create › Advanced Create) and `JS3D.holePattern` / the `add_hole_pattern` tool lay out a grid, a staggered grid or a circle of round holes on a flat face and write them as one ordinary Hole feature (every position in one `hole` mod, so it edits in the Hole dialog and undoes in one step); square, hex and slot holes are written as one sketch with an outline per hole and one Extrude cut instead. The face's own edges set the grid's directions, and holes that would not fit inside the face and its margin are left out (`src/holepattern.js`)
 - Gears: a Gear dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.gear` / the `add_gear` tool make a spur gear, a straight bevel gear or a rack from a module and a tooth count, as ordinary hidden sketches of straight lines plus the app's own Extrude (two sketches and a straight Loft for a bevel gear, its bore a Hole feature). The teeth follow the ISO 53 basic rack at 20° (addendum 1 module, dedendum 1.25), eight points a flank, with a print clearance taken off every tooth; fewer than 17 teeth are drawn plain (not undercut) with a warning. Nothing in the kernel changed (`src/gears.js`)
 - Name plates: a Name plate dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.namePlate` / the `add_name_plate` tool make a plate sized to one line of text (rounded or pill, with a hanging hole or two screw holes), as one hidden sketch plus the app's own Extrude, with the letters either a second body in its own colour (a Text shape) or cut in (the Deboss text feature). The text is measured on the main thread from the same outlines the drawing code uses, and characters the fonts lack are refused. Nothing in the kernel changed (`src/nameplate.js`)
-- Sketch move: Move/Copy takes one sketch instead of bodies and changes the sketch's plane (`o`, `x`, `n`), so the file format is unchanged and features that use the sketch rebuild from the new plane. A copy is a new sketch; the features stay on the original (`// jumpstart-3d: sketch move` blocks in `moveCmd`, `src/advanced.js`)
+- Sketch move and turn: Move/Copy also takes a sketch, picked in the viewport, in the Browser or from the dialog's list, and moves or turns it by changing its plane (`o`, `x`, `n`). The file format is unchanged, and features that use the sketch rebuild from the new plane. A copy is a new sketch; the features stay on the original (`// jumpstart-3d: sketch move` blocks in `moveCmd`, `src/advanced.js`)
 - Rotation access: `src/rotationui.js` holds the drag-angle rule (15°, or the pointer's own angle with Shift or Free), the turn matrix, the Snap 15° / Free switch and the nearest-arc touch pick. Beginner's arc drag and Advanced's ring drag both use it; Advanced Modify starts with Move / Rotate (Move/Copy opened in Free in 3D); Beginner's inspector has typed "Turn by" fields. No stored-data, kernel or network change
 - Pivot: `src/pivot.js` holds the pivot state (a chosen world point, or the default: a body's own middle, or the union box's middle of several bodies taken once and kept in the first body's frame), the dot, the snap candidates (tight box middle, `faceInfo.c`, `edgeInfo.m/a/b` carried by each body's matrix: no kernel change), the Pivot X/Y/Z fields, and the live gizmo in Advanced; `src/rotationui.js` gains the shared gizmo (arrows, rings, pad), the dashed ring and angle pill, and the ring and axis drag maths. Nothing is saved: no stored-data, kernel or network change
 - Underside view: seen from below the plate, the Beginner workplane and the Advanced dark-theme ground turn nearly clear (faint lines stay), so you can see the underside of your part (a few lines in `src/viewport.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
   design through the same 38 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
 - Boolean fixes in the geometry engine: a torus no longer disappears from a group, two spheres offset along x intersect and cut to the right volume, and an empty result says "Nothing is left" instead of showing a raw engine message (a marked block in `third_party/replicad/src/shapeFunctions/operations.ts` and `src/kernel.js`; `test/booleans.spec.mjs`)
+- Joined torus groups export at the right size: their STL was about 3% short
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view
@@ -508,6 +509,7 @@ UPSTREAM-README.md         the author's README from the source release
   other agent (Codex, Hermes, OpenCode, Gemini CLI, Cursor...) set the server
   up for itself; `screenshot` can save its picture to a file for models that
   cannot see images
+- Ten more tutorials on top of the author's forty-four (five Beginner, five Advanced, 54 in all): they teach the 41 toolbar buttons that had no tutorial, such as copy and paste, mirror, lock, name plates, fasteners, gears and hole patterns. The lessons are in `src/tutorial_data_community.js`; the author's tutorial files are untouched
 - A regression test suite (`npm test`) that drives the real app in a headless
   browser on both builds; a short part gates every pull request and the rest runs nightly
 
