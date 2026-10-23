@@ -32,6 +32,7 @@
   "import-step.json": 1,
   "import-stl-mesh.json": 1,
   "nameplate.json": 5,
+  "painted-cube.json": 1,
   "parametric-beginner.json": 1,
   "parametric-features.json": 1,
   "parametric-plate.json": 1

@@ -390,5 +390,15 @@
     "3mf": "d470ed5130a094c6a43bf16156affe415143d327fc213b29296cec421194a01a",
     "step": "c49042144963bbfd239e25226deeebe26878bea526d38bff91e7cb9c4dc217ad",
     "dxf": "d52d8151c6b8e838cadcf6f8e7c103d09d7194667c0a37b82814ded1a61ac621"
+  },
+  "painted-cube.json": {
+    "volumes": {
+      "b1 Cube": 8000
+    },
+    "stlTriangles": 12,
+    "stl": "704741e88a33c5ad29870a99645d88b70b5eb5a6690b97c18737bc34614d0deb",
+    "obj": "250e61e153e01975331572717f35ef65ae2a25db523fd4e4b91637527b43bcab",
+    "3mf": "8b5dc0598cacd12becbac374bc4ef7e61cedd3b676c14363b6866722b7142e0b",
+    "step": "dbbfa1389e1093e0a90cb36ebe046665aee8d0f36d4933442921c254c24bf9d0"
   }
 }

@@ -2,6 +2,7 @@
 // spirit of a slicer preview (Orca Slicer): layers with walls, infill and top/bottom skins,
 // overhangs, normal or tree supports, a strength / weak-point map and print estimates.
 // It never makes G-code: it is a preview to learn from, not a slicer.
+import { packPaint, unpackPaint } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 import * as THREE from "three";
 import { store, findBody } from "./store.js";
 import { el, fmt } from "./util.js";
@@ -938,7 +939,17 @@ export function initPrintSim(app, X) {
     buildPaint();
   }
   // a filament, paint or printer change: plate area, plan, legend, panel
+  // jumpstart-3d: painted 3MF. The filaments and paint live in the design (doc.printPaint, see paint3mf.js), so the 3MF export and a reopened design have them
+  const mirrorPaint = () => {
+    const ids = store.doc.bodies.filter((b) => !b.hole && st.slotOf.has(b.id)).map((b) => b.id);
+    const pp = packPaint(st, ids, (id) => scene.views.get(id)?.data?.faceGroups?.length ?? 0);
+    const same = JSON.stringify(pp) === JSON.stringify(store.doc.printPaint ?? null);
+    if (pp) store.doc.printPaint = pp; else delete store.doc.printPaint;
+    return !same;
+  };
+  store.on((kind) => { if (kind === "load") unpackPaint(store.doc.printPaint, st); else if (kind === "change") mirrorPaint(); }); // after an undo the design's older copy gets the sim's paint again
   function filamentsChanged() {
+    if (mirrorPaint()) app.projects.changed();
     buildPlate();
     refreshPlan();
     buildDocks();
