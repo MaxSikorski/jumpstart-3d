@@ -227,7 +227,7 @@
     "stlTriangles": 8544,
     "stl": "cee50fdbedb3934cf07c17ce7b1e4200fd475c515106b8ec488c52c541fbd3a1",
     "obj": "6e2ac6670a655bbebfc348a5bd687d12e7393fd7ad2c107b7d91360105abf6e7",
-    "3mf": "385820950c3da747c73059b6d7418fd0b6286a1c562c62ece4de2d92ca203326",
+    "3mf": "da23fc5755e6dea466f310fa4ac32668fa311315ce6a16a8746e07bb9d9b1c70",
     "step": "c500aadbd9747f62551e60d71c278111b379113048d14dcfbca2ede5c727d773"
   },
   "parametric-plate.json": {
@@ -341,7 +341,7 @@
     "stlTriangles": 34956,
     "stl": "8d8ec5641e6dc456499558c0c8924984e9b141fa76878712e19eb378441e8c5e",
     "obj": "d41ebde2cea28f320dfe1e88dd7eed438c3ff601f31bc401eb337315df3a7a5d",
-    "3mf": "139aab901c259aafeb68418f057daf444508768b954e3a4c72e96b94739bafd8",
+    "3mf": "d0a9b12dafe4d643d05205aa469ddc09275b88389978ce925cee5181e7b9288e",
     "step": "80f3692edc5e20443a3610f551bba4121a99e7395a80c535f0bb05c13a07d3aa"
   },
   "holepattern.json": {
