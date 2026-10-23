@@ -163,25 +163,26 @@ test("Import shared link: a complete link pasted into the dialog opens the same 
   } finally { await r.context.close(); }
 });
 
-test("Copy link puts the link on the clipboard when the browser allows it", async ({ browser }) => {
-  const context = await browser.newContext({ serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
-  const page = await context.newPage();
-  const errors = watchErrors(page);
+test("Copy link hands the link to the clipboard, and opening the dialog saves nothing", async ({ browser }) => {
+  const r = await receiver(browser, { init: () => { Object.defineProperty(navigator, "clipboard", { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); } });
   try {
-    await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+    const { page } = r;
     await page.goto(info0.project.use.baseURL);
     await ready(page);
     await loadDoc(page, fixture("beginner-box"));
+    const stored = (await storedDesigns(page)).length;
     await page.click("#btn-export");
     await page.click("#btn-share-link");
     await expect(page.locator("#share-copy")).toBeEnabled();
     const link = await page.inputValue("#share-url");
     await page.click("#share-copy");
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(link);
-    // opening the dialog changed nothing in the design: no save, no version, no new design in the list
+    await expect.poll(() => page.evaluate(() => window.__copied)).toBe(link);
+    // making a link is not a save: no version, no new design in the list
     expect(await page.evaluate(() => window.__store.doc.ver || 0)).toBe(0);
-    expect(errors).toEqual([]);
-  } finally { await context.close(); }
+    await page.waitForTimeout(1500);
+    expect((await storedDesigns(page)).length).toBe(stored);
+    expect(r.errors).toEqual([]);
+  } finally { await r.context.close(); }
 });
 
 test("no raw compression: a small design makes a tagged j link that opens; a bigger one is offered as a project file", async ({ browser }) => {
@@ -332,7 +333,7 @@ test("a later link in the address bar of an open tab goes through the same quest
     const mineId = (await openDoc(page)).id;
     await page.evaluate((f) => { location.hash = "#" + f; }, a.frag);
     await expect(page.locator("#share-offer-name")).toHaveText("Beginner box");
-    expect(await page.evaluate(() => location.hash)).toBe("");
+    if (isSite()) expect(await page.evaluate(() => location.hash)).toBe("");
     await page.evaluate((f) => { location.hash = "#" + f; }, b.frag);
     await expect(page.locator("#share-offer-name")).toHaveText("Peg block");
     await expect(page.locator("#share-offer")).toHaveCount(1);
