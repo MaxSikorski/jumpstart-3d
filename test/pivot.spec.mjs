@@ -560,8 +560,8 @@ test("Advanced: a resize handle that lies under a gizmo arrow is still grabbed (
   expect(await undoDepth()).toBe(depth + 1);
 });
 
-test("Advanced: Shift-click on the pivot dot toggles the body under it (the dot is not grabbed)", async () => {
-  const { b2 } = await open("advanced");
+for (const mode of ["beginner", "advanced"]) test(`${mode}: Shift-click on the pivot dot toggles the body under it (the dot is not grabbed)`, async () => {
+  const { b2 } = await open(mode);
   await clickBody("b1");
   await dragDot(await clientOf(centreOf(b2))); // the pivot now sits on the other box, on screen
   expectPoint(await pivotNow(), centreOf(b2));
@@ -720,6 +720,26 @@ test("touch (tablet, advanced): a double-tap on a selected body under its handle
     expect(await p.evaluate(() => window.__app.command.title)).toMatch(/box/i);
     expect(await matrixOf("b1", p)).toEqual(M0);
     expect(await undoDepth(p)).toBe(depth);
+  } finally { await ctx.close(); }
+  expect(errs).toEqual([]);
+});
+
+test("touch (tablet, beginner): a tap on the pivot dot where another body is selects that body", async ({ browser, browserName }, info) => {
+  test.skip(browserName !== "chromium", "touch events through the DevTools protocol");
+  const { ctx, p, errs } = await touchPage(browser, info, tablet);
+  try {
+    const { b1, b2 } = await open("beginner", p);
+    await p.evaluate(() => { const { vp, scene } = window.__app, c = scene.allBox().getCenter(vp.view.target.clone()), y = vp.project(c)[1]; vp.panBy(0, 0.25 * vp.h - y); });
+    await settle(p);
+    const s = await spotOn("b1", p);
+    await p.touchscreen.tap(s.x, s.y);
+    await expect.poll(() => p.evaluate(() => window.__app.sel.join(","))).toBe("b1");
+    await p.evaluate((c) => window.__app.pivot.set(window.__app.vp.view.target.clone().set(...c)), centreOf(b2)); // the pivot sits on the other body
+    const at = await dotClient(p);
+    await p.touchscreen.tap(at.x, at.y);
+    await expect.poll(() => p.evaluate(() => window.__app.sel.join(","))).toBe("b2");
+    expect(await matrixOf("b1", p)).toEqual(M0);
+    void b1;
   } finally { await ctx.close(); }
   expect(errs).toEqual([]);
 });

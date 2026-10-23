@@ -728,8 +728,9 @@ export function initBeginner(app) {
     wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e)); }, // jumpstart-3d: pivot
     down(e) {
       vpEl.querySelectorAll(".popover:not(.mirror-pop)").forEach((p) => p.remove());
-      const pg = pv.dotDown(e, "beginner"); // jumpstart-3d: pivot. the dot first: it only moves the pivot
-      if (pg) { drag = { kind: "pivot", move: pg.move, up: () => { drag = null; pg.finish(); }, restore: pg.cancel }; return true; }
+      // jumpstart-3d: pivot. The dot first: it only moves the pivot. Not with Shift/Ctrl/Meta or Multi-select on (those pick bodies), and not for the tap a finger lets the viewport route
+      const pg = e.shiftKey || e.ctrlKey || e.metaKey || multi || vp.tapping ? null : pv.dotDown(e, "beginner");
+      if (pg) { drag = { kind: "pivot", moved: pg.moved, move: pg.move, up: () => { drag = null; pg.finish(); }, restore: pg.cancel }; return true; }
       const h = pickHandle(e);
       rotKeys = null; // a click ends arrow-key turning (a rotation arc starts it again)
       if (h) return startHandle(e, h);
@@ -802,6 +803,7 @@ export function initBeginner(app) {
         else app.select(d.add ? [...d.base, ...hits] : hits);
       } else if (d.up) d.up(e);
       vp.request();
+      if (d.kind === "pivot" && vp.touchMode && !d.moved()) return "tap"; // a finger on the dot that did not move: the viewport treats it as a tap on what is under it
     },
     cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); },
   };
