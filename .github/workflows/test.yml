@@ -53,9 +53,9 @@ jobs:
           if [ "$count" -gt 0 ] && [ "$other" -eq 0 ]; then code=false; else code=true; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
-  # One job per build. pretest builds both outputs and runs the Node unit tests.
+  # One job per build and spec, side by side (each is about 1.5 minutes of tests). pretest builds both outputs and runs the Node unit tests.
   gate:
-    name: gate (${{ matrix.build }})
+    name: gate (${{ matrix.build }}, ${{ matrix.spec }})
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-24.04
@@ -64,6 +64,7 @@ jobs:
       fail-fast: false
       matrix:
         build: [site, single]
+        spec: [smoke, golden]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -74,9 +75,9 @@ jobs:
       - run: npm ci
       # no --with-deps: the runner image already has Chromium's libraries, and the apt mirror stalled that step for 10 to 12 minutes twice
       - run: npx playwright install chromium
-      - run: npm test -- test/smoke.spec.mjs test/golden.spec.mjs --project=${{ matrix.build }}
+      - run: npm test -- test/${{ matrix.spec }}.spec.mjs --project=${{ matrix.build }}
       # lets someone who reported an issue try a pull request's single file before a release exists
-      - if: ${{ success() && matrix.build == 'single' }}
+      - if: ${{ success() && matrix.build == 'single' && matrix.spec == 'smoke' }}
         uses: actions/upload-artifact@v7
         with:
           name: jumpstart-3d-single-file
@@ -86,7 +87,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: gate-report-${{ matrix.build }}
+          name: gate-report-${{ matrix.build }}-${{ matrix.spec }}
           path: |
             playwright-report/
             test-results/
