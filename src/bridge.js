@@ -10,7 +10,7 @@
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
-//              gear({kind, module, teeth, width, mate, base, bore, keyway, clear, at, name}) -> id   a spur gear, bevel gear or rack
+//              gear({kind, module, teeth, width, angle, hand, mate, base, bore, keyway, clear, at, name}) -> id   a spur, helical (angle 5-30, hand right/left, 12-30 teeth), bevel gear or rack
 //              namePlate({text, font, size, style, depth, thickness, margin, shape, holes, holeDia, color, textColor, at, name}) -> {plate, textBody, size}   a plate sized to one line of text, raised or cut in
 //              knurl({diameter, length, grooves, depth, bore, boreSize, at, name}) -> id   a knurled knob: a cylinder with straight V grooves and an optional round, hex or D bore
 //              spring({wire, outside, freeLength, turns, hand, ends, color, at, name}) -> id   a compression spring of round wire, open ends or ends cut flat

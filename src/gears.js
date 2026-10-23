@@ -7,10 +7,15 @@ import { uid, el, fmt, nextColor } from "./util.js";
 import { getUnit, withUnit } from "./units.js";
 
 const ALPHA = 20 * Math.PI / 180;
+// Helical limits (probe, 2026-10-23). The straight Loft pairs each tooth with the nearest one in the next section, so sections must be at
+// most HSTEP tooth pitches of twist apart (0.2 was stepped at 30 teeth, 0.1 held within 0.03 mm). Build time grows with sections x lines:
+// about 10 s at HFACES, a stalled engine (25 s) at 60 teeth, so teeth stop at 30.
+const HTEETH = [12, 30], HANGLE = [5, 30], HSTEP = 0.1, HFACES = 8000;
+const linesOf = (z) => z * (z <= 41 ? 18 : 16); // lines in one outline
 const PPF = 8; // points per flank: 10 changed the volume by 0.017 % for 25 % more time
-const KINDS = [["spur", "Spur"], ["bevel", "Bevel"], ["rack", "Rack"]];
-const NOUN = { spur: "Spur gear", bevel: "Bevel gear", rack: "Rack" };
-const TEETH = { spur: [12, 200], bevel: [12, 90], rack: [2, 100] };
+const KINDS = [["spur", "Spur"], ["helical", "Helical"], ["bevel", "Bevel"], ["rack", "Rack"]];
+const NOUN = { spur: "Spur gear", helical: "Helical gear", bevel: "Bevel gear", rack: "Rack" };
+const TEETH = { spur: [12, 200], helical: HTEETH, bevel: [12, 90], rack: [2, 100] };
 const WARN = { spur: 120, bevel: 60 };
 // DIN 6885-1 hub groove: bore up to (mm) -> [groove width b, depth below the bore t2]. Bores 6 to 58 only.
 const KEY = [[8, 2, 1.0], [10, 3, 1.4], [12, 4, 1.8], [17, 5, 2.3], [22, 6, 2.8], [30, 8, 3.3], [38, 10, 3.3], [44, 12, 3.3], [50, 14, 3.8], [58, 16, 4.3]];
@@ -24,9 +29,11 @@ const inv = (a) => Math.tan(a) - a;
 
 // Spur outline, counter-clockwise, tooth 0 pointing along +x. Tip and root are chords; below 42 teeth the root circle lies inside the
 // base circle, so the flank starts at the base circle and a radial line runs down to the root.
-function spurPoints(z, m, clear) {
-  const rp = m * z / 2, rb = rp * Math.cos(ALPHA), ra = rp + m, rf = rp - 1.25 * m, r0 = Math.max(rb, rf);
-  const psi = (r) => (Math.PI * m / 2 - clear) / (m * z) + inv(ALPHA) - inv(Math.acos(Math.min(1, rb / r)));
+// A helical gear's section square to the axis is a spur outline of the transverse module mt and pressure angle alpha; m stays the
+// normal module (tooth height), clear the normal clearance.
+function spurPoints(z, m, clear, mt = m, alpha = ALPHA) {
+  const rp = mt * z / 2, rb = rp * Math.cos(alpha), ra = rp + m, rf = rp - 1.25 * m, r0 = Math.max(rb, rf);
+  const psi = (r) => (Math.PI * mt / 2 - clear * mt / m) / (mt * z) + inv(alpha) - inv(Math.acos(Math.min(1, rb / r)));
   const t0 = Math.sqrt(Math.max(0, (r0 / rb) ** 2 - 1)), t1 = Math.sqrt((ra / rb) ** 2 - 1);
   const rs = Array.from({ length: PPF }, (_, i) => rb * Math.sqrt(1 + (t0 + (t1 - t0) * i / (PPF - 1)) ** 2));
   const radial = rf < rb, out = [];
@@ -58,11 +65,13 @@ function rackPoints(n, m, clear, base) {
 function resolve(spec) {
   spec = spec ?? {};
   const kind = spec.kind == null ? "spur" : spec.kind;
-  if (!KINDS.some((k) => k[0] === kind)) throw new Error('kind must be "spur", "bevel" or "rack"');
+  if (!KINDS.some((k) => k[0] === kind)) throw new Error('kind must be "spur", "helical", "bevel" or "rack"');
   const m = spec.module;
   if (!isNum(m) || m < 0.3 - 1e-9 || m > 10 + 1e-9) throw new Error("module must be a number from 0.3 to 10 (mm)");
   const z = spec.teeth, [zMin, zMax] = TEETH[kind];
   if (!Number.isInteger(z) || z < zMin || z > zMax) throw new Error(`teeth must be a whole number from ${zMin} to ${zMax} for ${kind === "rack" ? "a rack" : `a ${kind} gear`}`);
+  let beta = 0, hand = "right", twist = 0, sections = 0, mt = m, alphaT = ALPHA;
+  if ((spec.angle != null || spec.hand != null) && kind !== "helical") throw new Error("angle and hand are only for helical gears");
   let mate = 0, H = 0;
   if (spec.mate != null && kind !== "bevel") throw new Error("mate is only for bevel gears");
   if (kind === "bevel") {
@@ -71,8 +80,26 @@ function resolve(spec) {
     H = m * mate / 2; // the cone's tip, above the big end
   }
   let width = spec.width;
+  if (kind === "helical") {
+    const a = spec.angle == null ? 20 : spec.angle;
+    if (!isNum(a) || a < HANGLE[0] - 1e-9 || a > HANGLE[1] + 1e-9) throw new Error(`angle must be a number from ${HANGLE[0]} to ${HANGLE[1]} (degrees of helix angle)`);
+    hand = spec.hand == null ? "right" : spec.hand;
+    if (hand !== "right" && hand !== "left") throw new Error('hand must be "right" or "left"');
+    beta = a * Math.PI / 180;
+    mt = m / Math.cos(beta);
+    alphaT = Math.atan(Math.tan(ALPHA) / Math.cos(beta));
+  }
   if (width == null) width = kind === "bevel" ? Math.min(6, Math.floor(H / 3 * 10 + 1e-9) / 10) : 6;
   if (!isNum(width) || width <= 0) throw new Error("width must be a positive number of mm");
+  if (kind === "helical") {
+    twist = width * Math.tan(beta) / (mt * z / 2); // radians turned over the whole width
+    const step = HSTEP * 360 / z; // degrees of twist between sections
+    sections = Math.max(2, Math.ceil(twist * 180 / Math.PI / step - 1e-9) + 1);
+    if (linesOf(z) * (sections - 1) > HFACES) {
+      const maxWidth = floor3((Math.floor(HFACES / linesOf(z)) * step * Math.PI / 180) * (mt * z / 2) / Math.tan(beta));
+      throw new Error(`width must be a positive number of mm, at most ${fmt(maxWidth, 3)} for this helical gear (a wider one needs too many sections and would take too long to build)`);
+    }
+  }
   if (kind === "bevel" && width > H / 3 + 1e-9) throw new Error(`width must be a positive number of mm, at most ${fmt(floor3(H / 3), 3)} for this bevel gear (a third of the way to the cone's tip)`);
   let base = 0;
   if (spec.base != null && kind !== "rack") throw new Error("base is only for racks");
@@ -106,7 +133,7 @@ function resolve(spec) {
   if (!vec3(at)) throw new Error("at must be [x, y, z] in mm");
   const given = spec.name == null ? "" : String(spec.name).trim();
   const name = given || `${NOUN[kind]} ${z} teeth m${fmt(m, 3)}`;
-  return { kind, m, z, mate, H, width, base, bore, keyway, clear, at, name };
+  return { kind, m, z, mate, H, width, base, bore, keyway, clear, at, name, beta, hand, twist, sections, mt, alphaT };
 }
 
 // Pushes the sketch(es) and the body into the design and returns the body. Sketches sit at the world origin and the body's matrix
@@ -140,6 +167,15 @@ function gearBody(doc, r) {
     const big = sketch(r.name + " big end", 0, poly), small = sketch(r.name + " small end", r.width, poly.map(([x, y]) => [r6(x * s), r6(y * s)]));
     node = { t: "loft", sections: [{ sketch: big.id, ref: big.ref }, { sketch: small.id, ref: small.ref }], rail: null, ruled: true, closed: false, mods: [] };
     boreHole = r.bore > 0;
+  } else if (r.kind === "helical") {
+    const poly = spurPoints(r.z, r.m, r.clear, r.mt, r.alphaT), secs = [];
+    for (let i = 0; i < r.sections; i++) {
+      const f = i / (r.sections - 1), a = (r.hand === "right" ? 1 : -1) * r.twist * f, c = Math.cos(a), s = Math.sin(a);
+      const sk = sketch(`${r.name} section ${i + 1}`, r6(r.width * f), poly.map(([x, y]) => [r6(x * c - y * s), r6(x * s + y * c)]));
+      secs.push({ sketch: sk.id, ref: sk.ref });
+    }
+    node = { t: "loft", sections: secs, rail: null, ruled: true, closed: false, mods: [] };
+    boreHole = r.bore > 0;
   } else {
     const s = sketch(r.name, 0, r.kind === "rack" ? rackPoints(r.z, r.m, r.clear, r.base) : spurPoints(r.z, r.m, r.clear), bore);
     node = { t: "extrude", sketch: s.id, profiles: [s.ref], dist: r.width, mode: "one", dist2: 0, mods: [] };
@@ -162,10 +198,11 @@ export function initGears(app, { openCmd, commit, row, seg }) {
 
   function cmd() {
     const inch = getUnit() === "in";
-    const st = { kind: "spur", m: 2, z: 20, mate: 20, width: inch ? 6.35 : 6, base: 5, bore: 0, key: false, clear: null, r: null, id: null };
+    const st = { kind: "spur", m: 2, z: 20, mate: 20, angle: 20, hand: "right", width: inch ? 6.35 : 6, base: 5, bore: 0, key: false, clear: null, r: null, id: null };
     const specOf = (at) => {
       const s = { kind: st.kind, module: st.m, teeth: st.z, width: st.width, at };
       if (st.kind === "bevel") s.mate = st.mate;
+      if (st.kind === "helical") { s.angle = st.angle; s.hand = st.hand; }
       if (st.kind === "rack") s.base = st.base;
       else { s.bore = st.bore; if (st.kind === "spur" && st.bore > 0 && st.key) s.keyway = true; }
       if (st.clear != null) s.clear = st.clear;
@@ -188,13 +225,19 @@ export function initGears(app, { openCmd, commit, row, seg }) {
       },
       hint: () => st.kind === "bevel"
         ? "Two sketches and one straight Loft. To change it, undo and run this again."
+        : st.kind === "helical"
+        ? "A stack of sketches, each turned a little further, and one straight Loft through them. To change it, undo and run this again."
         : "One sketch and one Extrude. Afterwards double-click Extrude in the timeline to change the width; to change the module or teeth, undo and run this again.",
       build(body) {
         const note = (text, cls = "hint", id) => body.append(el("div", { class: cls, id, style: { padding: 0 } }, text));
         const num = (id, value, set, o) => app.numField({ value, id, onCommit: (v) => { set(v); def.render(); }, ...o });
         body.append(row("Kind", seg(KINDS, st.kind, (v) => { st.kind = v; def.render(); }, "ge-kind")));
-        body.append(row("Module", num("ge-mod", st.m, (v) => (st.m = v), { len: false, min: 0.3, max: 10, step: 0.5 }), "ge-mod"));
+        body.append(row(st.kind === "helical" ? "Normal module" : "Module", num("ge-mod", st.m, (v) => (st.m = v), { len: false, min: 0.3, max: 10, step: 0.5 }), "ge-mod"));
         body.append(row("Teeth", num("ge-teeth", st.z, (v) => (st.z = Math.round(v)), { len: false, min: 2, max: 200, step: 1 }), "ge-teeth"));
+        if (st.kind === "helical") {
+          body.append(row("Helix angle", num("ge-angle", st.angle, (v) => (st.angle = v), { len: false, min: HANGLE[0], max: HANGLE[1], step: 1 }), "ge-angle"));
+          body.append(row("Hand", seg([["right", "Right"], ["left", "Left"]], st.hand, (v) => { st.hand = v; def.render(); }, "ge-hand")));
+        }
         if (st.kind === "bevel") body.append(row("Partner's teeth", num("ge-mate", st.mate, (v) => (st.mate = Math.round(v)), { len: false, min: 12, max: 200, step: 1 }), "ge-mate"));
         body.append(row("Width", num("ge-width", st.width, (v) => (st.width = v), { len: true, min: 0.01, step: 1 }), "ge-width"));
         if (st.kind === "rack") body.append(row("Base", num("ge-base", st.base, (v) => (st.base = v), { len: true, min: 0.01, step: 1 }), "ge-base"));
@@ -206,7 +249,8 @@ export function initGears(app, { openCmd, commit, row, seg }) {
         body.append(row("Print clearance", num("ge-clear", st.clear ?? (r ? r.clear : Math.min(0.1, st.m / 4)), (v) => (st.clear = v), { len: true, min: 0, max: 0.5, step: 0.05 }), "ge-clear"));
         if (err) { note(err, "err-msg", "ge-err"); return; }
         const m = r.m, z = r.z, d = m * z, p = Math.PI * m;
-        if (r.kind === "spur") note(`Pitch diameter ${withUnit(d, 3)}, outside ${withUnit(d + 2 * m, 3)}, root ${withUnit(d - 2.5 * m, 3)}. A partner of the same module meshes with its centre module × (${z} + its teeth) / 2 away.${inch ? ` Diametral pitch ${fmt(25.4 / m, 3)}.` : ""}`);
+        if (r.kind === "helical") note(`Normal module ${fmt(m, 3)}, so the pitch diameter is ${withUnit(r.mt * z, 3)}, outside ${withUnit(r.mt * z + 2 * m, 3)}, root ${withUnit(r.mt * z - 2.5 * m, 3)}. The teeth turn ${fmt(r.twist * 180 / Math.PI, 3)}° from one face to the other. A partner of the same module and helix angle, but the opposite hand, meshes with its centre module × (${z} + its teeth) / (2 × cos ${fmt(r.beta * 180 / Math.PI, 3)}°) away.`);
+        else if (r.kind === "spur") note(`Pitch diameter ${withUnit(d, 3)}, outside ${withUnit(d + 2 * m, 3)}, root ${withUnit(d - 2.5 * m, 3)}. A partner of the same module meshes with its centre module × (${z} + its teeth) / 2 away.${inch ? ` Diametral pitch ${fmt(25.4 / m, 3)}.` : ""}`);
         else if (r.kind === "bevel") note(`Big end: pitch diameter ${withUnit(d, 3)}, outside ${withUnit(d + 2 * m, 3)}. Meshes at 90° with a ${r.mate}-tooth bevel gear of the same module; the cone's tip is ${withUnit(r.H, 3)} above the big end.`);
         else note(`${withUnit(z * p, 3)} long, tooth pitch ${withUnit(p, 3)}. The pitch line is ${withUnit(m, 3)} below the tooth tips.`);
         if (r.keyway) { const k = keyFor(r.bore); note(`Keyway ${withUnit(k[1], 3)} wide, ${withUnit(k[2], 3)} deep (DIN 6885 for a ${withUnit(r.bore, 3)} shaft).`); }
