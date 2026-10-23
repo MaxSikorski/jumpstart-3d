@@ -30,7 +30,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
 2. Build with `add_shape`, then `set_hole`, `move_bodies`, `resize_shape`, `group_bodies`.
 3. `wait_ready`, then `list_bodies` to check sizes and volumes. A body with an `error` did not build; read the message, fix it, or `undo`.
 4. `screenshot` after every few edits and look at it. Do not trust the numbers alone. If your model cannot see images, pass `path` (a file name): the PNG is saved there and you get `{path, bytes, width}` as text, so the user can look at the file.
-5. At the end `export_file` and tell the user the full path. Use an absolute path; a relative one is relative to the folder the server was started in. Kinds: `stl`, `obj`, `3mf`, `step`, `json` (the project file).
+5. At the end `export_file` and tell the user the full path. Use an absolute path; a relative one is relative to the folder the server was started in. Kinds: `stl`, `obj`, `3mf`, `glb`, `step`, `json` (the project file).
 
 If a tool fails with "could not start the headless browser", tell the user to run `npx playwright@1.62.1 install chromium` once and then try again. Headless opens the public site (https://maxsikorski.github.io/jumpstart-3d/) unless the server runs from a checkout that has a built `docs/` folder, or `JS3D_APP` says otherwise, so it needs internet when the server runs from the installed plugin.
 
@@ -55,7 +55,7 @@ JS3D.scale(id, [1, 1, 2]); JS3D.rotate(id, "z", 45)                   // about t
 JS3D.setParam("w", "40"); JS3D.bind(id, "w", "w/2")                   // a size that follows a parameter
 await JS3D.ready();  JS3D.list();  JS3D.get(id).volume                // wait, then read
 await JS3D.screenshot({ fit: true, width: 800 })                      // PNG bytes
-await JS3D.export("step")                                             // bytes; also stl, obj, 3mf, json
+await JS3D.export("step")                                             // bytes; also stl, obj, 3mf, glb, json
 await JS3D.load(jsonText)                                             // open a project file you wrote
 ```
 
