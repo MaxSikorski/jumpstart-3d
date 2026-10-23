@@ -46,9 +46,9 @@ const visible = (sel) => page.evaluate((sel) => { const e = document.querySelect
 test("tutorial data: counts, ids, levels, icons and well-formed steps", async () => {
   // the number of tutorials is smoke.spec.mjs's job (it checks the About text); here: every one is in a mode the chooser has tabs for, and the walk below declares a test for each
   expect(tutorials.length).toBeGreaterThan(0);
-  expect(tutorials.filter((t) => t.mode === "beginner" || t.mode === "advanced").length).toBe(tutorials.length);
+  expect(tutorials.filter((t) => ["beginner", "advanced", "arch"].includes(t.mode)).length).toBe(tutorials.length);
   expect(new Set(tutorials.map((t) => t.id)).size).toBe(tutorials.length);
-  expect(tutorials.map((t) => t.id).sort(), "the ids the walk declares tests for (read from src/tutorial_data*.js) and the ids the app lists").toEqual([...BEGINNER_IDS(), ...ADVANCED_IDS()].sort());
+  expect(tutorials.map((t) => t.id).sort(), "the ids the walk declares tests for (read from src/tutorial_data*.js) and the ids the app lists").toEqual([...BEGINNER_IDS(), ...ADVANCED_IDS(), ...ARCH_IDS()].sort());
   const problems = [];
   for (const t of tutorials) {
     if (!["Easy", "Proficient", "Advanced", "Expert"].includes(t.level)) problems.push(`${t.id}: level ${t.level}`);
@@ -62,9 +62,11 @@ test("tutorial data: counts, ids, levels, icons and well-formed steps", async ()
       else if (!s.show.sel && !s.show.tile) problems.push(`${at}: "show" has neither sel nor tile`);
     });
     // every tutorial opens with the naming step and ends with save then export, as the chooser's reminder promises
+    // (Architechies: a building is not a printable file until it is sent to the design, so only the last of them exports; the others end with Save)
     const first = t.steps[0], last2 = t.steps.slice(-2);
     if (!first.show || first.show.sel !== "#docname") problems.push(`${t.id}: step 1 is not the naming step`);
-    if (last2[0].show.sel !== "#btn-save" || last2[1].show.sel !== "#btn-export") problems.push(`${t.id}: does not end with Save then Export`);
+    if (t.mode === "arch") { if (last2[1].show.sel !== "#btn-save" && !(last2[0].show.sel === "#btn-save" && last2[1].show.sel === "#btn-export")) problems.push(`${t.id}: does not end with Save (then Export)`); }
+    else if (last2[0].show.sel !== "#btn-save" || last2[1].show.sel !== "#btn-export") problems.push(`${t.id}: does not end with Save then Export`);
   }
   expect(problems).toEqual([]);
 });
@@ -84,7 +86,7 @@ const runChecks = () => page.evaluate(() => {
 });
 
 test("tutorial checks: none throws, on an empty design or on real designs with groups, sketches and features", async () => {
-  for (const mode of ["beginner", "advanced"]) {
+  for (const mode of ["beginner", "advanced", "arch"]) {
     await loadDoc(page, newDoc("Untitled", mode));
     const r = await runChecks();
     expect(r.thrown, `checks that throw on an empty ${mode} design`).toEqual([]);
@@ -101,6 +103,12 @@ test("tutorial checks: none throws, on an empty design or on real designs with g
     expect(r.thrown, `checks that throw on ${name}`).toEqual([]);
     r.ticked.forEach((x) => everTrue.add(x));
   }
+  // a small house, so the Architechies checks run past their guards too (walls, a door, a window, a roof, a floor)
+  await loadDoc(page, newDoc("House", "arch", { arch: { v: 1, levels: [{ id: "L1", name: "Level 1", elev: 0 }], wallT: 200, wallH: 2700, grid: 100,
+    walls: [[0, 0, 4000, 0], [4000, 0, 4000, 3000], [4000, 3000, 0, 3000], [0, 3000, 0, 0]].map(([ax, ay, bx, by], i) => ({ id: "w" + i, lvl: "L1", a: [ax, ay], b: [bx, by], t: 200, h: 2700 })),
+    openings: [{ id: "o1", wall: "w0", k: "door", preset: "ext36", s: 500, w: 914, h: 2032, sill: 0 }, { id: "o2", wall: "w1", k: "window", preset: "sh3648", s: 1000, w: 914, h: 1219, sill: 900 }],
+    roofs: [{ id: "r1", lvl: "L1", kind: "gable", x0: 0, y0: 0, x1: 4000, y1: 3000, pitch: 30, over: 300, dir: "y", flip: false, thick: 200 }], slabs: [{ id: "s1", lvl: "L1", x0: 0, y0: 0, x1: 4000, y1: 3000, thick: 150 }] } }));
+  { const r = await runChecks(); expect(r.thrown, "checks that throw on a small house").toEqual([]); expect(r.ticked.filter((x) => x.startsWith("h-")).length, "Architechies checks true on a small house: " + r.ticked.join("; ")).toBeGreaterThanOrEqual(5); r.ticked.forEach((x) => everTrue.add(x)); }
   // the designs must really reach into the predicates: about 55 checks come out true on them, not just "false because empty"
   expect(everTrue.size, "checks that were true on at least one of the real designs: " + [...everTrue].join("; ")).toBeGreaterThanOrEqual(40);
 });
@@ -125,6 +133,10 @@ async function normalize({ keepLathe = false } = {}) {
 
 // a box through the real buttons: the shape tile in Beginner, Primitives > Box in Advanced
 async function addBox(mode) {
+  if (mode === "arch") { // what Send to design leaves behind: shapes in the design (the Send itself is tested in upstream23.spec.mjs)
+    await page.evaluate(() => window.__store.update((d) => d.bodies.push({ id: "sent1", name: "Wall", seq: 1, color: "#c8ccd2", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "prim", kind: "box", p: { w: 40, d: 4, h: 20, r: 0, c: 0 }, mods: [] } }), "shapes from Send to design"));
+    return;
+  }
   if (mode === "beginner") { await page.click("#dock-objects"); await page.locator('.tile[data-kind="box"]').click(); }
   else { await page.click("#ad-prims"); await page.click("#ad-box"); await page.click("#cmd-ok"); }
 }
@@ -144,6 +156,15 @@ async function prepareFor(sel, mode) {
   if (/#insp-|\.colors/.test(sel)) { // a body must be selected for its fields and colours to show
     await addBox(mode);
     return "a box is selected";
+  }
+  if (/#ar-(add-|o[es]\b|center)|#arch-elev/.test(sel)) { // a wall must be selected for its door and window buttons and its elevation grid
+    await page.evaluate(() => {
+      window.__store.update((d) => {
+        d.arch.walls = [[0, 0, 4000, 0], [4000, 0, 4000, 3000], [4000, 3000, 0, 3000], [0, 3000, 0, 0]].map(([ax, ay, bx, by], i) => ({ id: "pw" + i, lvl: d.arch.levels[0].id, a: [ax, ay], b: [bx, by], t: 200, h: 2700 }));
+      }, "walls for the walk");
+      window.__app.arch.select({ k: "wall", id: "pw0" });
+    });
+    return "a wall is selected";
   }
   if (/param-expr/.test(sel)) { await page.click("#browser .param-add"); return "one parameter added"; }
   return null;
@@ -194,7 +215,7 @@ async function walk(tut) {
   await normalize();
   await page.evaluate(() => window.__app.tutorials.close());
   await page.click("#btn-tutorials");
-  await page.click(tut.mode === "advanced" ? "#tut-tab-advanced" : "#tut-tab-beginner");
+  await page.click("#tut-tab-" + tut.mode);
   const card = page.locator("#tut-" + tut.id);
   await expect(card, `${tut.id}: no card in the chooser`).toContainText(tut.title);
   await expect(card).toContainText(`${tut.steps.length} steps`);
@@ -252,9 +273,9 @@ async function walk(tut) {
 
 test.describe("walk every tutorial", () => {
   test.describe.configure({ mode: "default" });
-  for (const mode of ["beginner", "advanced"]) {
+  for (const mode of ["beginner", "advanced", "arch"]) {
     // the list is read at run time, so declare the tests from the source order of the data (same ids as the app)
-    for (const id of mode === "beginner" ? BEGINNER_IDS() : ADVANCED_IDS()) {
+    for (const id of idsOf(mode)) {
       test(`${id}`, async () => {
         const tut = tutorials.find((t) => t.id === id);
         expect(tut, `${id} is not in the app's tutorial list`).toBeTruthy();
@@ -266,11 +287,12 @@ test.describe("walk every tutorial", () => {
 
 // ids from the data files, read as text so the tests can be declared before the browser is up
 function idsOf(mode) {
-  const src = readFileSync(new URL("../src/tutorial_data.js", import.meta.url), "utf8") + readFileSync(new URL("../src/tutorial_data_more.js", import.meta.url), "utf8");
+  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_arch.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
   return [...src.matchAll(/^\s*id: "([\w-]+)", mode: "(\w+)"/gm)].filter((m) => m[2] === mode).map((m) => m[1]);
 }
 function BEGINNER_IDS() { return idsOf("beginner"); }
 function ADVANCED_IDS() { return idsOf("advanced"); }
+function ARCH_IDS() { return idsOf("arch"); }
 
 test("the walk reached every tutorial the app lists", () => {
   expect([...startedIds].sort()).toEqual(tutorials.map((t) => t.id).sort());
@@ -320,7 +342,7 @@ async function topBarMenus() {
 async function collectUniverse() {
   const all = {};
   const add = (o) => Object.assign(all, o);
-  for (const mode of ["beginner", "advanced"]) {
+  for (const mode of ["beginner", "advanced", "arch"]) {
     await normalize();
     await loadDoc(page, newDoc("Untitled", mode));
     add(await ribbonButtons("top bar", ".topbar", { menus: false }));
@@ -335,6 +357,8 @@ async function collectUniverse() {
       await page.click("#dock-holes");
       for (const k of await page.$$eval("#shapes .tile[data-kind]", (ts) => ts.map((t) => t.dataset.kind))) all["hole-tile:" + k] = "Beginner hole tiles";
       await page.click("#dock-objects");
+    } else if (mode === "arch") {
+      add(await ribbonButtons("Architechies toolbar", "#ribbon"));
     } else {
       add(await ribbonButtons("Advanced toolbar", "#ribbon"));
       await page.click("#ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line");

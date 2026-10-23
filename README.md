@@ -128,9 +128,16 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
 - Lathe: turn a body or a blank into a round part
 - Jump Brick Builder (Advanced, Simulate): build with bricks
 - Chisel: clay-style sculpting, with Puppet Animator
+- Architechies (the author's fourth mode, new in 2.2): floor plans, walls,
+  doors, windows and roofs for houses and buildings, sent to Beginner or
+  Advanced as editable shapes at a scale you pick
+- CAM Studio (the author's, new in 2.3; Advanced, Simulate): plan and
+  simulate CNC router, mill or laser cuts and save G-code (GRBL, LinuxCNC,
+  Mach3, Marlin); sending it to a machine over USB asks the browser's own
+  permission first
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Nineteen step-by-step tutorials with built-in animations
+- Forty-four step-by-step tutorials with built-in animations
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
@@ -302,7 +309,7 @@ maintainer runs gates 2-3 with AI reviewers (a Codex model and a Claude model);
 CI runs gate 4; the maintainer checks gate 5.
 
 The app is plain JavaScript modules under `src/`, from the author's own
-source release of version 2.1.3 (the untouched 2.0 files are on the
+source release of version 2.3 (the untouched 2.0 files are on the
 `upstream-originals` release). One command bundles them into the website
 and the single offline file.
 
@@ -384,7 +391,7 @@ tools/              helper page sources and the scripts that rebuild them
                     measure-load.mjs times a page load on a simulated slow connection
 BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website, committed so GitHub Pages can serve it
-jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.1.3)
+jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.3)
 UPSTREAM-README.md         the author's README from the source release
 ```
 

@@ -1,10 +1,22 @@
-# JumpStart 3D v2.0: complete source code
+# JumpStart 3D v2.3: complete source code
 
-Everything needed to rebuild JumpStart 3D v2.0 (with the Mac / iPad / iPhone work, the open-source credits, and 18 step-by-step tutorials (two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
+Everything needed to rebuild JumpStart 3D v2.3 (with the Mac / iPad / iPhone work, the open-source credits, and 38 step-by-step tutorials (two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
 
-New in v2.0: **3D Sketch** (`app/src/sketch3d.js`), the **Lathe** (`app/src/lathe.js`) and **Jump Brick Builder** (`app/src/bricks.js`, in Advanced → Simulate). The version number shown on the splash screen and in About comes from `app/src/version.js` (and the splash line in `app/src/index.html`).
+New in v2.3: **CAM Studio** (Advanced → Simulate): `app/src/camcore.js` is the CAM engine (machines, materials, bits, feeds and speeds, height-map drop-cutter toolpaths for roughing, finishing, facing and cutouts with tabs, laser cut and engrave, a height-field material-removal simulation, and G-code for GRBL, LinuxCNC, Mach3 and Marlin); `app/src/cam.js` is the window (Basic and Pro modes, playback, saving G-code, Web Serial streaming to GRBL/Marlin). The engine was written for JumpStart 3D using openly published methods (drop-cutter as in OpenCAMLib, height-field simulation as in CAMotics); no code from those projects is included. Architechies gained a feet-and-inches / metric switch and five tutorials (`app/src/tutorial_arch.js`). Tests: `tests/cam1.cjs`, `tests/camtest.mjs` (engine only, runs in Node), `tests/tarch.cjs <tutorial id>`.
 
-Building from this folder gives the same app as the released `jumpstart_3d_v2.0.htm`. The only differences are the size number used by the loading bar and the file labels in two license comments.
+From v2.2: **Architechies**, a fourth mode for houses and buildings (`app/src/arch.js`): floor plans (walls and rooms), raising walls, a catalog of doors and windows placed by snapping or typed on each wall's grid, see-through editing, roofs (gable, hip, shed, pyramid, barrel, flat), floors and levels, and Send to design, which turns the building into editable Beginner/Advanced shapes at a chosen scale (`buildingBodies`). The building is stored in the design as `doc.arch`. Tests: `tests/ar1.cjs`, `tests/ar2.cjs`, `tests/ar3.cjs`.
+
+From v2.1.3: **Pattern on face** (Beginner toolbar → Face pattern; Advanced → Decorate → Pattern on face) raises or cuts hexagons, diamond plate, screen mesh, circles, triangles, knurl or ribs on a flat face as an editable feature (`facepat` in `app/src/kernel.js`, shapes in `app/src/facepat.js`, dialog `facePatternCmd` in `app/src/advanced.js`). 26 new textures in new Wood, Building and Fabric groups (`app/src/texture.js`). About has **Check for updates** and **Visit classyapps.org** buttons; the check reads `https://classyapps.org/jumpstart3d/version.json` (`SITE_URL` / `UPDATE_URL` in `app/src/app.js`). Tests: `tests/fp1.cjs`, `tests/fp2.cjs`, `tests/fp3.cjs`, `tests/tx1.cjs`, `tests/upd2.cjs`.
+
+From v2.1.2: **Voxel Studio** (`app/src/voxel.js`, in Advanced → Simulate) turns objects into cubes you can paint face by face, add and remove, then export as STL or a colored 3MF or add to the design (one part per color). The arrow keys now move objects the way they look on screen, whatever the camera angle or the object's rotation (`app.arrowDelta` in `app/src/app.js`, used by Beginner, Advanced and the Move tool); `,` and `.` turn by 1° after a rotation arc. `tests/vx1.cjs` checks Voxel Studio and `tests/arr.cjs` checks the arrow keys from 12 camera angles.
+
+From v2.1.1: 20 more tutorials (10 Beginner, 10 Advanced, from Easy to a new Expert level) in `app/src/tutorial_data_more.js`; `tests/tnew.cjs` drives each one through the app.
+
+From v2.1: easier text in Advanced. **3D text** (Create → Primitives → 3D text, `textCmd` in `app/src/advanced.js`) lies on any face or the workplane and can be dragged across faces, snapping to face centers and the grid or moving freely. **Emboss text** (`embossCmd`) can now be dragged across the body, with the same snapping, Across / Up offsets from the face center and arrow-key nudging. **Sketch text** (`app/src/sketcher.js`) keeps the grab point while dragging, snaps its middle to the face center and other points, nudges with the arrow keys and has Center on face buttons. `tests/t21.cjs` checks all three.
+
+From v2.0: **3D Sketch** (`app/src/sketch3d.js`), the **Lathe** (`app/src/lathe.js`) and **Jump Brick Builder** (`app/src/bricks.js`, in Advanced → Simulate). The version number shown on the splash screen and in About comes from `app/src/version.js` (and the splash line in `app/src/index.html`).
+
+Building from this folder gives the same app as the released `jumpstart_3d_v2.3.htm`. The only differences are the size number used by the loading bar and the file labels in two license comments.
 
 ## What's where
 

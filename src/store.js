@@ -24,7 +24,7 @@ export function newDoc(name = "Untitled", mode = "beginner") {
 }
 // older designs have no mode: anything with sketches or features is Advanced
 export function docMode(doc) {
-  if (doc.mode === "beginner" || doc.mode === "advanced" || doc.mode === "chisel") return doc.mode;
+  if (doc.mode === "beginner" || doc.mode === "advanced" || doc.mode === "chisel" || doc.mode === "arch") return doc.mode;
   const json = JSON.stringify(doc.bodies || []);
   return (doc.sketches || []).length || /"t":"(extrude|revolve|fillet|chamfer|hole|shell|bool)"/.test(json) ? "advanced" : "beginner";
 }

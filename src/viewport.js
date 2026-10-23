@@ -538,7 +538,7 @@ export class Viewport {
     this.anim = null;
     f = Math.max(0.5, Math.min(2, f));
     const v = this.view;
-    const nd = Math.max(2, Math.min(20000, v.dist * f));
+    const nd = Math.max(2, Math.min(this.maxDist || 20000, v.dist * f));
     f = nd / v.dist;
     // zoom toward the point under the cursor
     const hits = this.zoomTargets ? this.pick(e, this.zoomTargets()) : [];
