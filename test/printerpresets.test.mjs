@@ -4,7 +4,17 @@ import assert from "node:assert/strict";
 
 const store = new Map();
 globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
-const { PRINTERS, PLATE_PRINTERS, PLATE_KEY, plateDims, getPlatePref, setPlatePref, onPlatePref } = await import("../src/printerpresets.js");
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+import { printsimStub } from "./printsim-rows.mjs";
+// printsim.js owns the rows and registers them with printerpresets.js; bundle both (printsim's other imports stubbed).
+const root = fileURLToPath(new URL("../", import.meta.url));
+const bundle = await build({
+  stdin: { contents: 'import "./src/printsim.js"; export { PRINTERS, PLATE_PRINTERS, PLATE_KEY, plateDims, getPlatePref, setPlatePref, onPlatePref } from "./src/printerpresets.js"; export { PRINTERS as SIM_PRINTERS } from "./src/printsim.js";', resolveDir: root },
+  bundle: true, write: false, format: "esm", platform: "node", plugins: [printsimStub],
+});
+const { PRINTERS, SIM_PRINTERS, PLATE_PRINTERS, PLATE_KEY, plateDims, getPlatePref, setPlatePref, onPlatePref } = await import("data:text/javascript;base64," + Buffer.from(bundle.outputFiles[0].text).toString("base64"));
+test("printsim.js and printerpresets.js share one table", () => assert.equal(PRINTERS, SIM_PRINTERS));
 
 // The seven named choices and their manufacturer-stated build volumes, checked 2026-10-23 (see the URLs on each row).
 const TABLE = { a1: [256, 256, 256], x1: [256, 256, 256], p1s: [256, 256, 256], mk4: [250, 210, 220], mini: [180, 180, 180], ender3: [220, 220, 250], u1: [270, 270, 270] };

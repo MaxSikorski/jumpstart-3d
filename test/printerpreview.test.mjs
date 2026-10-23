@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { printsimStub } from "./printsim-rows.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const store = new Map();
@@ -21,8 +22,8 @@ const viewportEl = node("div");
 globalThis.document = { getElementById: (id) => (id === "viewport" ? viewportEl : null), createElement: node, createTextNode: (t) => ({ nodeType: 3, data: t }) };
 
 const bundle = await build({
-  stdin: { contents: 'export { initPrinterPreview } from "./src/printerpreview.js"; export { getPlatePref, setPlatePref } from "./src/printerpresets.js"; export * as THREE from "three";', resolveDir: root },
-  bundle: true, write: false, format: "esm", platform: "node", alias: { three: root + "third_party/three/build/three.module.js" },
+  stdin: { contents: 'import "./src/printsim.js"; export { initPrinterPreview } from "./src/printerpreview.js"; export { getPlatePref, setPlatePref } from "./src/printerpresets.js"; export * as THREE from "three";', resolveDir: root },
+  bundle: true, write: false, format: "esm", platform: "node", alias: { three: root + "third_party/three/build/three.module.js" }, plugins: [printsimStub],
 });
 const { initPrinterPreview, getPlatePref, setPlatePref, THREE } = await import("data:text/javascript;base64," + Buffer.from(bundle.outputFiles[0].text).toString("base64"));
 

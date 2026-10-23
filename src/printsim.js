@@ -8,10 +8,64 @@ import { el, fmt } from "./util.js";
 import { M4 } from "./ops.js";
 import { FILAMENTS } from "./fea.js";
 
-// jumpstart-3d: the printer catalog (rows and the comment on what the fields mean) now lives in printerpresets.js; existing callers keep importing PRINTERS from here.
-import { PRINTERS, getPlatePref, setPlatePref } from "./printerpresets.js";
+import { registerPrinters, getPlatePref, setPlatePref } from "./printerpresets.js"; // jumpstart-3d: the Printer plate choice and the evidence labels on these rows
 import { leansOut } from "./overhang.js"; // jumpstart-3d: one overhang rule for the design view and the sim
-export { PRINTERS };
+
+// Printers and how they handle more than one filament (like Orca Slicer's printer profiles):
+//   tools.kind  "single"  one nozzle, one filament (swap by hand)
+//               "mmu"     one nozzle fed by a spool switcher (AMS, CFS, Canvas, IFS, MMU3):
+//                         every change unloads, loads and purges ("flushes") the old color
+//               "heads"   independent toolheads / nozzles (tool changers, dual nozzle, Vortek):
+//                         each filament keeps its own nozzle, so a change is a quick swap with
+//                         only a small prime; more filaments than heads share a head (and flush)
+//   heads: nozzles that can hold different filaments, slots: most filaments at once,
+//   swap: seconds per head change, load: seconds to unload + load a spool (purge time is added),
+//   prime: mm³ primed after a head swap, wSingle / wDual: printable width with one / both
+//   nozzles (dual-nozzle printers), sys: what it's called.
+export const PRINTERS = {
+  // Bambu Lab
+  a1mini: { brand: "Bambu Lab", name: "Bambu Lab A1 mini", w: 180, d: 180, h: 180, tools: { kind: "mmu", heads: 1, slots: 4, load: 30, sys: "AMS lite" } },
+  a1: { brand: "Bambu Lab", name: "Bambu Lab A1", w: 256, d: 256, h: 256, tools: { kind: "mmu", heads: 1, slots: 4, load: 30, sys: "AMS lite" } },
+  a2l: { brand: "Bambu Lab", name: "Bambu Lab A2L", w: 330, d: 320, h: 325, tools: { kind: "mmu", heads: 1, slots: 19, load: 30, sys: "AMS lite + AMS units" } },
+  p1s: { brand: "Bambu Lab", name: "Bambu Lab P1S / P1P", w: 256, d: 256, h: 256, tools: { kind: "mmu", heads: 1, slots: 16, load: 25, sys: "AMS" } },
+  p2s: { brand: "Bambu Lab", name: "Bambu Lab P2S", w: 256, d: 256, h: 256, tools: { kind: "mmu", heads: 1, slots: 16, load: 22, sys: "AMS 2 Pro" } },
+  x1: { brand: "Bambu Lab", name: "Bambu Lab X1 Carbon / X1E", w: 256, d: 256, h: 256, tools: { kind: "mmu", heads: 1, slots: 16, load: 25, sys: "AMS" } },
+  x2d: { brand: "Bambu Lab", name: "Bambu Lab X2D (dual nozzle)", w: 256, d: 256, h: 260, tools: { kind: "heads", heads: 2, slots: 16, swap: 12, prime: 30, load: 25, lr: true, sys: "dual nozzle + AMS" } },
+  h2s: { brand: "Bambu Lab", name: "Bambu Lab H2S", w: 340, d: 320, h: 340, tools: { kind: "mmu", heads: 1, slots: 24, load: 25, sys: "AMS 2 Pro / AMS HT" } },
+  h2d: { brand: "Bambu Lab", name: "Bambu Lab H2D / H2D Pro (dual nozzle)", w: 350, d: 320, h: 325, tools: { kind: "heads", heads: 2, slots: 24, swap: 12, prime: 30, load: 25, lr: true, wSingle: 325, wDual: 300, sys: "dual nozzle + AMS" } },
+  h2c: { brand: "Bambu Lab", name: "Bambu Lab H2C (Vortek, 7 hotends)", w: 350, d: 320, h: 325, tools: { kind: "heads", heads: 7, slots: 24, swap: 25, prime: 15, load: 25, wSingle: 325, wDual: 300, sys: "Vortek hotend swapping (1 left + 6 right) + AMS" } },
+  // Creality
+  ender3: { brand: "Creality", name: "Creality Ender-3", w: 220, d: 220, h: 250, tools: { kind: "single" } },
+  k1: { brand: "Creality", name: "Creality K1 / K1C / K1 SE", w: 220, d: 220, h: 250, tools: { kind: "single" } },
+  k1max: { brand: "Creality", name: "Creality K1 Max", w: 300, d: 300, h: 300, tools: { kind: "single" } },
+  k2se: { brand: "Creality", name: "Creality K2 SE", w: 220, d: 215, h: 245, tools: { kind: "mmu", heads: 1, slots: 16, load: 40, sys: "CFS" } },
+  k2: { brand: "Creality", name: "Creality K2", w: 260, d: 260, h: 260, tools: { kind: "mmu", heads: 1, slots: 16, load: 40, sys: "CFS" } },
+  k2pro: { brand: "Creality", name: "Creality K2 Pro", w: 300, d: 300, h: 300, tools: { kind: "mmu", heads: 1, slots: 16, load: 40, sys: "CFS" } },
+  k2plus: { brand: "Creality", name: "Creality K2 Plus", w: 350, d: 350, h: 350, tools: { kind: "mmu", heads: 1, slots: 16, load: 40, sys: "CFS" } },
+  // Elegoo
+  cc: { brand: "Elegoo", name: "Elegoo Centauri Carbon", w: 256, d: 256, h: 256, tools: { kind: "single" } },
+  cc2: { brand: "Elegoo", name: "Elegoo Centauri Carbon 2", w: 256, d: 256, h: 256, tools: { kind: "mmu", heads: 1, slots: 4, load: 45, sys: "CANVAS" } },
+  // Flashforge
+  ff5m: { brand: "Flashforge", name: "Flashforge Adventurer 5M / 5M Pro", w: 220, d: 220, h: 220, tools: { kind: "single" } },
+  ffad5x: { brand: "Flashforge", name: "Flashforge AD5X", w: 220, d: 220, h: 220, tools: { kind: "mmu", heads: 1, slots: 4, load: 45, sys: "IFS" } },
+  creator5: { brand: "Flashforge", name: "Flashforge Creator 5 (4 toolheads)", w: 256, d: 256, h: 256, tools: { kind: "heads", heads: 4, slots: 4, swap: 10, prime: 15, sys: "4-toolhead tool changer" } },
+  creator5pro: { brand: "Flashforge", name: "Flashforge Creator 5 Pro (4 toolheads)", w: 256, d: 256, h: 256, tools: { kind: "heads", heads: 4, slots: 4, swap: 10, prime: 15, sys: "4-toolhead tool changer, heated chamber" } },
+  // Prusa
+  mini: { brand: "Prusa", name: "Prusa MINI+", w: 180, d: 180, h: 180, tools: { kind: "single" } },
+  mk4: { brand: "Prusa", name: "Prusa MK4S (+ MMU3)", w: 250, d: 210, h: 220, tools: { kind: "mmu", heads: 1, slots: 5, load: 30, sys: "MMU3" } },
+  core1: { brand: "Prusa", name: "Prusa CORE One (+ MMU3)", w: 250, d: 220, h: 270, tools: { kind: "mmu", heads: 1, slots: 5, load: 30, sys: "MMU3" } },
+  core1l: { brand: "Prusa", name: "Prusa CORE One L", w: 300, d: 300, h: 330, tools: { kind: "single" } },
+  core1lindx4: { brand: "Prusa", name: "Prusa CORE One L INDX (4 tools)", w: 298, d: 275, h: 330, tools: { kind: "heads", heads: 4, slots: 4, swap: 12, prime: 10, sys: "INDX tool changer" } },
+  core1lindx8: { brand: "Prusa", name: "Prusa CORE One L INDX (8 tools)", w: 298, d: 275, h: 330, tools: { kind: "heads", heads: 8, slots: 8, swap: 12, prime: 10, sys: "INDX tool changer" } },
+  xl1: { brand: "Prusa", name: "Prusa XL (1 toolhead)", w: 360, d: 360, h: 360, tools: { kind: "single" } },
+  xl2: { brand: "Prusa", name: "Prusa XL (2 toolheads)", w: 360, d: 360, h: 360, tools: { kind: "heads", heads: 2, slots: 2, swap: 10, prime: 15, sys: "tool changer" } },
+  xl5: { brand: "Prusa", name: "Prusa XL (5 toolheads)", w: 360, d: 360, h: 360, tools: { kind: "heads", heads: 5, slots: 5, swap: 10, prime: 15, sys: "tool changer" } },
+  // Snapmaker
+  u1: { brand: "Snapmaker", name: "Snapmaker U1 (4 toolheads)", w: 270, d: 270, h: 270, tools: { kind: "heads", heads: 4, slots: 4, swap: 5, prime: 15, sys: "SnapSwap tool changer" } },
+  // Voron
+  voron: { brand: "Voron", name: "Voron 2.4 350", w: 350, d: 350, h: 340, tools: { kind: "single" } },
+};
+registerPrinters(PRINTERS); // jumpstart-3d: adds dimensionEvidence / plateLabel to the rows above (printerpresets.js); the rows themselves stay as the author wrote them
 const PURGE_FLOW = 12; // mm³/s a nozzle purges at while flushing
 // Orca-style flushing volume (mm³) from one color to the next: more when going from dark to
 // light, and more the more different the colors are
@@ -205,7 +259,7 @@ export function initPrintSim(app, X) {
       nrm[t * 3] = n.x; nrm[t * 3 + 1] = n.y; nrm[t * 3 + 2] = n.z;
       const zmax = Math.max(pos[a + 2], pos[b + 2], pos[c + 2]);
       if (zmax < 0.05 && n.z < -0.98) { bedArea += ar; continue; }
-      if (leansOut(n.z, st.threshold) && Math.min(pos[a + 2], pos[b + 2], pos[c + 2]) > st.layer * 0.5 && !(w.nParts > 1 && restsOnPart(t, a, b, c))) { over[t] = 1; overArea += ar; }
+      if (leansOut(n.z, st.threshold) /* jumpstart-3d: limit measured from vertical (sin), see overhang.js */ && Math.min(pos[a + 2], pos[b + 2], pos[c + 2]) > st.layer * 0.5 && !(w.nParts > 1 && restsOnPart(t, a, b, c))) { over[t] = 1; overArea += ar; }
     }
     // support columns: under every overhang, from the plate (or the part below) up to it
     const sp = st.supports === "tree" ? 3 : 2, zgap = st.layer;
@@ -291,7 +345,7 @@ export function initPrintSim(app, X) {
       const ar = e1.cross(e2).length() / 2;
       const hi = Math.max(zs[a], zs[b], zs[c]) - zmin;
       if (hi < 0.05 && nn.z < -0.98) bed += ar;
-      else if (leansOut(nn.z, st.threshold) && Math.min(zs[a], zs[b], zs[c]) - zmin > st.layer * 0.5) over += ar;
+      else if (leansOut(nn.z, st.threshold) /* jumpstart-3d: limit measured from vertical (sin), see overhang.js */ && Math.min(zs[a], zs[b], zs[c]) - zmin > st.layer * 0.5) over += ar;
     }
     const size = bb.getSize(new THREE.Vector3());
     return { dn, Rm, over, bed, h: size.z, w: Math.max(size.x, size.y), d: Math.min(size.x, size.y) };
@@ -1437,7 +1491,7 @@ export function initPrintSim(app, X) {
         const ar = new THREE.Vector3(pos[b3] - pos[a3], pos[b3 + 1] - pos[a3 + 1], pos[b3 + 2] - pos[a3 + 2]).cross(new THREE.Vector3(pos[c3] - pos[a3], pos[c3 + 1] - pos[a3 + 1], pos[c3 + 2] - pos[a3 + 2])).length() / 2;
         const lo = Math.max(zs[a], zs[b], zs[c]) - zmin;
         if (lo < 0.05 && nn.z < -0.98) bed += ar;
-        else if (leansOut(nn.z, st.threshold)) over += ar;
+        else if (leansOut(nn.z, st.threshold)) over += ar; // jumpstart-3d: limit measured from vertical (sin), see overhang.js
       }
       const score = over - 0.5 * bed + 0.02 * (zmax - zmin) * Math.sqrt(Math.max(1, bed));
       if (!best || score < best.score - 1e-6) best = { score, Rm };
