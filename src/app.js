@@ -39,6 +39,8 @@ import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 import { initReport } from "./report.js"; // jumpstart-3d: report
+import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
+captureShare(); // jumpstart-3d: share link. first thing: a design link's fragment goes into memory and off the address bar, before boot() or the bridge can see it
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 
 /* global __WASM_PARTS__ */
@@ -303,6 +305,7 @@ app.voxel = initVoxel(app);
     vp.setView("home", scene.allBox().isEmpty() ? null : scene.allBox());
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
+    app.sharelink.offer(); // jumpstart-3d: share link. a design link that opened the page is offered now that the saved design is loaded
   });
   load.hideSplash(); // jumpstart-3d: load. the workspace is built: let the mouse in
 }
@@ -1039,3 +1042,4 @@ initBridge(app);
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
 initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing
+initShareLink(app); // jumpstart-3d: share link. Share link… and Import shared link (Open/Export menu); the link stays in the address, nothing is uploaded
