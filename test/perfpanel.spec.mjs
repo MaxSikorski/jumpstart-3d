@@ -11,10 +11,26 @@ test.beforeAll(async ({ browser }, info) => {
     window.__copied = null;
     try { Object.defineProperty(navigator, "clipboard", { value: { writeText: async (s) => { window.__copied = s; } }, configurable: true }); } catch (e) { /* the app falls back to execCommand */ }
   });
+  await page.addInitScript(() => { // as in watchdog.spec: hold every build back by perBody ms per body
+    const W = window.Worker;
+    window.__slow = null; window.__workers = 0;
+    window.Worker = class extends W {
+      constructor(...a) { super(...a); window.__workers++; }
+      postMessage(m, t) {
+        const s = window.__slow;
+        if (s && s.hang && m && m.type === "build" && m.bodies.some((b) => JSON.stringify(b.node).includes(s.hang))) return; // never answered
+        if (s && m && m.type === "build") setTimeout(() => super.postMessage(m, t), s.perBody * m.bodies.length);
+        else super.postMessage(m, t);
+      }
+    };
+  });
   await boot(page, info);
 });
 test.afterAll(async () => { await page.close(); });
-test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
+test.afterEach(async () => {
+  await page.evaluate(() => { window.__slow = null; delete window.__app.kernel.watchdogMs; });
+  expect(errors, "console or page errors").toEqual([]);
+});
 
 // five bodies with sizes no other test uses, so the first four go in one batch and the fifth in the next
 const doc = () => newDoc("perf five", "beginner", {
@@ -84,4 +100,45 @@ test("?perf opens it on load and a design edit lands as the new last rebuild", a
   await page.evaluate(() => JS3D.ready());
   await expect.poll(() => page.evaluate(() => window.__app.perf.last && window.__app.perf.last.rows.length)).toBe(1);
   await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
+});
+
+test("a stalled batch is dropped from the record, its bodies are retried alone and listed, and the app keeps building", async () => {
+  const sizes = [[11.1, 12, 13], [14.2, 15, 16], [17.3, 18, 19], [20.4, 21, 22]];
+  await page.evaluate(() => JS3D.newDesign("beginner"));
+  await page.evaluate(() => { window.__slow = { perBody: 700 }; window.__app.kernel.watchdogMs = 1800; window.__before = window.__workers; }); // four bodies together take 2.8 s: over the limit; alone 0.7 s each
+  await page.evaluate((sizes) => { for (const s of sizes) JS3D.add("box", { size: s }); }, sizes);
+  const r = await page.evaluate(async () => { await JS3D.ready(); await new Promise((r) => setTimeout(r, 200)); return { list: JS3D.list(), restarts: window.__workers - window.__before, last: window.__app.perf.last }; });
+  expect(r.restarts).toBe(1);
+  expect(r.list.map((b) => b.error)).toEqual([null, null, null, null]);
+  expect(r.last.rows).toHaveLength(4); // only the retried builds: the stalled batch left no rows
+  expect(r.last.rows.every((x) => !x.error && x.ms > 0 && x.tris > 0)).toBe(true);
+  expect(r.last.rows.map((x) => x.batch).sort(), "batch 1 is the first box, sent alone; batch 2 stalled and left no row; 3 to 5 are the retries").toEqual([1, 3, 4, 5]);
+  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(4);
+  await page.evaluate(() => { window.__slow = null; delete window.__app.kernel.watchdogMs; });
+  await page.evaluate(() => JS3D.add("box", { size: [23.5, 24.5, 25.5] }));
+  await page.evaluate(() => JS3D.ready());
+  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
+});
+
+test("a body that stalls alone gets an error row, and the next build still works", async () => {
+  await page.evaluate(() => JS3D.newDesign("beginner"));
+  await page.evaluate(() => { window.__slow = { perBody: 100, hang: "13.31" }; window.__app.kernel.watchdogMs = 1200; });
+  await page.evaluate(() => JS3D.add("box", { size: [51.1, 12, 13.31] }));
+  await page.evaluate(async () => { await JS3D.ready(); });
+  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
+  await expect(page.locator("#perfpanel tbody tr td").nth(2)).toContainText(/error: stalled after \d+ ms/);
+  await expect(page.locator("#perfpanel .pp-sum")).not.toContainText("Rebuilding");
+  expect(await page.evaluate(() => window.__app.perf.text())).toMatch(/error: stalled after \d+ ms/);
+  await page.evaluate(() => { window.__slow = null; delete window.__app.kernel.watchdogMs; });
+  await page.evaluate(() => JS3D.add("box", { size: [27.5, 28.5, 29.5] }));
+  const list = await page.evaluate(async () => { await JS3D.ready(); return JS3D.list(); });
+  expect(list.map((b) => !!b.error)).toEqual([true, false]);
+  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
+  await expect(page.locator("#perfpanel tbody tr td").nth(2)).not.toContainText("error");
+});
+
+test("Rebuild all on an empty design says there is nothing to build", async () => {
+  await page.evaluate(() => JS3D.newDesign("beginner"));
+  await page.click("#perfpanel [data-pp=rebuild]");
+  await expect(page.locator("#perfpanel .pp-sum")).toHaveText(/Nothing to rebuild/);
 });
