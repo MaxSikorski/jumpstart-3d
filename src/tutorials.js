@@ -211,7 +211,8 @@ export function initTutorials(app) {
     const vpR = document.getElementById("viewport").getBoundingClientRect();
     const small = innerWidth < 700;
     panel.style.left = (small ? 8 : Math.max(8, vpR.left + 10)) + "px";
-    panel.style.top = (small ? Math.max(60, innerHeight - 330) : Math.max(56, vpR.top + 10)) + "px";
+    // jumpstart-3d: a phone panel is 470 px tall at most (it was 330: the first step did not fit)
+    panel.style.top = (small ? Math.max(60, innerHeight - 470) : Math.max(56, vpR.top + 10)) + "px";
     // drag by the header
     panel.addEventListener("pointerdown", (e) => {
       const h = e.target.closest(".tut-head");
@@ -260,7 +261,7 @@ export function initTutorials(app) {
       el("span", {}, el("small", {}, "Tool"), el("b", {}, step.tool)),
       step.show ? el("button", { class: "btn tut-show", id: "tut-show", onclick: () => showMe(true) }, "Show me") : null);
     // a little looping animation of the step (like an animated GIF)
-    const an = animFor(step), animOff = !!lsGet("animOff");
+    const an = animFor(step), animPref = lsGet("animOff"), animOff = animPref === null ? innerWidth < 700 : !!animPref; // jumpstart-3d: a phone starts with the animation hidden (it took half the panel); the button still shows it
     let anim = null;
     if (an) {
       const svg = animOff ? null : animSVG(an);
