@@ -177,6 +177,7 @@ app.voxel = initVoxel(app);
   app.onVersion = () => app.refreshUI && app.refreshUI("version");
   $("btn-save").onclick = () => app.projects.saveVersion();
   $("btn-tutorials").onclick = () => app.tutorials.open();
+  $("btn-tutorials-menu").onclick = () => { $("menu-export").hidden = true; app.tutorials.open(); }; // jumpstart-3d: phone entry
   app.flexigen = initFlexiGen(app);
   app.meshstep = initMeshStep(app);
   app.chisel = initChisel(app);
