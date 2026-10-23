@@ -136,7 +136,7 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
 
     const [dl] = await Promise.all([
       page.waitForEvent("download", { timeout: 90_000 }),
-      (async () => { await page.locator("#btn-export").tap(); await page.locator('#menu-export button[data-act="stl"]').tap(); })(),
+      (async () => { await page.locator("#btn-export").tap(); await expect(page.locator("#btn-report")).toBeVisible(); /* the only way to Report a problem on a phone: About is hidden there */ await page.locator('#menu-export button[data-act="stl"]').tap(); })(),
     ]);
     const stlAt = Date.now();
     stl = Math.round(stlAt - (await page.evaluate(() => performance.timeOrigin)));

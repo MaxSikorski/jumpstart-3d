@@ -1,4 +1,5 @@
-# Builds both outputs and runs the Playwright regression tests in parallel parts beside the export judge, the chat judge and the MCP server tests (see test/README.md).
+# Builds both outputs and runs the Playwright regression tests in parallel parts beside the export judge and the MCP server tests (see test/README.md).
+# The chat judge and the fuzzer run nightly instead (nightly.yml).
 # Runs on every pull request and on pushes to main. A pull request that changes only root-level Markdown files skips everything but the MCP tests. Public repository: Actions minutes are free.
 name: test
 
@@ -66,7 +67,7 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
         total: [8]
     env:
-      # the chat judge shares one 8-minute clock across both builds, so it runs whole in the "chat judge" job;
+      # the chat judge runs nightly (nightly.yml), where its 8-minute clock is shared across both builds;
       # the golden exports run in the "golden exports" jobs, which the export judge then checks
       JS3D_SKIP_CHATJUDGE: '1'
       JS3D_SKIP_GOLDEN: '1'
@@ -194,34 +195,6 @@ jobs:
           retention-days: 7
           overwrite: true
 
-  # The chat judge's mock model gets one 8-minute clock shared by the site and the single file (test/chatjudge.spec.mjs), so both builds run in this one job.
-  chat-judge:
-    name: chat judge
-    needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci
-      - run: npx playwright install chromium
-      # builds both outputs, runs the scorer's Node tests, then test/chatjudge.spec.mjs on the site and the single file
-      - run: npm run test:chat-judge
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-chat-judge
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
-          overwrite: true
-
   mcp:
     name: mcp server
     runs-on: ubuntu-24.04
@@ -246,7 +219,7 @@ jobs:
   #   - code=true:  every other job succeeded, or
   #   - code=false: the MCP tests succeeded and the code jobs were skipped (exactly "skipped", not failed or cancelled).
   test:
-    needs: [changes, playwright, golden, judge, chat-judge, mcp]
+    needs: [changes, playwright, golden, judge, mcp]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -257,16 +230,15 @@ jobs:
           PLAYWRIGHT: ${{ needs.playwright.result }}
           GOLDEN: ${{ needs.golden.result }}
           JUDGE: ${{ needs.judge.result }}
-          CHAT: ${{ needs.chat-judge.result }}
           MCP: ${{ needs.mcp.result }}
         run: |
-          echo "changes=$CHANGES code=$CODE playwright=$PLAYWRIGHT golden=$GOLDEN judge=$JUDGE chat=$CHAT mcp=$MCP"
+          echo "changes=$CHANGES code=$CODE playwright=$PLAYWRIGHT golden=$GOLDEN judge=$JUDGE mcp=$MCP"
           [ "$CHANGES" = success ] || { echo "the changes job did not succeed"; exit 1; }
           [ "$MCP" = success ] || { echo "the MCP tests did not succeed"; exit 1; }
           if [ "$CODE" = true ]; then
-            [ "$PLAYWRIGHT" = success ] && [ "$GOLDEN" = success ] && [ "$JUDGE" = success ] && [ "$CHAT" = success ] && exit 0
+            [ "$PLAYWRIGHT" = success ] && [ "$GOLDEN" = success ] && [ "$JUDGE" = success ] && exit 0
           elif [ "$CODE" = false ]; then
-            [ "$PLAYWRIGHT" = skipped ] && [ "$GOLDEN" = skipped ] && [ "$JUDGE" = skipped ] && [ "$CHAT" = skipped ] && exit 0
+            [ "$PLAYWRIGHT" = skipped ] && [ "$GOLDEN" = skipped ] && [ "$JUDGE" = skipped ] && exit 0
           fi
           echo "not every needed job succeeded"
           exit 1

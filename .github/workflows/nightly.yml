@@ -1,0 +1,79 @@
+# Checks that are too slow or too random to hold up every pull request: the chat geometry scorer on both builds and, once it exists, the fuzzer (see test/README.md).
+# A failure opens nothing and posts nothing; it shows as a red run in the Actions tab (`gh run list --workflow nightly`). No secrets, no model: the chat judge drives a mock.
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  chat-judge:
+    name: chat judge
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      # builds both outputs, runs the scorer's Node tests, then test/chatjudge.spec.mjs on the site and the single file (one 8-minute mock clock shared by both)
+      - run: npm run test:chat-judge
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-chat-judge
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Check for the fuzzer
+        id: have
+        run: |
+          if [ -f test/fuzz.spec.mjs ] && node -e 'process.exit(require("./package.json").scripts?.fuzz ? 0 : 1)'; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "the fuzzer is not in this tree yet: nothing to run"
+          fi
+      - if: ${{ steps.have.outputs.present == 'true' }}
+        run: npx playwright install chromium
+      # the fuzz script has no pretest: build first (the script itself sets FUZZ_RUNS=50)
+      - if: ${{ steps.have.outputs.present == 'true' }}
+        run: node build.mjs
+      - if: ${{ steps.have.outputs.present == 'true' }}
+        run: npm run fuzz
+      - if: ${{ failure() && steps.have.outputs.present == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
