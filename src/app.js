@@ -34,6 +34,7 @@ import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
+import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
@@ -126,7 +127,7 @@ function boot() {
   const scene = (app.scene = new SceneSync(vp, kernel));
   vp.zoomTargets = () => scene.meshes();
   app.sketcher = new Sketcher(app);
-  scene.onRefresh = () => app.onSceneRefresh && app.onSceneRefresh();
+  scene.onRefresh = () => { app.onSceneRefresh && app.onSceneRefresh(); app.plateView && app.plateView.update(); }; // jumpstart-3d: printer plate. overhang shading follows the shapes
   // a shape's size and position boxes need its finished geometry: show them once it arrives
   let drawnKey; // jumpstart-3d: fix. redraw when a new mesh lands, not only when the position boxes are missing
   app.onSceneRefresh = () => {
@@ -164,6 +165,7 @@ app.voxel = initVoxel(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
   app.cam = initCam(app);
+  app.plateView = initPrinterPreview(app); // jumpstart-3d: printer plate. Printer plate… in the Settings menu, overhang shading
 
   store.on((kind) => {
     const doc = store.view;

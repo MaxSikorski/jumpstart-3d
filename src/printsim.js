@@ -9,6 +9,9 @@ import { el, fmt } from "./util.js";
 import { M4 } from "./ops.js";
 import { FILAMENTS } from "./fea.js";
 
+import { registerPrinters, getPlatePref, setPlatePref } from "./printerpresets.js"; // jumpstart-3d: the Printer plate choice and the evidence labels on these rows
+import { leansOut } from "./overhang.js"; // jumpstart-3d: one overhang rule for the design view and the sim
+
 // Printers and how they handle more than one filament (like Orca Slicer's printer profiles):
 //   tools.kind  "single"  one nozzle, one filament (swap by hand)
 //               "mmu"     one nozzle fed by a spool switcher (AMS, CFS, Canvas, IFS, MMU3):
@@ -63,6 +66,7 @@ export const PRINTERS = {
   // Voron
   voron: { brand: "Voron", name: "Voron 2.4 350", w: 350, d: 350, h: 340, tools: { kind: "single" } },
 };
+registerPrinters(PRINTERS); // jumpstart-3d: adds dimensionEvidence / plateLabel to the rows above (printerpresets.js); the rows themselves stay as the author wrote them
 const PURGE_FLOW = 12; // mm³/s a nozzle purges at while flushing
 // Orca-style flushing volume (mm³) from one color to the next: more when going from dark to
 // light, and more the more different the colors are
@@ -236,7 +240,6 @@ export function initPrintSim(app, X) {
   // ------------------------------------------------------------ overhangs and supports
   function analyse() {
     const w = W, { pos, tri, nT } = w;
-    const cosT = Math.cos((st.threshold * Math.PI) / 180);
     const over = new Uint8Array(nT), nrm = new Float32Array(nT * 3);
     let overArea = 0, bedArea = 0;
     const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3();
@@ -257,7 +260,7 @@ export function initPrintSim(app, X) {
       nrm[t * 3] = n.x; nrm[t * 3 + 1] = n.y; nrm[t * 3 + 2] = n.z;
       const zmax = Math.max(pos[a + 2], pos[b + 2], pos[c + 2]);
       if (zmax < 0.05 && n.z < -0.98) { bedArea += ar; continue; }
-      if (-n.z > cosT && Math.min(pos[a + 2], pos[b + 2], pos[c + 2]) > st.layer * 0.5 && !(w.nParts > 1 && restsOnPart(t, a, b, c))) { over[t] = 1; overArea += ar; }
+      if (leansOut(n.z, st.threshold) /* jumpstart-3d: limit measured from vertical (sin), see overhang.js */ && Math.min(pos[a + 2], pos[b + 2], pos[c + 2]) > st.layer * 0.5 && !(w.nParts > 1 && restsOnPart(t, a, b, c))) { over[t] = 1; overArea += ar; }
     }
     // support columns: under every overhang, from the plate (or the part below) up to it
     const sp = st.supports === "tree" ? 3 : 2, zgap = st.layer;
@@ -332,7 +335,7 @@ export function initPrintSim(app, X) {
     const nVtx = pos.length / 3, zs = new Float32Array(nVtx), v = new THREE.Vector3();
     const bb = new THREE.Box3();
     for (let i = 0; i < nVtx; i++) { v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(Rm); zs[i] = v.z; bb.expandByPoint(v); }
-    const zmin = bb.min.z, cosT = Math.cos((st.threshold * Math.PI) / 180), nn = new THREE.Vector3();
+    const zmin = bb.min.z, nn = new THREE.Vector3();
     let over = 0, bed = 0;
     const e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
     for (let t = 0; t < nT; t++) {
@@ -343,7 +346,7 @@ export function initPrintSim(app, X) {
       const ar = e1.cross(e2).length() / 2;
       const hi = Math.max(zs[a], zs[b], zs[c]) - zmin;
       if (hi < 0.05 && nn.z < -0.98) bed += ar;
-      else if (-nn.z > cosT && Math.min(zs[a], zs[b], zs[c]) - zmin > st.layer * 0.5) over += ar;
+      else if (leansOut(nn.z, st.threshold) /* jumpstart-3d: limit measured from vertical (sin), see overhang.js */ && Math.min(zs[a], zs[b], zs[c]) - zmin > st.layer * 0.5) over += ar;
     }
     const size = bb.getSize(new THREE.Vector3());
     return { dn, Rm, over, bed, h: size.z, w: Math.max(size.x, size.y), d: Math.min(size.x, size.y) };
@@ -1236,10 +1239,12 @@ export function initPrintSim(app, X) {
   function open() {
     st.ids = targetIds();
     dropStalePaint(); // jumpstart-3d: painted 3MF
+    { const pp = getPlatePref(); if (pp.printer !== "generic" && pp.printer !== "none") st.printer = pp.printer; } // jumpstart-3d: open on the printer chosen under Printer plate…
     root.visible = true;
     vp.grid.visible = false;
     buildPlate();
     buildDocks();
+    X.onOpen && X.onOpen(); // jumpstart-3d: the design view's overhang overlay steps aside
     def = {
       title: "3D Print Sim",
       okLabel: "Done",
@@ -1291,7 +1296,7 @@ export function initPrintSim(app, X) {
           for (const [k, p] of list) g.append(el("option", { value: k, selected: k === st.printer }, `${p.name.replace(brand + " ", "")} (${p.w}×${p.d}×${p.h})`));
           return g;
         }));
-        psel.onchange = () => { st.printer = psel.value; buildPlate(); filamentsChanged(); };
+        psel.onchange = () => { st.printer = psel.value; setPlatePref({ printer: psel.value }); buildPlate(); filamentsChanged(); }; // jumpstart-3d: the same choice as Printer plate…
         body.append(row("Printer", psel, "ps-printer"));
         body.append(el("div", { class: "hint pstools", id: "ps-tools", style: { padding: 0 } }, toolText(P)));
         // the filaments: one per toolhead / spool slot. Pick a color for each, pick one as the
@@ -1489,7 +1494,6 @@ export function initPrintSim(app, X) {
       e.a += ar; byN.set(key, e);
     }
     [...byN.values()].sort((p, q) => q.a - p.a).slice(0, 8).forEach((e) => cand.push(e.n.clone().normalize()));
-    const cosT = Math.cos((st.threshold * Math.PI) / 180);
     let best = null;
     for (const dn of cand) {
       const q = new THREE.Quaternion().setFromUnitVectors(dn, new THREE.Vector3(0, 0, -1));
@@ -1507,7 +1511,7 @@ export function initPrintSim(app, X) {
         const ar = new THREE.Vector3(pos[b3] - pos[a3], pos[b3 + 1] - pos[a3 + 1], pos[b3 + 2] - pos[a3 + 2]).cross(new THREE.Vector3(pos[c3] - pos[a3], pos[c3 + 1] - pos[a3 + 1], pos[c3 + 2] - pos[a3 + 2])).length() / 2;
         const lo = Math.max(zs[a], zs[b], zs[c]) - zmin;
         if (lo < 0.05 && nn.z < -0.98) bed += ar;
-        else if (-nn.z > cosT) over += ar;
+        else if (leansOut(nn.z, st.threshold)) over += ar; // jumpstart-3d: limit measured from vertical (sin), see overhang.js
       }
       const score = over - 0.5 * bed + 0.02 * (zmax - zmin) * Math.sqrt(Math.max(1, bed));
       if (!best || score < best.score - 1e-6) best = { score, Rm };

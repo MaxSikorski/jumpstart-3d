@@ -6142,12 +6142,14 @@ export function initAdvanced(app) {
   vp.canvas.parentElement.append(secChip);
   section.onChange((info) => { secChip.hidden = !info; if (info) secChip.querySelector(".txt").textContent = "Section: " + (info.ref.label || "plane") + (info.d ? ` ${info.d > 0 ? "+" : ""}${withUnit(info.d, 1)}` : ""); });
   const { measureCmd } = initMeasure(app, { vp, openCmd, closeCmd, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawFace, drawDot, clearOv, row, seg });
-  const psim = initPrintSim(app, { vp, scene, openCmd, closeCmd, row, seg, sliderRow, onView: () => { if (app.mode === "advanced") renderRibbon(); }, onClose: () => leftPrintSim() });
+  const plateUpdate = () => app.plateView && app.plateView.update(); // jumpstart-3d: printer plate. the overhang overlay steps aside while a simulation workspace is open
+  const psim = initPrintSim(app, { vp, scene, openCmd, closeCmd, row, seg, sliderRow, onView: () => { if (app.mode === "advanced") renderRibbon(); }, onOpen: plateUpdate, onClose: () => leftPrintSim() });
   // the sim panel closed (Done, ×, a mode switch…): unlock the design again
   function leftPrintSim() {
     app.simLock = false;
     document.body.classList.remove("simlock");
     if (workspace === "print") { workspace = "design"; if (app.mode === "advanced") { renderRibbon(); renderBrowser(); renderTimeline(); } }
+    plateUpdate(); // jumpstart-3d: printer plate
   }
   // Beginner mode opens the same sim as a tool
   function openPrintSim() {
@@ -6157,6 +6159,7 @@ export function initAdvanced(app) {
     app.simLock = true;
     document.body.classList.add("simlock");
     psim.open();
+    plateUpdate(); // jumpstart-3d: printer plate
   }
   function setWorkspace(w) {
     if (workspace === w) return;
@@ -6168,6 +6171,7 @@ export function initAdvanced(app) {
     renderRibbon();
     renderBrowser();
     if (w === "print") psim.open();
+    plateUpdate(); // jumpstart-3d: printer plate. Simulate and 3D Print Sim hide the overlay; Design brings it back
   }
 
   let lastKind = null;
