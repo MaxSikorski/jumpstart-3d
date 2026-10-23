@@ -1344,10 +1344,10 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
     return out;
   });
   expect(r.steps).toBeGreaterThanOrEqual(7);
-  expect(r.count).toBe(54);
-  expect(r.beginner).toBe(24);
-  expect(r.adv).toBe(25);
-  expect(r.arch).toBe(5);
+  expect(r.count).toBe(74);
+  expect(r.beginner).toBe(28);
+  expect(r.adv).toBe(40);
+  expect(r.arch).toBe(6);
   expect(r.level).toBe("Proficient");
   expect(r.item).toBe("Bracket");
   expect(r.empty.slice(0, 6)).toEqual([false, false, false, false, false, false]);
@@ -1366,13 +1366,13 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   expect((await bodies(page))[0].volume).toBeCloseTo(80 * 40 * 8, 0);
 });
 
-test("Tutorials lists sixty-four projects and About lists what the community build adds", async () => {
+test("Tutorials lists seventy-four projects and About lists what the community build adds", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
   expect(await page.evaluate(() => {
     const list = window.__app.tutorials.list;
     return [list.length, ...["beginner", "advanced", "arch"].map((mode) => list.filter((t) => t.mode === mode).length)];
-  })).toEqual([64, 28, 31, 5]);
+  })).toEqual([74, 28, 40, 6]);
   await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
