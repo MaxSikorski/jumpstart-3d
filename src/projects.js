@@ -311,7 +311,8 @@ export function initProjects(app) {
         acts.replaceWith(confirmRow);
       };
       acts.append(delBtn);
-      card.append(th, el("div", { class: "meta" }, el("b", {}, (p.name || "Untitled") + (p.ver ? " v" + p.ver : "")), el("span", {}, when + (p.where === "account" ? " · account" : "")), p.mode ? el("span", { class: "tag " + p.mode }, p.mode === "advanced" ? "Advanced" : p.mode === "chisel" ? "Chisel" : "Beginner") : null), acts);
+      // jumpstart-3d: the Architechies tag label is added to the mode tag below
+      card.append(th, el("div", { class: "meta" }, el("b", {}, (p.name || "Untitled") + (p.ver ? " v" + p.ver : "")), el("span", {}, when + (p.where === "account" ? " · account" : "")), p.mode ? el("span", { class: "tag " + p.mode }, p.mode === "advanced" ? "Advanced" : p.mode === "chisel" ? "Chisel" : p.mode === "arch" ? "Architechies" : "Beginner") : null), acts);
       grid.append(card);
     }
   }

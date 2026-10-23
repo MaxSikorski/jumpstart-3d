@@ -1,0 +1,70 @@
+{
+ "v": 1,
+ "id": "g_shell_chain_cone",
+ "name": "Shell with tangent chain on a cone",
+ "mode": "advanced",
+ "created": 1,
+ "seq": 4,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "Cone",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "prim",
+    "kind": "cone",
+    "p": {
+     "w": 20,
+     "d": 20,
+     "h": 20,
+     "top": 0.5,
+     "r": 0,
+     "c": 0
+    },
+    "mods": [
+     {
+      "id": "s1",
+      "seq": 2,
+      "t": "shell",
+      "th": 1.5,
+      "chain": true,
+      "faces": [
+       {
+        "c": [
+         0,
+         0,
+         20
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}
