@@ -3,8 +3,8 @@
 JumpStart 3D runs entirely in your browser. There is no server, no
 account and no data sent anywhere: your designs stay in your browser's
 storage or in files you save yourself. The only network requests the
-website makes are for its own files and for fonts from Google Fonts. The
-downloaded single file makes only the font requests.
+website makes are for its own files (the fonts are among them). The
+downloaded single file makes none.
 
 ## What counts as a security problem here
 
@@ -61,4 +61,5 @@ Get-FileHash jumpstart-3d.html -Algorithm SHA256
 
 If someone re-hosts the file elsewhere, the digest is how you tell whether
 it is unchanged. The website itself needs no checking: it is served over
-HTTPS from this repository's `docs/` folder.
+HTTPS from the `docs/` folder of this repository's `release` branch, which the
+release step builds from `main`.

@@ -10,7 +10,7 @@
 // service worker or the browser cache count as zero; the service worker's own downloads are printed on a line below,
 // because Chromium's throttle does not slow them). Within 10 minutes of a first visit the browser's own cache serves a second visit even
 // without a service worker, so the second-visit row only differs clearly after 10 minutes or offline.
-// To compare: build the old version into a folder, run this on it, then run it on docs/ after node build.mjs.
+// To compare: put the old build in a folder (git archive <release tag> docs | tar -x -C <folder>; docs/ is not committed on main), run this on it, then run it on docs/ after node build.mjs.
 import { createServer } from "node:http";
 import { readFileSync, statSync, existsSync } from "node:fs";
 import { join, extname, normalize, resolve } from "node:path";

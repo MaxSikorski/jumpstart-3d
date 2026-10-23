@@ -5,6 +5,7 @@ import { ICON } from "./icons.js";
 import { initRecovery } from "./recovery.js";
 import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs storage
 import { initFolder } from "./folder.js"; // jumpstart-3d: copies in a folder
+import { glbBytes } from "./gltf.js"; // jumpstart-3d: glTF export
 import { initRemote } from "./remote.js"; // jumpstart-3d: remote
 
 const LS_PREF = "workplane.pref.v1";
@@ -283,7 +284,8 @@ export function initProjects(app) {
         acts.replaceWith(confirmRow);
       };
       acts.append(delBtn);
-      card.append(th, el("div", { class: "meta" }, el("b", {}, (p.name || "Untitled") + (p.ver ? " v" + p.ver : "")), el("span", {}, when + (p.where === "account" ? " · account" : "")), p.mode ? el("span", { class: "tag " + p.mode }, p.mode === "advanced" ? "Advanced" : p.mode === "chisel" ? "Chisel" : "Beginner") : null), acts);
+      // jumpstart-3d: the Architechies tag label is added to the mode tag below
+      card.append(th, el("div", { class: "meta" }, el("b", {}, (p.name || "Untitled") + (p.ver ? " v" + p.ver : "")), el("span", {}, when + (p.where === "account" ? " · account" : "")), p.mode ? el("span", { class: "tag " + p.mode }, p.mode === "advanced" ? "Advanced" : p.mode === "chisel" ? "Chisel" : p.mode === "arch" ? "Architechies" : "Beginner") : null), acts);
       grid.append(card);
     }
   }
@@ -426,6 +428,21 @@ export function initProjects(app) {
     if (!bytes) { app.toast("Nothing to export yet. Holes on their own aren't exported."); return; }
     await offerModel(exportName() + ".obj", bytes);
     app.onExport && app.onExport("obj");
+  }
+  // glTF (our addition): the mesh data objBytes reads, one coloured mesh per body; the file format lives in gltf.js
+  function glbBytesOf(bodies = exportBodies()) { // jumpstart-3d: scripting bridge
+    const parts = [];
+    for (const b of bodies) {
+      const v = app.scene.views.get(b.id);
+      if (v && v.data) parts.push({ name: b.name || b.id, color: b.color, matrix: v.group.matrix.elements, vertices: v.data.vertices, normals: v.data.normals, triangles: v.data.triangles });
+    }
+    return glbBytes(parts, store.doc.name);
+  }
+  async function exportGLB() {
+    const bytes = glbBytesOf();
+    if (!bytes) { app.toast("Nothing to export yet. Holes on their own aren't exported."); return; }
+    await offerModel(exportName() + ".glb", bytes);
+    app.onExport && app.onExport("glb");
   }
   // 3MF: one object per body with its color, vertices shared so slicers see closed meshes
   function threeMFBytes(bodies = exportBodies()) { // jumpstart-3d: scripting bridge
@@ -629,6 +646,7 @@ export function initProjects(app) {
     if (a === "stl") exportSTL();
     if (a === "obj") exportOBJ();
     if (a === "3mf") export3MF();
+    if (a === "glb") exportGLB(); // jumpstart-3d: glTF export
     if (a === "step") exportSTEP();
     if (a === "dxf") app.advanced.exportSketchesDXF(null);
     if (a === "json") exportJSON();
@@ -690,7 +708,7 @@ export function initProjects(app) {
     version: () => verOf(),
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
-    stlBytes, objBytes, threeMFBytes, stepBytes, // jumpstart-3d: scripting bridge
+    stlBytes, objBytes, threeMFBytes, stepBytes, glbBytes: glbBytesOf, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
     get started() { return started; }, _store: ps, _folder: mirror, _remote: remote, // jumpstart-3d: designs storage, copies in a folder, remote (tests read these)
   };

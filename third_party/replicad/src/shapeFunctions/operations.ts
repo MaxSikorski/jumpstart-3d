@@ -116,7 +116,39 @@ function simplifiedResult(builder: {
     }
     unify.SetAngularTolerance(1e-3);
     unify.Build();
-    return unify.Shape();
+    // jumpstart-3d: a boolean between round faces can leave a face whose outer boundary is split into two loops; the
+    // mesher reads the second loop as a hole and leaves out part of the face (two torus groups joined: 243 mm3 short).
+    // ShapeFix rejoins the loops, solid by solid. A result with loose faces or no solid is returned as it is.
+    const unified = unify.Shape(); // not registered: it is the result when there is nothing to fix
+    const solids = r(
+      new oc.TopExp_Explorer(
+        unified,
+        oc.TopAbs_ShapeEnum.TopAbs_SOLID,
+        oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+      )
+    );
+    const loose = r(
+      new oc.TopExp_Explorer(
+        unified,
+        oc.TopAbs_ShapeEnum.TopAbs_FACE,
+        oc.TopAbs_ShapeEnum.TopAbs_SOLID
+      )
+    );
+    if (!solids.More() || loose.More()) return unified;
+    const fixes: any[] = [];
+    for (; solids.More(); solids.Next()) {
+      const fix = r(new oc.ShapeFix_Solid());
+      fix.Init(r(oc.TopoDS.Solid(r(solids.Current()))));
+      fix.Perform(r(new oc.Message_ProgressRange()));
+      fixes.push(fix);
+    }
+    unified.delete();
+    if (fixes.length === 1) return fixes[0].Solid();
+    const compoundBuilder = r(new oc.TopoDS_Builder());
+    const out = new oc.TopoDS_Compound();
+    compoundBuilder.MakeCompound(out);
+    for (const fix of fixes) compoundBuilder.Add(out, r(fix.Solid()));
+    return out;
   } finally {
     gc();
   }
