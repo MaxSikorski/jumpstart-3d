@@ -118,8 +118,8 @@ export function initRecovery({ getDoc, toast, restore, savedCopy }) {
   window.addEventListener("pagehide", urgent("closed"));
   window.addEventListener("beforeunload", urgent("closed"));
   let errShown = false;
-  const onCrash = () => {
-    if (!enabled) return;
+  const onCrash = (e) => {
+    if (!enabled || /^ResizeObserver loop/.test(e && e.message)) return; // jumpstart-3d: Safari reports this harmless note as an error
     urgent("error")();
     if (!errShown) { errShown = true; toast && toast("Something went wrong, but your work is autosaved. If the app misbehaves, reload: you'll be offered your latest work."); setTimeout(() => (errShown = false), 30000); }
   };

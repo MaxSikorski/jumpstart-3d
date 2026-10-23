@@ -420,5 +420,19 @@
     "obj": "250e61e153e01975331572717f35ef65ae2a25db523fd4e4b91637527b43bcab",
     "3mf": "8b5dc0598cacd12becbac374bc4ef7e61cedd3b676c14363b6866722b7142e0b",
     "step": "dbbfa1389e1093e0a90cb36ebe046665aee8d0f36d4933442921c254c24bf9d0"
+  },
+  "knurl.json": {
+    "volumes": {
+      "b3y1vjo0rq6x Knurled knob 20 x 15": 4168.9,
+      "b3y1vx85axhb Hex knob": 7145.1,
+      "b3y1w3a8auk6 D knob": 663.1,
+      "b3y1wkg4ftxk Fine knob": 24471.5
+    },
+    "stlTriangles": 2832,
+    "stl": "7a0a7effb996792a68ad3775081cb3bddf7a8d765f6a3553e5a6dce095239e4e",
+    "obj": "fe765f1bdf398539e7a87cda565178671176e0044959eb1200b10b26327affc9",
+    "3mf": "7f3611d2e87a60fc010ab24778df008b6aeb0b455a4b9289694f913a98a79ef2",
+    "step": "2a013002c11f0cb943cee78ec7a16466c163e0d07d47df2b164781a645aba774",
+    "dxf": "eb6326c48fc24821a54cef40fcca977d1a16e73cfbc61245e8f3b0ecee58b174"
   }
 }

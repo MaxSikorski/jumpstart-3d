@@ -20,6 +20,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
 - `add_hole_pattern` drills a grid, a staggered grid or a circle of round holes into one flat face of a body, as one Hole feature. `face` is the direction the face looks (`+z` is the top). Columns run along the face's longest straight edge (on a box top, the longer side), rows across it; `angle` and `start` are measured from that edge. Leave `pitch` out to spread the holes over the face; holes that would not fit inside the face and its `margin` are left out and counted in `dropped`. Plain, counterbore (`cbore`), countersink (`csink`) or `tapped`, with a `size` such as `M3`. `shape` `square`, `hex` or `slot` cuts that outline instead (`width`: the side, the width across flats or the slot's width; `length`: the slot's overall length) as one sketch and one Extrude cut, with the same layouts; stagger with a row pitch of 0.866 x the column pitch for a honeycomb. More than 200 plain holes or shapes (8 tapped) is refused. Call `wait_ready` after.
 - `add_gear` makes a spur gear, a straight bevel gear or a rack from `module` (mm) and `teeth`. Two spur gears of one module mesh at centres `module × (teeth1 + teeth2) / 2` apart; when `teeth2` is even, turn the second by `180 / teeth2` degrees about its own centre with rotate_bodies. Call wait_ready after.
 - `add_name_plate` makes a tag or name plate sized to one line of text: raised letters are a second body in their own colour (do not group_bodies them with the plate, that fuses them into one colour); cut letters are part of the plate. Call wait_ready after.
+- `add_knurl` makes a knurled knob or grip: a cylinder with straight V grooves and an optional round, hex or D bore. For a diamond pattern use the app's Texture. Call wait_ready after.
 
 ## The loop
 
@@ -30,7 +31,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
 2. Build with `add_shape`, then `set_hole`, `move_bodies`, `resize_shape`, `group_bodies`.
 3. `wait_ready`, then `list_bodies` to check sizes and volumes. A body with an `error` did not build; read the message, fix it, or `undo`.
 4. `screenshot` after every few edits and look at it. Do not trust the numbers alone. If your model cannot see images, pass `path` (a file name): the PNG is saved there and you get `{path, bytes, width}` as text, so the user can look at the file.
-5. At the end `export_file` and tell the user the full path. Use an absolute path; a relative one is relative to the folder the server was started in. Kinds: `stl`, `obj`, `3mf`, `step`, `json` (the project file).
+5. At the end `export_file` and tell the user the full path. Use an absolute path; a relative one is relative to the folder the server was started in. Kinds: `stl`, `obj`, `3mf`, `glb`, `step`, `json` (the project file).
 
 If a tool fails with "could not start the headless browser", tell the user to run `npx playwright@1.62.1 install chromium` once and then try again. Headless opens the public site (https://maxsikorski.github.io/jumpstart-3d/) unless the server runs from a checkout that has a built `docs/` folder, or `JS3D_APP` says otherwise, so it needs internet when the server runs from the installed plugin.
 
@@ -55,7 +56,7 @@ JS3D.scale(id, [1, 1, 2]); JS3D.rotate(id, "z", 45)                   // about t
 JS3D.setParam("w", "40"); JS3D.bind(id, "w", "w/2")                   // a size that follows a parameter
 await JS3D.ready();  JS3D.list();  JS3D.get(id).volume                // wait, then read
 await JS3D.screenshot({ fit: true, width: 800 })                      // PNG bytes
-await JS3D.export("step")                                             // bytes; also stl, obj, 3mf, json
+await JS3D.export("step")                                             // bytes; also stl, obj, 3mf, glb, json
 await JS3D.load(jsonText)                                             // open a project file you wrote
 ```
 

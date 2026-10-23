@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 38 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 39 tools is a lot for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -176,13 +176,14 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
 | `add_gear` | A spur gear, a straight bevel gear (meshes at 90° with a bevel gear of `mate` teeth) or a straight rack from a `module` (mm) and `teeth`, with involute teeth at 20°, a print clearance, and an optional `bore` (with a DIN 6885 `keyway` on spur gears). Spur 12 to 200 teeth, bevel 12 to 90, rack 2 to 100. Takes a moment to build: call `wait_ready` |
 | `add_name_plate` | A name plate or tag sized to one line of `text` (at most 40 characters, bold fonts with English and Western European letters): a rounded or pill plate with an optional hanging hole or two screw holes, and the letters either `raised` as a second body in its own colour (keep it separate from the plate: grouping fuses the colours) or `cut` into the plate. Returns `{plate, textBody, size}`. Call `wait_ready` after |
+| `add_knurl` | A knurled knob or grip: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an optional `round`, `hex` or `d` bore. Grooves default to about one per mm of circumference (8 to 120) and the depth to a 90° V. Returns the id. Call `wait_ready` after |
 | `move_bodies`, `move_to`, `rotate_bodies`, `resize_shape`, `scale_bodies` | Place and size them |
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
 | `list_params`, `set_param`, `remove_param`, `bind_size` | Named parameters and sizes that follow them |
-| `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner or Advanced |
+| `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner, Advanced or Architechies (`arch`) |
 | `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
-| `export_file` | Writes STL, OBJ, 3MF, STEP or the project `json` to a path and returns path and size |
+| `export_file` | Writes STL, OBJ, 3MF, GLB, STEP or the project `json` to a path and returns path and size |
 | `save_project`, `load_project` | The design as project-file JSON (text, or a file); open one from text or a file |
 | `new_design` | Start an empty design |
 | `run_script` | Run JavaScript in the page with `JS3D` and `app` in scope; returns the value as JSON |
@@ -205,7 +206,7 @@ server. It prints a JSON result on stdout; progress and errors go to stderr. Exi
 
 ```
 jumpstart run <script.js> [--app <url|file|dir>]         run a script with JS3D in scope; prints what it returns
-jumpstart export <project.json> <out.stl|obj|3mf|step>   open a project, write the export, print the path and size
+jumpstart export <project.json> <out.stl|obj|3mf|glb|step>   open a project, write the export, print the path and size
 jumpstart shot <project.json> <out.png> [--width N]      a picture of the 3D view (800 pixels wide by default)
 jumpstart status [--app <url|file|dir>]                  start the app and print app version, JS3D version, design, body count
 ```

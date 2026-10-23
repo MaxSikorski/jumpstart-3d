@@ -1,6 +1,6 @@
 {
   "name": "jumpstart-3d-mcp",
-  "version": "0.2.8",
+  "version": "0.2.10",
   "description": "MCP server that lets an AI agent edit a design in JumpStart 3D, in the open browser tab or in a headless browser",
   "private": true,
   "type": "module",

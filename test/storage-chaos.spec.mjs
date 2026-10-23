@@ -23,7 +23,7 @@ import { test, expect } from "@playwright/test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { newDoc, body, prim, watchErrors } from "./helpers.mjs";
+import { newDoc, body, prim, watchErrors, buildOf } from "./helpers.mjs";
 
 const DB = "jumpstart3d-projects", RECOVERY_DB = "jumpstart3d-recovery";
 const RESCUE = "workplane.rescue.v1", LS_INDEX = "workplane.index.v1", LS_DOC = "workplane.doc.v1.", LAST = "workplane.pref.v1.last";
@@ -58,7 +58,7 @@ async function newWorld(browser, info) {
   const context = await browser.newContext({ viewport: info.project.use.viewport, serviceWorkers: "block", acceptDownloads: true });
   const w = { context, info, url: info.project.use.baseURL, known: new Map(), ledger: [], token: null, prevToken: null, tokens: [], onKill: null, killWhy: null, ver: new Map(), errors: [], dirs: [],
     expectKill() { this.killWhy = null; return new Promise((res) => { this.onKill = () => res("killed"); }); } };
-  w.origin = info.project.name === "single" ? "file://" : new URL(w.url).origin;
+  w.origin = buildOf(info) === "single" ? "file://" : new URL(w.url).origin;
   await context.exposeFunction("__chaosAck", (r) => { w.ledger.push(r); });
   await context.exposeFunction("__chaosKill", (why) => { w.killWhy = why; if (w.onKill) w.onKill(); });
   w.anchor = await context.newPage(); // keeps the context alive and gives CDP a session
@@ -129,14 +129,12 @@ function INIT(cfg) {
   // stop a write to a database that was already open, so the browser's own limit is not used for IndexedDB here.)
   window.__chaosFailWrites = !!cfg.failWrites;
   const realTx = IDBDatabase.prototype.transaction;
-  window.__chaosTx = 0; // read-write transactions opened on the designs database, for tests that must wait until a save has really started
   window.__chaosArmed = !!(cfg.kill && cfg.kill.armed);
   let puts = 0, completes = 0, sets = 0, writes = 0, drops = 0;
   const spin = (why) => { window.__chaosKill(why); for (;;) {} }; // never returns: Node closes the page
   IDBDatabase.prototype.transaction = function (stores, mode, ...rest) {
     const mine = this.name === cfg.db;
     const tx = realTx.call(this, stores, mode, ...rest);
-    if (mine && mode === "readwrite") window.__chaosTx++;
     if (mine && mode === "readwrite" && cfg.kill && cfg.kill.kind === "complete") tx.addEventListener("complete", () => { if (window.__chaosArmed && ++completes === cfg.kill.at) spin(`transaction ${completes} complete`); });
     return tx;
   };
@@ -290,7 +288,7 @@ function scenario(title, fn, { onlySite = false } = {}) {
   test(title, async ({ browser, browserName }, info) => {
     test.setTimeout(240_000);
     test.skip(browserName !== "chromium", "uses the Chrome DevTools Protocol (CDP), which only Chromium has");
-    test.skip(onlySite && info.project.name === "single", "no origin private file system (OPFS) on file:// in this browser");
+    test.skip(onlySite && buildOf(info) === "single", "no origin private file system (OPFS) on file:// in this browser");
     for (let attempt = 1; ; attempt++) {
       const w = await newWorld(browser, info);
       try { await fn(w, info); return; }
@@ -403,15 +401,13 @@ scenario("IndexedDB refusing writes (quota exceeded): the saved design stays who
   expect(res.ok, "a save the database aborts is not acknowledged").toBe(false);
   const n = await notice(page);
   expect(n.text, "the app records the failure").toMatch(/^Couldn't save: browser storage is full or blocked/);
-  // quarantined: the "Couldn't save" text sits in #savestate, which CSS hides below 1760 px of window width (src/index.html:1079), and nothing else tells the user
-  quarantined("save-failure-not-visible", toldVisibly(n), `after a refused save, #savestate says "${n.text}" but is ${n.shown ? "shown" : "hidden (display:none) at the test window's 1400 px"} and ${n.toasts.length ? "toasts were " + JSON.stringify(n.toasts) : "no toast was raised"}`);
+  expect(toldVisibly(n), `after a refused save, #savestate says "${n.text}" (${n.shown ? "shown" : "hidden"}) and the toasts were ${JSON.stringify(n.toasts)}`).toBe(true);
   // the Save button (Ctrl+S) must not claim success either
   await page.evaluate(() => { window.__toasts.length = 0; });
   await page.click("#btn-save");
   await page.waitForTimeout(500);
   const toasts = await page.evaluate(() => window.__toasts.map((t) => t.text));
-  // quarantined: saveVersion() ignores what saveNow() returns and toasts `Saved as "<name> vN"` even when nothing was stored (src/projects.js:147-153)
-  quarantined("save-button-claims-success", !toasts.some((t) => /^Saved as/.test(t)), `Save with the database refusing every write showed the toast ${JSON.stringify(toasts)}`);
+  expect(toasts.some((t) => /^Saved as/.test(t)), `Save with the database refusing every write showed the toast ${JSON.stringify(toasts)}`).toBe(false);
   expectWhole(w, await readAll(page), "while writes are refused");
   // a backup taken now carries the open design's unsaved edit from memory
   await page.click("#btn-projects");
@@ -516,20 +512,142 @@ scenario("closed right after an edit while localStorage is full: the edit is not
   await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
   await fillStorage(page, 0); // the rescue copy has nowhere to go
   const edit = step(w, A, "soon", 5);
-  // The unload save starts its IndexedDB transaction a few ticks after beforeunload, and a page that is torn down in that gap loses it
-  // (seen once in 20 runs when the page was simply closed). So the same event is sent by hand and the test waits for the transaction
-  // to open (a real signal) before closing the tab; what is tested is that the unload save carries the edit when the rescue copy cannot be written.
-  const opened = await page.evaluate(() => window.__chaosTx);
-  await page.evaluate(({ doc }) => {
-    window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit");
-    window.dispatchEvent(new Event("beforeunload"));
-  }, edit);
-  await page.waitForFunction((n) => window.__chaosTx > n, opened, { timeout: 5000 });
+  // closed straight after the edit: the unload handler starts its IndexedDB write before it returns, so nothing waits for it
+  await page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, edit);
   await page.close({ runBeforeUnload: true });
   page = await openPage(w);
   const it = (await readAll(page)).items.find((x) => x.entry.id === A);
   // the unload save into IndexedDB carries it (the rescue copy cannot be written)
   expect(it && sig(JSON.parse(it.doc)), "the edit made just before the close is stored although localStorage was full").toBe(w.known.get(A).get(edit.n));
+  await closeClean(page);
+});
+
+const NOSAVE = "Couldn't save in this browser. Export a project file now.";
+
+// ---------------------------------------------------------------- 3b. a failed save is announced, at every window width
+for (const width of [375, 1400, 1920]) {
+  scenario(`a refused save raises one error toast that is on screen at ${width} px wide`, async (w) => {
+    const A = "t_chaos_a";
+    const page = await openPage(w);
+    await page.setViewportSize({ width, height: 800 });
+    await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+    await page.evaluate(() => { window.__chaosFailWrites = true; window.__toasts.length = 0; });
+    const errs = () => page.evaluate(() => window.__toasts.filter((t) => t.err).map((t) => t.text));
+    expect((await page.evaluate(drive, { plan: [step(w, A, "now", 5)] }))[0].ok, "the refused save is not acknowledged").toBe(false);
+    expect(await errs(), "one error toast for the failed save").toEqual([NOSAVE]);
+    const shown = await page.evaluate(() => { const r = document.querySelector("#toasts .toast.err").getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; });
+    expect(shown, "the toast is inside the window").toBe(true);
+    // the next autosave tick fails too: still one toast, not one per retry
+    expect((await page.evaluate(drive, { plan: [step(w, A, "soon", 5)] }))[0].ok).toBe(false);
+    expect(await errs(), "a run of failed autosaves does not repeat the toast").toEqual([NOSAVE]);
+    // room again: saving works, and a later failure is announced again
+    await page.evaluate(() => { window.__chaosFailWrites = false; });
+    expect((await page.evaluate(drive, { plan: [step(w, A, "now", 5)] }))[0].ok).toBe(true);
+    await page.evaluate(() => { window.__chaosFailWrites = true; });
+    await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+    expect(await errs(), "a new failure after a good save is announced again").toEqual([NOSAVE, NOSAVE]);
+    await page.evaluate(() => { window.__chaosFailWrites = false; });
+    await closeClean(page);
+  });
+}
+
+// ---------------------------------------------------------------- 3c. the Save button never claims a save that did not happen
+scenario("Save (button and Ctrl+S) shows the error, never 'Saved as', while writes are refused; then works once there is room", async (w) => {
+  const A = "t_chaos_a";
+  const page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  await page.evaluate(() => {
+    window.__saved = 0;
+    const app = window.__app, prev = app.onSaved;
+    app.onSaved = (v) => { window.__saved++; return prev && prev(v); };
+    window.__chaosFailWrites = true;
+  });
+  const toasts = () => page.evaluate(() => window.__toasts.map((t) => t.text));
+  for (const how of ["button", "keyboard"]) {
+    await page.evaluate(() => { window.__toasts.length = 0; });
+    if (how === "button") await page.click("#btn-save"); else await page.locator("body").press("Control+s");
+    await page.waitForFunction((m) => window.__toasts.some((t) => t.err && t.text === m), NOSAVE, { timeout: 10_000 });
+    await page.waitForTimeout(400);
+    const got = await toasts();
+    expect(got.filter((t) => /^Saved as/.test(t)), `${how}: no success toast`).toEqual([]);
+    expect(got.filter((t) => t === NOSAVE), `${how}: one error toast`).toHaveLength(1);
+    expect(await page.evaluate(() => window.__saved), `${how}: onSaved was not called`).toBe(0);
+  }
+  await page.evaluate(() => { window.__chaosFailWrites = false; window.__toasts.length = 0; });
+  await page.click("#btn-save");
+  await page.waitForFunction(() => window.__toasts.some((t) => /^Saved as ".+ v\d+"$/.test(t.text)), null, { timeout: 10_000 });
+  expect(await page.evaluate(() => window.__saved), "the retry that worked calls onSaved once").toBe(1);
+  expect((await toasts()).filter((t) => t === NOSAVE), "and raises no error").toEqual([]);
+  await closeClean(page);
+});
+
+scenario("a failed save's error toast is on top of the Your designs window (opening it saves first)", async (w) => {
+  const A = "t_chaos_a";
+  const page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  await page.evaluate(() => { window.__chaosFailWrites = true; window.__toasts.length = 0; window.__store.update((d) => { d.name += " edited"; }, "Edit"); });
+  await page.click("#btn-projects");
+  await page.waitForSelector(".modal-back .newcards");
+  await page.waitForFunction((m) => window.__toasts.some((t) => t.err && t.text === m), NOSAVE, { timeout: 10_000 });
+  const top = await page.evaluate(() => {
+    document.getElementById("toasts").style.pointerEvents = "auto"; // the toast ignores the pointer; let the hit test see it
+    const t = document.querySelector("#toasts .toast.err"), r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === t || t.contains(hit));
+  });
+  expect(top, "the toast is above the modal scrim").toBe(true);
+  await page.evaluate(() => { window.__chaosFailWrites = false; });
+  await closeClean(page);
+});
+
+scenario("a rescue copy made while the tab's own save was in flight does not leave a '(before fallback)' copy of that save", async (w) => {
+  const A = "t_chaos_a";
+  let page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  const first = (await readAll(page)).items.find((i) => i.entry.id === A);
+  const v2 = step(w, A, "now", 5);
+  await page.evaluate(drive, { plan: [v2] }); // stored: v2 at a stamp after the one the tab opened with
+  const stored = (await readAll(page)).items.find((i) => i.entry.id === A);
+  // what the closing tab leaves when its save was still running: the same content, a later stamp, and the base from before that save
+  const rescue = { id: A, doc: JSON.stringify({ ...JSON.parse(stored.doc), _updated: stored.entry.updated + 1000 }), entry: { ...stored.entry, updated: stored.entry.updated + 1000, thumb: null }, base: first.entry.updated };
+  await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [RESCUE, rescue]);
+  await closeClean(page);
+  w.tokens = [];
+  page = await openPage(w);
+  const snap = await readAll(page);
+  expect(snap.items.map((i) => i.entry.name), "one design, no extra copy").toEqual([v2.doc.name]);
+  expectWhole(w, snap, "after the rescue copy was applied");
+  expect(await page.evaluate((k) => localStorage.getItem(k), RESCUE)).toBeNull();
+  await closeClean(page);
+});
+
+// ---------------------------------------------------------------- 5b. the unload handler starts its write before it returns
+scenario("beforeunload queues the rescue write in IndexedDB before it returns, with localStorage full, and the edit comes back", async (w) => {
+  const A = "t_chaos_a";
+  let page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  await fillStorage(page, 0);
+  const edit = step(w, A, "soon", 5);
+  // one evaluation, nothing awaited: what the handler has queued by the time dispatchEvent returns is all a dying page can count on
+  const seen = await page.evaluate(({ doc, rescue }) => {
+    window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit");
+    const puts = [], txs = [], realPut = IDBObjectStore.prototype.put, realTx = IDBDatabase.prototype.transaction;
+    IDBObjectStore.prototype.put = function (...a) { puts.push({ store: this.name, key: a[1] }); return realPut.apply(this, a); };
+    IDBDatabase.prototype.transaction = function (s, m, ...r) { txs.push(m); return realTx.call(this, s, m, ...r); };
+    try { window.dispatchEvent(new Event("beforeunload")); } finally { IDBObjectStore.prototype.put = realPut; IDBDatabase.prototype.transaction = realTx; }
+    return { puts, txs, ls: localStorage.getItem(rescue) };
+  }, { doc: edit.doc, rescue: RESCUE });
+  expect(seen.ls, "localStorage was full, so no rescue copy there").toBeNull();
+  expect(seen.txs, "a read-write transaction was opened inside the handler").toContain("readwrite");
+  expect(seen.puts.some((p) => p.store === "meta" && p.key === RESCUE), `the rescue put was queued inside the handler (saw ${JSON.stringify(seen.puts)})`).toBe(true);
+  await page.close({ runBeforeUnload: true });
+  w.tokens = [];
+  page = await openPage(w);
+  const snap = await readAll(page);
+  const it = snap.items.find((x) => x.entry.id === A);
+  expect(it && sig(JSON.parse(it.doc)), "the edit is stored after the next start").toBe(w.known.get(A).get(edit.n));
+  expect(it.entry.name, "and the list entry matches it").toBe(edit.doc.name);
+  expect(await page.evaluate(async (k) => window.__app.projects._store.getMeta(k), RESCUE), "the rescue copy is used up").toBeNull();
   await closeClean(page);
 });
 
