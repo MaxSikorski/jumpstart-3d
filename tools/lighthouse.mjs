@@ -1,6 +1,6 @@
 // Nightly loading check: Lighthouse (mobile preset, simulated slow phone network) on the built site, compared with a committed baseline.
 //   node build.mjs && node tools/lighthouse.mjs [--dir docs] [--runs 3] [--out lighthouse-report]
-//   node tools/lighthouse.mjs --record                 run, then write the medians into lighthouse-budget.json as the baseline
+//   node tools/lighthouse.mjs --record                 (first baseline only) run, then write the medians into lighthouse-budget.json as the baseline
 //   node tools/lighthouse.mjs --record-from a.json b.json ...   write the median of those runs' summary.json files (no run)
 // It builds nothing. Each run starts a fresh Chromium (Playwright's binary) with a new profile and loads the page once, cold, from
 // tools/pages-server.mjs (gzip, ETags, service worker allowed). Exit 1 only when a measurement is invalid or a median is over its limit;
@@ -46,6 +46,20 @@ export function readRun(lhr) {
   return { metrics, problems, lcpElement: lcpNode?.selector || lcpNode?.nodeLabel || "" };
 }
 
+// Summaries (summary.json files) that may be turned into a baseline; returns the reasons they may not.
+export function checkSummaries(sums, lighthouseVersion) {
+  const problems = [];
+  if (!sums.length) problems.push("no summaries given");
+  sums.forEach((s, i) => {
+    const n = `summary ${i + 1}`;
+    if (s.lighthouse !== lighthouseVersion) problems.push(`${n} was made with Lighthouse ${s.lighthouse}, installed is ${lighthouseVersion}`);
+    if (s.problems?.length) problems.push(`${n} reported problems: ${s.problems[0]}`);
+    if (!METRICS.every((m) => Number.isFinite(s.medians?.[m]))) problems.push(`${n} does not hold four finite medians`);
+  });
+  if (new Set(sums.map((s) => s.chromium)).size > 1) problems.push("the summaries were made with different Chromium versions");
+  return problems;
+}
+
 export function medians(runs) {
   return Object.fromEntries(METRICS.map((m) => [m, median(runs.map((r) => r[m]))]));
 }
@@ -74,7 +88,7 @@ const fmt = (m, v) => (v === undefined ? "none yet" : m === "cls" ? v.toFixed(3)
 export function table(rows) {
   const lines = ["| Measure | This run (median) | Baseline | Limit | Result |", "|---|---|---|---|---|"];
   for (const r of rows) {
-    const result = r.limit === undefined ? "no baseline" : r.over ? "TOO SLOW" : "ok";
+    const result = r.baseline === undefined ? "no baseline" : r.limit === undefined ? "not compared" : r.over ? "TOO SLOW" : "ok";
     lines.push(`| ${r.rule.label} | ${fmt(r.metric, r.value)} | ${fmt(r.metric, r.baseline)} | ${fmt(r.metric, r.limit)} | ${result} |`);
   }
   return lines.join("\n");
@@ -108,8 +122,8 @@ async function main() {
 
   if (opts.recordFrom.length) {
     const sums = opts.recordFrom.map((f) => JSON.parse(readFileSync(f, "utf8")));
-    const bad = sums.find((s) => s.lighthouse !== lighthouseVersion);
-    if (bad) throw new Error(`a summary was made with Lighthouse ${bad.lighthouse}, installed is ${lighthouseVersion}`);
+    const bad = checkSummaries(sums, lighthouseVersion);
+    if (bad.length) throw new Error(`not recording a baseline: ${bad.join("; ")}`);
     writeBaseline(budget, medians(sums.map((s) => s.medians)), { lighthouse: lighthouseVersion, chromium: sums[0].chromium, runs: sums.length * sums[0].runs, recordedOn: sums[0].platform });
     return;
   }
@@ -161,6 +175,7 @@ async function main() {
     lcpElement ? `LCP element: ${lcpElement}` : "",
     "", table(verdict.rows), "",
     budget.baseline ? `Baseline recorded with Lighthouse ${budget.baseline.lighthouse} on ${budget.baseline.recordedOn}.` : "No baseline committed yet: report only, nothing can fail on the numbers. Record one from CI (see test/README.md).",
+    budget.baseline?.chromium && chromiumVersion && budget.baseline.chromium !== chromiumVersion ? `WARNING: the baseline was recorded with Chromium ${budget.baseline.chromium}, this run used ${chromiumVersion}; timings may have moved for that reason.` : "",
     ...issues.map((p) => `PROBLEM: ${p}`),
   ].filter((l, i, a) => l !== "" || a[i - 1] !== "").join("\n");
   writeFileSync(`${opts.out}/summary.md`, text + "\n");

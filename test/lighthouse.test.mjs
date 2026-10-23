@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { median, limitFor, readRun, medians, compare, table } from "../tools/lighthouse.mjs";
+import { median, limitFor, readRun, medians, compare, table, checkSummaries } from "../tools/lighthouse.mjs";
 
 const budget = JSON.parse(readFileSync(new URL("../lighthouse-budget.json", import.meta.url), "utf8"));
 const withBaseline = (values, lighthouse = "13.5.0") => ({ ...budget, baseline: { lighthouse, values } });
@@ -100,4 +100,22 @@ test("the byte count is refused unless the engine download finished", () => {
   assert.match(readRun(lhr(items([{ url: "http://x/", finished: true, statusCode: 200 }]))).problems.join(), /\.wasm.*missing/);
   assert.match(readRun(lhr(items([{ url: "http://x/occt-gz.wasm", finished: false, statusCode: -1 }]))).problems.join(), /did not finish/);
   assert.match(readRun(lhr(items([{ url: "http://x/occt-gz.wasm", finished: true, statusCode: 200 }, { url: "http://x/a.js", finished: true, statusCode: 404 }]))).problems.join(), /1 request\(s\) failed.*a\.js/);
+});
+
+const sum = (over = {}) => ({ lighthouse: "13.5.0", chromium: "151", runs: 3, medians: base, problems: [], ...over });
+
+test("a baseline is only made from clean summaries of one Lighthouse and one Chromium", () => {
+  assert.deepEqual(checkSummaries([sum(), sum()], "13.5.0"), []);
+  assert.match(checkSummaries([], "13.5.0")[0], /no summaries/);
+  assert.match(checkSummaries([sum({ lighthouse: "13.4.0" })], "13.5.0")[0], /13\.4\.0/);
+  assert.match(checkSummaries([sum({ problems: ["run 1: x"] })], "13.5.0")[0], /problems/);
+  assert.match(checkSummaries([sum({ medians: { ...base, tbt: NaN } })], "13.5.0")[0], /four finite/);
+  assert.match(checkSummaries([sum({ medians: undefined })], "13.5.0")[0], /four finite/);
+  assert.match(checkSummaries([sum(), sum({ chromium: "152" })], "13.5.0")[0], /different Chromium/);
+});
+
+test("the table says not compared when a baseline exists but the run was rejected", () => {
+  const v = compare({ budget: withBaseline(base, "13.4.0"), measured: base, lighthouseVersion: "13.5.0" });
+  assert.match(table(v.rows), /not compared/);
+  assert.doesNotMatch(table(v.rows), /no baseline/);
 });
