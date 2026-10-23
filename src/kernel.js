@@ -93,6 +93,37 @@ function roundOff(shape, p) {
 
 // ---------------------------------------------------------------- primitives
 // Local frame: centered on X/Y, resting on Z = 0, Z up.
+// jumpstart-3d: half an ellipsoid as one B-spline face: a unit half-sphere around axis n with its control points
+// stretched by (rx, ry, rz) and moved to c (exact: a stretch moves a B-spline's control points and nothing else)
+function halfEllipsoid(rx, ry, rz, c, n) {
+  const o = new OC.gp_Pnt(0, 0, 0), dn = new OC.gp_Dir(n[0], n[1], n[2]), dx = new OC.gp_Dir(n[2] ? 1 : 0, n[2] ? 0 : 1, 0);
+  const ax = new OC.gp_Ax3(o, dn, dx), sph = new OC.Geom_SphericalSurface(ax, 1);
+  const bs = OC.GeomConvert.SurfaceToBSplineSurface(sph);
+  for (let u = 1; u <= bs.NbUPoles(); u++) for (let v = 1; v <= bs.NbVPoles(); v++) {
+    const p = bs.Pole(u, v), q = new OC.gp_Pnt(p.X() * rx + c[0], p.Y() * ry + c[1], p.Z() * rz + c[2]);
+    bs.SetPole(u, v, q);
+  }
+  const mk = new OC.BRepBuilderAPI_MakeShell(bs, 0, 2 * Math.PI, 0, Math.PI / 2, true);
+  const shell = mk.Shell();
+  mk.delete(); o.delete(); dn.delete(); dx.delete(); ax.delete();
+  return shell;
+}
+// jumpstart-3d: faces and shells that meet edge to edge, sewn into one solid
+function sewnSolid(parts) {
+  const sew = new OC.BRepBuilderAPI_Sewing(1e-6, true, true, true, false);
+  for (const p of parts) sew.Add(p);
+  const pr = new OC.Message_ProgressRange();
+  sew.Perform(pr); pr.delete();
+  const ex = new OC.TopExp_Explorer(sew.SewedShape(), OC.TopAbs_ShapeEnum.TopAbs_SHELL, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try {
+    if (!ex.More()) throw new Error("This shape couldn't be built with these sizes");
+    const fix = new OC.ShapeFix_Solid();
+    let s = R.cast(fix.SolidFromShell(OC.TopoDS.Shell(ex.Current())));
+    fix.delete();
+    if (safeVolume(s) < 0) { const r = R.cast(s.wrapped.Reversed()); s.delete(); s = r; }
+    return s;
+  } finally { ex.delete(); sew.delete(); }
+}
 function buildPrim(kind, p) {
   const w = clampPos(p.w), d = clampPos(p.d), h = clampPos(p.h);
   switch (kind) {
@@ -250,12 +281,13 @@ function buildPrim(kind, p) {
         add(R.makeSphere(r).translate(L / 2, 0, rz));
         return out.simplify ? out.simplify() : out;
       }
-      const parts = [];
-      if (L > 1e-6) parts.push(ellipseDrawing(ry, rz).sketchOnPlane(new R.Plane([-L / 2, 0, rz], [0, 1, 0], [1, 0, 0])).extrude(L));
-      parts.push(R.makeEllipsoid(cx, ry, rz).translate(-L / 2, 0, rz), R.makeEllipsoid(cx, ry, rz).translate(L / 2, 0, rz));
-      let out = parts[0];
-      for (let i = 1; i < parts.length; i++) { const f = out.fuse(parts[i]); out.delete(); parts[i].delete(); out = f; }
-      return out;
+      // jumpstart-3d: two half-ellipsoid ends sewn to the oval side (fusing whole ellipsoids took 10 to 25 s, and a flat capsule came out wrong)
+      const parts = [halfEllipsoid(cx, ry, rz, [L / 2, 0, rz], [1, 0, 0]), halfEllipsoid(cx, ry, rz, [-L / 2, 0, rz], [-1, 0, 0])];
+      if (L > 1e-6) {
+        const side = ellipseDrawing(ry, rz).sketchOnPlane(new R.Plane([-L / 2, 0, rz], [0, 1, 0], [1, 0, 0])).extrude(L);
+        for (const f of side.faces) { if (f.geomType !== "PLANE") parts.push(f.wrapped); }
+      }
+      return sewnSolid(parts);
     }
     case "arrow": {
       // a flat arrow pointing +X, fitted to w x d, h thick
@@ -855,6 +887,19 @@ function bboxOf(shape) {
 function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
 // radius for a chord-length fillet on each edge: chord = 2 r sin(a / 2), a being the
 // angle between the two faces' normals at the middle of the edge
+// jumpstart-3d: the normal of face f at the middle of its edge e, read through e's own curve on f. Replaces
+// f.normalAt(point), whose projection of the point onto a B-spline ellipsoid face corrupts the engine's memory: after
+// about eight oval spheres the engine fails every ellipsoid with "Expected null or instance of gp_Dir, got an instance
+// of gp_XYZ" until the page is reloaded.
+function normalOnEdge(f, e) {
+  const c2 = new OC.BRepAdaptor_Curve2d(e.wrapped, f.wrapped);
+  const uv = c2.Value((c2.FirstParameter() + c2.LastParameter()) / 2);
+  const pr = new OC.BRepGProp_Face(f.wrapped, false), p = new OC.gp_Pnt(), n = new OC.gp_Vec();
+  try {
+    pr.Normal(uv.X(), uv.Y(), p, n);
+    return [n.X(), n.Y(), n.Z()];
+  } finally { c2.delete(); uv.delete(); pr.delete(); p.delete(); n.delete(); }
+}
 function chordRadii(shape, radius) {
   const out = new Map();
   const faces = shape.faces;
@@ -864,8 +909,7 @@ function chordRadii(shape, radius) {
     const set = radius.get(h);
     if (set.rt !== "chord" || fs.length < 2) continue;
     try {
-      const p = e.pointAt(0.5);
-      const n1 = fs[0].normalAt(p).toTuple(), n2 = fs[1].normalAt(p).toTuple();
+      const n1 = Vec.norm(normalOnEdge(fs[0], e)), n2 = Vec.norm(normalOnEdge(fs[1], e)); // jumpstart-3d: was normalAt(e.pointAt(0.5))
       const dot = Math.max(-1, Math.min(1, n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2]));
       const a = Math.acos(Math.abs(dot) > 0.99999 ? Math.sign(dot) : dot);
       const sn = Math.sin(a / 2);
@@ -1517,9 +1561,8 @@ function tangentChain(shape, open) {
         let p = null;
         for (const o of list) {
           if (o.f === h || open.has(o.f)) continue;
-          if (!p) try { p = e.pointAt(0.5); } catch (err) { break; }
           try {
-            const n1 = f.normalAt(p).toTuple(), n2 = byHash.get(o.f).normalAt(p).toTuple();
+            const n1 = Vec.norm(normalOnEdge(f, e)), n2 = Vec.norm(normalOnEdge(byHash.get(o.f), o.e)); // jumpstart-3d: was normalAt(e.pointAt(0.5))
             const dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
             if (Math.abs(dot) > 0.9995) { open.add(o.f); queue.push(o.f); }
           } catch (err) {}
@@ -2310,29 +2353,40 @@ function scaleShape(shape, k, o) {
   }
   return facetedScale(shape, k, o);
 }
+// jumpstart-3d: the stretched body is rebuilt from its mesh on shared corners and edges (as solidFromMesh does for imports),
+// one solid per separate piece. Upstream sewed loose triangles, which was too slow above 4000 triangles (then refused:
+// a torus, most groups) and could not take two pieces (text of several letters gave a raw ShapeFix_Solid error).
+// A finer body is meshed coarser until it fits, so the stretch always works.
+const STRETCH_TRIANGLES = 4000;
 function facetedScale(shape, k, o) {
   const bb = bboxOf(shape);
   const diag = Math.hypot(...bb.size) || 1;
-  const m = shape.mesh({ tolerance: Math.max(0.01, diag * 0.0008), angularTolerance: 0.12 });
-  shape.delete();
-  const V = (i) => [m.vertices[3 * i] * k[0] + o[0], m.vertices[3 * i + 1] * k[1] + o[1], m.vertices[3 * i + 2] * k[2] + o[2]];
-  if (m.triangles.length / 3 > 4000) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
-  const faces = [];
-  for (let t = 0; t < m.triangles.length; t += 3) {
-    const a = V(m.triangles[t]), b = V(m.triangles[t + 1]), c = V(m.triangles[t + 2]);
-    const cr = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])];
-    if (Math.hypot(...cr) < 1e-10) continue;
-    faces.push(R.makePolygon([a, b, c]));
+  let lin = Math.max(0.01, diag * 0.0008), ang = 0.12, m;
+  for (let i = 0; ; i++) {
+    m = shape.mesh({ tolerance: lin, angularTolerance: ang });
+    if (m.triangles.length / 3 <= STRETCH_TRIANGLES || i === 6) break;
+    lin *= 1.6; ang = Math.min(0.6, ang * 1.6);
   }
-  if (faces.length > 4000) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
-  let solid = R.makeSolid(faces);
-  try {
-    const u = new OC.ShapeUpgrade_UnifySameDomain(solid.wrapped, true, true, false);
-    u.Build();
-    const s2 = R.cast(u.Shape());
-    u.delete(); solid.delete(); solid = s2;
-  } catch (e) {}
-  return solid;
+  shape.delete();
+  if (m.triangles.length / 3 > STRETCH_TRIANGLES * 2) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
+  // the mesher gives every face its own copy of the corners on its edges: weld them, then split into pieces
+  const ids = new Map(), V = [], I = [];
+  const id = (i) => {
+    const p = [0, 1, 2].map((c) => m.vertices[3 * i + c] * k[c] + o[c]), key = p.join(",");
+    let x = ids.get(key);
+    if (x === undefined) { x = V.length / 3; ids.set(key, x); V.push(...p); }
+    return x;
+  };
+  for (let t = 0; t < m.triangles.length; t += 3) {
+    const a = id(m.triangles[t]), b = id(m.triangles[t + 1]), c = id(m.triangles[t + 2]);
+    if (a !== b && b !== c && a !== c) I.push(a, b, c);
+  }
+  const up = V.map((_, i) => i).slice(0, V.length / 3), find = (x) => { while (up[x] !== x) x = up[x] = up[up[x]]; return x; };
+  for (let t = 0; t < I.length; t += 3) { up[find(I[t])] = find(I[t + 1]); up[find(I[t + 1])] = find(I[t + 2]); }
+  const pieces = new Map();
+  for (let t = 0; t < I.length; t += 3) { const r = find(I[t]); if (!pieces.has(r)) pieces.set(r, []); pieces.get(r).push(I[t], I[t + 1], I[t + 2]); }
+  const solids = [...pieces.values()].map((tri) => solidFromMesh(V, tri));
+  return solids.length === 1 ? solids[0] : R.makeCompound(solids);
 }
 // Rebuild a node so its geometry is stretched exactly, or return null when that
 // isn't possible (then the mesh fallback is used).
@@ -2703,12 +2757,46 @@ function buildGroup(node) {
 }
 
 // ---------------------------------------------------------------- meshing
+// jumpstart-3d: the mesher fans a pointed cone's tip with slivers: three corners on one line (a ruling of the cone).
+// Exports drop such zero-area facets, which left a slit at the tip (12 open edges in a 20 mm cone's STL). Each sliver
+// (a, b, m), m inside a-b, is swapped with the triangle (b, a, x) across a-b for (a, x, m) and (x, b, m): same surface,
+// no sliver, every edge still shared. Only within one face, so the face groups keep their ranges.
+function flipSlivers(m) {
+  const V = m.vertices, T = m.triangles, P = (i) => [V[3 * i], V[3 * i + 1], V[3 * i + 2]];
+  const off = (a, b, p) => { // distance of p from line a-b, and where along a-b it falls (0..1)
+    const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]], L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
+    const c = [ab[1] * ap[2] - ab[2] * ap[1], ab[2] * ap[0] - ab[0] * ap[2], ab[0] * ap[1] - ab[1] * ap[0]];
+    return L2 ? [Math.hypot(...c) / Math.sqrt(L2), (ab[0] * ap[0] + ab[1] * ap[1] + ab[2] * ap[2]) / L2] : [0, -1];
+  };
+  for (const g of m.faceGroups) {
+    const edge = new Map(), key = (u, v) => u + ">" + v, end = g.start + g.count;
+    const index = (t, add) => { for (let j = 0; j < 3; j++) { const k = key(T[t + j], T[t + (j + 1) % 3]); if (add) edge.set(k, t); else edge.delete(k); } };
+    for (let t = g.start; t < end; t += 3) index(t, true);
+    for (let again = true, pass = 0; again && pass < 100; pass++) {
+      again = false;
+      for (let t = g.start; t < end; t += 3) for (let j = 0; j < 3; j++) {
+        const a = T[t + j], b = T[t + (j + 1) % 3], mid = T[t + (j + 2) % 3];
+        const [h, along] = off(P(a), P(b), P(mid));
+        if (h > 1e-5 || !(along > 0 && along < 1)) continue;
+        const n = edge.get(key(b, a));
+        if (n === undefined || n === t) continue;
+        const x = [T[n], T[n + 1], T[n + 2]].find((v) => v !== a && v !== b);
+        if (x === undefined || x === mid || off(P(a), P(b), P(x))[0] <= 1e-5) continue;
+        index(t, false); index(n, false);
+        T[t] = a; T[t + 1] = x; T[t + 2] = mid; T[n] = x; T[n + 1] = b; T[n + 2] = mid;
+        index(t, true); index(n, true);
+        again = true; break;
+      }
+    }
+  }
+}
 export function meshShape(shape, quality = 1) {
   const TT = [Date.now()], tick = () => TT.push(Date.now());
   const bb = bboxOf(shape);
   const diag = Math.hypot(...bb.size) || 1;
   const tol = Math.max(0.005, diag * 0.0006 / quality);
   const m = shape.mesh({ tolerance: tol, angularTolerance: 0.2 / quality });
+  flipSlivers(m); // jumpstart-3d: a pointed cone's mesh has flat slivers at its tip; the STL writer drops them and opened the mesh
   tick();
   const e = shape.meshEdges({ tolerance: tol, angularTolerance: 0.2 / quality });
   tick();
@@ -2806,10 +2894,8 @@ export function meshShape(shape, quality = 1) {
         if (A.n && B.n) smooth = A.n[0] * B.n[0] + A.n[1] * B.n[1] + A.n[2] * B.n[2] > 0.99985;
         else {
           try {
-            const mid = el[ei].pointAt(0.5);
-            const n1 = fl[o[0]].normalAt(mid), n2 = fl[o[1]].normalAt(mid);
-            smooth = n1.x * n2.x + n1.y * n2.y + n1.z * n2.z > 0.9994;
-            n1.delete && n1.delete(); n2.delete && n2.delete(); mid.delete && mid.delete();
+            const n1 = Vec.norm(normalOnEdge(fl[o[0]], el[ei])), n2 = Vec.norm(normalOnEdge(fl[o[1]], el[ei])); // jumpstart-3d: was normalAt(el[ei].pointAt(0.5))
+            smooth = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] > 0.9994;
           } catch (err) {}
         }
         if (smooth) groups[ei][1] = 0;
@@ -2908,6 +2994,8 @@ function friendly(e) {
   if (typeof e === "number") return "The geometry kernel couldn't build this shape";
   const msg = errorText(e);
   if (/BRep|Standard_|StdFail|NotDone/i.test(msg)) return "The geometry kernel couldn't build this shape";
+  // jumpstart-3d: the engine bindings' own errors (a wrong argument type, a deleted object, a wasm trap) are not for users
+  if (/called with an invalid signature|Expected null or instance of|Cannot pass deleted object|table index is out of bounds|memory access out of bounds|null function or function signature mismatch/i.test(msg)) return "The geometry kernel couldn't build this shape";
   return msg;
 }
 
