@@ -228,8 +228,12 @@ function withoutLooseEdges<B extends BooleanBuilder>(
         try {
           retry = built(fresh, fuzzy, true);
           if (!retry.HasErrors() && accept(r(retry.Shape()), fuzzy)) return retry; // the caller registers the builder it gets back and the one it passed in
-        } catch {
-          // a value the engine cannot build is skipped
+        } catch (e) {
+          // an engine exception skips the value; a crashed wasm instance cannot be trusted, so it is rethrown
+          if (e instanceof WebAssembly.RuntimeError || e instanceof RangeError) {
+            retry?.delete();
+            throw e;
+          }
         }
         retry?.delete();
       }
