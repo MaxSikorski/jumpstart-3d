@@ -4492,6 +4492,7 @@ export function initAdvanced(app) {
             t = clone(sk);
             t.id = st.copyIds[sk.id] || (st.copyIds[sk.id] = uid("s"));
             t.seq = nextSeq(doc); t.name = nextSketchName(doc); t.hidden = false;
+            delete t.onBody; delete t.fromFace; // a copy must not vanish with the body the original was drawn on
             doc.sketches.push(t);
           }
           t.plane = { o: arr3(V3(sk.plane.o).applyMatrix4(T)), x: arr3(V3(sk.plane.x).transformDirection(T)), n: arr3(V3(sk.plane.n).transformDirection(T)) };
@@ -4563,14 +4564,15 @@ export function initAdvanced(app) {
             return startDrag(e, st.drag === "screen" ? "free" : "ground", null, sh.point);
           }
           if (!f) return true;
-          st.sketch = null; // jumpstart-3d: sketch move
           if (e.shiftKey) {
+            st.sketch = null; // jumpstart-3d: sketch move
             const i = st.ids.indexOf(f.body);
             if (i >= 0) st.ids.splice(i, 1); else st.ids.push(f.body);
             changed();
             return true;
           }
           if (app.isLocked(f.body)) { app.toast("That body is locked."); return true; }
+          st.sketch = null; // jumpstart-3d: sketch move
           if (!st.ids.includes(f.body)) { st.ids.push(f.body); changed(); }
           return startDrag(e, st.drag === "screen" ? "free" : "ground", null, f.point);
         },

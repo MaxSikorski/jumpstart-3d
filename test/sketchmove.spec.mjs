@@ -34,7 +34,7 @@ async function openMove() {
   await expect(page.locator("#cmd")).toContainText("Move / Copy");
 }
 const setField = async (id, v) => { await page.fill("#" + id, String(v)); await page.locator("#" + id).blur(); };
-const selectSketchInTree = () => page.locator("#browser .tree .node", { hasText: "Sketch 1" }).click();
+const selectSketchInTree = (name = "Sketch 1") => page.locator("#browser .tree .node", { hasText: name }).click();
 
 test("Move/Copy on a picked sketch: 10 along X and 90 around X tilts the extrude with it, in one undo step; undo, redo and a reload keep it", async () => {
   await open();
@@ -150,4 +150,46 @@ test("clicking a shown sketch in the viewport picks it, and dragging it on the g
   await expect(page.locator("#cmd")).toBeHidden();
   expect((await planeOf()).o[0]).toBeCloseTo(dx, 3);
   expect((await planeOf()).o[2]).toBe(0);
+});
+
+test("a copy does not keep onBody/fromFace, so deleting the body the original was drawn on leaves the copy", async () => {
+  const doc = fixture();
+  Object.assign(doc.sketches[0], { onBody: "b1", fromFace: true });
+  await loadDoc(page, doc);
+  await expectBox(BEFORE);
+  await run(() => __app.select([]));
+  await selectSketchInTree();
+  await openMove();
+  await page.check("#mv-copy");
+  await setField("mv-d2", 7);
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const [orig, copy] = await run(() => __store.doc.sketches.map((s) => ({ id: s.id, onBody: s.onBody || null, fromFace: !!s.fromFace })));
+  expect(orig).toEqual({ id: "s1", onBody: "b1", fromFace: true });
+  expect(copy.onBody).toBeNull();
+  expect(copy.fromFace).toBe(false);
+  await run(() => JS3D.remove(["b1"]));
+  expect(await run(() => __store.doc.sketches.map((s) => s.id))).toEqual([copy.id]);
+});
+
+test("a revolve around an axis drawn in the sketch follows the sketch when it is turned", async () => {
+  const doc = JSON.parse(readFileSync(new URL("./projects/advanced-revolve.json", import.meta.url), "utf8"));
+  const sk = doc.sketches[0];
+  sk.hidden = false;
+  sk.pts.push({ id: "ap0", x: 0, y: 0 }, { id: "ap5", x: 0, y: 20 });
+  sk.ents.push({ id: "ae5", t: "line", a: "ap0", b: "ap5" });
+  doc.bodies[0].node.axis = "ae5";
+  await loadDoc(page, doc);
+  const dims = () => run(() => { const b = __app.scene.bodyTightBox(__store.doc.bodies[0].id); return b ? b.max.clone().sub(b.min).toArray().map((v) => Math.round(v * 100) / 100) : null; });
+  await expect.poll(dims, { timeout: 30_000 }).toEqual([30, 30, 20]); // a tube standing on its axis (z)
+  await selectSketchInTree("s1");
+  await openMove();
+  await setField("mv-r0", 90);
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  await expect.poll(dims, { timeout: 30_000 }).toEqual([30, 20, 30]); // now lying along y
+  await waitIdle(page);
+  const body = await run(() => ({ err: __app.scene.errors.get(__store.doc.bodies[0].id) || null, vol: __app.scene.views.get(__store.doc.bodies[0].id).data.volume }));
+  expect(body.err).toBeNull();
+  expect(Math.abs(body.vol - Math.PI * (15 * 15 - 5 * 5) * 20)).toBeLessThan(5);
 });
