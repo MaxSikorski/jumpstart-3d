@@ -56,43 +56,6 @@ export const MORE = [
     ],
   },
   {
-    id: "b-overhang", mode: "beginner", level: "Easy", minutes: "6-8", item: "Overhang Test",
-    title: "Will my printer manage it? (plate and overhangs)",
-    blurb: "Pick your printer's real build area, then switch on overhang shading and see which faces hang out too far to print without support. A T-shaped test piece shows it at once.",
-    learn: ["Printer plate", "Build area", "Overhang shading", "Position (Z)"],
-    steps: [
-      nameStep("Overhang Test", "Lopez, Maria, Overhang Test"),
-      {
-        title: "The stem", tool: "Box", icon: "box", show: { tile: "box" },
-        how: ["Click the <b>Box</b> tile.", FIELDS, "Size: <b>Width 10</b>, <b>Depth 10</b>, <b>Height 30</b>.", "Position: <b>X 0</b>, <b>Y 0</b>, <b>Z 0</b>."],
-        when: "A tall post standing on the plate: this is the part of a T that prints easily.",
-        check: (t) => t.prim("box").some((b) => t.near(b.node.p.w, 10, 1) && t.near(b.node.p.h, 30, 1)),
-      },
-      {
-        title: "The arm that hangs out", tool: "Box", icon: "box", show: { tile: "box" },
-        how: ["Add another <b>Box</b>: <b>Width 50</b>, <b>Depth 10</b>, <b>Height 6</b>.", "Position: <b>X 0</b>, <b>Y 0</b>, <b>Z (bottom) 30</b>, on top of the post."],
-        when: "The arm sticks out 20 mm on each side with nothing under it. A printer cannot print in mid-air, so this is the part that needs thought.",
-        check: (t) => t.prim("box").some((b) => t.near(b.node.p.w, 50, 1) && t.near(b.node.p.h, 6, 0.6) && bx(t, b) && t.near(bx(t, b).min.z, 30, 0.6)),
-      },
-      {
-        title: "Pick your printer's plate", tool: "Settings → Printer plate…", icon: "appearance", show: { sel: "#btn-theme" },
-        how: ["Click the <b>Settings</b> button (the half-moon at the top right) and choose <b>Printer plate…</b>.", "Choose your printer from the list. The blue plate becomes that printer's real width and depth, and the line under the list tells you if a part reaches outside it.", "Click <b>Done</b>."],
-        when: "Your parts are never moved by this: it only shows where your printer can reach. Not on the list? Leave Generic.",
-      },
-      {
-        title: "Show the steep undersides", tool: "Settings → Printer plate…", icon: "eye", show: { sel: "#btn-theme" },
-        how: ["Open <b>Printer plate…</b> again and tick <b>Show steep undersides in red</b>.", "Look at the underside of the arm from the side: it turns red.", "Drag <b>Maximum outward lean from upright</b>. 45° is the usual rule of thumb. The flat underside stays red at every setting."],
-        when: "Red means a face leans out more than the limit, so the printer would be laying plastic over air there. It is a warning to look closer, not proof that support is needed.",
-      },
-      {
-        title: "Fix it or support it", tool: "Tip", icon: "eye", show: { sel: "#bb-printsim" },
-        how: ["Two ways out: print the T lying on its side, or let the slicer add support under the arm.", "<b>3D Print Sim</b> compares them and uses the same overhang rule. Click <b>Next</b> when you have seen the red."],
-        when: "Real designers shade overhangs while they design, so the shape can change before the print.",
-      },
-      saveStep(), exportStep(),
-    ],
-  },
-  {
     id: "b-marker", mode: "beginner", level: "Easy", minutes: "6-8", item: "Plant Marker",
     title: "Garden plant marker",
     blurb: "A sign on a stake that pushes into the soil, with the plant's name raised on it. Practice placing shapes so they overlap and join.",
