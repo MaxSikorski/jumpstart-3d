@@ -419,6 +419,7 @@ UPSTREAM-README.md         the author's README from the source release
 - Name plates: a Name plate dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.namePlate` / the `add_name_plate` tool make a plate sized to one line of text (rounded or pill, with a hanging hole or two screw holes), as one hidden sketch plus the app's own Extrude, with the letters either a second body in its own colour (a Text shape) or cut in (the Deboss text feature). The text is measured on the main thread from the same outlines the drawing code uses, and characters the fonts lack are refused. Nothing in the kernel changed (`src/nameplate.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
   design through the same 38 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
+- Boolean fixes in the geometry engine: a torus no longer disappears from a group, two spheres offset along x intersect and cut to the right volume, and an empty result says "Nothing is left" instead of showing a raw engine message (a marked block in `third_party/replicad/src/shapeFunctions/operations.ts` and `src/kernel.js`; `test/booleans.spec.mjs`)
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view
