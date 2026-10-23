@@ -524,10 +524,11 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 /* jumpstart-3d: fine rotation (issue #87). The Turn control in the status bar; on a touch screen the bar gets taller and every target is 44 px */
 .turnctl { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
 :root.touch-ui .status { height: auto; min-height: 56px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; white-space: normal; overflow: visible; }
-:root.touch-ui .status .hintline { flex: 1 1 220px; } /* wraps to its own row when the controls leave no room; hidden below 600 px */
+:root.touch-ui .status .hintline { flex: 1 1 220px; white-space: nowrap; } /* wraps to its own row when the controls leave no room; hidden below 600 px */
 :root.touch-ui .status .snapctl { flex-wrap: wrap; row-gap: 4px; }
 :root.touch-ui .turnctl button, :root.touch-ui .turnctl select { min-width: 44px; min-height: 44px; font-size: 16px; }
 :root.touch-ui .turnctl button { padding: 0 10px; }
+@media (max-width: 600px) { :root.touch-ui .turnctl { order: 1; } } /* on a phone the Turn row goes last, so the unit and snap controls share one short row above it (the bar stays low) */
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
 .lockbar svg { width: 18px; height: 18px; flex: none; }
 .lockbar .btn { margin-left: auto; padding: 4px 10px; }
