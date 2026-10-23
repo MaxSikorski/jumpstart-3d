@@ -354,7 +354,10 @@ scenario("killed while the older localStorage designs are copied into IndexedDB:
       const page = await openPage(w2, { dieEarly: true, seedLs, kill: { kind, at, armed: true } });
       const out = await Promise.race([killed, page.waitForFunction(() => window.__app && window.__app.projects.started === true, null, { timeout: 60_000 }).then(() => "booted", () => "gone")]);
       console.log(`chaos migration kill ${kind} #${at} -> ${out}${w2.killWhy ? " at " + w2.killWhy : ""}`);
-      if (out !== "killed") continue;
+      if (out !== "killed") {
+        console.log("chaos migration diagnosis: " + JSON.stringify(await page.evaluate(() => ({ kind: window.__app.projects._store.kind, keys: Object.keys(localStorage).length, armed: window.__chaosArmed, token: window.__chaosToken }))));
+        continue;
+      }
       fired = true;
       await page.close({ runBeforeUnload: false }).catch(() => {});
       const after = await openPage(w2);
