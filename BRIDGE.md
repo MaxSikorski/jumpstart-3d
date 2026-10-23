@@ -181,7 +181,7 @@ The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","versi
 ## Part 2: The project file format
 
 A project is one JSON document. This part was written by looking at real files:
-the 36 designs in `test/projects/`, designs built with `JS3D` and saved with
+the 38 designs in `test/projects/`, designs built with `JS3D` and saved with
 `JS3D.save()`, and what the app does with each file after `JS3D.load` and a
 save. Each table says what was seen; **not checked** marks what was not.
 
@@ -193,7 +193,7 @@ save. Each table says what was seen; **not checked** marks what was not.
 
 The Export menu and `JS3D.save()` write this envelope (the menu indents with one
 space). Opening a file accepts either the envelope or the bare `doc`: the app
-reads `file.doc` if there is one, else the whole file. All 36 designs in
+reads `file.doc` if there is one, else the whole file. All 38 designs in
 `test/projects/` are bare docs. `version` is always 1 in what the app writes;
 nothing reads it (not checked beyond the code that writes and opens files).
 

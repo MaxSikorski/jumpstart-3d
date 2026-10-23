@@ -390,5 +390,25 @@
     "3mf": "d470ed5130a094c6a43bf16156affe415143d327fc213b29296cec421194a01a",
     "step": "c49042144963bbfd239e25226deeebe26878bea526d38bff91e7cb9c4dc217ad",
     "dxf": "d52d8151c6b8e838cadcf6f8e7c103d09d7194667c0a37b82814ded1a61ac621"
+  },
+  "advanced-chord-fillet-cone.json": {
+    "volumes": {
+      "b1 Cone": 3655.8
+    },
+    "stlTriangles": 2632,
+    "stl": "b05f749503c7993bfc12582f49d5534d98afbb12ac055cf6569473031f73a75e",
+    "obj": "daccb483dd35eabb76cb3d60e7b1ae8f98d7cc9ea258bc92713e906fba11cd3e",
+    "3mf": "0ead503a3dd831a2c8332124d54dadbdb5893edce2fba28f9b5e3b5e0e78b0e8",
+    "step": "d09b5fef2ff4698a611117f7608b85a235d207dd09ecc569334f11b040d77848"
+  },
+  "advanced-shell-chain.json": {
+    "volumes": {
+      "b1 Box": 3176.5
+    },
+    "stlTriangles": 324,
+    "stl": "1da688bb7944c51e81b59f9265aeed158a7caad8b37ec07b1e02daf5e5fd6eeb",
+    "obj": "7f363269aecbe848f43fe467f7fca89711a32d40bc0a30382418ea931f75ec63",
+    "3mf": "a34d1e238952ba4801cd87bdcf3562fe7051dee67cbc331d49607fea3fc1ba3e",
+    "step": "ce8ceed272bf628449c1a66f4d10f1797b7ad175f977dd29a605e8e8d7de8930"
   }
 }
