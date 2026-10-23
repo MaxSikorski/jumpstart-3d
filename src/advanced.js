@@ -29,7 +29,7 @@ import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
-import { dragAngle, arcPoints, nearestArc, snapSwitch } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { dragAngle, arcPoints, nearestArc, snapSwitch, fine } from "./rotationui.js"; // jumpstart-3d: rotation access
 import { initNamePlate } from "./nameplate.js"; // jumpstart-3d: name plates
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
@@ -4513,7 +4513,7 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, st.copy ? "Copy" : "Move"); },
-      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes or a sketch to move.",
+      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it " + fine.step + "°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it " + fine.step + "° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes or a sketch to move.",
       build(body) {
         body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : st.sketch ? el("b", {}, findSketch(store.doc, st.sketch).name || "Sketch") : "Click bodies or a sketch", st.ids.length || st.sketch ? () => { st.ids = []; st.sketch = null; changed(); } : null));
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
@@ -4605,9 +4605,14 @@ export function initAdvanced(app) {
     };
     // , and . : turn 1° (Shift: 15°) around the ring last dragged (the blue Z ring at first)
     def.turnKey = (e) => {
-      if ((!st.ids.length && !st.sketch) || e.ctrlKey || e.metaKey || e.altKey) return false;
-      const ringObj = keyRing || rings[2], axis = ringObj.userData.dir.clone();
-      const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+      if (e.ctrlKey || e.metaKey || e.altKey) return false;
+      return def.turnBy((e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step), keyRing || rings[2]); // jumpstart-3d: fine rotation. the step chosen in the status bar
+    };
+    // jumpstart-3d: fine rotation. the status bar's − / + too: s degrees around a ring (the blue Z one at first), added to the pending turn
+    def.turnBy = (s, ringObj, axisName) => {
+      if (!st.ids.length && !st.sketch) return false;
+      ringObj = axisName ? rings.find((r) => r.userData.axis === "rot-" + axisName) : ringObj;
+      const axis = ringObj.userData.dir.clone();
       st.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, (s * Math.PI) / 180));
       const ang = eulerDeg();
       angInputs.forEach((f, i) => f.setValue(ang[i]));

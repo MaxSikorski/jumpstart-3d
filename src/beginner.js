@@ -9,7 +9,7 @@ import { FACEPAT } from "./facepat.js";
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
-import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, fine } from "./rotationui.js"; // jumpstart-3d: rotation access
 import {
   M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodiesInDoc, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
@@ -973,7 +973,7 @@ export function initBeginner(app) {
           const R = turnAbout(center, axisV, a);
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } },
+        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it ${fine.step}° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } },
       };
       return true;
     }
@@ -1221,11 +1221,10 @@ export function initBeginner(app) {
   let rotKeys = null;
   function rotateByKey(e) {
     if (!rotKeys || app.sel.length !== 1 || app.sel[0] !== rotKeys.id || !findBody(store.doc, rotKeys.id) || app.isLocked(rotKeys.id)) { rotKeys = null; return false; }
-    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step); // jumpstart-3d: fine rotation. the step chosen in the status bar
     const wb = app.scene.bodyTightBox(rotKeys.id); if (!wb) return false;
     const c = wb.getCenter(new THREE.Vector3()), axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[rotKeys.axis];
-    const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, (s * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
-    transformBodies([rotKeys.id], R, `Rotate ${s > 0 ? "+" : ""}${s}°`);
+    transformBodies([rotKeys.id], turnAbout(c, axisV, s), `Rotate ${s > 0 ? "+" : ""}${s}°`);
     return true;
   }
   function key(e) {

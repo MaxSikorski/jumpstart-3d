@@ -6,6 +6,9 @@ import { el } from "./util.js";
 export const SNAP_DEG = 15;
 export const TOUCH_PICK_PX = 22; // half of the 44 px wide zone around an arc
 export const snap = { free: false };
+// jumpstart-3d: fine rotation (issue #87). The step the , and . keys and the status bar's − / + turn by (Shift on the keys stays 15°)
+export const TURN_STEPS = [15, 5, 1, 0.5, 0.1];
+export const fine = { step: 1 };
 
 // A drag turns by the nearest 15°. Shift (or the Free switch, for a finger) gives the pointer's own angle, to 0.01°.
 export function dragAngle(deg, shiftKey) {
