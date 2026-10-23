@@ -34,10 +34,13 @@ import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
+import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 import { initReport } from "./report.js"; // jumpstart-3d: report
+import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
+captureShare(); // jumpstart-3d: share link. first thing: a design link's fragment goes into memory and off the address bar, before boot() or the bridge can see it
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
 
@@ -127,7 +130,7 @@ function boot() {
   const scene = (app.scene = new SceneSync(vp, kernel));
   vp.zoomTargets = () => scene.meshes();
   app.sketcher = new Sketcher(app);
-  scene.onRefresh = () => app.onSceneRefresh && app.onSceneRefresh();
+  scene.onRefresh = () => { app.onSceneRefresh && app.onSceneRefresh(); app.plateView && app.plateView.update(); }; // jumpstart-3d: printer plate. overhang shading follows the shapes
   // a shape's size and position boxes need its finished geometry: show them once it arrives
   let drawnKey; // jumpstart-3d: fix. redraw when a new mesh lands, not only when the position boxes are missing
   app.onSceneRefresh = () => {
@@ -166,6 +169,7 @@ app.voxel = initVoxel(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
   app.cam = initCam(app);
+  app.plateView = initPrinterPreview(app); // jumpstart-3d: printer plate. Printer plate… in the Settings menu, overhang shading
 
   store.on((kind) => {
     const doc = store.view;
@@ -303,6 +307,7 @@ app.voxel = initVoxel(app);
     vp.setView("home", scene.allBox().isEmpty() ? null : scene.allBox());
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
+    app.sharelink.offer(); // jumpstart-3d: share link. a design link that opened the page is offered now that the saved design is loaded
   });
   load.hideSplash(); // jumpstart-3d: load. the workspace is built: let the mouse in
 }
@@ -1040,3 +1045,4 @@ initBridge(app);
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
 initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing
+initShareLink(app); // jumpstart-3d: share link. Share link… and Import shared link (Open/Export menu); the link stays in the address, nothing is uploaded
