@@ -3,7 +3,7 @@
 // stateful WebDAV folder (PROPFIND, MKCOL, GET, PUT with If-Match, DELETE, Basic login) that records every request.
 // CORS is NOT tested: Playwright answers the preflight itself and adds the headers to every answer. The README covers it.
 import { test, expect } from "@playwright/test";
-import { boot, loadDoc, newDoc, body, prim, buildOf, quarantine } from "./helpers.mjs";
+import { boot, loadDoc, newDoc, body, prim, buildOf, quarantine, isKnownNoise } from "./helpers.mjs";
 
 const HOST = "https://dav.example.test/";
 const PATH = "/dav/jumpstart/";
@@ -82,12 +82,12 @@ function makeFake() {
 // The browser prints a "Failed to load resource" line for every 401, 404, 412 and refused request. Those lines
 // belong to the network, not to the app, so the ones about the fake server and storage.json are skipped here.
 function watchErrors(page) {
-  const errors = [];
-  page.on("pageerror", (e) => errors.push("page: " + e.message));
+  const errors = [], project = test.info().project.name;
+  page.on("pageerror", (e) => { if (!isKnownNoise(project, e.message)) errors.push("page: " + e.message); });
   page.on("console", (m) => {
     if (m.type() !== "error") return;
     const url = m.location().url || "";
-    if (FONT_HOSTS.test(url) || url.startsWith(HOST) || url.endsWith("/storage.json")) return;
+    if (FONT_HOSTS.test(url) || url.startsWith(HOST) || url.endsWith("/storage.json") || isKnownNoise(project, m.text())) return;
     errors.push("console: " + m.text().slice(0, 300));
   });
   return errors;

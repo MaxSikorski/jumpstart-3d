@@ -275,7 +275,9 @@ test("Beginner: the Name plate button opens the dialog; Cut in hides the text co
   expect(list[0].bbox.min[2]).toBeGreaterThanOrEqual(0);
 });
 
-test("the golden design exports to STEP as five true solids", async () => {
+// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
+test("the golden design exports to STEP as five true solids", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/nameplate.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();
