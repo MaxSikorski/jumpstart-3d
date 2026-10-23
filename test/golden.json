@@ -151,11 +151,11 @@
     "volumes": {
       "b1 b1": 1378.6
     },
-    "stlTriangles": 9910,
-    "stl": "21765a1c4a3962098c8b8dcf76a5f2f72d5920042981c35135c7aa51e42ea580",
-    "obj": "561d818168c2d5e44ef349467f464726c3591afd456e227a99f7ecb041b4e042",
-    "3mf": "ababe01050ef6c2ee9562298d0d59b945987f4aa9a325a803a6a30fea2c32257",
-    "step": "89047bed65c69cf849c15614d2d18ce63c4076953021bb15001e95c4eb4df1b8"
+    "stlTriangles": 10838,
+    "stl": "14da495c6c804c60188f7bed1114218cee485657d493bc3a0526591230b4d69a",
+    "obj": "dd5fe1deddd34c03f70058aad32557bdf710dd2a3d82140bd8da16b219da6d21",
+    "3mf": "490bf64b2c801d4bf52e8826a440d3c828b3568a2d4f6bffe6c12b3bdb6cd8ac",
+    "step": "eb0693f693230fc920e3dfaaff58b883f7028e722590411ba32bdeb6a57f81c2"
   },
   "advanced-wall-bracket.json": {
     "volumes": {
@@ -224,11 +224,11 @@
     "volumes": {
       "b1 b1": 23366.9
     },
-    "stlTriangles": 8544,
-    "stl": "cee50fdbedb3934cf07c17ce7b1e4200fd475c515106b8ec488c52c541fbd3a1",
-    "obj": "6e2ac6670a655bbebfc348a5bd687d12e7393fd7ad2c107b7d91360105abf6e7",
-    "3mf": "da23fc5755e6dea466f310fa4ac32668fa311315ce6a16a8746e07bb9d9b1c70",
-    "step": "c500aadbd9747f62551e60d71c278111b379113048d14dcfbca2ede5c727d773"
+    "stlTriangles": 8448,
+    "stl": "e6570a7825b6e3897b8db58b922e0547368e94016851281e6ae6d6fa8ff3a7fa",
+    "obj": "bf9f66bf6dc42a47a9f6e857a123d26907ee2b56c149c8e851a38bbcd58a2453",
+    "3mf": "f2283a07677a90a5d93756c51fd2d1e94daf9503be070eb8f8b924eedd39f1f5",
+    "step": "4739d13ca563c3f2942b3be727f2432789b1c1d0aa531da4f3fa1fd7fc347f07"
   },
   "parametric-plate.json": {
     "volumes": {
@@ -338,11 +338,11 @@
       "b3 1/4-20×40 threaded rod": 1064.6,
       "b4 M8 tapped block": 5341.8
     },
-    "stlTriangles": 34956,
-    "stl": "b51aa82348c9df2336ae32a8cab6d8c0108e053b212af96985d4fcf2f9c88224",
-    "obj": "907627dcd48e66752e0dd0d36f6e2cc6e2700973d7c21f053c2ba6e58ceffe7c",
-    "3mf": "a97049d80411166415b7178377bdbe445d7e4c281ed91ab1a8aacde319b1404c",
-    "step": "80f3692edc5e20443a3610f551bba4121a99e7395a80c535f0bb05c13a07d3aa"
+    "stlTriangles": 34698,
+    "stl": "bfb2d05a5f51289cac31ea515b5d102d667801f562a38d0fc5397fd527679795",
+    "obj": "d8621bcba7a8aa170da27023d4b16fd5ef5721eca9dfbf77a0d99fc132ef17f3",
+    "3mf": "57151e73afaf316ddb520c4ecbe14cf76fa58f1d32f0d535c7401f9038a073ba",
+    "step": "504da8c42ab3a10e8751e44e5f6c974607738e38e16394e84b380258e620143f"
   },
   "holepattern.json": {
     "volumes": {
