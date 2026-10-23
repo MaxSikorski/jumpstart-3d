@@ -80,7 +80,7 @@ export const COMMUNITY_TUTORIALS = [
         how: ["Press Ctrl+A to select both wedges. Click <b>Drop</b>.", "Both pieces now rest on the workplane."],
         when: "Drop removes an accidental gap underneath your parts." },
       { title: "Protect their positions", tool: "Lock", icon: "lock", show: { sel: "#bb-lock" },
-        how: ["Keep both pieces selected and click <b>Lock</b>.", "Click the same button, now <b>Unlock</b>, when you want to edit them again. Leave them unlocked for this exercise."],
+        how: ["Keep both pieces selected and click <b>Lock</b>.", "Now click the same button, <b>Unlock</b>, so you can keep editing them in the next steps."],
         when: "Lock keeps finished parts from moving while you work nearby." },
       saveStep(), exportStep(),
     ],
