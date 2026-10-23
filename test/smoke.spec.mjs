@@ -1344,8 +1344,8 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
     return out;
   });
   expect(r.steps).toBeGreaterThanOrEqual(7);
-  expect(r.count).toBe(74);
-  expect(r.beginner).toBe(28);
+  expect(r.count).toBe(75);
+  expect(r.beginner).toBe(29);
   expect(r.adv).toBe(40);
   expect(r.arch).toBe(6);
   expect(r.level).toBe("Proficient");
@@ -1366,13 +1366,15 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   expect((await bodies(page))[0].volume).toBeCloseTo(80 * 40 * 8, 0);
 });
 
-test("Tutorials lists seventy-four projects and About lists what the community build adds", async () => {
+test("About keeps the author's tutorial count (forty-four); the app lists seventy-five; About lists what the community build adds", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
+  // J.Siwek's text counts his own tutorials and is not ours to change; the community lessons are on top of it
+  await expect(about).toContainText("forty-four step-by-step projects (nineteen in Beginner, twenty in Advanced, five in Architechies");
   expect(await page.evaluate(() => {
     const list = window.__app.tutorials.list;
     return [list.length, ...["beginner", "advanced", "arch"].map((mode) => list.filter((t) => t.mode === mode).length)];
-  })).toEqual([74, 28, 40, 6]);
+  })).toEqual([75, 29, 40, 6]);
   await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
