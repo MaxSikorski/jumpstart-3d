@@ -4,6 +4,7 @@
 // The config blocks service workers for every other spec; case 4 allows one in its own context.
 // The offline case does not assert on requestfailed: Chromium reports a worker request answered by the service worker a second time as a failed network leg.
 import { test, expect } from "@playwright/test";
+import { readdirSync } from "node:fs";
 import { serve } from "../mcp/serve.mjs";
 import { watchErrors } from "./helpers.mjs";
 
@@ -134,7 +135,7 @@ test("a second visit loads from the service worker and works offline", async ({ 
       const names = (await caches.keys()).filter((k) => k.startsWith("jumpstart-3d-"));
       return { names, entries: names.length ? (await (await caches.open(names[0])).keys()).length : 0 };
     });
-    expect(cached).toEqual({ names: ["jumpstart-3d-" + version], entries: 4 });
+    expect(cached).toEqual({ names: ["jumpstart-3d-" + version], entries: 4 + readdirSync("docs/fonts").filter((f) => f.endsWith(".woff2")).length }); // the page, app, worker, engine and the fonts
 
     await server.close();
     await context.setOffline(true);
