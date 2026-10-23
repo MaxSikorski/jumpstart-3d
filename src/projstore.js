@@ -4,7 +4,7 @@
 // same calls use the older localStorage keys, as the app always did. The choice is made once per
 // page, except one way: if IndexedDB is only slow (it answers after the 3 s the first start waits), the
 // store starts on localStorage and switches to IndexedDB when the open finally succeeds, copying what was
-// saved meanwhile across once (see `upgrade`).
+// saved meanwhile across once (see `adopt`).
 // Not stored here: the version counters and the last-open id, which projects.js reads synchronously.
 import { uid } from "./util.js";
 
@@ -183,10 +183,15 @@ const localDriver = {
 // ---------------------------------------------------------------- the store
 const FIRST_WAIT = 3000; // how long the first start waits for IndexedDB before it begins on localStorage
 
-// Bring a freshly opened database up to date: copy the localStorage leftovers over, apply a rescue copy.
+// Bring a freshly opened database up to date: drop what was deleted meanwhile, copy the localStorage leftovers over, apply a rescue copy.
 // Returns the database, or null (closed) when the copy could not be made.
-async function adopt(db) {
+async function adopt(db, gone) {
   try {
+    if (gone && gone.size) { // designs deleted on localStorage while IndexedDB was still opening: their IndexedDB copies go too
+      const tx = db.transaction(["docs", "entries"], "readwrite");
+      for (const id of gone) { tx.objectStore("docs").delete(id); tx.objectStore("entries").delete(id); }
+      if (!await committed(tx)) { db.close(); return null; }
+    }
     const migrated = await req(db.transaction("meta").objectStore("meta").get("migrated"));
     const fp = fingerprint();
     if ((!migrated || !sameFingerprint(migrated.fp, fp)) && !await merge(db, fp)) { db.close(); return null; }
@@ -198,6 +203,7 @@ async function adopt(db) {
 export function openProjectStore() {
   let driver = null;
   const switched = []; // called once, after a slow IndexedDB open took over from localStorage
+  const gone = new Set(); // ids deleted on localStorage while IndexedDB was still opening
   const opened = openDB();
   let slow = false;
   const ready = (async () => {
@@ -210,8 +216,8 @@ export function openProjectStore() {
   })();
   // every call waits for ready and for the call before it, so un-awaited saves land in order
   let chain = ready;
-  const run = (name, bad) => (...args) => {
-    const p = chain.then(() => driver[name](...args)).catch(() => bad);
+  const run = (name, bad, before) => (...args) => {
+    const p = chain.then(() => { if (before) before(...args); return driver[name](...args); }).catch(() => bad);
     chain = p;
     return p;
   };
@@ -220,7 +226,7 @@ export function openProjectStore() {
   ready.then(() => slow && opened).then((db) => {
     if (!db) return;
     chain = chain.then(async () => {
-      const ok = await adopt(db);
+      const ok = await adopt(db, gone);
       if (!ok) return;
       driver = idbDriver(ok);
       for (const f of switched) { try { f(); } catch (e) {} }
@@ -233,7 +239,7 @@ export function openProjectStore() {
     list: run("list", []),
     get: run("get", null),
     put: run("put", false),
-    del: run("del", false),
+    del: run("del", false, (id) => { if (slow && driver === localDriver) gone.add(id); }),
     getMeta: run("getMeta", null), // small records kept beside the designs (IndexedDB only; the older storage has no place for them)
     setMeta: run("setMeta", false),
     // for the tab closing: no waiting, no promise

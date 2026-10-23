@@ -22,6 +22,7 @@ export function initProjects(app) {
   let db = null, userId = null, downloads = null;
   let remoteOk = false;
   let dirty = false;
+  let opened = { id: null, at: 0 }; // jumpstart-3d: designs storage. which design is open and the `_updated` of the copy it was read from or last saved as
   // jumpstart-3d: designs storage. Designs and the list live in projstore.js (IndexedDB, or localStorage where that fails);
   // the version counters and the last-open id stay in localStorage because they are read synchronously.
   const ps = openProjectStore();
@@ -117,6 +118,7 @@ export function initProjects(app) {
       doc = store.doc;
       const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
+      opened = { id: r[0], at: r[2].updated };
       dirty = false;
       if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
@@ -129,6 +131,29 @@ export function initProjects(app) {
     return !!updated; // jumpstart-3d: backup (did the write fit?)
   }
   const saveSoon = debounce(saveNow, 1200);
+
+  // jumpstart-3d: designs storage. A slow IndexedDB took over from localStorage. The open design may have been read from an
+  // older copy than the one IndexedDB holds (a design moved over on an earlier visit leaves its old copy behind), and a save
+  // that failed meanwhile (localStorage full) was never retried.
+  ps.onSwitch(async () => {
+    let cur = null;
+    try { cur = JSON.parse(await ps.get(store.doc.id)); } catch (e) {}
+    const newer = cur && opened.id === store.doc.id && (cur._updated || 0) > opened.at;
+    if (dirty || saving) {
+      if (newer) { // unsaved edits on an older copy: the newer one is kept as a design of its own, never overwritten
+        const id = uid("d"), name = (cur.name || "Untitled") + " (before fallback)";
+        await ps.put(id, JSON.stringify({ ...cur, id, name }), { id, name, ver: cur.ver || 0, mode: cur.mode, updated: cur._updated, thumb: null });
+      }
+      saveSoon();
+    } else if (newer) {
+      opened = { id: cur.id, at: cur._updated };
+      delete cur._updated;
+      app.select([]); if (app.command) app.command.cancel(); app.exitSketch();
+      store.load(cur);
+      setState("Saved in this browser");
+      app.toast("Opened the newer saved copy of this design.");
+    }
+  });
 
   // ---------------------------------------------------------------- versions
   // Every Save (the Save button, Ctrl+S, or a project file) is a new version of the same design:
@@ -214,6 +239,7 @@ export function initProjects(app) {
   async function open(id) {
     const d = await loadDoc(id);
     if (!d) { app.toast("That design couldn't be found.", "err"); return false; }
+    opened = { id, at: d._updated || 0 };
     delete d._updated;
     app.select([]);
     if (app.command) app.command.cancel();
@@ -670,7 +696,7 @@ export function initProjects(app) {
       const capP = capabilities();
       const last = ls.get(LS_PREF + ".last");
       let doc = last ? await getDoc(last) : null; // jumpstart-3d: designs storage
-      if (doc) { delete doc._updated; store.load(doc); setState("Saved in this browser"); }
+      if (doc) { opened = { id: doc.id, at: doc._updated || 0 }; delete doc._updated; store.load(doc); setState("Saved in this browser"); }
       else {
         // wait briefly for account storage so returning users get their last design
         await Promise.race([capP, new Promise((r) => setTimeout(r, 2500))]);

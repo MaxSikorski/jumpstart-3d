@@ -313,3 +313,109 @@ test("IndexedDB that opens late takes over from localStorage: nothing lost, noth
   expect(again.some((e) => /before fallback/.test(e.name))).toBe(false);
   expect([...e1, ...e2]).toEqual([]);
 });
+
+// Shared setup for the slow-open cases below: a design that IndexedDB holds in a newer version than the copy an earlier
+// visit left in localStorage (a design moved over once keeps its old copy). Returns the page, ready to open slowly.
+async function newerInIdbOlderInLocal(context, info, id) {
+  const p1 = await context.newPage();
+  const errs = await prepare(p1);
+  await boot(p1, info);
+  await save(p1, newDoc("Stale new", "beginner", { id, bodies: [body("b1", "Slab", box(30, 20, 5))] }));
+  await p1.evaluate(async (id) => { // the old copy: the same design, older, in the old keys
+    const s = window.__app.projects._store, cur = JSON.parse(await s.get(id)), old = { ...cur, name: "Stale old", _updated: cur._updated - 100_000 };
+    localStorage.setItem("workplane.doc.v1." + id, JSON.stringify(old));
+    localStorage.setItem("workplane.index.v1", JSON.stringify([{ id, name: old.name, ver: 0, mode: "beginner", updated: old._updated, thumb: null }]));
+  }, id);
+  await p1.close();
+  const p2 = await context.newPage();
+  errs.push(...await prepare(p2));
+  await slowOpen(p2);
+  await boot(p2, info);
+  expect(await kind(p2)).toBe("local");
+  expect(await p2.evaluate(() => window.__store.doc.name)).toBe("Stale old"); // the app opened the old copy
+  return [p2, errs];
+}
+const idbNames = (page) => page.evaluate(() => window.__app.projects._store.list().then((l) => l.map((e) => e.name).sort()));
+
+test("a slow IndexedDB: an open design that was read from an older copy is replaced by the newer one", async ({ context }, info) => {
+  const id = "t_Late_Stale";
+  const [p, errors] = await newerInIdbOlderInLocal(context, info, id);
+  await p.evaluate(() => window.__releaseIdb());
+  await p.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  await p.waitForFunction(() => window.__store.doc.name === "Stale new", null, { timeout: 10_000 }); // not the old copy
+  await p.evaluate(() => window.__store.update((d) => { d.name = "Stale new, edited"; }, "Rename"));
+  await p.evaluate(() => window.__app.projects.saveNow());
+  expect(JSON.parse(await rawRead(p, "docs", id)).name).toBe("Stale new, edited");
+  expect(await idbNames(p)).toEqual(["Stale new, edited"]); // the newer content was not replaced by the older, nothing needed keeping
+  expect(errors).toEqual([]);
+});
+
+test("a slow IndexedDB: edits made on the older copy never overwrite the newer one, it is kept", async ({ context }, info) => {
+  const id = "t_Late_Stale2";
+  const [p, errors] = await newerInIdbOlderInLocal(context, info, id);
+  await p.evaluate(() => { window.__store.update((d) => { d.name = "Stale mine"; }, "Rename"); window.__releaseIdb(); }); // unsaved edit, then the database answers
+  await p.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  await expect.poll(async () => JSON.parse(await rawRead(p, "docs", id)).name, { timeout: 15_000 }).toBe("Stale mine");
+  expect(await idbNames(p)).toEqual(["Stale mine", "Stale new (before fallback)"]);
+  expect(errors).toEqual([]);
+});
+
+test("a slow IndexedDB: a save that failed meanwhile (localStorage full) is saved when the database takes over", async ({ page }, info) => {
+  const id = "t_Late_Full";
+  const errors = await prepare(page);
+  await page.addInitScript(() => { // localStorage refuses designs once this is set
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) { if (window.__full && String(k).startsWith("workplane.doc.v1.")) throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); };
+  });
+  await slowOpen(page);
+  await boot(page, info);
+  await loadDoc(page, newDoc("Full", "beginner", { id, bodies: [body("b1", "Slab", box(30, 20, 5))] }));
+  await page.evaluate(() => { window.__full = true; });
+  expect(await page.evaluate(() => window.__app.projects.saveNow())).toBe(false); // "Couldn't save", still dirty
+  expect(await page.evaluate(() => document.getElementById("savestate").textContent)).toMatch(/Couldn't save/);
+  await page.evaluate(() => window.__releaseIdb());
+  await page.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  await expect.poll(async () => { const s = await rawRead(page, "docs", id); return s && JSON.parse(s).name; }, { timeout: 15_000 }).toBe("Full"); // no further edit
+  expect(await page.evaluate(() => document.getElementById("savestate").textContent)).toBe("Saved in this browser");
+  expect(errors).toEqual([]);
+});
+
+test("a slow IndexedDB: a save queued while the switch runs lands once, in IndexedDB, with the newest content", async ({ page }, info) => {
+  const id = "t_Late_Queued";
+  const errors = await prepare(page);
+  await page.addInitScript(() => { // the moment the copy into IndexedDB begins its writing transaction, the page saves again
+    const real = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (stores, mode, ...rest) {
+      const tx = real.call(this, stores, mode, ...rest);
+      if (mode === "readwrite" && Array.isArray(stores) && stores.includes("meta") && window.__duringSwitch) { const f = window.__duringSwitch; window.__duringSwitch = null; setTimeout(f, 0); }
+      return tx;
+    };
+  });
+  await slowOpen(page);
+  await boot(page, info);
+  await save(page, newDoc("Queued", "beginner", { id, bodies: [body("b1", "Slab", box(30, 20, 5))] }));
+  await page.evaluate(() => {
+    window.__queued = null;
+    window.__duringSwitch = () => { window.__store.update((d) => { d.name = "Queued newest"; }, "Rename"); window.__queued = window.__app.projects.saveNow(); };
+    window.__releaseIdb();
+  });
+  await page.waitForFunction(() => window.__queued, null, { timeout: 20_000 });
+  expect(await page.evaluate(() => window.__queued)).toBe(true);
+  await page.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  expect(JSON.parse(await rawRead(page, "docs", id)).name).toBe("Queued newest");
+  expect(await idbNames(page)).toEqual(["Queued newest"]); // once, no "(before fallback)"
+  expect(JSON.parse(await page.evaluate((id) => localStorage.getItem("workplane.doc.v1." + id), id)).name).toBe("Queued"); // never in the old keys
+  expect(errors).toEqual([]);
+});
+
+test("a slow IndexedDB: a design deleted meanwhile stays deleted", async ({ context }, info) => {
+  const id = "t_Late_Gone";
+  const [p, errors] = await newerInIdbOlderInLocal(context, info, id);
+  expect(await p.evaluate((id) => window.__app.projects._store.del(id), id)).toBe(true); // deleted from the old keys
+  await p.evaluate(() => window.__releaseIdb());
+  await p.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  expect(await rawRead(p, "docs", id)).toBeNull();
+  expect(await rawRead(p, "entries", id)).toBeNull();
+  expect(await idbNames(p)).toEqual([]);
+  expect(errors).toEqual([]);
+});
