@@ -37,12 +37,12 @@ const findings = [];
 const soft = (ok, what) => { if (ok) return; if (process.env.FUZZ_STRICT) throw new Fail(what); findings.push(what); };
 const EMPTY_MSG = "Nothing is left: these shapes don't overlap, or the holes cut all of it away.";
 const NOTE_STRETCH = 'JS3D.scale with different factors on a body the kernel rebuilds from a fine mesh (over 4000 triangles) is accepted, then the body shows "can\'t be stretched unevenly"';
-const noteCurved = (kinds) => `booleans with a sphere, hemisphere, capsule or torus can disagree with each other, or give a negative volume (seen with ${kinds})`;
+const noteCurved = (kinds) => `booleans with a sphere, hemisphere or capsule can disagree with each other, or give a negative volume (seen with ${kinds})`;
 const NOTE_STALL = "joining several shapes that include a torus can stall the geometry engine for 25 s (\"This shape stalled the geometry engine\")";
 const NOTE_CONE = "the STL of a cone is not watertight: its edges near the apex are cut differently on the two sides of the seam";
 const NOTE_FLAT_CAPSULE = "a capsule flatter than it is wide (height under depth, for example 36 by 12 by 6) is built wrongly: its mesh is open and holds a third of its volume";
 // Shapes the kernel's booleans get wrong in the cases we know of; every other kind (a group of them included) is strict.
-const CURVED_BOOLEAN = new Set(["sphere", "hemisphere", "capsule", "torus"]);
+const CURVED_BOOLEAN = new Set(["sphere", "hemisphere", "capsule"]); // a torus left the list when the split-loop faces were fixed
 // A stretch that is not the same shape stretched (a capsule's ends stay round, a tube's wall keeps its thickness)
 const NOT_AFFINE = new Set(["capsule", "torus", "tube", "spring", "group"]);
 
@@ -717,8 +717,9 @@ if (!CUSTOM) {
     const body = { name: "T", id: "t", hole: false, hidden: false, volume: -5, kind: "torus", mods: 0, kinds: ["torus"], solids: 1, position: [0, 0, 0], bbox: { min: [0, 0, 0], max: [1, 1, 1] } };
     await fails(async () => sane([body], "control"), /volume is -5/);
     findings.length = 0;
-    sane([{ ...body, kind: "group", kinds: ["group", "torus", "box"] }], "control");
-    check(findings.some((f) => /torus/.test(f)), "control: a negative volume of a boolean with a torus was not noticed");
+    sane([{ ...body, kind: "group", kinds: ["group", "sphere", "box"] }], "control");
+    check(findings.some((f) => /sphere/.test(f)), "control: a negative volume of a boolean with a sphere was not noticed");
+    await fails(async () => sane([{ ...body, kind: "group", kinds: ["group", "torus", "box"] }], "control"), /volume is -5/); // a torus is strict now
 
     // Booleans must fit together: join + overlap = both parts. The two-sphere intersect used to give a whole sphere (fixed
     // in #98); it now passes even when strict and gives the lens, 2360.4 mm3.

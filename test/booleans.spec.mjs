@@ -5,6 +5,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { boot, watchErrors, waitIdle, quarantine } from "./helpers.mjs";
+import { readStl as readStlTriangles, meshReport } from "./fuzz-checks.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -183,4 +184,27 @@ test("a STEP import that holds only a circle still builds and exports", async ({
   const step = bytes(await run(() => JS3D.export("step"))).toString("latin1");
   expect(step).toMatch(/CIRCLE/);
   expect(step).toContain("MANIFOLD_SOLID_BREP");
+});
+
+// Fuzzer seed 33: OpenCascade's fuse of a torus-and-hemisphere group with a copy of itself left two torus faces whose
+// outer boundary was split into two loops. The mesher read the second loop as a hole, so the group's STL was closed
+// but about 3 percent too small (8006 mm3 against the group's own 8249).
+test("two torus-and-hemisphere groups joined export an STL that holds the group's whole volume", async () => {
+  await fresh();
+  const id = await run(async () => {
+    const t = JS3D.add("torus", { size: { w: 24, d: 24, h: 6 }, at: [-6, -4, 4] });
+    const h = JS3D.add("hemisphere", { size: { w: 18, d: 18, h: 20 }, at: [14, 12, 8] });
+    await JS3D.ready();
+    const a = JS3D.group([t, h]); await JS3D.ready();
+    const [b] = JS3D.duplicate([a], [-8, -16, 0]); await JS3D.ready();
+    const g = JS3D.group([a, b]); await JS3D.ready(60000);
+    return g;
+  });
+  const [g] = await entries();
+  expect(g.id).toBe(id);
+  expect(g.error).toBeNull();
+  const file = bytes(await run((id) => JS3D.export("stl", { ids: [id] }), id));
+  const m = meshReport(readStlTriangles(file)); // the fuzzer's reader: welds at 0.0001 and matches edges by direction
+  near(m.volume, g.volume, 0.01);
+  expect(m.open).toBe(0);
 });

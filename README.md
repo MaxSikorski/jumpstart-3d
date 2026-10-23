@@ -1,6 +1,6 @@
 # JumpStart 3D
 
-[![JumpStart 3D: 3D CAD in your browser](docs/og-image.png)](https://maxsikorski.github.io/jumpstart-3d/)
+[![JumpStart 3D: 3D CAD in your browser](src/og-image.png)](https://maxsikorski.github.io/jumpstart-3d/)
 
 A free 3D CAD tool that runs in your web browser. No install, no account,
 no server. Somewhere between Tinkercad and a real CAD program: drag shapes
@@ -105,7 +105,7 @@ location /dav/ {
 
 #### Self-hosting the page with a storage.json
 
-If you put the website on your own server (copy the contents of `docs/`), you can spare your users typing the address: put a file `storage.json` next to `index.html` containing `{ "webdav": "https://your.server/dav/jumpstart/" }` (or a short address such as `"designs/"`, taken from where the page is). The page reads it the first time Your server is opened and only fills in the address field. Passwords never go in it. An address someone has already typed and connected with wins over the file. `docs/` in this repository is rebuilt from scratch every time, so the file lives on your server only, not here.
+If you put the website on your own server (copy the contents of `docs/`), you can spare your users typing the address: put a file `storage.json` next to `index.html` containing `{ "webdav": "https://your.server/dav/jumpstart/" }` (or a short address such as `"designs/"`, taken from where the page is). The page reads it the first time Your server is opened and only fills in the address field. Passwords never go in it. An address someone has already typed and connected with wins over the file. `docs/` is rebuilt from scratch every time, so the file lives on your server only, not in this repository.
 
 The single file (`jumpstart-3d.html`) opened from your disk cannot read `storage.json`, so type the address. A page opened from disk has no web address of its own, so the server has to allow every origin (`*`). The saved password sits in the browser's storage for local files, which other local pages might be able to read: use an app password you can revoke.
 
@@ -158,6 +158,7 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
 - **Hole patterns.** Hole pattern (Advanced › Create › Advanced Create) drills rows, staggered rows or a circle of round holes into a flat face you click: plain, counterbore, countersink or tapped, with standard screw sizes, an edge margin and an angle. Holes that would not fit are left out. The result is one Hole feature you can edit later. Square, hex (sized across flats) and slot holes use the same layouts and are cut as one sketch and one Extrude cut, through the part or to a depth; stagger rows with a row pitch of 0.866 × the column pitch for a honeycomb.
 - **Gears.** Gear (in Beginner, and in Advanced under Create › Advanced Create) makes a spur gear, a straight bevel gear or a rack from a module and a tooth count: involute teeth at 20°, a print clearance so printed gears turn freely, and an optional bore (with a DIN 6885 keyway on spur gears). It is an ordinary sketch and Extrude (a Loft for a bevel gear), so you can change a spur gear's width later; to change the teeth, undo and make it again. Bevel teeth are the usual CAD approximation (the tooth shape scaled toward the cone's tip). Helical gears are not built yet.
 - **Name plates and tags.** Name plate (in Beginner, and in Advanced under Create › Advanced Create) makes a flat plate sized to one line of text: rounded or pill-shaped, with a hanging hole or two screw holes if you like, and the letters raised in a second colour or cut in. Raised letters are their own body, so a 3MF export keeps both colours, and on a printer with one nozzle you change filament at the top of the plate. Three bold fonts with English and Western European letters.
+- **Move and rotate sketches.** Move/Copy (Advanced › Transform, or the Move/Copy button when a sketch is selected in the Browser) also takes a sketch, picked in the viewport or from the sketch list in the dialog (hidden ones too). Type or drag a move and a turn to tilt or shift it; extrudes, revolves, sweeps and lofts made from it follow, and the sketch stays editable. "Create a copy" makes a second sketch and leaves the first where it was.
 - Proof it is parametric: a fully-constrained mark on every sketch, dimension
   names `d1`, `d2`… you can use in any dimension, feature value or shape
   size, parameters importable and exportable as CSV, and a Parameters tutorial
@@ -325,7 +326,7 @@ node build.mjs
 `npm install` fetches one tool, esbuild, pinned to the version the author
 used. The build writes two things:
 
-- `docs/` the website (the same files GitHub Pages serves)
+- `docs/` the website (the same files GitHub Pages serves; not committed on `main`)
 - `dist/jumpstart-3d.html` the single offline file
 
 To try the website locally, serve the `docs/` folder with any static
@@ -390,7 +391,8 @@ tools/              helper page sources and the scripts that rebuild them
                     bridge-demo.js is a script for Open/Export › Run script… (or the console);
                     measure-load.mjs times a page load on a simulated slow connection
 BRIDGE.md           the `JS3D` calls and the project file format
-docs/               built website, committed so GitHub Pages can serve it
+docs/               built website: not on `main` (gitignored); `/ship` builds it onto the `release` branch,
+                    which GitHub Pages serves
 jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.3)
 UPSTREAM-README.md         the author's README from the source release
 ```
@@ -401,14 +403,16 @@ UPSTREAM-README.md         the author's README from the source release
   outputs yourself: the site in a browser and `dist/jumpstart-3d.html` opened
   from disk. The local site keeps its service worker, so after a rebuild reload
   twice: the first reload shows the old build and the "new version" message.
-- Commit the rebuilt `docs/` with your change. `dist/` is not committed; the
-  single file is attached to releases instead.
+- Do not commit `docs/` or `dist/`. Pull requests carry source only: the
+  maintainer's release step builds `docs/` onto the `release` branch (the
+  site) and attaches the single file to the release.
 - Keep "Created by J.Siwek" in the About dialog. Our additions are listed
   below, not claimed as the original.
 
 ## What this repository adds on top of the original
 
 - OBJ export in the Open/Export menu
+- glTF export (`.glb`) in the Open/Export menu: one mesh and one base colour per body, in metres with Y up, for web viewers, Blender and game engines (`src/gltf.js`)
 - OBJ import in Beginner and Advanced: reads vertex positions and faces into one body, then uses the same mesh repair and units path as other imported meshes; materials are ignored (`src/objimport.js`)
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Installable as an app: Install in Chrome/Edge, Add to Dock in Safari
@@ -424,6 +428,7 @@ UPSTREAM-README.md         the author's README from the source release
 - Hole patterns: a Hole pattern dialog (Advanced › Create › Advanced Create) and `JS3D.holePattern` / the `add_hole_pattern` tool lay out a grid, a staggered grid or a circle of round holes on a flat face and write them as one ordinary Hole feature (every position in one `hole` mod, so it edits in the Hole dialog and undoes in one step); square, hex and slot holes are written as one sketch with an outline per hole and one Extrude cut instead. The face's own edges set the grid's directions, and holes that would not fit inside the face and its margin are left out (`src/holepattern.js`)
 - Gears: a Gear dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.gear` / the `add_gear` tool make a spur gear, a straight bevel gear or a rack from a module and a tooth count, as ordinary hidden sketches of straight lines plus the app's own Extrude (two sketches and a straight Loft for a bevel gear, its bore a Hole feature). The teeth follow the ISO 53 basic rack at 20° (addendum 1 module, dedendum 1.25), eight points a flank, with a print clearance taken off every tooth; fewer than 17 teeth are drawn plain (not undercut) with a warning. Nothing in the kernel changed (`src/gears.js`)
 - Name plates: a Name plate dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.namePlate` / the `add_name_plate` tool make a plate sized to one line of text (rounded or pill, with a hanging hole or two screw holes), as one hidden sketch plus the app's own Extrude, with the letters either a second body in its own colour (a Text shape) or cut in (the Deboss text feature). The text is measured on the main thread from the same outlines the drawing code uses, and characters the fonts lack are refused. Nothing in the kernel changed (`src/nameplate.js`)
+- Sketch move: Move/Copy takes one sketch instead of bodies and changes the sketch's plane (`o`, `x`, `n`), so the file format is unchanged and features that use the sketch rebuild from the new plane. A copy is a new sketch; the features stay on the original (`// jumpstart-3d: sketch move` blocks in `moveCmd`, `src/advanced.js`)
 - Underside view: seen from below the plate, the Beginner workplane and the Advanced dark-theme ground turn nearly clear (faint lines stay), so you can see the underside of your part (a few lines in `src/viewport.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
   design through the same 38 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them

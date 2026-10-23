@@ -1,25 +1,84 @@
 # Everything too slow to hold up a pull request, every night at 07:00 UTC and on demand (see test/README.md):
 # the full Playwright suite on both builds, the golden exports with the export judge, the chat geometry scorer, the fuzzer,
 # and the same suite in Firefox and WebKit (not blocking yet).
-# When a blocking job fails in a run on main, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
+# When a blocking job fails, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
 # Run it by hand on any branch, a pull request's too: `gh workflow run nightly.yml --ref <branch>`. No secrets, no model: the chat judge drives a mock.
+# To prove a branch with one job instead of the full run: `gh workflow run nightly.yml --ref <branch> -f specs="test/gltf.spec.mjs"` (job `selected specs`; see test/README.md).
 name: nightly
 
 on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      specs:
+        description: 'Run only these spec files (space-separated paths, e.g. test/smoke.spec.mjs) in one job; empty runs everything'
+        default: ''
+      projects:
+        description: 'Playwright projects for the selected specs (space-separated, e.g. "site single" or "site-firefox")'
+        default: 'site single'
 
 permissions:
   contents: read
 
 concurrency:
-  group: nightly-${{ github.ref }}
-  cancel-in-progress: false
+  group: nightly-${{ github.ref }}-${{ inputs.specs }}
+  cancel-in-progress: true
 
 jobs:
+  # With `specs` set this is the only job that runs: the chosen spec files on the chosen projects, about two jobs of runner instead of the full run's twenty.
+  selected:
+    name: selected specs
+    if: ${{ inputs.specs != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # the Firefox and WebKit projects exist only with this set
+      JS3D_CROSS: '1'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
+      SPECS: ${{ inputs.specs }}
+      PROJECTS: ${{ inputs.projects }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Check the inputs
+        run: |
+          # the inputs reach a shell as words: allow only path and project-name characters
+          [[ "$SPECS" =~ ^[A-Za-z0-9_./\ -]+$ ]] || { echo "specs may hold only letters, digits, _ . / - and spaces" >&2; exit 1; }
+          [[ "$PROJECTS" =~ ^[a-z\ -]+$ ]] || { echo "projects may hold only lowercase letters, - and spaces" >&2; exit 1; }
+      - run: npm ci
+      - name: Install the browsers the projects need
+        timeout-minutes: 14
+        run: |
+          browsers=chromium
+          [[ "$PROJECTS" == *firefox* ]] && browsers="$browsers firefox"
+          [[ "$PROJECTS" == *webkit* ]] && browsers="$browsers webkit"
+          if [ "$browsers" = chromium ]; then npx playwright install chromium; else npx playwright install --with-deps $browsers; fi
+      - run: node build.mjs
+      - name: Run the selected specs
+        run: |
+          read -ra specs <<< "$SPECS"
+          args=()
+          for p in $PROJECTS; do args+=(--project "$p"); done
+          npx playwright test "${specs[@]}" "${args[@]}"
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: selected-report
+          path: |
+            playwright-report/
+            test-results/
+            pw-report.json
+          retention-days: 7
+          overwrite: true
+
   playwright:
     name: playwright (${{ matrix.shard }}/${{ matrix.total }})
+    if: ${{ inputs.specs == '' }}
     # J1: The pinned consumer AppImages were probed on Ubuntu 24.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -66,6 +125,7 @@ jobs:
   # The golden spec exports every design as STL, 3MF and STEP; one job per build (pretest builds both outputs), then the export judge checks the files.
   golden:
     name: golden exports (${{ matrix.build }})
+    if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -112,6 +172,7 @@ jobs:
 
   judge:
     name: export judge
+    if: ${{ inputs.specs == '' }}
     needs: golden
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -169,6 +230,7 @@ jobs:
 
   chat-judge:
     name: chat judge
+    if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -203,6 +265,7 @@ jobs:
 
   fuzz:
     name: fuzz
+    if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -253,6 +316,7 @@ jobs:
   # The golden exports and the chat judge stay Chromium only (the export files and the mock clock do not depend on the browser).
   cross:
     name: ${{ matrix.browser }} ${{ matrix.build }} (${{ matrix.shard }}/${{ matrix.total }})
+    if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     continue-on-error: true
@@ -316,7 +380,8 @@ jobs:
   report:
     name: nightly failures issue
     needs: [playwright, golden, judge, chat-judge, fuzz, cross]
-    if: ${{ always() && !cancelled() }}
+    # only the scheduled or full run on main writes the issue, never a selected-specs run or another branch
+    if: ${{ always() && !cancelled() && inputs.specs == '' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -336,6 +401,4 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REF: ${{ github.ref_name }}
-          # only a run on main opens or edits the issue; a run on a branch reports in its run summary
-          OPEN_ISSUE: ${{ github.ref == 'refs/heads/main' }}
         run: node tools/nightly-issue.mjs
