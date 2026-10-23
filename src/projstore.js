@@ -132,20 +132,29 @@ function merge(db, fp) {
 
 // A rescue copy newer than the stored design is the edit made just before the tab closed. If the stored design is newer
 // than the copy those edits started from (`base`), it is kept as "(before fallback)" first.
+// The tab closing leaves the copy in localStorage and in the database's `meta` store (either may be missing: storage full, or the page torn down first).
 async function applyRescue(db) {
-  const raw = ls.get(RESCUE);
-  if (!raw) return;
-  let r = null;
-  try { r = JSON.parse(raw); } catch (e) {}
-  if (r && r.id && typeof r.doc === "string") {
-    const tx = db.transaction(["docs", "entries"]);
-    const [cur, ent] = await Promise.all([req(tx.objectStore("docs").get(r.id)), req(tx.objectStore("entries").get(r.id))]);
-    if ((cur == null || stamp(r.doc) > stamp(cur)) && !await idbPut(db, r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null }, r.base)) return; // kept for the next visit
+  for (const where of ["ls", "idb"]) {
+    let raw = null, r = null;
+    try { raw = where === "ls" ? ls.get(RESCUE) : await req(db.transaction("meta").objectStore("meta").get(RESCUE)); } catch (e) {}
+    if (!raw) continue;
+    try { r = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) {}
+    if (r && r.id && typeof r.doc === "string") {
+      const tx = db.transaction(["docs", "entries"]);
+      const [cur, ent] = await Promise.all([req(tx.objectStore("docs").get(r.id)), req(tx.objectStore("entries").get(r.id))]);
+      if ((cur == null || stamp(r.doc) > stamp(cur)) && !await idbPut(db, r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null }, r.base)) return; // kept for the next visit
+    }
+    if (where === "ls") ls.del(RESCUE);
+    else {
+      const del = db.transaction("meta", "readwrite");
+      del.objectStore("meta").delete(RESCUE);
+      await committed(del);
+    }
   }
-  ls.del(RESCUE);
 }
 
-const rescueWrite = (id, docString, entry, base) => ls.set(RESCUE, JSON.stringify({ id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base }));
+const rescueOf = (id, docString, entry, base) => ({ id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base });
+const rescueWrite = (id, docString, entry, base) => ls.set(RESCUE, JSON.stringify(rescueOf(id, docString, entry, base)));
 
 // guard: after a slow open took over, the first write of each design checks the stored copy against the write's base
 function idbDriver(db, guard) {
@@ -175,7 +184,11 @@ function idbDriver(db, guard) {
         return committed(tx);
       } catch (e) { return Promise.resolve(false); }
     },
-    putNow: rescueWrite,
+    // for the tab closing: the rescue copy goes to localStorage first (it may be full), then the put is queued in the same call, so a page torn down right after still has it in flight
+    putNow(id, docString, entry, base) {
+      rescueWrite(id, docString, entry, base);
+      try { db.transaction("meta", "readwrite").objectStore("meta").put(rescueOf(id, docString, entry, base), RESCUE); } catch (e) {}
+    },
   };
 }
 

@@ -96,9 +96,9 @@ export function initProjects(app) {
       return c.toDataURL("image/jpeg", 0.72);
     } catch (e) { return null; }
   }
-  function record() { // jumpstart-3d: designs storage. what a save stores: id, the document string, the list entry
+  function record(noThumb) { // jumpstart-3d: designs storage. what a save stores: id, the document string, the list entry (the tab closing skips the thumbnail)
     const doc = store.doc, updated = Date.now();
-    return [doc.id, JSON.stringify({ ...doc, _updated: updated }), { id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated, thumb: thumbnail() }];
+    return [doc.id, JSON.stringify({ ...doc, _updated: updated }), { id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated, thumb: noThumb ? null : thumbnail() }];
   }
   async function saveRemote(doc, thumb, updated) {
     if (!remoteOk) return false;
@@ -110,26 +110,32 @@ export function initProjects(app) {
     } catch (e) { remoteNote = e && e.code === "invalid_argument" ? "you can't write here" : "account storage unavailable"; return false; }
   }
   let remoteNote = "";
-  function saveNow() { return save(); }
-  async function save(taken) {
+  async function saveNow() { return (await save()).local; }
+  let failToasted = false; // jumpstart-3d: one error toast for a run of failed autosaves; a Save click (loud) always gets its own
+  async function save(loud) {
     saving++; // jumpstart-3d: designs storage (the whole block up to the remote save)
     let updated = null, doc, thumb;
     try {
       await startGate;
       doc = store.doc;
-      const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
+      const r = record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
       dirty = false;
       // the last argument is read when the write runs: the stamp these edits started from (see idbPut in projstore.js)
       if (await ps.put(r[0], r[1], r[2], () => (opened.id === r[0] ? opened.at : null))) { if (store.doc.id === r[0]) opened = { id: r[0], at: r[2].updated }; if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
+    let any = !!updated;
     if (remoteOk) {
       setState("Saving…");
       const ok = await saveRemote(doc, thumb, updated || Date.now());
+      any = any || ok;
       setState(ok ? "Saved" : updated ? `Saved in this browser (${remoteNote})` : "Not saved");
     } else setState(updated ? "Saved in this browser" : "Couldn't save: browser storage is full or blocked. Export a project file instead.");
-    return !!updated; // jumpstart-3d: backup (did the write fit?)
+    // jumpstart-3d: the status label is hidden on narrower windows, so a failed save also gets a toast
+    if (!any && (loud || !failToasted)) app.toast("Couldn't save in this browser. Export a project file now.", "err");
+    failToasted = !any;
+    return { local: !!updated, any }; // jumpstart-3d: backup (local: did the write fit?)
   }
   const saveSoon = debounce(saveNow, 1200);
 
@@ -168,7 +174,7 @@ export function initProjects(app) {
   }
   async function saveVersion() {
     const v = bumpVersion();
-    await saveNow();
+    if (!(await save(true)).any) return false; // jumpstart-3d: failed save: the error toast is already up, no "Saved as"
     mirror.now(); // jumpstart-3d: copies in a folder (not awaited)
     app.toast(`Saved as "${versionName(store.doc, v)}"`);
     app.onSaved && app.onSaved(v);
@@ -737,7 +743,7 @@ export function initProjects(app) {
   });
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened.at : null); save(r); } }); // jumpstart-3d: designs storage (putNow is the synchronous copy; the save may not finish)
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened.at : null); } }); // jumpstart-3d: designs storage (putNow starts its writes before this returns; nothing is awaited)
 
   return {
     // a finished render (PNG) goes through the same save path as models
