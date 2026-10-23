@@ -182,7 +182,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `list_params`, `set_param`, `remove_param`, `bind_size` | Named parameters and sizes that follow them |
 | `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner, Advanced or Architechies (`arch`) |
 | `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
-| `export_file` | Writes STL, OBJ, 3MF, STEP or the project `json` to a path and returns path and size |
+| `export_file` | Writes STL, OBJ, 3MF, GLB, STEP or the project `json` to a path and returns path and size |
 | `save_project`, `load_project` | The design as project-file JSON (text, or a file); open one from text or a file |
 | `new_design` | Start an empty design |
 | `run_script` | Run JavaScript in the page with `JS3D` and `app` in scope; returns the value as JSON |

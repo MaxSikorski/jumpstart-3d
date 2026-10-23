@@ -94,7 +94,7 @@ tool("undo", "Undoes the last edit. Returns its label, or null when there is not
 tool("redo", "Redoes the last undone edit. Returns its label, or null.", {}, (_, s) => call(s, "redo"));
 tool("select_bodies", "Selects bodies in the view (an empty list clears the selection).", { ids: z.array(z.string()) }, ({ ids }, s) => call(s, "select", ids));
 tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, (_, s) => call(s, "fit"));
-tool("set_mode", "Switches the app between Beginner, Advanced and Architechies (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet.", { mode: z.enum(["beginner", "advanced", "arch"]) }, ({ mode }, s) => call(s, "setMode", mode));
+tool("set_mode", "Switches the app between Beginner, Advanced and Architechies (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet. Arch mode hides the shapes: switch back to beginner or advanced before editing shapes or taking a screenshot of them.", { mode: z.enum(["beginner", "advanced", "arch"]) }, ({ mode }, s) => call(s, "setMode", mode));
 
 tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels. Give `path` if your model cannot see images: the PNG is written there and you get {path, bytes, width} as text instead of the picture.",
   { width: z.number().int().min(1).max(8192).default(800), fit: z.boolean().default(true), path: z.string().optional().describe("Write the PNG to this file instead of returning the picture") },
