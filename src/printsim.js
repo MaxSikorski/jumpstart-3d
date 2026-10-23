@@ -2,11 +2,15 @@
 // spirit of a slicer preview (Orca Slicer): layers with walls, infill and top/bottom skins,
 // overhangs, normal or tree supports, a strength / weak-point map and print estimates.
 // It never makes G-code: it is a preview to learn from, not a slicer.
+import { packPaint, unpackPaint, MAX_SLOTS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 import * as THREE from "three";
 import { store, findBody } from "./store.js";
 import { el, fmt } from "./util.js";
 import { M4 } from "./ops.js";
 import { FILAMENTS } from "./fea.js";
+
+import { registerPrinters, getPlatePref, setPlatePref } from "./printerpresets.js"; // jumpstart-3d: the Printer plate choice and the evidence labels on these rows
+import { leansOut } from "./overhang.js"; // jumpstart-3d: one overhang rule for the design view and the sim
 
 // Printers and how they handle more than one filament (like Orca Slicer's printer profiles):
 //   tools.kind  "single"  one nozzle, one filament (swap by hand)
@@ -62,6 +66,7 @@ export const PRINTERS = {
   // Voron
   voron: { brand: "Voron", name: "Voron 2.4 350", w: 350, d: 350, h: 340, tools: { kind: "single" } },
 };
+registerPrinters(PRINTERS); // jumpstart-3d: adds dimensionEvidence / plateLabel to the rows above (printerpresets.js); the rows themselves stay as the author wrote them
 const PURGE_FLOW = 12; // mm³/s a nozzle purges at while flushing
 // Orca-style flushing volume (mm³) from one color to the next: more when going from dark to
 // light, and more the more different the colors are
@@ -235,7 +240,6 @@ export function initPrintSim(app, X) {
   // ------------------------------------------------------------ overhangs and supports
   function analyse() {
     const w = W, { pos, tri, nT } = w;
-    const cosT = Math.cos((st.threshold * Math.PI) / 180);
     const over = new Uint8Array(nT), nrm = new Float32Array(nT * 3);
     let overArea = 0, bedArea = 0;
     const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3();
@@ -256,7 +260,7 @@ export function initPrintSim(app, X) {
       nrm[t * 3] = n.x; nrm[t * 3 + 1] = n.y; nrm[t * 3 + 2] = n.z;
       const zmax = Math.max(pos[a + 2], pos[b + 2], pos[c + 2]);
       if (zmax < 0.05 && n.z < -0.98) { bedArea += ar; continue; }
-      if (-n.z > cosT && Math.min(pos[a + 2], pos[b + 2], pos[c + 2]) > st.layer * 0.5 && !(w.nParts > 1 && restsOnPart(t, a, b, c))) { over[t] = 1; overArea += ar; }
+      if (leansOut(n.z, st.threshold) /* jumpstart-3d: limit measured from vertical (sin), see overhang.js */ && Math.min(pos[a + 2], pos[b + 2], pos[c + 2]) > st.layer * 0.5 && !(w.nParts > 1 && restsOnPart(t, a, b, c))) { over[t] = 1; overArea += ar; }
     }
     // support columns: under every overhang, from the plate (or the part below) up to it
     const sp = st.supports === "tree" ? 3 : 2, zgap = st.layer;
@@ -331,7 +335,7 @@ export function initPrintSim(app, X) {
     const nVtx = pos.length / 3, zs = new Float32Array(nVtx), v = new THREE.Vector3();
     const bb = new THREE.Box3();
     for (let i = 0; i < nVtx; i++) { v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(Rm); zs[i] = v.z; bb.expandByPoint(v); }
-    const zmin = bb.min.z, cosT = Math.cos((st.threshold * Math.PI) / 180), nn = new THREE.Vector3();
+    const zmin = bb.min.z, nn = new THREE.Vector3();
     let over = 0, bed = 0;
     const e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
     for (let t = 0; t < nT; t++) {
@@ -342,7 +346,7 @@ export function initPrintSim(app, X) {
       const ar = e1.cross(e2).length() / 2;
       const hi = Math.max(zs[a], zs[b], zs[c]) - zmin;
       if (hi < 0.05 && nn.z < -0.98) bed += ar;
-      else if (-nn.z > cosT && Math.min(zs[a], zs[b], zs[c]) - zmin > st.layer * 0.5) over += ar;
+      else if (leansOut(nn.z, st.threshold) /* jumpstart-3d: limit measured from vertical (sin), see overhang.js */ && Math.min(zs[a], zs[b], zs[c]) - zmin > st.layer * 0.5) over += ar;
     }
     const size = bb.getSize(new THREE.Vector3());
     return { dn, Rm, over, bed, h: size.z, w: Math.max(size.x, size.y), d: Math.min(size.x, size.y) };
@@ -938,7 +942,24 @@ export function initPrintSim(app, X) {
     buildPaint();
   }
   // a filament, paint or printer change: plate area, plan, legend, panel
+  // jumpstart-3d: painted 3MF. The filaments and paint live in the design (doc.printPaint, see paint3mf.js), so the 3MF export and a reopened design have them
+  const mirrorPaint = () => {
+    const ids = store.doc.bodies.filter((b) => !b.hole && st.slotOf.has(b.id)).map((b) => b.id);
+    const pp = packPaint(st, ids, (id) => scene.views.get(id)?.data?.faceGroups?.length ?? 0);
+    const same = JSON.stringify(pp) === JSON.stringify(store.doc.printPaint ?? null);
+    if (pp) store.doc.printPaint = pp; else delete store.doc.printPaint;
+    return !same;
+  };
+  store.on((kind) => { if (kind === "load") unpackPaint(store.doc.printPaint, st); else if (kind === "change") mirrorPaint(); }); // after an undo the design's older copy gets the sim's paint again
+  // face paint is by face number: a body edited into another number of faces loses it (the 3MF export skips it too)
+  function dropStalePaint() {
+    for (const id of [...st.paint.keys()]) {
+      const n = st.faceN && st.faceN.get(id), now = scene.views.get(id)?.data?.faceGroups?.length;
+      if (n != null && now != null && n !== now) { st.paint.delete(id); st.faceN.delete(id); }
+    }
+  }
   function filamentsChanged() {
+    if (mirrorPaint()) app.projects.changed();
     buildPlate();
     refreshPlan();
     buildDocks();
@@ -1013,6 +1034,7 @@ export function initPrintSim(app, X) {
       st.slotOf.set(id, st.brush); st.paint.delete(id);
       return true;
     }
+    dropStalePaint(); // jumpstart-3d: painted 3MF
     const m = st.paint.get(id) || new Map();
     const before = m.get(f);
     if (st.paintTool === "erase" || st.brush === st.slotOf.get(id)) m.delete(f); else m.set(f, st.brush);
@@ -1216,10 +1238,13 @@ export function initPrintSim(app, X) {
   function renderPanel() { if (def && app.command === def) def.render(); }
   function open() {
     st.ids = targetIds();
+    dropStalePaint(); // jumpstart-3d: painted 3MF
+    { const pp = getPlatePref(); if (pp.printer !== "generic" && pp.printer !== "none") st.printer = pp.printer; } // jumpstart-3d: open on the printer chosen under Printer plate…
     root.visible = true;
     vp.grid.visible = false;
     buildPlate();
     buildDocks();
+    X.onOpen && X.onOpen(); // jumpstart-3d: the design view's overhang overlay steps aside
     def = {
       title: "3D Print Sim",
       okLabel: "Done",
@@ -1248,7 +1273,7 @@ export function initPrintSim(app, X) {
               const cur = st.slotOf.get(b.id) ?? 0;
               const fs = el("select", { class: "num psfil", id: "ps-slot-" + b.id, "aria-label": "Filament for " + b.name, title: "Which filament prints this body" },
                 ...st.slots.map((q, i) => el("option", { value: i, selected: i === cur, style: { background: q.color, color: lightText(q.color) } }, "F" + (i + 1))),
-                el("option", { value: "new" }, "+ New"));
+                ...(st.slots.length < MAX_SLOTS ? [el("option", { value: "new" }, "+ New")] : [])); // jumpstart-3d: painted 3MF
               fs.style.background = st.slots[cur]?.color || "";
               fs.style.color = lightText(st.slots[cur]?.color);
               fs.onclick = (e) => e.stopPropagation();
@@ -1271,7 +1296,7 @@ export function initPrintSim(app, X) {
           for (const [k, p] of list) g.append(el("option", { value: k, selected: k === st.printer }, `${p.name.replace(brand + " ", "")} (${p.w}×${p.d}×${p.h})`));
           return g;
         }));
-        psel.onchange = () => { st.printer = psel.value; buildPlate(); filamentsChanged(); };
+        psel.onchange = () => { st.printer = psel.value; setPlatePref({ printer: psel.value }); buildPlate(); filamentsChanged(); }; // jumpstart-3d: the same choice as Printer plate…
         body.append(row("Printer", psel, "ps-printer"));
         body.append(el("div", { class: "hint pstools", id: "ps-tools", style: { padding: 0 } }, toolText(P)));
         // the filaments: one per toolhead / spool slot. Pick a color for each, pick one as the
@@ -1294,7 +1319,7 @@ export function initPrintSim(app, X) {
               ci, el("b", {}, "F" + (sl + 1)), el("span", {}, where), el("i", {}, g ? fmt(g, 1) + " g" : used.includes(sl) ? "" : "not used"));
             fl.append(rowEl);
           }
-          const canAdd = st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, 24));
+          const canAdd = st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, MAX_SLOTS)); // jumpstart-3d: painted 3MF (the file codes 15 filaments)
           body.append(el("div", { class: "subhead" }, `Filaments (${used.length} used)`), fl);
           if (canAdd) fl.append(el("button", { class: "btn psadd", id: "ps-addfil", onclick: () => { st.slots.push({ color: nextFilColor() }); st.brush = st.slots.length - 1; renderPanel(); } }, "+ Add filament"));
           // color painting
@@ -1469,7 +1494,6 @@ export function initPrintSim(app, X) {
       e.a += ar; byN.set(key, e);
     }
     [...byN.values()].sort((p, q) => q.a - p.a).slice(0, 8).forEach((e) => cand.push(e.n.clone().normalize()));
-    const cosT = Math.cos((st.threshold * Math.PI) / 180);
     let best = null;
     for (const dn of cand) {
       const q = new THREE.Quaternion().setFromUnitVectors(dn, new THREE.Vector3(0, 0, -1));
@@ -1487,7 +1511,7 @@ export function initPrintSim(app, X) {
         const ar = new THREE.Vector3(pos[b3] - pos[a3], pos[b3 + 1] - pos[a3 + 1], pos[b3 + 2] - pos[a3 + 2]).cross(new THREE.Vector3(pos[c3] - pos[a3], pos[c3 + 1] - pos[a3 + 1], pos[c3 + 2] - pos[a3 + 2])).length() / 2;
         const lo = Math.max(zs[a], zs[b], zs[c]) - zmin;
         if (lo < 0.05 && nn.z < -0.98) bed += ar;
-        else if (-nn.z > cosT) over += ar;
+        else if (leansOut(nn.z, st.threshold)) over += ar; // jumpstart-3d: limit measured from vertical (sin), see overhang.js
       }
       const score = over - 0.5 * bed + 0.02 * (zmax - zmin) * Math.sqrt(Math.max(1, bed));
       if (!best || score < best.score - 1e-6) best = { score, Rm };

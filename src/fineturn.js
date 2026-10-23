@@ -1,6 +1,6 @@
 // jumpstart-3d: fine rotation (issue #87). A "Turn" control in the status bar, beside the unit switch: pick an axis and a step
 // (15, 5, 1, 0.5 or 0.1 degrees); − and + turn the selected shapes by that step and are big enough for a finger; Snap back
-// lines the shape up with the grid again (the nearest right-angle position). The , and . keys use the same step.
+// lines the shape up with the grid again (the nearest right-angle position, each shape in place about its own middle). The , and . keys use the same step.
 import * as THREE from "three";
 import { store, findBody } from "./store.js";
 import { el } from "./util.js";
@@ -60,9 +60,7 @@ export function initFineTurn(app) {
     if (app.command) { if (!(app.command.turnBy && app.command.turnBy(deg, null, axis))) app.toast("Finish or cancel the open tool first."); return; }
     const ids = movable();
     if (!ids) return;
-    let c; // one shape turns about its own middle; several about the middle of their combined box (taken once)
-    if (ids.length === 1) c = pivotOf(app.scene, ids[0], M4(findBody(store.doc, ids[0]).m));
-    else { const box = new THREE.Box3(); for (const id of ids) { const b = app.scene.bodyTightBox(id); if (b) box.union(b); } if (!box.isEmpty()) c = box.getCenter(new THREE.Vector3()); }
+    const c = app.pivot.get(ids); // the pivot dot the user sees: a shape's own middle, the combined middle of several taken once, or a point they moved
     if (!c) return;
     transformBodies(ids, turnAbout(c, AXES[axis], deg), `Turn ${axis.toUpperCase()} ${deg > 0 ? "+" : ""}${deg}°`);
   }
