@@ -118,7 +118,7 @@ export function initProjects(app) {
       const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
       dirty = false;
-      if (await ps.put(...r)) { ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
+      if (await ps.put(...r)) { if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
     if (remoteOk) {
@@ -224,6 +224,44 @@ export function initProjects(app) {
     app.vp.setView("home", app.scene.allBox().isEmpty() ? null : app.scene.allBox());
     const gen = loads; setTimeout(() => { if (gen !== loads) return; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }, 900); // jumpstart-3d: only the latest load's
     return true;
+  }
+  // jumpstart-3d: share link. A design opened from a link becomes the one a reload reopens only after it has built without an error,
+  // so a design that stalls or breaks the engine is not reopened (and stalls it again) on the next load.
+  let unproven = null;
+  function proveShared(id) {
+    unproven = id;
+    const timer = setInterval(() => {
+      if (store.doc.id !== id) { clearInterval(timer); if (unproven === id) unproven = null; return; }
+      if (app.scene.busy() || store.doc.bodies.some((b) => app.scene.errors.has(b.id))) return;
+      clearInterval(timer); unproven = null; ls.set(LS_PREF + ".last", id);
+    }, 400);
+  }
+  // jumpstart-3d: share link. Adds a checked design from a share link as a NEW design (own id, version 0, own creation time) and opens it.
+  // The open design is saved first and stays as it is; nothing is replaced until the new one is safely stored. Returns "ok", "save-failed"
+  // (the open design could not be saved: nothing happens), "stale" (the person changed designs while this waited: nothing happens),
+  // "storage" (the new design could not be stored: the open one stays) or "chisel" (Chisel keeps its own copy of the open design).
+  async function importShared(shared) {
+    if (app.mode === "chisel") return "chisel";
+    const gen = loads;
+    if (app.command) app.command.cancel();
+    const open0 = store.doc;
+    if (!await saveNow()) return "save-failed";
+    if (store.doc !== open0 || loads !== gen) return "stale"; // an edit or another design while the save ran: the person is asked again
+    const id = uid("d"), now = Date.now(), doc = { ...structuredClone(shared), id, created: now, ver: 0 };
+    delete doc._updated;
+    if (!await ps.put(id, JSON.stringify({ ...doc, _updated: now }), { id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null })) return "storage";
+    if (store.doc !== open0 || loads !== gen) { await ps.del(id); return "stale"; }
+    app.select([]);
+    if (app.command) app.command.cancel();
+    app.exitSketch();
+    proveShared(id);
+    store.load(doc);
+    setState("Saved");
+    mirror.soon();
+    saveNow();
+    const b = app.scene.allBox(); app.vp.setView("home", b.isEmpty() ? null : b);
+    const g2 = loads; setTimeout(() => { if (g2 !== loads) return; const bx = app.scene.allBox(); if (!bx.isEmpty()) app.vp.fit(bx); }, 900);
+    return "ok";
   }
   function createNew(doc, mode = "beginner") {
     app.select([]);
@@ -466,13 +504,35 @@ export function initProjects(app) {
       const M = o.m.elements, P = o.data.vertices, T = o.data.triangles;
       const det = M[0] * (M[5] * M[10] - M[9] * M[6]) - M[4] * (M[1] * M[10] - M[9] * M[2]) + M[8] * (M[1] * M[6] - M[5] * M[2]);
       const index = new Map(), verts = [], remap = new Int32Array(P.length / 3);
+      // jumpstart-3d: 3MF weld. Corners closer than 0.1 micron become one vertex, not only those that round to the same
+      // 0.01 micron: where two tori touch at one point the mesher leaves a patch of triangles that small, and rounding
+      // kept one of them with no partner (fuzz seed 33). The first corner of a cluster places its vertex.
+      const cell = 1e-4, grid = new Map(), placed = [];
+      const closeTo = (x, y, z) => {
+        const gx = Math.floor(x / cell), gy = Math.floor(y / cell), gz = Math.floor(z / cell);
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          for (const id of grid.get((gx + dx) + "," + (gy + dy) + "," + (gz + dz)) || []) {
+            const p = placed[id];
+            if (Math.abs(p[0] - x) <= cell && Math.abs(p[1] - y) <= cell && Math.abs(p[2] - z) <= cell) return id;
+          }
+        }
+      };
       for (let i = 0; i < P.length / 3; i++) {
         const x = M[0] * P[i * 3] + M[4] * P[i * 3 + 1] + M[8] * P[i * 3 + 2] + M[12];
         const y = M[1] * P[i * 3] + M[5] * P[i * 3 + 1] + M[9] * P[i * 3 + 2] + M[13];
         const z = M[2] * P[i * 3] + M[6] * P[i * 3 + 1] + M[10] * P[i * 3 + 2] + M[14];
         const key = num(x) + "," + num(y) + "," + num(z);
         let id = index.get(key);
-        if (id === undefined) { id = verts.length; index.set(key, id); verts.push('     <vertex x="' + num(x) + '" y="' + num(y) + '" z="' + num(z) + '"/>'); }
+        if (id === undefined) id = closeTo(x, y, z); // jumpstart-3d: 3MF weld
+        if (id === undefined) {
+          id = verts.length; verts.push('     <vertex x="' + num(x) + '" y="' + num(y) + '" z="' + num(z) + '"/>');
+          // jumpstart-3d: 3MF weld
+          placed.push([x, y, z]);
+          const g = Math.floor(x / cell) + "," + Math.floor(y / cell) + "," + Math.floor(z / cell);
+          if (!grid.has(g)) grid.set(g, []);
+          grid.get(g).push(id);
+        }
+        index.set(key, id);
         remap[i] = id;
       }
       const tris = [];
@@ -686,16 +746,17 @@ export function initProjects(app) {
       }
       started = true; openGate(); // jumpstart-3d: designs storage (saves wait for this)
       // offer back any work that was never saved (a crash, a closed tab)
-      Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => rec.check(), 300));
+      Promise.race([capP, new Promise((r) => setTimeout(r, 3000))]).then(() => setTimeout(() => { if (app.sharelink) app.sharelink.afterDecision(() => rec.check()); else rec.check(); }, 300)); // jumpstart-3d: share link (the recovery offer waits for the person's decision)
       capP.then(async () => {
         if (!remoteOk) { if (!stateEl.textContent) setState("Saved in this browser"); return; }
         // the account may hold a newer copy of this design (edited on another device)
         try {
-          const s = await col().doc(store.doc.id).get();
+          const id0 = store.doc.id, gen0 = loads; // jumpstart-3d: share link. a design opened while this waited (a shared one) is not replaced
+          const s = await col().doc(id0).get();
           if (s.exists && !store.undoStack.length) {
             const v = s.data();
-            const local = await getDoc(store.doc.id);
-            if (v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
+            const local = await getDoc(id0);
+            if (store.doc.id === id0 && loads === gen0 && v.updated > ((local && local._updated) || 0)) { store.load(JSON.parse(v.data)); app.toast("Loaded the latest version from your account"); }
           }
           setState("Saved");
         } catch (e) {}
@@ -708,6 +769,7 @@ export function initProjects(app) {
     version: () => verOf(),
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
+    exportJSON, liveDoc: () => store.doc, importShared, // jumpstart-3d: share link
     stlBytes, objBytes, threeMFBytes, stepBytes, glbBytes: glbBytesOf, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
     get started() { return started; }, _store: ps, _folder: mirror, _remote: remote, // jumpstart-3d: designs storage, copies in a folder, remote (tests read these)

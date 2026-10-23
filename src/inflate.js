@@ -28,12 +28,16 @@ function fixed() {
   FIXED_D = huff(new Uint8Array(30).fill(5), 30);
 }
 
-export function inflateRaw(src, sizeHint) {
+// max (jumpstart-3d: share link): an optional hard limit on the output. Every write and every growth is checked against it,
+// so a stream that would expand past it fails while decoding, not after. Without it the output is unbounded, as before.
+export function inflateRaw(src, sizeHint, max = Infinity) {
   let pos = 0, bit = 0, nb = 0;
-  let out = new Uint8Array(Math.max(1024, sizeHint || src.length * 4)), op = 0;
+  let out = new Uint8Array(Math.min(max, Math.max(1024, sizeHint || src.length * 4))), op = 0;
   const need = (n) => {
+    if (op + n > max) throw new Error("Compressed data expands past its limit.");
     if (op + n <= out.length) return;
-    let m = out.length * 2; while (m < op + n) m *= 2;
+    let m = Math.max(out.length, 1) * 2; while (m < op + n) m *= 2;
+    m = Math.min(m, max);
     const o = new Uint8Array(m); o.set(out.subarray(0, op)); out = o;
   };
   const bits = (n) => {
@@ -56,7 +60,10 @@ export function inflateRaw(src, sizeHint) {
     const type = bits(2);
     if (type === 0) {
       bit = 0; nb = 0;
-      const len = src[pos] | (src[pos + 1] << 8); pos += 4;
+      if (pos + 4 > src.length) throw new Error("Compressed data ended early.");
+      const len = src[pos] | (src[pos + 1] << 8);
+      if ((len ^ 0xffff) !== (src[pos + 2] | (src[pos + 3] << 8))) throw new Error("Bad compressed data."); // jumpstart-3d: share link. LEN and its complement must agree
+      pos += 4;
       if (pos + len > src.length) throw new Error("Compressed data ended early.");
       need(len); out.set(src.subarray(pos, pos + len), op); op += len; pos += len;
       continue;
@@ -76,6 +83,7 @@ export function inflateRaw(src, sizeHint) {
           if (s === 16) { if (!i) throw new Error("Bad compressed data."); v = lens[i - 1]; rep = 3 + bits(2); }
           else if (s === 17) rep = 3 + bits(3);
           else rep = 11 + bits(7);
+          if (i + rep > hl + hd) throw new Error("Bad compressed data."); // jumpstart-3d: share link. a repeat past the last length
           while (rep--) lens[i++] = v;
         }
       }
@@ -86,8 +94,12 @@ export function inflateRaw(src, sizeHint) {
       if (s < 256) { need(1); out[op++] = s; }
       else if (s === 256) break;
       else {
-        const k = s - 257, len = LBASE[k] + bits(LEXT[k]);
-        const d = decode(D), dist = DBASE[d] + bits(DEXT[d]);
+        const k = s - 257;
+        if (k >= LBASE.length) throw new Error("Bad compressed data."); // jumpstart-3d: share link. length codes 286 and 287 do not exist
+        const len = LBASE[k] + bits(LEXT[k]);
+        const d = decode(D);
+        if (d >= DBASE.length) throw new Error("Bad compressed data."); // jumpstart-3d: share link. distance codes 30 and 31 do not exist
+        const dist = DBASE[d] + bits(DEXT[d]);
         if (dist > op) throw new Error("Bad compressed data.");
         need(len);
         for (let i = 0; i < len; i++, op++) out[op] = out[op - dist];
