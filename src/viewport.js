@@ -500,21 +500,23 @@ export class Viewport {
       } else this.panBy(dx, dy);
       this.request();
     });
+    // a tap: behave like a click, and two quick taps like a double-click
+    const tap = (e) => {
+      const now = performance.now();
+      const dbl = lastTap && now - lastTap.t < 380 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+      if (dbl && this.handler && this.handler.dblclick) { lastTap = null; this.handler.dblclick(e); }
+      else {
+        lastTap = { t: now, x: e.clientX, y: e.clientY };
+        this.tapping = true; // (handlers: this press is a tap, not the start of a gesture on a handle)
+        try { if (this.handler && this.handler.down && this.handler.down(e) !== false) this.handler.up && this.handler.up(e); } finally { this.tapping = false; }
+      }
+    };
     const end = (e) => {
       const had = pointers.delete(e.pointerId);
       if (!drag || !had) return;
-      if (drag.mode === "tool") this.handler && this.handler.up && this.handler.up(e);
+      if (drag.mode === "tool") { const r = this.handler && this.handler.up && this.handler.up(e); if (r === "tap" && e.type === "pointerup") tap(e); } // jumpstart-3d: pivot. a handle pressed without moving is a tap on what is under it
       else if (drag.mode === "orbit" && !drag.moved && drag.button === 2) this.onContext && this.onContext(e);
-      else if (drag.mode === "touchnav" && !drag.moved && e.type === "pointerup") {
-        // a tap: behave like a click, and two quick taps like a double-click
-        const now = performance.now();
-        const dbl = lastTap && now - lastTap.t < 380 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
-        if (dbl && this.handler && this.handler.dblclick) { lastTap = null; this.handler.dblclick(e); }
-        else {
-          lastTap = { t: now, x: e.clientX, y: e.clientY };
-          if (this.handler && this.handler.down && this.handler.down(e) !== false) this.handler.up && this.handler.up(e);
-        }
-      }
+      else if (drag.mode === "touchnav" && !drag.moved && e.type === "pointerup") tap(e);
       if (pointers.size === 0) drag = null;
       else if (drag.mode === "touch2") drag = { mode: "touch2wait" };
     };

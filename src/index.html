@@ -519,6 +519,8 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .menu button { padding: 12px 10px; }
   .pcard .acts button { padding: 8px 8px; }
 }
+/* jumpstart-3d: rotation access (issue #100). The turn buttons and the Snap 15° / Free switch are 44 px targets for a finger */
+.rot-btn button { min-width: 44px; min-height: 44px; }
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
 .lockbar svg { width: 18px; height: 18px; flex: none; }
 .lockbar .btn { margin-left: auto; padding: 4px 10px; }
