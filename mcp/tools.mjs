@@ -20,7 +20,7 @@ const ids = () => z.union([z.string(), z.array(z.string()).min(1)]).describe("A 
 const vec3 = () => z.array(z.number()).length(3);
 const size = () => z.union([z.array(z.number()).length(3), z.record(z.union([z.number(), z.string()]))])
   .describe("Shape size in mm: [w, d, h] or an object such as {w, d, h}. Other kinds have other keys (see list_kinds for each kind's defaults).");
-const exportKind = z.enum(["stl", "obj", "3mf", "step", "json"]);
+const exportKind = z.enum(["stl", "obj", "3mf", "glb", "step", "json"]);
 
 export const where = (p) => resolve(p.startsWith("~/") ? join(homedir(), p.slice(2)) : p); // relative paths are relative to the folder the server was started in
 export async function save(path, bytes) {
@@ -94,7 +94,7 @@ tool("undo", "Undoes the last edit. Returns its label, or null when there is not
 tool("redo", "Redoes the last undone edit. Returns its label, or null.", {}, (_, s) => call(s, "redo"));
 tool("select_bodies", "Selects bodies in the view (an empty list clears the selection).", { ids: z.array(z.string()) }, ({ ids }, s) => call(s, "select", ids));
 tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, (_, s) => call(s, "fit"));
-tool("set_mode", "Switches the app between Beginner and Advanced mode.", { mode: z.enum(["beginner", "advanced"]) }, ({ mode }, s) => call(s, "setMode", mode));
+tool("set_mode", "Switches the app between Beginner, Advanced and Architechies (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet.", { mode: z.enum(["beginner", "advanced", "arch"]) }, ({ mode }, s) => call(s, "setMode", mode));
 
 tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels. Give `path` if your model cannot see images: the PNG is written there and you get {path, bytes, width} as text instead of the picture.",
   { width: z.number().int().min(1).max(8192).default(800), fit: z.boolean().default(true), path: z.string().optional().describe("Write the PNG to this file instead of returning the picture") },
@@ -103,7 +103,7 @@ tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes t
     if (path) return { ...(await save(path, png)), width: png.readUInt32BE(16) }; // IHDR: the width follows the 8-byte signature and the chunk header
     return raw([{ type: "image", data: png.toString("base64"), mimeType: "image/png" }]);
   });
-tool("export_file", "Writes the design to a file on this computer and returns its path and size. kind: stl, obj, 3mf, step, or json (the project file). Holes and hidden bodies are left out; ids limits it to some bodies. Relative paths are relative to the folder the server runs in.",
+tool("export_file", "Writes the design to a file on this computer and returns its path and size. kind: stl, obj, 3mf, glb (binary glTF), step, or json (the project file). Holes and hidden bodies are left out; ids limits it to some bodies. Relative paths are relative to the folder the server runs in.",
   { kind: exportKind, path: z.string(), ids: ids().optional() }, async ({ kind, path, ids }, s) => save(path, await callLong(s, "export", kind, ids ? { ids } : {})));
 tool("save_project", "Returns the whole design as project-file JSON text (see BRIDGE.md), or writes it to `path` and returns the path and size.",
   { path: z.string().optional() }, async ({ path }, s) => {

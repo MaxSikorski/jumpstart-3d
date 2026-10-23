@@ -180,7 +180,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
 | `list_params`, `set_param`, `remove_param`, `bind_size` | Named parameters and sizes that follow them |
-| `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner or Advanced |
+| `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner, Advanced or Architechies (`arch`) |
 | `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
 | `export_file` | Writes STL, OBJ, 3MF, STEP or the project `json` to a path and returns path and size |
 | `save_project`, `load_project` | The design as project-file JSON (text, or a file); open one from text or a file |
@@ -205,7 +205,7 @@ server. It prints a JSON result on stdout; progress and errors go to stderr. Exi
 
 ```
 jumpstart run <script.js> [--app <url|file|dir>]         run a script with JS3D in scope; prints what it returns
-jumpstart export <project.json> <out.stl|obj|3mf|step>   open a project, write the export, print the path and size
+jumpstart export <project.json> <out.stl|obj|3mf|glb|step>   open a project, write the export, print the path and size
 jumpstart shot <project.json> <out.png> [--width N]      a picture of the 3D view (800 pixels wide by default)
 jumpstart status [--app <url|file|dir>]                  start the app and print app version, JS3D version, design, body count
 ```
