@@ -1,6 +1,6 @@
 // jumpstart-3d: offline. The hosted site's service worker: keeps the page, the app, the worker and the geometry engine on this computer, so the next visit opens at once and works without a connection.
 // Never remove sw.js from the site: a 404 on the update check keeps the old worker serving its cache forever; to retire it, publish a sw.js that calls self.registration.unregister().
-const VERSION = "f7110f5776"; // build.mjs replaces this line with a hash of the four files below
+const VERSION = "016785ec5e"; // build.mjs replaces this line with a hash of the four files below
 const CACHE = "jumpstart-3d-" + VERSION;
 const FILES = ["./", "app.js", "worker.js", "occt-gz.wasm"];
 const urls = () => FILES.map((f) => new URL(f, self.registration.scope).href);
