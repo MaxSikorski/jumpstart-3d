@@ -410,6 +410,7 @@ UPSTREAM-README.md         the author's README from the source release
 ## What this repository adds on top of the original
 
 - OBJ export in the Open/Export menu
+- glTF export (`.glb`) in the Open/Export menu: one mesh and one base colour per body, in metres with Y up, for web viewers, Blender and game engines (`src/gltf.js`)
 - OBJ import in Beginner and Advanced: reads vertex positions and faces into one body, then uses the same mesh repair and units path as other imported meshes; materials are ignored (`src/objimport.js`)
 - No waiting at a splash screen: the workspace opens while the geometry engine loads, and the website works offline after one visit through a service worker (`src/loadui.js`, `src/sw.js`, the site build only)
 - Installable as an app: Install in Chrome/Edge, Add to Dock in Safari
