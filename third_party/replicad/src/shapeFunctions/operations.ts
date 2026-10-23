@@ -162,13 +162,16 @@ function simplifiedResult(builder: {
 // 2. A missed overlap: an oval sphere (20 by 30 by 10) joined with an oval cylinder (10 by 14 by 12 at x = 5) lost the
 //    sphere and their intersect was empty, and their cuts came out too big (one of them not even a valid solid). Which
 //    fuzzy values are right is erratic (here 3e-4, 3e-3 and 1e-2; 1e-6 gives the sum of the two volumes, 1e-4 and 1e-3
-//    repeat the mistake), so the volumes decide. A result is suspect when a fuse is smaller than the larger input or
-//    larger than both together, a cut larger than its base or smaller than base minus tool, an intersect larger than the
-//    smaller input, or an intersect empty although the inputs' boxes overlap. When an input has a rational B-spline face
-//    (the oval sphere's) a fuse that is just the sum of the inputs or a cut that removed nothing while the boxes overlap, and
-//    a result that is not a valid solid, are suspect too. Only then is the result built again, with the intersect at
-//    the same value, and the first value is kept whose pair adds up (fuse + intersect = both inputs, cut = base -
-//    intersect), shows an overlap where the boxes do, and is valid. The normal path costs three volume integrals.
+//    repeat the mistake), so the volumes decide. Only a meaningful overlap is judged: the inputs' boxes must overlap
+//    by at least 1 % of the larger box and 5 % of the smaller one, so a hole in a big body costs nothing extra (an
+//    oval sphere with 50 holes of 0.5 mm built several times slower and ran out of memory when every cut was judged
+//    against the whole body). All limits are relative to the smaller input's volume (0.1 %). A result is suspect when
+//    a fuse is smaller than the larger input or larger than both together, a cut larger than its base or smaller than
+//    base minus tool, an intersect larger than the smaller input or empty. When an input has a rational B-spline face
+//    (the oval sphere's) a fuse that is just the sum of the inputs, a cut that removed nothing and a result that is not
+//    a valid solid are suspect too. Then the result is built again, with the intersect at the same value, and the
+//    first value is kept whose pair adds up (fuse + intersect = both inputs, cut = base - intersect), shows an overlap
+//    and is valid; a value the engine cannot build is skipped.
 type BooleanBuilder = {
   Shape(): TopoDS_Shape;
   SetArguments(shapes: any): void;
@@ -197,18 +200,27 @@ function withoutLooseEdges<B extends BooleanBuilder>(
       oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
       return props.Mass();
     };
+    const lazy = <T>(make: () => T) => {
+      let done = false, value: T;
+      return () => (done ? value : ((done = true), (value = make())));
+    };
     const built = (make: () => B, fuzzy: number, glue: boolean): B => {
       const again = make();
-      const args = r(new oc.NCollection_List_TopoDS_Shape());
-      args.Append(left);
-      const tools = r(new oc.NCollection_List_TopoDS_Shape());
-      tools.Append(right);
-      again.SetArguments(args);
-      again.SetTools(tools);
-      again.SetFuzzyValue(fuzzy);
-      if (glue) configureGlue(again, optimisation);
-      again.Build();
-      return again;
+      try {
+        const args = r(new oc.NCollection_List_TopoDS_Shape());
+        args.Append(left);
+        const tools = r(new oc.NCollection_List_TopoDS_Shape());
+        tools.Append(right);
+        again.SetArguments(args);
+        again.SetTools(tools);
+        again.SetFuzzyValue(fuzzy);
+        if (glue) configureGlue(again, optimisation);
+        again.Build();
+        return again;
+      } catch (e) {
+        again.delete();
+        throw e;
+      }
     };
     const rebuild = (fuzzies: number[], accept: (got: TopoDS_Shape, fuzzy: number) => boolean): B | null => {
       for (const fuzzy of fuzzies) {
@@ -216,9 +228,8 @@ function withoutLooseEdges<B extends BooleanBuilder>(
         try {
           retry = built(fresh, fuzzy, true);
           if (!retry.HasErrors() && accept(r(retry.Shape()), fuzzy)) return retry; // the caller registers the builder it gets back and the one it passed in
-        } catch (e) {
-          retry?.delete();
-          throw e;
+        } catch {
+          // a value the engine cannot build is skipped
         }
         retry?.delete();
       }
@@ -228,43 +239,57 @@ function withoutLooseEdges<B extends BooleanBuilder>(
     const limit = Math.max(1e-3, 100 * Math.max(loosest(left), loosest(right)));
     if (builder.HasErrors()) return builder;
     const first = r(builder.Shape());
-    const want = volume(first);
 
-    const vl = volume(left), vr = volume(right);
-    const slack = (v: number) => 1e-3 + 1e-3 * Math.abs(v);
-    const lo = kind === "fuse" ? Math.max(vl, vr) : kind === "cut" ? vl - vr : 0;
-    const hi = kind === "fuse" ? vl + vr : kind === "cut" ? vl : Math.min(vl, vr);
-    // inputs without a positive volume (a wire, a broken solid) cannot be judged
-    const judged = vl > 0 && vr > 0;
-    const inRange = (v: number) => !judged || (v >= lo - slack(lo) && v <= hi + slack(hi));
-    const boxesOverlap = () => { // the inputs' boxes share more than a micron on every axis
-      const [p, q]: any[] = [left, right].map((shape) => {
+    // the overlap is meaningful when the inputs' boxes share at least 1 % of the larger box and 5 % of the smaller
+    const meaningful = lazy(() => {
+      const [p, q] = [left, right].map((shape) => {
         const box = r(new oc.Bnd_Box());
         oc.BRepBndLib.Add(shape, box, false);
-        return [r(box.CornerMin()), r(box.CornerMax())];
+        const [lo, hi] = [r(box.CornerMin()), r(box.CornerMax())];
+        return [[lo.X(), lo.Y(), lo.Z()], [hi.X(), hi.Y(), hi.Z()]];
       });
-      return ["X", "Y", "Z"].every((c) => Math.min(p[1][c](), q[1][c]()) - Math.max(p[0][c](), q[0][c]()) > 1e-3);
+      const size = (b: number[][]) => (b[1][0] - b[0][0]) * (b[1][1] - b[0][1]) * (b[1][2] - b[0][2]);
+      let shared = 1;
+      for (let i = 0; i < 3; i++) {
+        const span = Math.min(p[1][i], q[1][i]) - Math.max(p[0][i], q[0][i]);
+        if (!(span > 1e-3)) return false;
+        shared *= span;
+      }
+      const [big, small] = [Math.max(size(p), size(q)), Math.min(size(p), size(q))];
+      return shared >= 0.01 * big && shared >= 0.05 * small;
+    });
+    const vl = lazy(() => volume(left)), vr = lazy(() => volume(right));
+    const tol = lazy(() => 1e-3 * Math.min(vl(), vr()));
+    // inputs without a positive volume (a wire, a broken solid) cannot be judged
+    const judged = lazy(() => meaningful() && vl() > 0 && vr() > 0);
+    const inRange = (v: number) => {
+      const lo = kind === "fuse" ? Math.max(vl(), vr()) : kind === "cut" ? vl() - vr() : 0;
+      const hi = kind === "fuse" ? vl() + vr() : kind === "cut" ? vl() : Math.min(vl(), vr());
+      return v >= lo - tol() && v <= hi + tol();
     };
-    const vanished = (common: number) => judged && common < slack(0) && boxesOverlap();
-    let splined: boolean | undefined;
-    const spline = () => splined ??= judged && [left, right].some((shape) => { // a rational B-spline face (the oval sphere's); exact surfaces and swept ones the engine handles well
-        const ga = oc.GeomAbs_SurfaceType;
-        const faces = r(new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE));
-        for (; faces.More(); faces.Next()) {
-          const surface = r(new oc.BRepAdaptor_Surface(oc.TopoDS.Face(r(faces.Current())), true));
-          if (surface.GetType() === ga.GeomAbs_BSplineSurface) {
-            const spline = r(surface.BSpline());
-            if (spline.IsURational() || spline.IsVRational()) return true;
-          }
+    const vanished = (common: number) => common < tol();
+    const spline = lazy(() => [left, right].some((shape) => { // a rational B-spline face (the oval sphere's); exact surfaces and swept ones the engine handles well
+      const ga = oc.GeomAbs_SurfaceType;
+      const faces = r(new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE));
+      for (; faces.More(); faces.Next()) {
+        const surface = r(new oc.BRepAdaptor_Surface(oc.TopoDS.Face(r(faces.Current())), true));
+        if (surface.GetType() === ga.GeomAbs_BSplineSurface) {
+          const bspline = r(surface.BSpline());
+          if (bspline.IsURational() || bspline.IsVRational()) return true;
         }
-        return false;
-      });
+      }
+      return false;
+    }));
     const isValid = (shape: TopoDS_Shape) => r(new oc.BRepCheck_Analyzer(shape, true, false)).IsValid();
     // a fuse that is the sum of its inputs or a cut that removed nothing found no overlap
-    const noOverlap = (v: number) => kind === "fuse" ? v >= vl + vr - slack(vl + vr) : kind === "cut" && v >= vl - slack(vl);
-    const suspect = !inRange(want) || (kind === "common" && vanished(want)) ||
-      (spline() && (!isValid(first) || (noOverlap(want) && boxesOverlap())));
-    if (suspect) {
+    const noOverlap = (v: number) => kind === "fuse" ? v >= vl() + vr() - tol() : kind === "cut" && v >= vl() - tol();
+    const suspect = () => {
+      if (!judged()) return false;
+      const want = volume(first);
+      if (!inRange(want) || (kind === "common" && vanished(want))) return true;
+      return spline() && (noOverlap(want) || !isValid(first));
+    };
+    if (suspect()) {
       const found = rebuild([1e-6, 1e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2], (got, fuzzy) => {
         const x = volume(got);
         if (!inRange(x) || (spline() && !isValid(got))) return false;
@@ -273,7 +298,7 @@ function withoutLooseEdges<B extends BooleanBuilder>(
         try {
           if (partner.HasErrors()) return false;
           const c = volume(r(partner.Shape()));
-          return !vanished(c) && Math.abs(x - (kind === "fuse" ? vl + vr - c : vl - c)) <= 2e-3 * (vl + vr);
+          return !vanished(c) && Math.abs(x - (kind === "fuse" ? vl() + vr() - c : vl() - c)) <= 2 * tol();
         } finally {
           partner.delete();
         }
@@ -283,6 +308,7 @@ function withoutLooseEdges<B extends BooleanBuilder>(
 
     if (loosest(first) <= limit) return builder;
     // the rebuild only cleans the edge: a fuzzy value that changes the result's volume is not kept
+    const want = volume(first);
     return rebuild([1e-6, 1e-5, 1e-4], (got) =>
       loosest(got) <= limit && Math.abs(volume(got) - want) <= 1e-3 + 1e-4 * Math.abs(want)
     ) ?? builder;
