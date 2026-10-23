@@ -76,7 +76,7 @@ JS3D.get(id).volume;        // 24000
 | `JS3D.params()` | `[{ name, expr, value, unit }]`. `value` is mm (`null` when the expression fails), `unit` is `"mm"` or `"in"`. |
 | `JS3D.doc()` | A copy of the whole design document. |
 | `JS3D.save()` | `{ app: "jumpstart-3d", version: 1, doc }`: what the Export menu's project file holds. Nothing is downloaded or stored. See [Part 2](#part-2-the-project-file-format). |
-| `JS3D.mode()` | `"beginner"` or `"advanced"` (or `"chisel"`). |
+| `JS3D.mode()` | `"beginner"`, `"advanced"`, `"arch"` (Architechies) or `"chisel"`. |
 | `JS3D.selection()` | The selected ids. |
 | `JS3D.internals` | `{ app, store }`, the same objects as `window.__app` and `window.__store`, for people who know the code. |
 
@@ -127,7 +127,7 @@ check them.
 | `JS3D.undo()` / `JS3D.redo()` → label or `null` | One step. Refused in Chisel mode. |
 | `JS3D.select(ids)` | Selects bodies (`[]` clears). |
 | `JS3D.fit()` | Frames the selection, or everything when nothing is selected. |
-| `JS3D.setMode("beginner" \| "advanced")` | Switches the mode. |
+| `JS3D.setMode("beginner" \| "advanced" \| "arch")` | Switches the mode. `"arch"` is Architechies; the building is kept in the design (`doc.arch`) and the other modes keep their shapes, but the bridge has no calls for walls and openings yet. `"chisel"` is refused here. |
 | `await JS3D.screenshot(opts)` → `Uint8Array` | A PNG of the 3D view, after waiting for `ready`. `opts.fit: true` frames everything shown first (ignoring the selection). `opts.width` (1 to 8192) makes the picture that many pixels wide with the same shape, drawn in the same step as the render; without it the picture is the size of the 3D view. |
 | `await JS3D.screenshotDataURL(opts)` → string | The same (`fit` and `width` too) as a `data:image/png;base64,...` string (also async). In a background tab the browser runs no animation frames; the camera move for `fit` is then jumped to its end. |
 
@@ -135,9 +135,9 @@ check them.
 
 | Call | What it does |
 |---|---|
-| `await JS3D.export(kind, opts)` → `Uint8Array` | `kind` is `"stl"`, `"obj"`, `"3mf"`, `"step"` or `"json"`. Waits for `ready` first. By default it exports every shown solid, like the Export menu with nothing selected; `opts.ids` names the bodies instead. STL, OBJ and 3MF bytes are identical to the menu's download; STEP bytes differ in the time stamp and an export counter inside the file (the tests blank both before comparing). Holes and hidden bodies are left out, also when named in `opts.ids`. It throws when there is nothing to export, and when a body has a build error (the menu would export its last good shape). `"json"` is `JSON.stringify(save(), null, 1)` as UTF-8 and ignores `ids`. |
+| `await JS3D.export(kind, opts)` → `Uint8Array` | `kind` is `"stl"`, `"obj"`, `"3mf"`, `"glb"`, `"step"` or `"json"` (`"glb"` is binary glTF 2.0: one mesh and one base colour per body, in metres with Y up, the units stated in `asset.extras`). Waits for `ready` first. By default it exports every shown solid, like the Export menu with nothing selected; `opts.ids` names the bodies instead. STL, OBJ, 3MF and GLB bytes are identical to the menu's download; STEP bytes differ in the time stamp and an export counter inside the file (the tests blank both before comparing). Holes and hidden bodies are left out, also when named in `opts.ids`. It throws when there is nothing to export, and when a body has a build error (the menu would export its last good shape). `"json"` is `JSON.stringify(save(), null, 1)` as UTF-8 and ignores `ids`. |
 | `await JS3D.load(json, { keepId })` | Opens a project (each `load` and `newDesign` adds an entry to "Your designs" in this browser, because the app saves the design it opens): `json` is the file's text, the parsed object, or a bare `doc`. It replaces the open design the way opening a project file does (new design id unless `keepId`, undo history cleared, saved in this browser), then waits for `ready`. A file that is not a project throws `not a JumpStart 3D project`. A body that would break the 3D view (no `id`, no `node`, no 16-number `m`) throws the same message with the reason. Nothing is changed when it throws. |
-| `await JS3D.newDesign(mode)` | Starts an empty design (and adds an entry to "Your designs"), `"beginner"` (default) or `"advanced"`. |
+| `await JS3D.newDesign(mode)` | Starts an empty design (and adds an entry to "Your designs"), `"beginner"` (default) or `"advanced"` (not `"arch"`: switch with `setMode` afterwards). |
 
 Example, the whole loop:
 
@@ -181,7 +181,7 @@ The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","versi
 ## Part 2: The project file format
 
 A project is one JSON document. This part was written by looking at real files:
-the 36 designs in `test/projects/`, designs built with `JS3D` and saved with
+the 38 designs in `test/projects/`, designs built with `JS3D` and saved with
 `JS3D.save()`, and what the app does with each file after `JS3D.load` and a
 save. Each table says what was seen; **not checked** marks what was not.
 
@@ -193,7 +193,7 @@ save. Each table says what was seen; **not checked** marks what was not.
 
 The Export menu and `JS3D.save()` write this envelope (the menu indents with one
 space). Opening a file accepts either the envelope or the bare `doc`: the app
-reads `file.doc` if there is one, else the whole file. All 36 designs in
+reads `file.doc` if there is one, else the whole file. All 38 designs in
 `test/projects/` are bare docs. `version` is always 1 in what the app writes;
 nothing reads it (not checked beyond the code that writes and opens files).
 

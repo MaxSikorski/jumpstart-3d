@@ -20,8 +20,8 @@
 //              group(ids, {name, op}) -> id, ungroup(id) -> new ids
 //   Parameters setParam(name, expr, {unit}) -> value, removeParam(name) -> count, bind(id, key, expr|null)
 //   History    undo(), redo() -> label or null
-//   View       select(ids), fit(), setMode("beginner"|"advanced"), screenshot({fit, width}), screenshotDataURL({fit, width})
-//   Files      export("stl"|"obj"|"3mf"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
+//   View       select(ids), fit(), setMode("beginner"|"advanced"|"arch"), screenshot({fit, width}), screenshotDataURL({fit, width})
+//   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
@@ -163,7 +163,7 @@ export function initBridge(app) {
     if (opts.width !== undefined && !(typeof opts.width === "number" && opts.width >= 1 && opts.width <= 8192)) throw new Error("width must be a number of pixels between 1 and 8192");
     await ready();
     if (opts.fit) {
-      const box = app.scene.allBox();
+      const box = app.mode === "arch" ? app.arch.box() : app.scene.allBox(); // Architechies hides the bodies: frame the building
       app.vp.fit(box.isEmpty() ? null : box);
       for (let i = 0; app.vp.anim && i < 60; i++) await sleep(50);
       if (app.vp.anim) app.vp.stepAnim(app.vp.anim.t0 + app.vp.anim.ms); // a hidden tab runs no animation frames: jump to the end
@@ -185,7 +185,7 @@ export function initBridge(app) {
     if (url.length < 100) throw new Error("the 3D view has no size to draw (is the tab hidden?)");
     return url;
   }
-  const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", step: "stepBytes" };
+  const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
     version: "1.6", // jumpstart-3d: name plates
@@ -380,7 +380,7 @@ export function initBridge(app) {
     fit: () => app.fit(),
     mode: () => app.mode,
     setMode(mode) {
-      if (mode !== "beginner" && mode !== "advanced") throw new Error('mode must be "beginner" or "advanced"');
+      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architechies)');
       if (app.mode === mode) return;
       app.setMode(mode);
       if (store.doc.mode !== mode) { store.doc.mode = mode; app.projects.changed(); }
@@ -394,7 +394,7 @@ export function initBridge(app) {
     // ----------------------------------------------------------- files
     async export(kind, opts = {}) {
       if (kind === "json") return new TextEncoder().encode(JSON.stringify(api.save(), null, 1));
-      if (!FILES[kind]) throw new Error('kind must be "stl", "obj", "3mf", "step" or "json"');
+      if (!FILES[kind]) throw new Error('kind must be "stl", "obj", "3mf", "glb", "step" or "json"');
       await ready();
       // like the Export menu with nothing selected: every shown solid (named bodies too: holes and hidden ones are left out)
       const bodies = (opts.ids ? idList(opts.ids).map(need) : store.doc.bodies).filter((b) => !b.hole && !b.hidden);
