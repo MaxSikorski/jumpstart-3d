@@ -151,4 +151,58 @@ test.describe("version 2.3", () => {
     await expect(page.locator("#cam-side")).toHaveCount(0);
     expect(await bodies(page)).toHaveLength(1);
   });
+
+  test("Architechies: a floor with no walls draws solid in the dark theme, the grid does not fight it", async () => {
+    // The floor's top face lies exactly on z = 0, like the ground grid; the grid is drawn after solids, so unless it is pushed back the two z-fight in patches and stripes (worse in the dark theme).
+    await loadDoc(page, newDoc("Upstream 2.3 floor", "beginner"));
+    await page.evaluate(() => window.__app.setTheme("dark", true));
+    try {
+      await page.click("#mode-arch");
+      await page.waitForFunction(() => window.__app.mode === "arch");
+      // a 10 m by 8 m floor on Level 1, no walls (as after deleting them), at the camera distance the mode starts with
+      await page.evaluate(() => {
+        const s = window.__store;
+        for (const a of new Set([s.doc.arch, s.view.arch])) if (a) { a.walls = []; a.openings = []; a.slabs = [{ id: "sZ", lvl: "L1", x0: -5000, y0: -4000, x1: 5000, y1: 4000, thick: 150 }]; }
+        window.__app.arch.refresh();
+        window.__app.vp.dirty = true;
+      });
+      const shot = async (grid) => {
+        await page.evaluate((g) => { window.__app.vp.grid.visible = g; window.__app.vp.dirty = true; }, grid);
+        await page.waitForTimeout(600);
+        return (await page.locator("canvas").first().screenshot()).toString("base64");
+      };
+      const withGrid = await shot(true), without = await shot(false);
+      const r = await page.evaluate(async ([a64, b64]) => {
+        const dec = async (b) => { const im = await createImageBitmap(await (await fetch("data:image/png;base64," + b)).blob()); const c = new OffscreenCanvas(im.width, im.height), x = c.getContext("2d"); x.drawImage(im, 0, 0); return { w: im.width, d: x.getImageData(0, 0, im.width, im.height).data }; };
+        const A = await dec(a64), B = await dec(b64);
+        const v = window.__app.vp, cv = v.canvas.getBoundingClientRect(), k = A.w / cv.width;
+        // the top face's corners on screen, then the points inside it, 20% in from every edge (skips the slab's edges and the headlight's rim)
+        const P = (x, y) => { const q = v.project(new v.camera.position.constructor(x, y, 0)); return [q[0] * k, q[1] * k]; };
+        const c = [P(-5000, -4000), P(5000, -4000), P(5000, 4000), P(-5000, 4000)];
+        const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+        let n = 0, ok = 0, onscreen = 0;
+        for (let i = 0; i <= 60; i++) for (let j = 0; j <= 60; j++) {
+          const s = 0.2 + 0.6 * i / 60, t = 0.2 + 0.6 * j / 60;
+          const [x, y] = lerp(lerp(c[0], c[1], s), lerp(c[3], c[2], s), t).map(Math.round);
+          if (x < 0 || y < 0 || x >= A.w || y >= A.d.length / 4 / A.w) continue;
+          onscreen++;
+          const o = (y * A.w + x) * 4;
+          // "solid" = the same colour as the same pixel without the grid, which is the plain lit slab
+          n++;
+          if (Math.abs(A.d[o] - B.d[o]) + Math.abs(A.d[o + 1] - B.d[o + 1]) + Math.abs(A.d[o + 2] - B.d[o + 2]) <= 30) ok++;
+        }
+        const mid = lerp(lerp(c[0], c[1], 0.5), lerp(c[3], c[2], 0.5), 0.5).map(Math.round), mo = (mid[1] * A.w + mid[0]) * 4;
+        return { n, ok, onscreen, slabRGB: [B.d[mo], B.d[mo + 1], B.d[mo + 2]], view: { dist: v.view.dist, el: v.view.el, az: v.view.az } };
+      }, [withGrid, without]);
+      console.log("FLOORPX", JSON.stringify(r), (100 * r.ok / r.n).toFixed(1) + "% solid");
+      expect(r.n, "pixels read inside the floor").toBeGreaterThan(2000);
+      // the plain slab is tan, not the dark background, so the reading is really of the floor
+      expect(r.slabRGB[0]).toBeGreaterThan(r.slabRGB[2] + 8);
+      expect(r.ok / r.n, "share of the floor's pixels that match the slab").toBeGreaterThanOrEqual(0.97);
+    } finally {
+      await page.evaluate(() => { window.__app.vp.grid.visible = true; window.__app.setTheme("light", true); });
+      await page.click("#mode-beginner");
+      await page.waitForFunction(() => window.__app.mode === "beginner");
+    }
+  });
 });
