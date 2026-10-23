@@ -7,6 +7,7 @@ import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs stor
 import { initFolder } from "./folder.js"; // jumpstart-3d: copies in a folder
 import { glbBytes } from "./gltf.js"; // jumpstart-3d: glTF export
 import { initRemote } from "./remote.js"; // jumpstart-3d: remote
+import { triangleCodes, paintAttrs, PAINT_NS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 
 const LS_PREF = "workplane.pref.v1";
 
@@ -490,11 +491,12 @@ export function initProjects(app) {
       if (v && v.data) objs.push({ b, data: v.data, m: v.group.matrix });
     }
     if (!objs.length) return null;
+    const codes = objs.map((o) => triangleCodes(store.doc.printPaint, o.b.id, o.data)); // jumpstart-3d: painted 3MF
     const esc = (t) => String(t).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
     const hex = (c) => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ""); return "#" + (m ? m[1] : "A7B0BA").toUpperCase() + "FF"; };
     const num = (x) => { const r = Math.round(x * 1e5) / 1e5; return Object.is(r, -0) ? "0" : String(r); };
     const out = [];
-    out.push('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">');
+    out.push('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"' + (codes.some(Boolean) ? ' xmlns:slic3rpe="' + PAINT_NS + '"' : "") + ">"); // jumpstart-3d: painted 3MF
     out.push(' <metadata name="Application">JumpStart 3D</metadata>');
     out.push(' <metadata name="Title">' + esc(store.doc.name || "design") + '</metadata>');
     out.push(' <resources>\n  <basematerials id="1">');
@@ -540,7 +542,7 @@ export function initProjects(app) {
         let a = remap[T[t]], b2 = remap[T[t + 1]], c = remap[T[t + 2]];
         if (a === b2 || b2 === c || a === c) continue; // collapsed by welding
         if (det < 0) [b2, c] = [c, b2];
-        tris.push('     <triangle v1="' + a + '" v2="' + b2 + '" v3="' + c + '"/>');
+        tris.push('     <triangle v1="' + a + '" v2="' + b2 + '" v3="' + c + '"' + (codes[k] && codes[k][t / 3] ? paintAttrs(codes[k][t / 3]) : "") + "/>"); // jumpstart-3d: painted 3MF
       }
       out.push('  <object id="' + (k + 2) + '" type="model" name="' + esc(o.b.name || "Body") + '" pid="1" pindex="' + k + '">\n   <mesh>\n    <vertices>');
       out.push(verts.join("\n"));
