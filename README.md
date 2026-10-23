@@ -128,9 +128,16 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
 - Lathe: turn a body or a blank into a round part
 - Jump Brick Builder (Advanced, Simulate): build with bricks
 - Chisel: clay-style sculpting, with Puppet Animator
+- Architechies (the author's fourth mode, new in 2.2): floor plans, walls,
+  doors, windows and roofs for houses and buildings, sent to Beginner or
+  Advanced as editable shapes at a scale you pick
+- CAM Studio (the author's, new in 2.3; Advanced, Simulate): plan and
+  simulate CNC router, mill or laser cuts and save G-code (GRBL, LinuxCNC,
+  Mach3, Marlin); sending it to a machine over USB asks the browser's own
+  permission first
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Nineteen step-by-step tutorials with built-in animations
+- Forty-four step-by-step tutorials with built-in animations
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
@@ -303,7 +310,7 @@ maintainer runs gates 2-3 with AI reviewers (a Codex model and a Claude model);
 CI runs gate 4; the maintainer checks gate 5.
 
 The app is plain JavaScript modules under `src/`, from the author's own
-source release of version 2.1.3 (the untouched 2.0 files are on the
+source release of version 2.3 (the untouched 2.0 files are on the
 `upstream-originals` release). One command bundles them into the website
 and the single offline file.
 
@@ -342,7 +349,7 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
-On every pull request, CI also slices the golden STL and 3MF files with PrusaSlicer and checks their STEP files in FreeCAD, rejecting mesh repairs, invalid or open geometry, missing solids and volume changes; `test/judge-known.json` lists the few known defects and must only shrink; see `test/README.md`.
+Every night, CI also slices the golden STL and 3MF files with PrusaSlicer and checks their STEP files in FreeCAD, rejecting mesh repairs, invalid or open geometry, missing solids and volume changes; `test/judge-known.json` lists the few known defects and must only shrink; see `test/README.md`.
 
 `npm test` also walks a first part on a simulated phone (box, hole, group, STL) over a slow connection and fails if it takes longer than its budget.
 Chat geometry benchmark: `npm run test:chat-judge` checks five scripted cases on both builds (the mock tests the scorer, not how well a model understands a request), while `npm run bench:chat` scores 50 requests on demand against a locally installed Ollama `qwen3:14b` with scripts and vision off, writing local reports to `chat-bench-results/`; see [setup, CORS and commands](test/README.md#chat-geometry-benchmark).
@@ -385,7 +392,7 @@ tools/              helper page sources and the scripts that rebuild them
                     measure-load.mjs times a page load on a simulated slow connection
 BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website, committed so GitHub Pages can serve it
-jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.1.3)
+jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.3)
 UPSTREAM-README.md         the author's README from the source release
 ```
 
@@ -419,6 +426,7 @@ UPSTREAM-README.md         the author's README from the source release
 - Gears: a Gear dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.gear` / the `add_gear` tool make a spur gear, a straight bevel gear or a rack from a module and a tooth count, as ordinary hidden sketches of straight lines plus the app's own Extrude (two sketches and a straight Loft for a bevel gear, its bore a Hole feature). The teeth follow the ISO 53 basic rack at 20° (addendum 1 module, dedendum 1.25), eight points a flank, with a print clearance taken off every tooth; fewer than 17 teeth are drawn plain (not undercut) with a warning. Nothing in the kernel changed (`src/gears.js`)
 - Name plates: a Name plate dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.namePlate` / the `add_name_plate` tool make a plate sized to one line of text (rounded or pill, with a hanging hole or two screw holes), as one hidden sketch plus the app's own Extrude, with the letters either a second body in its own colour (a Text shape) or cut in (the Deboss text feature). The text is measured on the main thread from the same outlines the drawing code uses, and characters the fonts lack are refused. Nothing in the kernel changed (`src/nameplate.js`)
 - Sketch move: Move/Copy takes one sketch instead of bodies and changes the sketch's plane (`o`, `x`, `n`), so the file format is unchanged and features that use the sketch rebuild from the new plane. A copy is a new sketch; the features stay on the original (`// jumpstart-3d: sketch move` blocks in `moveCmd`, `src/advanced.js`)
+- Underside view: seen from below the plate, the Beginner workplane and the Advanced dark-theme ground turn nearly clear (faint lines stay), so you can see the underside of your part (a few lines in `src/viewport.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
   design through the same 38 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
 - Boolean fixes in the geometry engine: a torus no longer disappears from a group, two spheres offset along x intersect and cut to the right volume, and an empty result says "Nothing is left" instead of showing a raw engine message (a marked block in `third_party/replicad/src/shapeFunctions/operations.ts` and `src/kernel.js`; `test/booleans.spec.mjs`)
@@ -494,7 +502,7 @@ UPSTREAM-README.md         the author's README from the source release
   up for itself; `screenshot` can save its picture to a file for models that
   cannot see images
 - A regression test suite (`npm test`) that drives the real app in a headless
-  browser on both builds, and runs on every pull request
+  browser on both builds; a short part gates every pull request and the rest runs nightly
 
 ## License
 

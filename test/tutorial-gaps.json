@@ -71,6 +71,7 @@
       "btn-theme",
       "btn-tutorials",
       "mode-advanced",
+      "mode-arch",
       "mode-beginner",
       "mode-chisel"
     ],
@@ -141,6 +142,7 @@
     "Advanced simulate toolbar": [
       "sim-apply",
       "sim-bricks",
+      "sim-cam",
       "sim-drive",
       "sim-flexigen",
       "sim-joint",
@@ -202,6 +204,11 @@
       "tile:roundroof",
       "tile:sphere",
       "tile:spring"
+    ],
+    "Architechies toolbar": [
+      "Architechies toolbar:text:Metric",
+      "Architechies toolbar:text:ft · in",
+      "ar-xray"
     ]
   }
 }
