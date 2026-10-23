@@ -21,7 +21,7 @@
 //   Parameters setParam(name, expr, {unit}) -> value, removeParam(name) -> count, bind(id, key, expr|null)
 //   History    undo(), redo() -> label or null
 //   View       select(ids), fit(), setMode("beginner"|"advanced"), screenshot({fit, width}), screenshotDataURL({fit, width})
-//   Files      export("stl"|"obj"|"3mf"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
+//   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
@@ -185,7 +185,7 @@ export function initBridge(app) {
     if (url.length < 100) throw new Error("the 3D view has no size to draw (is the tab hidden?)");
     return url;
   }
-  const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", step: "stepBytes" };
+  const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
     version: "1.6", // jumpstart-3d: name plates
@@ -394,7 +394,7 @@ export function initBridge(app) {
     // ----------------------------------------------------------- files
     async export(kind, opts = {}) {
       if (kind === "json") return new TextEncoder().encode(JSON.stringify(api.save(), null, 1));
-      if (!FILES[kind]) throw new Error('kind must be "stl", "obj", "3mf", "step" or "json"');
+      if (!FILES[kind]) throw new Error('kind must be "stl", "obj", "3mf", "glb", "step" or "json"');
       await ready();
       // like the Export menu with nothing selected: every shown solid (named bodies too: holes and hidden ones are left out)
       const bodies = (opts.ids ? idList(opts.ids).map(need) : store.doc.bodies).filter((b) => !b.hole && !b.hidden);
