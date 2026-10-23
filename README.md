@@ -96,9 +96,10 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has seventy-five step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: forty-four from J.Siwek and thirty-one added by this community build for the
-toolbar buttons that had none.
+JumpStart 3D has eighty-two step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: forty-four from J.Siwek and thirty-eight added by this community build for the
+toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
+a tour of the top bar, how the model looks on screen and sketch constraints.
 
 ### Add yours
 
@@ -314,7 +315,7 @@ upstream version stays easy to merge.
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
-- Thirty-one more tutorials, for the toolbar buttons that had none.
+- Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.
 
 ### Editing
 

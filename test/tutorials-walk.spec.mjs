@@ -153,18 +153,23 @@ test("c4-top-bar: every button in the tour does something and the lesson stays a
   await expect(auto).toContainText("On"); await next();
   await page.click("#btn-projects");
   await expect(page.locator(".modal-back").first()).toBeVisible();
-  await page.keyboard.press("Escape"); await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove()));
+  await page.keyboard.press("Escape"); await expect(page.locator(".modal-back")).toHaveCount(0); // Escape itself must close it
   await next();
   await page.click("#mode-advanced"); await expect.poll(() => page.evaluate(() => window.__app.mode)).toBe("advanced");
   await page.click("#mode-beginner"); await expect.poll(() => page.evaluate(() => window.__app.mode)).toBe("beginner");
   expect((await bodies(page)).length).toBe(1);
   await next();
   await page.click("#btn-keys"); await expect(page.locator(".modal-back").first()).toBeVisible(); await page.keyboard.press("Escape");
-  await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove()));
+  await expect(page.locator(".modal-back")).toHaveCount(0); // Escape itself must close it;
   await page.click("#btn-about"); await expect(page.locator(".modal", { hasText: "Created by J.Siwek" })).toBeVisible(); await page.keyboard.press("Escape");
-  await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove()));
+  await expect(page.locator(".modal-back")).toHaveCount(0); // Escape itself must close it;
   await next();
-  await page.click("#btn-full"); await page.click("#btn-full"); await next();
+  const full = page.locator("#btn-full");
+  await full.click(); await expect(full).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => !!(document.fullscreenElement || document.webkitFullscreenElement))).toBe(true);
+  await full.click(); await expect(full).toHaveAttribute("aria-pressed", "false");
+  expect(await page.evaluate(() => !!(document.fullscreenElement || document.webkitFullscreenElement))).toBe(false);
+  await next();
   await page.click("#btn-tutorials");
   await expect(page.locator(".tut-modal")).toBeVisible();
   await page.locator(".tut-modal .xbtn").click(); // the × the lesson says to use
