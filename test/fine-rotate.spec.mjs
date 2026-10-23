@@ -212,6 +212,7 @@ test("touch (tablet): tapping − and + turns by the chosen step, and the status
     await expect.poll(() => p.evaluate(() => window.__app.sel.join(","))).toBe("b1");
     await expect(p.locator("html")).toHaveClass(/touch-ui/);
     expect(await p.evaluate(() => getComputedStyle(document.getElementById("hint")).display), "the hint line stays on an iPad").not.toBe("none");
+    expect(await p.evaluate(() => document.querySelector("footer.status").getBoundingClientRect().width), "the status bar stays as wide as the screen").toBeLessThanOrEqual(820);
     const sizes = await p.evaluate(() => ["turn-axis", "turn-step", "turn-minus", "turn-plus", "turn-back"].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [id, r.width, r.height]; }));
     for (const [id, w, h] of sizes) { expect(w, id + " width").toBeGreaterThanOrEqual(44); expect(h, id + " height").toBeGreaterThanOrEqual(44); }
 
