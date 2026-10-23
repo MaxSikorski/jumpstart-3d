@@ -123,6 +123,9 @@
     "snap controls": [
       "snap-more",
       "snap-toggle",
+      "turn-back",
+      "turn-minus",
+      "turn-plus",
       "unit-toggle"
     ],
     "Beginner shape tiles": [
