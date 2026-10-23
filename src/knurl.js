@@ -18,6 +18,7 @@ const vec3 = (v) => Array.isArray(v) && v.length === 3 && v.every(isNum);
 const r6 = (v) => Math.round(v * 1e6) / 1e6 || 0; // 1e-6 mm, and never -0
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const floor3 = (v) => Math.floor(v * 1000 + 1e-6) / 1000;
+const ceil3 = (v) => Math.ceil(v * 1000 - 1e-6) / 1000;
 const autoDepth = (D, N) => r3(Math.PI * D / N / 2); // a 90 degree V: its depth is half the pitch
 const autoGrooves = (D) => Math.min(120, Math.max(8, Math.round(Math.PI * D))); // about 1 mm between grooves
 
@@ -34,12 +35,16 @@ function resolve(spec) {
   const R = D / 2, maxDepth = floor3(R / 2);
   const depth = spec.depth == null ? autoDepth(D, N) : spec.depth;
   if (!inRange(depth, 0.1, maxDepth)) throw new Error(`depth must be a number from 0.1 to ${fmt(maxDepth, 3)} mm for this diameter (the grooves can reach at most half way to the middle)`);
+  // shallower than this the root vertex lies outside the chord between two tips, the flanks come nearer the centre than the root does,
+  // and the bore limit below (measured from the root) would be wrong
+  const minDepth = ceil3(R * (1 - Math.cos(Math.PI / N)));
+  if (depth < minDepth - 1e-9) throw new Error(`depth must be at least ${fmt(minDepth, 3)} mm for ${N} grooves on this diameter; shallower grooves vanish`);
   const bore = spec.bore == null ? "none" : spec.bore;
   if (!BORES.some((b) => b[0] === bore)) throw new Error('bore must be "none", "round", "hex" or "d"');
   if (bore === "none" && spec.boreSize != null) throw new Error('boreSize is only for a bore "round", "hex" or "d"');
   const root = R - depth, bs = bore === "none" ? 0 : spec.boreSize == null ? BORE_DEFAULT[bore] : spec.boreSize;
   if (bore !== "none") {
-    // the largest corner of the bore (a hex's corners, a D's round part) stays WALL under the grooves
+    // the largest corner of the bore (a hex's corners, a D's round part) stays WALL under the grooves; with depth >= minDepth the root is the nearest point of the outline
     const max = floor3(bore === "hex" ? Math.sqrt(3) * (root - WALL) : 2 * (root - WALL));
     if (max < 1) throw new Error("this knob is too small for a bore: use a larger diameter, or bore \"none\"");
     if (!inRange(bs, 1, max)) throw new Error(`boreSize must be a number from 1 to ${fmt(max, 3)} mm for this knob (it leaves ${WALL} mm under the grooves)${bore === "hex" ? ", measured across flats" : ""}`);
@@ -94,9 +99,10 @@ export function initKnurl(app, { openCmd, commit, row, seg }) {
 
   function cmd() {
     const inch = getUnit() === "in";
-    const st = { D: inch ? 19.05 : 20, L: inch ? 12.7 : 15, N: 60, depth: null, bore: "round", size: { round: inch ? 6.35 : 5, hex: inch ? 7.9375 : 8, d: inch ? 6.35 : 5 }, r: null, id: null };
+    const st = { D: inch ? 19.05 : 20, L: inch ? 12.7 : 15, N: null, depth: null, bore: "round", size: { round: inch ? 6.35 : 5, hex: inch ? 7.9375 : 8, d: inch ? 6.35 : 5 }, r: null, id: null };
     const specOf = (at) => {
-      const s = { diameter: st.D, length: st.L, grooves: st.N, bore: st.bore, at };
+      const s = { diameter: st.D, length: st.L, bore: st.bore, at };
+      if (st.N != null) s.grooves = st.N;
       if (st.depth != null) s.depth = st.depth;
       if (st.bore !== "none") s.boreSize = st.size[st.bore];
       return s;
@@ -122,9 +128,9 @@ export function initKnurl(app, { openCmd, commit, row, seg }) {
         const num = (id, value, set, o) => app.numField({ value, id, onCommit: (v) => { set(v); def.render(); }, ...o });
         body.append(row("Diameter", num("kn-dia", st.D, (v) => (st.D = v), { len: true, min: 6, max: 150, step: 1 }), "kn-dia"));
         body.append(row("Length", num("kn-len", st.L, (v) => (st.L = v), { len: true, min: 1, max: 200, step: 1 }), "kn-len"));
-        body.append(row("Grooves", num("kn-n", st.N, (v) => (st.N = Math.round(v)), { len: false, min: 8, max: 120, step: 1 }), "kn-n"));
+        body.append(row("Grooves", num("kn-n", st.N ?? autoGrooves(st.D), (v) => (st.N = Math.round(v)), { len: false, min: 8, max: 120, step: 1 }), "kn-n"));
         const { r, err } = check();
-        body.append(row("Groove depth", num("kn-depth", st.depth ?? autoDepth(st.D, st.N), (v) => (st.depth = v), { len: true, min: 0.1, step: 0.1 }), "kn-depth"));
+        body.append(row("Groove depth", num("kn-depth", st.depth ?? autoDepth(st.D, st.N ?? autoGrooves(st.D)), (v) => (st.depth = v), { len: true, min: 0.1, step: 0.1 }), "kn-depth"));
         body.append(row("Bore", seg(BORES, st.bore, (v) => { st.bore = v; def.render(); }, "kn-bore")));
         if (st.bore !== "none") body.append(row(st.bore === "hex" ? "Across flats" : "Bore size", num("kn-bore-size", st.size[st.bore], (v) => (st.size[st.bore] = v), { len: true, min: 1, step: 0.5 }), "kn-bore-size"));
         if (err) { note(err, "err-msg", "kn-err"); return; }

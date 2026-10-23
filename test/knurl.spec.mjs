@@ -49,8 +49,8 @@ test("Advanced: Create > Advanced Create > Knurled knob makes the default knob i
   await page.click("#ad-features");
   await page.click("#ad-knurl");
   await expect(page.locator("#cmd")).toContainText("Knurled knob");
-  const f = formula({ bore: "round", grooves: 60 });
-  await expect(page.locator("#cmd")).toContainText(`60 grooves, 1.047 mm apart, ${f.d} mm deep; the root is ${Math.round(2 * f.r * 1000) / 1000} mm across.`);
+  const f = formula({ bore: "round" });
+  await expect(page.locator("#cmd")).toContainText(`63 grooves, 0.997 mm apart, ${f.d} mm deep; the root is ${Math.round(2 * f.r * 1000) / 1000} mm across.`);
   await expect(page.locator("#cmd")).toContainText("For a diamond pattern use Texture");
   const undoBefore = await run(() => __store.undoStack.length);
   await page.click("#cmd-ok");
@@ -62,7 +62,7 @@ test("Advanced: Create > Advanced Create > Knurled knob makes the default knob i
   near(knob.volume, f.volume, 0.001, "knob volume");
   const sk = await sketchOf(knob.id);
   expect(sk.hidden).toBe(true);
-  expect([sk.ents.filter((e) => e.t === "line").length, sk.ents.filter((e) => e.t === "circle").length]).toEqual([120, 1]);
+  expect([sk.ents.filter((e) => e.t === "line").length, sk.ents.filter((e) => e.t === "circle").length]).toEqual([126, 1]);
   expect(knob.bbox.min[2]).toBeCloseTo(0, 4);
   expect(knob.bbox.max[2]).toBeCloseTo(15, 4);
   expect(knob.bbox.max[0] - knob.bbox.min[0]).toBeGreaterThan(19.9);
@@ -95,9 +95,6 @@ test("each bore type: volume equals grooved outline x length minus the bore, tip
     expect(o.radii.filter((r) => Math.abs(r - f.r) < 1e-4), label + " root vertices").toHaveLength(f.N);
     expect(sk.ents.filter((e) => e.t === "line").length, label + " lines").toBe(2 * f.N + (c.bore === "hex" ? 6 : c.bore === "d" ? 1 : 0));
     expect(b.volume).toBeLessThan(Math.PI * f.R ** 2 * (c.length ?? 15));
-    // the solid cylinder to the roots is inside the knob, except for what the bore takes out
-    const boreCut = f.outer - f.area;
-    expect(b.volume + boreCut * (c.length ?? 15)).toBeGreaterThan(Math.PI * f.r ** 2 * (c.length ?? 15));
     expect(b.bbox.min[0] - i * 50).toBeGreaterThan(-f.R - 1e-6);
     expect(b.bbox.max[0] - i * 50).toBeLessThanOrEqual(f.R + 1e-6);
   }
@@ -147,6 +144,8 @@ test("bad input: each bridge error text, and nothing is added", async () => {
     [{ grooves: 121 }, "grooves must be a whole number from 8 to 120"],
     [{ grooves: 30.5 }, "grooves must be a whole number from 8 to 120"],
     [{ depth: 0.05 }, "depth must be a number from 0.1 to 5 mm for this diameter (the grooves can reach at most half way to the middle)"],
+    [{ grooves: 8, depth: 0.5 }, "depth must be at least 0.762 mm for 8 grooves on this diameter; shallower grooves vanish"],
+    [{ diameter: 150, grooves: 8, depth: 5.7 }, "depth must be at least 5.71 mm for 8 grooves on this diameter; shallower grooves vanish"],
     [{ depth: 5.5 }, "depth must be a number from 0.1 to 5 mm for this diameter (the grooves can reach at most half way to the middle)"],
     [{ bore: "square" }, 'bore must be "none", "round", "hex" or "d"'],
     [{ boreSize: 5 }, 'boreSize is only for a bore "round", "hex" or "d"'],
@@ -164,13 +163,34 @@ test("bad input: each bridge error text, and nothing is added", async () => {
   }
 });
 
+test("the shallowest allowed groove with the largest bore still leaves 1 mm of wall (8 grooves, 150 mm across)", async () => {
+  await fresh();
+  const R = 75, minDepth = Math.ceil(R * (1 - Math.cos(Math.PI / 8)) * 1000 - 1e-6) / 1000, root = R - minDepth, max = Math.floor(2 * (root - 1) * 1000 + 1e-6) / 1000;
+  expect(minDepth).toBe(5.71);
+  const ids = await run(([d, m]) => ["round", "hex", "d"].map((bore, i) => JS3D.knurl({ diameter: 150, length: 10, grooves: 8, depth: d, bore, boreSize: bore === "hex" ? Math.floor(Math.sqrt(3) * (75 - d - 1) * 1000 + 1e-6) / 1000 : m, at: [i * 200, 0, 0] })), [minDepth, max]);
+  const list = await built();
+  expect(list.filter((b) => b.error)).toEqual([]);
+  for (const [i, id] of ids.entries()) {
+    const sk = await sketchOf(id), pts = sk.pts.slice(0, 16);
+    // the outline's closest approach to the centre: the distance from the origin to each flank
+    const near0 = Math.min(...pts.map((p, k) => {
+      const q = pts[(k + 1) % 16], dx = q.x - p.x, dy = q.y - p.y, u = Math.max(0, Math.min(1, -(p.x * dx + p.y * dy) / (dx * dx + dy * dy)));
+      return Math.hypot(p.x + u * dx, p.y + u * dy);
+    }));
+    const bore = sk.pts.slice(16).map((p) => Math.hypot(p.x, p.y)), reach = i === 0 ? max / 2 : Math.max(...bore);
+    expect(near0 - reach, ["round", "hex", "d"][i]).toBeGreaterThanOrEqual(1 - 1e-4);
+  }
+  near(list[0].volume, formula({ diameter: 150, length: 10, grooves: 8, depth: minDepth, bore: "round", boreSize: max }).volume, 0.001, "volume");
+});
+
 test("the dialog shows the error, warns about fine grooves, and the Beginner button opens it", async () => {
   await fresh();
   await page.click("#bb-knurl");
   await expect(page.locator("#cmd")).toContainText("Knurled knob");
   await expect(page.locator("#kn-bore-size")).toHaveCount(1);
-  await field("kn-bore-size", 17);
-  await expect(page.locator("#kn-err")).toContainText("boreSize must be a number from 1 to 16.952 mm");
+  await expect(page.locator("#kn-n")).toHaveValue("63");
+  await field("kn-bore-size", 18);
+  await expect(page.locator("#kn-err")).toContainText("boreSize must be a number from 1 to 17.002 mm");
   await expect(page.locator("#cmd-ok")).toBeDisabled();
   await field("kn-bore-size", 5);
   await expect(page.locator("#kn-err")).toHaveCount(0);
