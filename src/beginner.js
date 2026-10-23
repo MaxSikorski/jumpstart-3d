@@ -9,6 +9,7 @@ import { FACEPAT } from "./facepat.js";
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
+import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch } from "./rotationui.js"; // jumpstart-3d: rotation access
 import {
   M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodiesInDoc, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
@@ -702,9 +703,13 @@ export function initBeginner(app) {
     vp.ray(e);
     const objs = [...footprint, topHandle, lift, ...rotHandles].filter((o) => o.visible);
     const hits = vp.raycaster.intersectObjects(objs, true);
-    if (!hits.length) return null;
-    let o = hits[0].object;
+    let o = hits.length ? hits[0].object : null;
     while (o && !o.userData.handle) o = o.parent;
+    // jumpstart-3d: rotation access. A finger is wider than a thin arc: pick the arc drawn nearest the touch (44 px zone)
+    if (vp.touchMode && !(o && o.userData.handle.type !== "rot")) {
+      const arc = nearestArc(vp, e, rotHandles.filter((h) => h.visible).map((h) => ({ key: h, pts: arcPoints(h, 1, Math.PI / 2.6, 16) })));
+      if (arc) return arc;
+    }
     return o;
   }
 
@@ -787,6 +792,7 @@ export function initBeginner(app) {
     },
     up(e) {
       if (!drag) return;
+      if (e && e.type === "pointercancel" && drag.kind === "rot") return handler.cancel(); // jumpstart-3d: rotation access. an interrupted touch turns nothing
       const d = drag;
       drag = null;
       if (d.kind === "move") {
@@ -962,14 +968,12 @@ export function initBeginner(app) {
           if (!p) return;
           let a = ((angOf(p) - a0) * 180) / Math.PI;
           a = ((a + 540) % 360) - 180;
-          a = ev.shiftKey ? Math.round(a) : Math.round(a / 15) * 15;
+          a = dragAngle(a, ev.shiftKey); // jumpstart-3d: rotation access. 15° steps; Shift or Free: the pointer's own angle
           rd.angle = a;
-          const R = new THREE.Matrix4().makeTranslation(center.x, center.y, center.z)
-            .multiply(new THREE.Matrix4().makeRotationAxis(axisV, (a * Math.PI) / 180))
-            .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
+          const R = turnAbout(center, axisV, a);
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it.`); } },
+        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } },
       };
       return true;
     }
@@ -1186,7 +1190,19 @@ export function initBeginner(app) {
     body.append(el("div", { class: "subhead" }, "Rotate 90°"));
     const rr = el("div", { class: "seg" });
     for (const ax of ["x", "y", "z"]) rr.append(el("button", { onclick: () => rotate90(b.id, ax) }, "↻ " + ax.toUpperCase()));
+    rr.classList.add("rot-btn");
     body.append(rr);
+    // jumpstart-3d: rotation access. Typed turns: a change of angle (not the shape's current angle) around the middle of its box
+    body.append(el("div", { class: "subhead" }, "Turn by (°)"));
+    const tr = el("div", { class: "row3" });
+    ["X", "Y", "Z"].forEach((lab, i) => tr.append(el("label", {}, lab, app.numField({ value: 0, id: "insp-turn" + i, angle: true, step: 15, onCommit: (v) => turnBy(b.id, "xyz"[i], v) }))));
+    body.append(tr, el("div", { class: "subhead" }, "Dragging an arc"), snapSwitch());
+  }
+  function turnBy(id, ax, deg) {
+    const box = app.scene.bodyTightBox(id);
+    if (!box || !deg || app.isLocked(id)) return;
+    const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[ax];
+    transformBodies([id], turnAbout(box.getCenter(new THREE.Vector3()), axisV, deg), `Turn ${ax.toUpperCase()} ${deg}°`);
   }
   function rotate90(id, ax) {
     const box = app.scene.bodyTightBox(id);
