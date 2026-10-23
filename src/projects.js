@@ -150,7 +150,9 @@ export function initProjects(app) {
     const rev = await revOf(store.doc.id);
     try { cur = JSON.parse(await ps.get(store.doc.id)); } catch (e) {}
     const newer = cur && opened.id === store.doc.id && (cur._updated || 0) > opened.at;
-    if (dirty || saving) saveSoon(); // edits on an older copy are safe: the write keeps a newer stored copy as "(before fallback)" first
+    // this tab saved the design on localStorage, IndexedDB holds another version and the copy did not keep ours: do not open the other one over it; the write keeps it as "(before fallback)"
+    const mine = newer && opened.rev && opened.rev.startsWith(ps.tab + ":") && rev !== opened.rev && !ps.fallbackKept(opened.id);
+    if (dirty || saving || mine) saveSoon(); // edits on an older copy are safe: the write keeps a newer stored copy as "(before fallback)" first
     else if (newer) {
       opened = { id: cur.id, at: cur._updated, rev };
       delete cur._updated;

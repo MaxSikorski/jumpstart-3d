@@ -120,6 +120,10 @@ function INIT(cfg) {
   // (QuotaExceededError). Switched on and off by the test. (Cutting the real quota with CDP's Storage.overrideQuotaForOrigin did not
   // stop a write to a database that was already open, so the browser's own limit is not used for IndexedDB here.)
   window.__chaosFailWrites = !!cfg.failWrites;
+  if (cfg.noLocks) Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
+  window.__chaosFailKey = null; // a localStorage key whose writes are refused (as a full disk does), set by the test
+  const realSetItem = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (k, v) { if (window.__chaosFailKey && k === window.__chaosFailKey) throw new DOMException("The quota has been exceeded.", "QuotaExceededError"); return realSetItem.call(this, k, v); };
   const realTx = IDBDatabase.prototype.transaction;
   window.__chaosArmed = !!(cfg.kill && cfg.kill.armed);
   let puts = 0, completes = 0, sets = 0, writes = 0, drops = 0;
@@ -915,6 +919,218 @@ scenario("a tab closed with unsaved edits while another tab saved the design mea
   expect(holds(snap, D, b.n).length, "tab B's save is still the design").toBe(1);
   expect(holds(snap, D, ea.n)[0] && holds(snap, D, ea.n)[0].entry.name, "tab A's last edit is kept as a copy").toBe(designDoc(D, ea.n, 5).name + " (other tab)");
   await closeClean(page);
+});
+
+// ---------------------------------------------------------------- 9c. more ways two tabs and a closing tab can disagree
+const rawEntry = (page, id, change) => page.evaluate(([db, id, change]) => new Promise((res) => { // change an entry (or the document, with `docChange`) straight in the database
+  const r = indexedDB.open(db);
+  r.onsuccess = () => {
+    const d = r.result, tx = d.transaction(["entries", "docs"], "readwrite"), es = tx.objectStore("entries"), ds = tx.objectStore("docs");
+    es.get(id).onsuccess = (e) => { const v = e.target.result; new Function("v", change.entry)(v); es.put(v); };
+    ds.get(id).onsuccess = (e) => { const v = JSON.parse(e.target.result); new Function("v", change.doc || "")(v); ds.put(JSON.stringify(v), id); };
+    tx.oncomplete = () => { d.close(); res(true); };
+  };
+}), [DB, id, change]);
+
+scenario("a second unload with localStorage full: the newest edit is the one that comes back", async (w) => {
+  const A = "t_chaos_a";
+  let page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, A, "now", 5)] });
+  const e1 = step(w, A, "soon", 5), e2 = step(w, A, "soon", 40); // the second is bigger: it cannot replace the first in a full localStorage
+  const unload = () => page.evaluate(() => window.dispatchEvent(new Event("beforeunload")));
+  await editOnly(page, e1);
+  await unload();
+  await page.waitForTimeout(150); // the first rescue copy is in both stores
+  await fillStorage(page, 0);
+  await editOnly(page, e2);
+  await unload();
+  await page.waitForTimeout(150);
+  await page.close({ runBeforeUnload: false });
+  w.tokens = [];
+  page = await openPage(w);
+  const snap = await readAll(page);
+  expect(holds(snap, A, e2.n, 40).length, "the second edit").toBe(1);
+  expect(snap.items.find((i) => i.entry.id === A).entry.name, "is the design").toBe(e2.doc.name);
+  await closeClean(page);
+});
+
+scenario("two old-format rescue copies, the older in localStorage and the newer in the database: both come back", async (w) => {
+  const D = "t_chaos_d";
+  let page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const base = (await readAll(page)).items.find((i) => i.entry.id === D).entry.updated;
+  const e1 = step(w, D, "soon", 5), e2 = step(w, D, "soon", 5);
+  const rescue = (e, at) => ({ id: D, doc: JSON.stringify({ ...e.doc, _updated: base + at }), entry: { id: D, name: e.doc.name, ver: 0, mode: "beginner", updated: base + at, thumb: null }, base });
+  await page.evaluate(async ([key, older, newer]) => {
+    localStorage.setItem(key, JSON.stringify(older));
+    await new Promise((res) => { const r = indexedDB.open("jumpstart3d-projects"); r.onsuccess = () => { const tx = r.result.transaction("meta", "readwrite"); tx.objectStore("meta").put(newer, key); tx.oncomplete = () => { r.result.close(); res(); }; }; });
+  }, [RESCUE, rescue(e1, 1000), rescue(e2, 2000)]);
+  await page.close({ runBeforeUnload: false });
+  w.tokens = [];
+  page = await openPage(w);
+  const snap = await readAll(page);
+  expect(holds(snap, D, e1.n).length, "the older copy").toBe(1);
+  expect(holds(snap, D, e2.n).length, "the newer copy").toBe(1);
+  expect(snap.items.find((i) => i.entry.id === D).entry.name, "the newer one is the design").toBe(e2.doc.name);
+  expect(await rescues(page)).toEqual([]);
+  await closeClean(page);
+});
+
+scenario("a tab's unsaved edit made in the same millisecond as its last save is not lost (clocks standing still)", async (w) => {
+  const D = "t_chaos_d";
+  let page = await openPage(w, { freeze: 1_900_000_000_000 });
+  await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const e = step(w, D, "soon", 5);
+  await editOnly(page, e);
+  await page.close({ runBeforeUnload: true });
+  w.tokens = [];
+  page = await openPage(w);
+  const snap = await readAll(page);
+  expect(holds(snap, D, e.n).length, "the edit").toBe(1);
+  expect(snap.items.find((i) => i.entry.id === D).entry.name, "is the design").toBe(e.doc.name);
+  expect(otherTab(snap, D), "and nothing was copied").toEqual([]);
+  await closeClean(page);
+});
+
+scenario("tabs that read a design saved without a revision: another tab's save in the same millisecond is kept", async (w) => {
+  const D = "t_chaos_d", cfg = { freeze: 1_900_000_000_000 };
+  let pa = await openPage(w, cfg);
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  await rawEntry(pa, D, { entry: "delete v.rev;" }); // as an older build left it
+  await reloadPage(w, pa);
+  const pb = await openPage(w, cfg);
+  const a = step(w, D, "now", 5), b = step(w, D, "now", 5);
+  await pa.evaluate(drive, { plan: [a] });
+  await pb.evaluate(drive, { plan: [b] });
+  const page = await openPage(w);
+  const snap = await readAll(page);
+  expect(holds(snap, D, a.n).length, "tab A's save").toBe(1);
+  expect(holds(snap, D, b.n).length, "tab B's save").toBe(1);
+  expect(otherTab(snap, D).length).toBe(1);
+  await closeClean(page);
+  await closeClean(pa);
+  await closeClean(pb);
+});
+
+scenario("a write that names no base (a restore, a server copy opened) keeps a version another tab saved after it was read", async (w) => {
+  const D = "t_chaos_d";
+  const pa = await openPage(w);
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const pb = await openPage(w);
+  await pa.evaluate((id) => window.__app.projects._store.get(id), D); // what remote.js and the restore read before they write
+  const b = step(w, D, "now", 5), mine = mk(w, D, 5);
+  await pb.evaluate(drive, { plan: [b] });
+  const now = Date.now();
+  await pa.evaluate(([doc, now]) => window.__app.projects._store.put(doc.id, JSON.stringify({ ...doc, _updated: now }), { id: doc.id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null }), [mine, now]);
+  const page = await openPage(w);
+  const snap = await readAll(page);
+  expect(holds(snap, D, w.ver.get(D)).length, "the write").toBe(1);
+  expect(holds(snap, D, b.n).length, "the version saved meanwhile is kept").toBe(1);
+  expect(otherTab(snap, D).length).toBe(1);
+  // and when nothing was saved in between, the write replaces the design without leaving a copy
+  const later = mk(w, D, 5), t2 = Date.now() + 5;
+  await pa.evaluate((id) => window.__app.projects._store.get(id), D);
+  await pa.evaluate(([doc, now]) => window.__app.projects._store.put(doc.id, JSON.stringify({ ...doc, _updated: now }), { id: doc.id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null }), [later, t2]);
+  expect(otherTab(await readAll(page), D).length, "no new copy").toBe(1);
+  await closeClean(page);
+  await closeClean(pa);
+  await closeClean(pb);
+});
+
+scenario("two tabs alternating saves of unchanged designs make at most one copy of each", async (w) => {
+  const D = "t_chaos_d";
+  const pa = await openPage(w);
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const pb = await openPage(w);
+  const x = step(w, D, "now", 5), y = step(w, D, "now", 5);
+  for (let i = 0; i < 4; i++) { await pa.evaluate(drive, { plan: [x] }); await pb.evaluate(drive, { plan: [y] }); }
+  const page = await openPage(w);
+  const snap = await readAll(page);
+  expect(otherTab(snap, D).length, "one copy per distinct version, not one per save").toBeLessThanOrEqual(2);
+  expect(holds(snap, D, x.n).length, "x: a copy").toBe(1);
+  expect(holds(snap, D, y.n).length, "y: the design and a copy").toBe(2);
+  await closeClean(page);
+  await closeClean(pa);
+  await closeClean(pb);
+});
+
+scenario("a kept copy that was edited since is not overwritten when the same version is kept again", async (w) => {
+  const D = "t_chaos_d";
+  const pa = await openPage(w);
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const pb = await openPage(w);
+  const x = step(w, D, "now", 5), y = step(w, D, "now", 5);
+  await pa.evaluate(drive, { plan: [x] });
+  await pb.evaluate(drive, { plan: [y] }); // x is kept as a copy
+  let snap = await readAll(pb);
+  const copy = otherTab(snap, D)[0];
+  await rawEntry(pb, copy.entry.id, { entry: 'v.name = "Edited copy";', doc: 'v.name = "Edited copy"; v.bodies[0].name += "!";' });
+  await pa.evaluate(drive, { plan: [x] }); // the same version is the design again ...
+  await pb.evaluate(drive, { plan: [y] }); // ... and is displaced again
+  snap = await readAll(pb);
+  expect(snap.items.some((i) => i.entry.name === "Edited copy" && JSON.parse(i.doc).bodies[0].name.endsWith("!")), "the edited copy is as the person left it").toBe(true);
+  expect(holds(snap, D, x.n).length, "and the version is kept again, as another copy").toBe(1);
+  await closeClean(pa);
+  await closeClean(pb);
+});
+
+scenario("on the older storage: the tab closing only writes a rescue copy, and the next start replays it", async (w) => {
+  const D = "t_chaos_d";
+  let page = await openPage(w, { refuse: true });
+  await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const e = step(w, D, "soon", 5);
+  await editOnly(page, e);
+  const seen = await page.evaluate(([id, pre, rescue]) => {
+    window.dispatchEvent(new Event("beforeunload"));
+    return { name: JSON.parse(localStorage.getItem(pre + id)).name, rescues: Object.keys(localStorage).filter((k) => k.startsWith(rescue)).length };
+  }, [D, LS_DOC, RESCUE]);
+  expect(seen.name, "the stored design is untouched").not.toBe(e.doc.name);
+  expect(seen.rescues).toBe(1);
+  await page.close({ runBeforeUnload: false });
+  w.tokens = [];
+  page = await openPage(w, { refuse: true });
+  const snap = await readAll(page);
+  expect(snap.items.find((i) => i.entry.id === D).entry.name, "replayed at the start").toBe(e.doc.name);
+  expect(await rescues(page)).toEqual([]);
+  expect(otherTab(snap, D)).toEqual([]);
+  await closeClean(page);
+});
+
+scenario("on the older storage a save refused after the copy was written leaves nothing half done, and the retry keeps one copy", async (w) => {
+  const D = "t_chaos_d", cfg = { refuse: true };
+  const pa = await openPage(w, cfg);
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const pb = await openPage(w, cfg);
+  const a = step(w, D, "now", 5), b = step(w, D, "now", 5);
+  await pa.evaluate(drive, { plan: [a] });
+  await pb.evaluate((k) => { window.__chaosFailKey = k; }, LS_INDEX); // the list cannot be written: after the copy and the document were
+  expect((await pb.evaluate(drive, { plan: [b] }))[0].ok, "the refused save is not acknowledged").toBe(false);
+  const lsState = await lsDesigns(pb);
+  expect(lsState.docs.sort(), "no document without a list entry").toEqual(lsState.list.sort());
+  expect(holds(await readAll(pb), D, a.n).length, "tab A's version is still the design").toBe(1);
+  await pb.evaluate(() => { window.__chaosFailKey = null; });
+  expect((await pb.evaluate(drive, { plan: [b] }))[0].ok).toBe(true);
+  const snap = await readAll(pb);
+  expect(holds(snap, D, b.n).length).toBe(1);
+  expect(holds(snap, D, a.n).length, "tab A's version, once").toBe(1);
+  await closeClean(pa);
+  await closeClean(pb);
+});
+
+scenario("on the older storage without Web Locks, saves still work and a second tab's save still keeps the first", async (w) => {
+  const D = "t_chaos_d", cfg = { refuse: true, noLocks: true };
+  const pa = await openPage(w, cfg);
+  expect(await pa.evaluate(() => navigator.locks)).toBeUndefined();
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const pb = await openPage(w, cfg);
+  const a = step(w, D, "now", 5), b = step(w, D, "now", 5);
+  expect((await pa.evaluate(drive, { plan: [a] }))[0].ok).toBe(true);
+  expect((await pb.evaluate(drive, { plan: [b] }))[0].ok).toBe(true);
+  const snap = await readAll(pb);
+  expect(holds(snap, D, a.n).length).toBe(1);
+  expect(holds(snap, D, b.n).length).toBe(1);
+  await closeClean(pa);
+  await closeClean(pb);
 });
 
 // ---------------------------------------------------------------- 10. the judge itself must be able to fail

@@ -316,7 +316,7 @@ test("IndexedDB that opens late takes over from localStorage: nothing lost, noth
 
 // Shared setup for the slow-open cases below: a design that IndexedDB holds in a newer version than the copy an earlier
 // visit left in localStorage (a design moved over once keeps its old copy). Returns the page, ready to open slowly.
-async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = false } = {}) {
+async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = false, future = false } = {}) {
   const p1 = await context.newPage();
   const errs = await prepare(p1);
   await boot(p1, info);
@@ -326,6 +326,10 @@ async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = 
     localStorage.setItem("workplane.doc.v1." + id, JSON.stringify(old));
     localStorage.setItem("workplane.index.v1", JSON.stringify([{ id, name: old.name, ver: 0, mode: "beginner", updated: old._updated, thumb: null }]));
   }, [id, same]);
+  if (future) await p1.evaluate(async (id) => { // IndexedDB's version is stamped later than anything the slow page will save (a tab with a faster clock)
+    const s = window.__app.projects._store, cur = JSON.parse(await s.get(id)), ent = await s.entry(id), t = cur._updated + 3_600_000;
+    await s.put(id, JSON.stringify({ ...cur, name: "Fast future", _updated: t }), { ...ent, name: "Fast future", updated: t });
+  }, id);
   await p1.close();
   const p2 = await context.newPage();
   errs.push(...await prepare(p2));
@@ -432,6 +436,17 @@ test("a slow IndexedDB: deleting the older copy never removes a newer one in Ind
   await p.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
   expect(JSON.parse(await rawRead(p, "docs", id)).name).toBe("Stale new"); // the copy the person never saw is still there
   expect(await idbNames(p)).toEqual(["Stale new"]);
+  expect(errors).toEqual([]);
+});
+
+test("a slow IndexedDB: a version saved on localStorage that is older than IndexedDB's different one is kept as a copy", async ({ context }, info) => {
+  const id = "t_Late_Older";
+  const [p, errors] = await newerInIdbOlderInLocal(context, info, id, { future: true });
+  expect(await p.evaluate(() => { window.__store.update((d) => { d.name = "Slow mine"; }, "Rename"); return window.__app.projects.saveNow(); })).toBe(true); // saved on localStorage
+  await p.evaluate(() => window.__releaseIdb());
+  await p.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  await expect.poll(() => idbNames(p), { timeout: 15_000 }).toEqual(["Fast future", "Slow mine (before fallback)"]); // nothing dropped because its stamp is older
+  await p.waitForFunction(() => window.__store.doc.name === "Fast future", null, { timeout: 10_000 }); // the tab shows the design as IndexedDB has it; its own version is the copy
   expect(errors).toEqual([]);
 });
 
