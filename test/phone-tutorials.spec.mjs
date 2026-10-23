@@ -82,7 +82,30 @@ test("phone 375 x 667: Tutorials can be opened from the menu and the first step 
       expect(s[k].covered, `${k} of step 1 is under something else`).toBe(false);
       expect(s[k].font, `${k} font size`).toBeGreaterThanOrEqual(13);
     }
+    // the rest of the step is read by scrolling the panel (its footer stays put): the last instruction can be scrolled to the middle, clear of the footer
+    const last = await p.evaluate(() => {
+      const pan = document.getElementById("tut-panel"), items = pan.querySelectorAll(".tut-how li"), e = items[items.length - 1];
+      e.scrollIntoView({ block: "center" });
+      const r = e.getBoundingClientRect(), pr = pan.getBoundingClientRect(), nav = pan.querySelector(".tut-nav").getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { n: items.length, inView: r.top >= pr.top && r.bottom <= Math.min(pr.bottom, nav.top + 0.5), covered: !(top === e || e.contains(top)) };
+    });
+    expect(last.n, "step 1 has more than one instruction").toBeGreaterThan(1);
+    expect(last.inView, "the last instruction of step 1 cannot be scrolled clear of the panel's footer").toBe(true);
+    expect(last.covered, "the last instruction of step 1 is under something else after scrolling").toBe(false);
     await p.screenshot({ path: process.env.PHONE_TUTORIAL_SHOT || info.outputPath("phone-tutorial-step1.png") });
     expect(errors).toEqual([]);
   } finally { await ctx.close(); }
 });
+
+// The phone entry is for narrow screens only: on a desktop and on an iPad the top bar has the Tutorials button, so the menu must not repeat it.
+for (const [width, height] of [[1280, 800], [820, 1180]]) {
+  test(`${width} x ${height}: the phone Tutorials entry is not in the Open/Export menu`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height });
+    await boot(page, info);
+    await page.locator("#btn-export").click();
+    await expect(page.locator('#menu-export button[data-act="stl"]')).toBeVisible();
+    await expect(page.locator("#btn-tutorials-menu")).toBeHidden();
+    await expect(page.locator("#btn-tutorials")).toBeVisible();
+  });
+}

@@ -1119,8 +1119,8 @@ body.s3d-on .tut-panel { z-index: 96; }
 @media (max-width: 1480px) { .topbar .brand span { display: none; } }
 @media (max-width: 560px) { #btn-tutorials { display: none; } .docver { display: none; } }
 /* jumpstart-3d: at 560 px and below the Tutorials button is hidden and the top bar is full, so the Open/Export menu carries the entry (44 px tall to tap) */
-.menu-tut { display: none; }
-@media (max-width: 560px) { .menu-tut { display: flex; min-height: 44px; align-items: center; } hr.menu-tut { display: block; min-height: 0; } #app[data-mode="chisel"] .menu-tut { display: none; } }
+.menu .menu-tut { display: none; } /* more specific than .menu button { display: flex } */
+@media (max-width: 560px) { .menu button.menu-tut { display: flex; min-height: 44px; align-items: center; } .menu hr.menu-tut { display: block; } #app[data-mode="chisel"] .menu .menu-tut { display: none; } }
 @media (max-width: 420px) { .topbar { gap: 3px; } .topbar .tb-btn { padding-left: 3px; padding-right: 3px; } }
 @media (max-width: 1100px) { .topbar .brand { display: none; } #btn-keys { display: none; } .docname { width: 110px; } .modeswitch button { padding: 5px 8px; letter-spacing: .04em; } .autosave-btn { padding-left: 6px; padding-right: 6px; } }
 .tut-modal { width: min(780px, 100%); }
