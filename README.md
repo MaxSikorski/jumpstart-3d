@@ -132,7 +132,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 
 - **Named parameters:** type `w` or `w/2` instead of a number, and everything follows when it
   changes.
-- **Bolts, nuts, gears, hole patterns and name plates**, ready to drop into a design.
+- **Bolts, nuts, gears, hole patterns, name plates and knurled knobs**, ready to drop into a design.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.
 - **Your printer's plate size**, with steep undersides shaded red.
 - **glTF and OBJ export, OBJ import**, and a pre-painted 3MF for multi-colour printing.
@@ -259,6 +259,8 @@ and the safety notes are in [mcp/README.md](mcp/README.md).
 
 You do not need to write code to help JumpStart 3D.
 
+Writing or filming about it? [PRESS.md](PRESS.md) has the facts, links and pictures for press and video makers.
+
 ### Report a bug
 
 Open an issue at https://github.com/MaxSikorski/jumpstart-3d/issues/new/choose and pick "Bug
@@ -310,6 +312,8 @@ upstream version stays easy to merge.
   teeth you undo and make it again.
 - Name plates: a plate sized to one line of text, with the letters raised in a second colour or
   cut in, and optional hanging or screw holes.
+- Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
+  optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
 - Thirty-one more tutorials, for the toolbar buttons that had none.
 
 ### Editing
