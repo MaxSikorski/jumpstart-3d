@@ -1,5 +1,5 @@
 # CodeQL code scanning, scoped to the code this repository maintains: the app source in src/
-# (the author's modules plus our additions), the build script and the tests. docs/ holds
+# (the author's modules plus our additions), the build script and the tests. docs/ (not committed on main) holds
 # built bundles and third_party/ holds pinned libraries, so both are left out; the helper
 # pages in src/*.html embed a minified three.js each and are left out for the same reason.
 # Results appear under Security > Code scanning. Public repository: free.
