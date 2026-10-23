@@ -165,7 +165,7 @@ export function initBridge(app) {
     if (opts.width !== undefined && !(typeof opts.width === "number" && opts.width >= 1 && opts.width <= 8192)) throw new Error("width must be a number of pixels between 1 and 8192");
     await ready();
     if (opts.fit) {
-      const box = app.mode === "arch" ? app.arch.box() : app.scene.allBox(); // Architechies hides the bodies: frame the building
+      const box = app.mode === "arch" ? app.arch.box() : app.scene.allBox(); // Architect hides the bodies: frame the building
       app.vp.fit(box.isEmpty() ? null : box);
       for (let i = 0; app.vp.anim && i < 60; i++) await sleep(50);
       if (app.vp.anim) app.vp.stepAnim(app.vp.anim.t0 + app.vp.anim.ms); // a hidden tab runs no animation frames: jump to the end
@@ -384,7 +384,7 @@ export function initBridge(app) {
     fit: () => app.fit(),
     mode: () => app.mode,
     setMode(mode) {
-      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architechies)');
+      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architect)');
       if (app.mode === mode) return;
       app.setMode(mode);
       if (store.doc.mode !== mode) { store.doc.mode = mode; app.projects.changed(); }

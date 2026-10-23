@@ -1,4 +1,6 @@
-// Architechies tutorials: five building projects, from a first tiny house to a two-story house
+// Architect tutorials: twelve projects, from a first tiny house to a two-story house, log cabins,
+// a small business, and the landscape: ground, ponds, plants, a flood test and printing it all;
+// the first five go from a first tiny house to a two-story house
 // sent to Beginner and exported for 3D printing. Sizes are given in feet and inches with the
 // metric size in brackets; every check accepts either (sizes are compared in mm, with room to spare).
 import { nameStep, saveStep, exportStep } from "./tutorial_data.js";
@@ -7,7 +9,7 @@ const FT = 304.8, IN = 25.4;
 const UNITS = {
   title: "Feet and inches, or metric", tool: "Units", icon: "archPlan", show: { sel: "#ar-units" },
   how: [
-    "In the Architechies toolbar, find the <b>ft · in | Metric</b> switch.",
+    "In the Architect toolbar, find the <b>ft · in | Metric</b> switch.",
     "Click <b>ft · in</b> to work in feet and inches (like <b>12' 6\"</b>), or <b>Metric</b> to work in millimetres.",
     "You can type sizes either way in any box: <b>12'</b>, <b>12' 6\"</b>, <b>150\"</b>, <b>3.6 m</b> or <b>3600</b> all work.",
   ],
@@ -36,7 +38,7 @@ const PLACE = (what, preset, where) => ({
   ],
   when: "Doors and windows cut real openings in the wall, with frames, so they show up when you 3D print the house.",
 });
-const presetName = (id) => ({ ext36: 'Front door 36"', int32: 'Interior door 32"', int30: 'Interior door 30"', sh3648: "Single hung 36×48", sh2436: "Small 24×36", pic7248: "Picture 72×48", patio72: 'Sliding patio 72"', garage16: "Garage door 16'", bath2424: "Bathroom 24×24", dbl60: 'Double door 60"', sl4836: "Slider 48×36" }[id] || id);
+const presetName = (id) => ({ garage9: "Garage door 9'", ext36: 'Front door 36"', int32: 'Interior door 32"', int30: 'Interior door 30"', sh3648: "Single hung 36×48", sh2436: "Small 24×36", pic7248: "Picture 72×48", patio72: 'Sliding patio 72"', garage16: "Garage door 16'", bath2424: "Bathroom 24×24", dbl60: 'Double door 60"', sl4836: "Slider 48×36" }[id] || id);
 const ROOF = (kind, label, slope) => ({
   title: `A ${label} roof`, tool: "Roof", icon: "archRoof", show: { sel: `#ar-roofs [data-r="${kind}"], #ar-roof` },
   how: [
@@ -242,7 +244,7 @@ export const ARCH_TUTORIALS = [
       {
         title: "A second level", tool: "Level", icon: "archRaise", show: { sel: "#ar-addlevel, #ar-level" },
         how: [
-          "Press <b>Esc</b> until nothing is selected; the panel shows <b>Architechies</b>.",
+          "Press <b>Esc</b> until nothing is selected; the panel shows <b>Architect</b>.",
           "Click <b>+ Level above</b>. Level 2 starts right on top of Level 1, with the outside walls copied as a floor plan.",
           "Use the <b>Level</b> list in the toolbar to switch between levels at any time.",
         ],
@@ -259,7 +261,7 @@ export const ARCH_TUTORIALS = [
           "Pick the scale <b>1:48 · ¼\" = 1'</b> (or <b>1:100</b> for metric). The dialog shows how big the model will be.",
           "Keep <b>Then open: Beginner</b> and click <b>Send to design</b>. The house arrives as walls, doors, frames and roofs you can print.",
         ],
-        when: "When the building is done (you can always come back to Architechies, change it and send it again).",
+        when: "When the building is done (you can always come back to Architect, change it and send it again).",
         tip: "At 1:48 a 28' house is 7\" long: it fits most 3D printers.",
         check: (t) => t.archSent(),
       },
@@ -268,4 +270,256 @@ export const ARCH_TUTORIALS = [
     ],
   },
 ];
+
+// ------------------------------------------------------------------ more building projects and the landscape
+const LOGTYPE = (label, metric) => ({
+  title: "Pick log walls", tool: "Room · Wall type", icon: "archWall", show: { sel: "#ar-walltype, #ar-room" },
+  how: [
+    "Click <b>Room</b> (or press <b>R</b>).",
+    `In the panel, set <b>Wall type</b> to <b>${label}</b> (metric: <b>${metric}</b>). The list has a <b>Log cabin</b> group.`,
+  ],
+  when: "Before drawing: new walls are made of the wall type you pick. You can also change a wall later: select it and use <b>Build as</b>.",
+  check: (t) => !!(t.arch().wallLog || t.archWalls().some((w) => w.log)),
+});
+const GROUND_STEP = {
+  title: "Make the ground", tool: "Landscape", icon: "archLand", show: { sel: "#ar-land-make, #ar-land" },
+  how: [
+    "Click <b>Landscape</b> (or press <b>L</b>).",
+    "Under <b>Make the ground</b>, click the middle size (<b>25' around</b> or <b>8 m around</b>).",
+    "A lawn appears around the house. It belongs to Architect only: the other modes get just the house.",
+  ],
+  when: "First, before shaping hills, digging ponds or planting.",
+  check: (t) => t.archLand(),
+};
+const HOUSE_QUICK = (w, d, what) => ({
+  title: "A quick house", tool: "Room + Raise walls + Roof", icon: "archRoom", show: { sel: "#ar-room" },
+  how: [`Draw a <b>${w}' × ${d}'</b> room, raise the walls to <b>8'</b>, put in a <b>Front door 36"</b> and cover it with a <b>Gable</b> roof.`, what],
+  when: "Any house will do: this project is about what goes around it.",
+  check: (t) => t.archRaised(null) && t.archOpens("door").length > 0 && t.archRoof(),
+});
+const PLANT = (n, what, cat) => ({
+  title: `Plant ${what}`, tool: "Landscape · Plant", icon: "archLand", show: { sel: `#ar-pcat, #ar-landtools [data-t="plant"]` },
+  how: [
+    "In the Landscape panel, click <b>Plant</b>.",
+    `Click <b>${cat}</b> to see that group, pick one, then click on the ground to place it. Drag to plant a row.`,
+    `Place at least <b>${n}</b>. Pick different kinds for a natural look.`,
+  ],
+  when: "Plants and stones make the model look real, and they print as their own colored parts.",
+});
+ARCH_TUTORIALS.push(
+  // ---------------------------------------------------------------- 6
+  {
+    id: "h-logcabin", mode: "arch", level: "Easy", minutes: "8-10", item: "Log cabin",
+    title: "Round-log cabin",
+    blurb: "A 16' × 12' cabin built from round logs that cross at the corners, with a door, a window and a steep gable roof.",
+    learn: ["Units", "Wall type: round logs", "Room", "Raise walls", "Door", "Window", "Gable roof"],
+    steps: [
+      nameStep("Log Cabin", "Lopez, Maria, Log Cabin"),
+      UNITS,
+      LOGTYPE('Round logs 10"', "Round logs 250 mm"),
+      {
+        title: "Draw the cabin", tool: "Room", icon: "archRoom", show: { sel: "#ar-room" },
+        how: ["Drag a <b>16' × 12'</b> room (about <b>4.8 m × 3.6 m</b>). The walls are log-thick."],
+        when: "Log cabins are simple rectangles: logs come in lengths that make long walls hard.",
+        check: (t) => t.archRect(16 * FT, 12 * FT, 400) && t.archLogs("round"),
+      },
+      { ...RAISE(8 * FT, "8'"), how: [...RAISE(8 * FT, "8'").how, "The logs stack up, and run past each corner where they cross, like a real cabin."] },
+      { ...PLACE("a front door", "ext36", "the middle of a long wall"), check: (t) => t.archOpens("door").length > 0 },
+      { ...PLACE("a window", "sh3648", "a short wall"), check: (t) => t.archOpens("window").length > 0 },
+      ROOF("gable", "gable", "12/12"),
+      saveStep(),
+    ],
+  },
+  // ---------------------------------------------------------------- 7
+  {
+    id: "h-workshop", mode: "arch", level: "Easy", minutes: "8-10", item: "Square-log workshop",
+    title: "Square-log workshop",
+    blurb: "A 24' × 20' workshop of hewn square logs, with a garage door, a small window and a shed roof.",
+    learn: ["Wall type: square logs", "Garage door", "Shed roof"],
+    steps: [
+      nameStep("Log Workshop", "Lopez, Maria, Log Workshop"),
+      LOGTYPE('Square logs 8" (hewn)', "Square logs 200 mm"),
+      {
+        title: "Draw the workshop", tool: "Room", icon: "archRoom", show: { sel: "#ar-room" },
+        how: ["Drag a <b>24' × 20'</b> room (about <b>7.2 m × 6 m</b>)."],
+        when: "Square (hewn) logs sit flat on each other with a strip of chinking between them.",
+        check: (t) => t.archRect(24 * FT, 20 * FT, 400) && t.archLogs("square"),
+      },
+      RAISE(9 * FT, "9'"),
+      { ...PLACE("a garage door", "garage9", "the middle of a long wall"), check: (t) => t.archPreset(["garage9", "garage16"]).length > 0 },
+      { ...PLACE("a small window", "sh2436", "a short wall"), check: (t) => t.archOpens("window").length > 0 },
+      ROOF("shed", "shed", "4/12"),
+      saveStep(),
+    ],
+  },
+  // ---------------------------------------------------------------- 8
+  {
+    id: "h-shop", mode: "arch", level: "Proficient", minutes: "12-15", item: "Corner café",
+    title: "Small business: a corner café",
+    blurb: "A 30' × 24' shop with tall walls, a double front door, big display windows, a back door, a flat roof, a floor and brick walls.",
+    learn: ["Tall walls", "Double door", "Picture windows", "Flat roof", "Floor", "Finishes: brick"],
+    steps: [
+      nameStep("Corner Café", "Lopez, Maria, Corner Café"),
+      {
+        title: "The shop floor plan", tool: "Room", icon: "archRoom", show: { sel: "#ar-room" },
+        how: ["Draw a <b>30' × 24'</b> room (about <b>9 m × 7.2 m</b>)."],
+        when: "Shops are open spaces: one big room you can divide later.",
+        check: (t) => t.archRect(30 * FT, 24 * FT, 250),
+      },
+      RAISE(12 * FT, "12'", "3.6 m"),
+      { ...PLACE("a double front door", "dbl60", "the middle of the long front wall"), check: (t) => t.archPreset(["dbl60"]).length > 0 },
+      { ...PLACE("two display windows", "pic7248", "the front wall, one on each side of the door"), check: (t) => t.archPreset(["pic7248"]).length >= 2 },
+      { ...PLACE("a back door", "ext36", "the back wall (for deliveries)"), check: (t) => t.archOpens("door").length >= 2 },
+      ROOF("flat", "flat", "4/12"),
+      {
+        title: "A floor", tool: "Floor", icon: "archFloor", show: { sel: "#ar-floor-all, #ar-floor" },
+        how: ["Click <b>Floor</b> (or press <b>G</b>), then <b>Cover the whole level</b>."],
+        when: "Shops sit on a concrete slab.",
+        check: (t) => t.archSlab(),
+      },
+      {
+        title: "Brick walls", tool: "Finishes", icon: "archFinish", show: { sel: "#ar-fin-presets, #ar-finish" },
+        how: ["Click <b>Finishes</b> (or press <b>T</b>).", "Under <b>Quick picks</b> click <b>Brick</b>, then click <b>All walls on Level 1</b>."],
+        when: "Finishes give the walls a colour and a texture you can see, and that print on the model when you send it to Beginner.",
+        check: (t) => t.archFinished("wall") >= 4,
+      },
+      saveStep(),
+    ],
+  },
+  // ---------------------------------------------------------------- 9
+  {
+    id: "l-yard", mode: "arch", level: "Easy", minutes: "8-10", item: "Yard with a hill",
+    title: "Landscape basics: a yard",
+    blurb: "Put a house on the ground, then raise a hill, paint a stone path to the door and plant trees.",
+    learn: ["Landscape", "Make the ground", "Raise", "Paint", "Plant"],
+    steps: [
+      nameStep("My Yard", "Lopez, Maria, My Yard"),
+      HOUSE_QUICK(20, 16, "Tip: the Room, Raise walls, Door and Roof tools are on the left of the toolbar."),
+      GROUND_STEP,
+      {
+        title: "Raise a hill", tool: "Landscape · Raise", icon: "archLand", show: { sel: '#ar-landtools [data-t="raise"]' },
+        how: ["Click <b>Raise</b>.", "Drag back and forth on the ground behind the house: it builds up a hill. Hold still to keep raising.", "Use <b>Lower</b> to dig, and <b>Smooth</b> to round it off."],
+        when: "Real yards are rarely flat: hills and dips change how the house sits, and where rain goes.",
+        tip: "The circle shows the brush. Make it bigger with Brush size.",
+        check: (t) => t.archLandRange(500),
+      },
+      {
+        title: "Paint a path", tool: "Landscape · Paint", icon: "archLand", show: { sel: '#ar-grounds, #ar-landtools [data-t="paint"]' },
+        how: ["Click <b>Paint</b>, then pick <b>Stone path</b> (or <b>Gravel path</b>).", "Drag from the front door out to the edge of the ground."],
+        when: "Paths, patios, gardens and beaches are all paint: the ground keeps its shape.",
+        check: (t) => t.archPainted(["stonepath", "gravel", "brickpath", "paving"]),
+      },
+      { ...PLANT(3, "three trees", "Trees"), check: (t) => t.archPlants("tree") >= 3 },
+      saveStep(),
+    ],
+  },
+  // ---------------------------------------------------------------- 10
+  {
+    id: "l-pond", mode: "arch", level: "Proficient", minutes: "10-12", item: "Pond garden",
+    title: "A pond garden",
+    blurb: "Dig a pond that fills with water, give it a sandy shore, cattails and lily pads, plant flowers, then watch the water move in the rain.",
+    learn: ["Pond / lake", "Paint: sand", "Grass & flowers", "Simulate: weather", "Moving water"],
+    steps: [
+      nameStep("Pond Garden", "Lopez, Maria, Pond Garden"),
+      HOUSE_QUICK(16, 12, "A small house or garden shed is plenty."),
+      GROUND_STEP,
+      {
+        title: "Dig a pond", tool: "Landscape · Pond / lake", icon: "archLand", show: { sel: '#ar-landtools [data-t="water"]' },
+        how: ["Click <b>Pond / lake</b>.", "Drag in a loop on the ground beside the house: it digs down and fills with water.", "Set <b>Water depth</b> for a deeper lake."],
+        when: "Ponds, lakes and streams. The water stays level with where you started dragging.",
+        check: (t) => t.archLandWater(),
+      },
+      {
+        title: "A sandy shore", tool: "Landscape · Paint", icon: "archLand", show: { sel: '#ar-grounds [data-g="beach"], #ar-landtools [data-t="paint"]' },
+        how: ["Click <b>Paint</b> and pick <b>Beach sand</b> (or <b>Sand</b> or <b>Dune sand</b>).", "Paint a ring around the pond."],
+        when: "Shores, river stones and moss make water look real.",
+        check: (t) => t.archPainted(["beach", "sand", "dune", "riverstone"]),
+      },
+      { ...PLANT(2, "cattails and lily pads", "Grass & flowers"), how: ["In the Landscape panel, click <b>Plant</b> and then <b>Grass & flowers</b>.", "Put <b>Cattails (reeds)</b> at the edge of the pond and <b>Lily pads</b> on the water."], check: (t) => t.archPlants(["reeds", "lilypad"]) >= 2 },
+      { ...PLANT(3, "flowers", "Grass & flowers"), how: ["Still in <b>Grass & flowers</b> (or <b>Shrubs</b>), plant <b>Wildflowers</b>, <b>Tulips</b>, <b>Lavender</b> or <b>Rose bushes</b> around the garden.", "Place at least 3."], check: (t) => t.archPlants(["wildflowers", "tulips", "lavender", "rose", "hydrangea", "shrub"]) >= 3 },
+      {
+        title: "Weather and moving water", tool: "Simulate", icon: "archSim", show: { sel: "#ar-wx-kind, #ar-sim" },
+        how: ["Click <b>Simulate</b> (or press <b>S</b>).", "Make sure <b>Moving water</b> is ticked: the pond ripples.", "Click <b>Rain</b> (try <b>Snow</b>, <b>Fog</b> and <b>Thunderstorm</b> too), and raise the <b>Wind</b>."],
+        when: "To see your design in different weather. It is only for looking: it never changes the model.",
+        check: (t) => t.archWeather(),
+      },
+      saveStep(),
+    ],
+  },
+  // ---------------------------------------------------------------- 11
+  {
+    id: "l-flood", mode: "arch", level: "Advanced", minutes: "10-15", item: "Flood test",
+    title: "Will it flood? Test a house in a storm",
+    blurb: "Run a rainstorm over a house and its yard, see where the water collects and whether it gets in, fix it by raising the house on graded ground, and test again.",
+    learn: ["Simulate", "Flood test: rainstorm", "Reading the results", "Graded pad", "Rising water"],
+    steps: [
+      nameStep("Flood Test", "Lopez, Maria, Flood Test"),
+      HOUSE_QUICK(24, 16, "Doors matter here: water gets in where a door meets the ground."),
+      GROUND_STEP,
+      {
+        title: "Run a rainstorm", tool: "Simulate · Flood test", icon: "archSim", show: { sel: "#ar-flood-run, #ar-sim" },
+        how: ["Click <b>Simulate</b> (or press <b>S</b>).", "Under <b>Flood test</b>, keep <b>Rainstorm</b>, click <b>Very heavy</b> and <b>3 hours</b>.", "Click <b>Run the flood test</b>. Rain falls, runs off the roof, soaks in and flows downhill."],
+        when: "Before building: a house on flat or low ground can flood in a big storm.",
+        check: (t) => t.archFloodDone(),
+      },
+      {
+        title: "Read the result", tool: "Results", icon: "archSim", show: { sel: "#ar-flood-result" },
+        how: ["The panel says whether water gets above the floor, and by how much, at each door. Red labels in the view mark the doors that flood.", "Deeper water is darker blue. Turn the view to see where it collects."],
+        when: "Water collects in low places and against the walls, where the roof drains.",
+        check: (t) => t.archFloodDone(),
+      },
+      {
+        title: "Fix it", tool: "Fix it / Landscape", icon: "archLand", show: { sel: "#ar-flood-fix, #ar-flood-result" },
+        how: ["If the house flooded, click <b>Fix it: raise the house on a graded pad</b>: the floor goes up and the ground slopes away on every side.", "Or fix it yourself: in <b>Landscape</b>, raise the ground and lower it away from the house, or dig a pond for the water to go to; or set the level's <b>Floor at</b> higher."],
+        when: "Builders always slope the ground away from a house: about 6\" in the first 10' (150 mm in 3 m).",
+        check: (t) => t.archFloorRaised() || t.archFloodDry(),
+      },
+      {
+        title: "Test again", tool: "Simulate · Flood test", icon: "archSim", show: { sel: "#ar-flood-run" },
+        how: ["Back in <b>Simulate</b>, click <b>Run the flood test</b> with the same storm.", "It should now say <b>Dry</b>."],
+        when: "Always test again after a change.",
+        check: (t) => t.archFloodDry(),
+      },
+      {
+        title: "A rising river", tool: "Simulate · Rising water", icon: "archSim", show: { sel: "#ar-flood-mode" },
+        how: ["Click <b>Rising water</b>.", "Set <b>Water rises to</b> a height (try <b>2'</b> or <b>600</b>) and run the test: the water comes in from the edges of the land, like a river or the sea."],
+        when: "Near rivers, lakes and the coast, floods come from rising water more than from rain.",
+        check: (t) => t.archFloodDone("rise"),
+      },
+      saveStep(),
+    ],
+  },
+  // ---------------------------------------------------------------- 12
+  {
+    id: "l-print", mode: "arch", level: "Expert", minutes: "15-20", item: "House and landscape model",
+    title: "House and landscape, ready to 3D print",
+    blurb: "Finish a house with brick walls and a shingle roof, give it a yard with a hill, a pond and trees, and export it all as one colored 3MF that fits the build plate.",
+    learn: ["Finishes", "Landscape", "Pond", "Plants", "Export 3MF", "Scale to fit"],
+    steps: [
+      nameStep("House and Yard", "Lopez, Maria, House and Yard"),
+      HOUSE_QUICK(24, 20, "Add a window or two as well."),
+      {
+        title: "Brick walls, shingle roof", tool: "Finishes", icon: "archFinish", show: { sel: "#ar-fin-presets, #ar-finish" },
+        how: ["Click <b>Finishes</b> (or press <b>T</b>).", "Click <b>Brick</b>, then <b>All walls on Level 1</b>.", "Click <b>Shingles</b>, then <b>All roofs</b>."],
+        when: "Finishes print as real texture on the model.",
+        check: (t) => t.archFinished("wall") >= 4 && t.archFinished("roof") >= 1,
+      },
+      GROUND_STEP,
+      {
+        title: "A hill and a pond", tool: "Landscape", icon: "archLand", show: { sel: "#ar-landtools" },
+        how: ["With <b>Raise</b>, build a hill on one side.", "With <b>Pond / lake</b>, dig a pond on the other."],
+        when: "Shape makes a landscape interesting to look at and to print.",
+        check: (t) => t.archLandRange(400) && t.archLandWater(),
+      },
+      { ...PLANT(4, "trees and shrubs", "Trees"), check: (t) => t.archPlants() >= 4 },
+      {
+        title: "Export it", tool: "Export", icon: "archExport", show: { sel: "#ar-export, #ar-exp-go" },
+        how: ["Click <b>Export</b> in the toolbar.", "Keep <b>3MF (colours)</b> and <b>Fit the 256 mm build plate</b>: everything is scaled down together.", "Click <b>Export</b>. Each part (ground, water, trees, walls, roof) is its own colored object for a multi-color printer."],
+        when: "When it's finished. STL works for single-color printers.",
+        check: (t) => t.exported("3mf") || t.exported("stl") || t.exported("obj"),
+      },
+      saveStep(),
+    ],
+  },
+);
 void IN;

@@ -141,9 +141,13 @@
       "tile:sphere",
       "tile:spring"
     ],
-    "Architechies toolbar": [
-      "Architechies toolbar:text:Metric",
-      "Architechies toolbar:text:ft · in"
+    "Architect toolbar": [
+      "Architect toolbar:text:Metric",
+      "Architect toolbar:text:ft · in",
+      "ar-planexp"
     ]
+  },
+  "why": {
+    "ar-planexp": "Floor plan (PDF, SVG, DXF) is not part of any of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats."
   }
 }
