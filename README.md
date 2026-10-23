@@ -362,6 +362,7 @@ src/meshdetail.js   our Mesh detail setting
 src/params.js       our named parameters (evaluator and the dimension and feature hooks)
 src/bridge.js       our scripting bridge, `window.JS3D` (see BRIDGE.md)
 src/runscript.js    our "Run script…" menu entry (runs a .js file with JS3D in scope)
+src/report.js       our "Report a problem" dialog (a prefilled GitHub bug report link)
 src/loadui.js       our loading note over the 3D view, and the start of the offline copy on the website
 src/sw.js           our service worker: the website's offline copy (the site build only)
 src/remote.js       our Your server tab in Your designs (designs on a WebDAV server)
@@ -418,6 +419,7 @@ UPSTREAM-README.md         the author's README from the source release
 - Name plates: a Name plate dialog (Beginner toolbar, Advanced › Create › Advanced Create) and `JS3D.namePlate` / the `add_name_plate` tool make a plate sized to one line of text (rounded or pill, with a hanging hole or two screw holes), as one hidden sketch plus the app's own Extrude, with the letters either a second body in its own colour (a Text shape) or cut in (the Deboss text feature). The text is measured on the main thread from the same outlines the drawing code uses, and characters the fonts lack are refused. Nothing in the kernel changed (`src/nameplate.js`)
 - Chat inside the app: an AI button opens a panel where a model (Ollama, LM Studio, OpenAI or Anthropic) edits the open
   design through the same 38 tools as the MCP server. Keys stay in the browser; scripts are off unless you tick them
+- Boolean fixes in the geometry engine: a torus no longer disappears from a group, two spheres offset along x intersect and cut to the right volume, and an empty result says "Nothing is left" instead of showing a raw engine message (a marked block in `third_party/replicad/src/shapeFunctions/operations.ts` and `src/kernel.js`; `test/booleans.spec.mjs`)
 - Mesh detail in the theme menu: Normal, Fine, Extra fine, or a custom level
   up to 32× set by a slider or by typing the triangle count you want. It
   controls how finely curved surfaces are divided into triangles, for the view
@@ -473,6 +475,11 @@ UPSTREAM-README.md         the author's README from the source release
   you can paste into the console
 - Open/Export › Run script…: pick a `.js` file and it runs with `JS3D` in
   scope, no console needed; the result or the error shows as a message
+- Open/Export › Report a problem… (and About): opens a new bug report on GitHub
+  with the app details already filled in (build, website or file, browser, mode,
+  and the last error message only if you tick the box, with names and paths taken out) and what you typed; never your design. You
+  can save a copy of the design to attach. The app sends nothing: you press the
+  link and then Create on GitHub
 - An MCP server for AI agents (`mcp/`): Claude Code or any MCP client can build
   and edit designs through tools that mirror `JS3D`, either in the tab you have
   open (theme menu › Connect to AI agent, off unless you turn it on) or in a
