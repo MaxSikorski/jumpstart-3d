@@ -1133,6 +1133,54 @@ scenario("on the older storage without Web Locks, saves still work and a second 
   await closeClean(pb);
 });
 
+scenario("on the older storage, closing the tab with no room for a second copy of the design still keeps the last edit", async (w) => {
+  const D = "t_chaos_d";
+  let page = await openPage(w, { refuse: true });
+  await page.evaluate(drive, { plan: [step(w, D, "now", 60)] });
+  const e = step(w, D, "soon", 60);
+  await editOnly(page, e);
+  await fillStorage(page, 6000); // room to replace the design by its next version, not to hold another copy of it
+  await page.close({ runBeforeUnload: true });
+  w.tokens = [];
+  page = await openPage(w, { refuse: true });
+  const it = (await readAll(page)).items.find((i) => i.entry.id === D);
+  expect(it && sig(JSON.parse(it.doc)), "the edit made just before the close is stored").toBe(w.known.get(D).get(e.n));
+  expect(otherTab(await readAll(page), D), "and no stray copy").toEqual([]);
+  await closeClean(page);
+});
+
+for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: true }]]) {
+  scenario(`a rescue copy does not bring back a design that another tab deleted (${label})`, async (w) => {
+    const D = "t_chaos_d";
+    const pa = await openPage(w, cfg);
+    await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+    const pb = await openPage(w, cfg);
+    expect(await pb.evaluate(async (id) => { const s = window.__app.projects._store; await s.ready; return s.del(id); }, D), "deleted in the other tab").toBe(true);
+    await editOnly(pa, step(w, D, "soon", 5));
+    await pa.close({ runBeforeUnload: true });
+    w.tokens = [];
+    await pb.close({ runBeforeUnload: false });
+    w.tokens = [];
+    const page = await openPage(w, cfg);
+    const snap = await readAll(page);
+    expect(snap.items.filter((i) => i.entry.id === D || content(JSON.parse(i.doc)).includes(`|${D}|`)), "the deleted design stays deleted").toEqual([]);
+    expect(await rescues(page), "the rescue copy is dropped").toEqual([]);
+    await closeClean(page);
+  });
+}
+
+// Saving on the older storage is serialised with Web Locks; where they are missing it runs unlocked (see `locked` in projstore.js).
+// Both builds must have them, so that path is only for old browsers.
+scenario("Web Locks exist and the older storage's saves go through them", async (w) => {
+  const D = "t_chaos_d";
+  const page = await openPage(w, { refuse: true });
+  expect(await page.evaluate(() => typeof navigator.locks && typeof navigator.locks.request), "navigator.locks.request is there").toBe("function");
+  await page.evaluate(() => { const real = navigator.locks.request.bind(navigator.locks); window.__lockCalls = []; navigator.locks.request = (name, ...r) => { window.__lockCalls.push(name); return real(name, ...r); }; });
+  expect((await page.evaluate(drive, { plan: [step(w, D, "now", 5)] }))[0].ok).toBe(true);
+  expect(await page.evaluate(() => window.__lockCalls), "the save asked for the lock").toContain("jumpstart3d-local-designs");
+  await closeClean(page);
+});
+
 // ---------------------------------------------------------------- 10. the judge itself must be able to fail
 test("the judge flags a missing, an older and a torn design", () => {
   const w = { known: new Map(), ledger: [], ver: new Map() };
