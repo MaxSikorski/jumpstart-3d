@@ -6,7 +6,9 @@ import * as THREE from "three";
 import { TUTORIALS as BASE_TUTORIALS } from "./tutorial_data.js";
 import { MORE } from "./tutorial_data_more.js";
 import { ARCH_TUTORIALS } from "./tutorial_arch.js";
-const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...ARCH_TUTORIALS];
+// jumpstart-3d: register community lessons without changing the author's data.
+import { COMMUNITY_TUTORIALS } from "./tutorial_data_community.js";
+const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...ARCH_TUTORIALS, ...COMMUNITY_TUTORIALS];
 import { store } from "./store.js";
 import { el } from "./util.js";
 import { ICON } from "./icons.js";

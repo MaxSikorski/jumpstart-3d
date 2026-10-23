@@ -287,7 +287,7 @@ test.describe("walk every tutorial", () => {
 
 // ids from the data files, read as text so the tests can be declared before the browser is up
 function idsOf(mode) {
-  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_arch.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
+  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_arch.js", "tutorial_data_community.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
   return [...src.matchAll(/^\s*id: "([\w-]+)", mode: "(\w+)"/gm)].filter((m) => m[2] === mode).map((m) => m[1]);
 }
 function BEGINNER_IDS() { return idsOf("beginner"); }
