@@ -1368,9 +1368,9 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
     return out;
   });
   expect(r.steps).toBeGreaterThanOrEqual(7);
-  expect(r.count).toBe(75);
+  expect(r.count).toBe(76);
   expect(r.beginner).toBe(29);
-  expect(r.adv).toBe(40);
+  expect(r.adv).toBe(41);
   expect(r.arch).toBe(6);
   expect(r.level).toBe("Proficient");
   expect(r.item).toBe("Bracket");

@@ -758,7 +758,7 @@ export const COMMUNITY_TUTORIALS = [
     ],
   },
   {
-    id: "c4-code-cad", mode: "advanced", level: "Medium", minutes: "6-8", item: "Code Bracket",
+    id: "c4-code-cad", mode: "advanced", level: "Proficient", minutes: "6-8", item: "Code Bracket",
     title: "Build a part from code",
     blurb: "Write a few lines of replicad code, build a bracket from it, then change a size and press Update.",
     learn: ["Code CAD", "Build", "Update", "STEP body"],
