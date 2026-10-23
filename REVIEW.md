@@ -80,36 +80,39 @@ failed, was skipped, or remains unverified; never call unrun checks passed.
 
 ## Review tiers
 
-Scale the gates to the risk of the change. The PR's **Review gates** section
-names the tier.
+Every pull request gets one independent Claude review (gate 3). Only changes
+that could lose a design or send data off the machine get more. The PR's
+**Review gates** section names the tier.
 
-- **Light tier:** a change that only touches Markdown docs (not the built
-  `docs/` folder), spec files that add or tighten tests, or tools nothing runs
-  automatically, and touches none of the sensitive paths above. It gets gates 1
-  and 4 and one Claude review (gate 3). No Codex review (gate 2) and no verify
-  pass. CI is still required.
-- **Full tier:** anything that touches `src/` geometry, imports or exports,
-  storage, network calls, the service worker or the update check,
-  `.github/workflows/`, `mcp/`, release or build scripts, this file, or an
-  upstream merge. It also covers the files that decide what counts as correct
-  or what CI runs: test oracles and expectation files (`test/golden.json`,
-  `test/judge-*.json`, `test/fixtures/`, `test/helpers.mjs` and any shared
-  test helper that seeds storage), `playwright.config.mjs`, `package.json` and
-  the lockfiles, and any `tools/` file that CI or the build runs
-  (`tools/judge-exports.mjs`, `judge-freecad.py`, `install-judge-tools.sh`,
-  `tools/make_*.py`, `tools/*-source.html`). It gets every gate: Codex review,
-  Claude review and the verify pass.
-- **Behavioural risk overrides the file category:** a change in a light file
-  that alters what a user's design, export, stored data or network traffic does
-  is full tier. Everything that is not light is full. When unsure, use the full
-  tier; a PR that mixes both is full tier.
+- **Standard tier (almost everything):** gates 1, 3 and 4: the outcome check,
+  one Claude review, and CI. No Codex review (gate 2) and no verify pass. This
+  covers geometry, UI, docs, tests, tooling, workflows, build scripts and
+  upstream merges alike; the sensitive-path rule above (the maintainer's go)
+  still applies to the paths it lists.
+- **Full tier:** a change that touches **storage** (`projects.js`,
+  `projstore.js`, `folder.js`, `remote.js`, the backup and restore code,
+  or anything else that could lose or corrupt a saved design) or the
+  **network** (anything that can send data off the machine: `remote.js`,
+  `chat*.js`, the report-a-problem and update-check code, the MCP server's
+  connections). It gets every gate: Codex review, Claude review, the verify
+  pass and a `/security-review` pass.
+- **Behavioural risk overrides the file category:** a change in a standard
+  file that alters what a user's stored data or network traffic does is full
+  tier. When unsure whether a change reaches storage or the network, use the
+  full tier; a PR that mixes both is full tier.
 
 ## The flake rule
 
-Rerun a failed check once. If it passes with no code change, record it as a
-flake in the PR (test or CI step, run link, failure text). Its root cause is
-the next piece of work, and until then a second appearance blocks the merge. A
-check that fails again after the rerun blocks the merge.
+A flaky test does not block a merge. The merge gate is only the build, the
+smoke spec and the golden exports; everything else runs nightly. When a test
+flakes anywhere, quarantine it in the same piece of work: skip it
+(`test.skip`) or tag it and exclude it, with a comment on the line above that
+starts `// quarantined:` and gives an issue link or the reason. Quarantined
+tests are on the fix list (`grep -rn "quarantined:" test`, and the nightly
+issue lists them); the root cause is the next piece of work and the skip is
+removed with the fix. Never quarantine a smoke or golden test to get a merge
+through: those two are the gate, so fix them first. See
+[test/README.md](test/README.md).
 
 ## The gates
 
@@ -130,24 +133,29 @@ check that fails again after the rerun blocks the merge.
    reviewer, and neither sees the other's findings before both finish. Pass
    `REVIEW.md` explicitly in the brief: `/code-review` reads `CLAUDE.md` but
    does not automatically read this file. Both reviewers use the public rules
-   above. On the light tier this is the only review and there is no verify
+   above. On the standard tier this is the only review and there is no verify
    pass. On the full tier a separate verify pass checks every serious (HIGH or
    MEDIUM) or disputed finding against the code with `file:line` evidence and
    breaks ties. Only a genuine remaining disagreement on a HIGH finding stops
    for the maintainer. Rank verified findings HIGH/MEDIUM/LOW, remove
    duplicates, fix them as appropriate, and record their disposition.
-4. **CI.** CI runs all the per-pull-request checks on both builds, including
-   the export judge and phone budget. The chat scorer and the fuzzer run in a nightly workflow
-   (`.github/workflows/nightly.yml`), not on each PR; a red nightly run is
-   looked at the next working day and its cause fixed as the next piece of
-   work. See [test/README.md](test/README.md) for commands and limits. A
-   selected test or local build does not replace CI; record failures and
+4. **CI.** The merge gate is the check named `test` (with CodeQL): both
+   builds, the smoke spec and the golden exports on each, about 3 minutes.
+   The full Playwright suite, the export judge, the chat scorer, the fuzzer and
+   the Firefox and WebKit runs happen nightly
+   (`.github/workflows/nightly.yml`), not on each PR; a red nightly run opens
+   or updates the one "Nightly failures" issue, which is looked at the next
+   working day and its cause fixed as the next piece of work. Firefox and
+   WebKit do not block anything yet. Run the nightly on a branch with
+   `gh workflow run nightly.yml --ref <branch>` when a change needs the wider
+   suite first. See [test/README.md](test/README.md) for commands and limits.
+   A selected test or local build does not replace CI; record failures and
    skipped checks explicitly.
    One exception: a pull request to `main` that changes only top-level Markdown
    files (README.md, NOTICE.md, CHANGELOG.md and the like) takes CI's docs-only
    lane, which runs the MCP tests (they read README.md) and skips the browser
-   suites and judges; any other file, or a pull request into another branch,
-   runs all the per-pull-request checks (the nightly checks run separately).
+   gate; any other file, or a pull request into another branch, runs the whole
+   gate.
 5. **After release.** The maintainer rechecks the quoted outcome on the live
    site after the release reaches it; merging to `main` alone does not release
    the site. The maintainer also opens the released single file from disk and

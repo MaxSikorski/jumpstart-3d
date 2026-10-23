@@ -156,3 +156,56 @@ test("a design that was never painted exports a 3MF with no paint, as before", a
   expect(model).not.toContain("paint_color");
   expect(objects[0].every((t) => t.seg === null && t.paint === null)).toBe(true);
 });
+
+test("at most 15 filaments can be added, the most the file can code", async () => {
+  await loadDoc(page, cube());
+  await page.click("#bb-printsim");
+  await page.selectOption("#ps-printer", "a2l"); // 19 AMS slots: the printer would allow more than 15
+  for (let i = 0; i < 20 && await page.locator("#ps-addfil").count(); i++) await page.click("#ps-addfil");
+  expect(await page.evaluate(() => window.__app.advanced.printSim.st.slots.length)).toBe(15);
+  await expect(page.locator("#ps-addfil")).toHaveCount(0);
+  // the body's own filament list stops at 15 too
+  await expect(page.locator("#ps-slot-b1 option[value=new]")).toHaveCount(0);
+});
+
+test("a body edited into another number of faces loses its face paint in the sim and in the file, and can be painted again", async () => {
+  await loadDoc(page, cube());
+  await page.click("#bb-printsim");
+  await page.selectOption("#ps-printer", "p1s");
+  await page.click("#ps-frow-1");
+  await clickSide(page, "top");
+  expect(await page.evaluate(() => window.__app.advanced.printSim.st.paint.get("b1").size)).toBe(1);
+  await page.click("#cmd-ok");
+  // the same body, now a cylinder (3 faces instead of 6)
+  await page.evaluate(() => window.__store.update((d) => { d.bodies[0].node = { t: "prim", kind: "cylinder", p: { w: 20, d: 20, h: 20, r: 0, c: 0 }, mods: [] }; }, "Cylinder"));
+  await waitIdle(page);
+  expect(await page.evaluate(() => window.__app.scene.views.get("b1").data.faceGroups.length)).toBe(3);
+  expect(modelText((await exportBytes(page, "3mf")).bytes), "stale paint is not exported").not.toContain("mmu_segmentation");
+  await page.click("#bb-printsim");
+  await page.waitForSelector("#ps-printer");
+  expect(await page.evaluate(() => window.__app.advanced.printSim.st.paint.has("b1")), "the sim drops it too").toBe(false);
+  await page.click("#ps-frow-1");
+  await clickSide(page, "top");
+  await page.click("#cmd-ok");
+  const info = await page.evaluate(() => {
+    const m = window.__app.advanced.printSim.st.paint.get("b1"), fg = window.__app.scene.views.get("b1").data.faceGroups;
+    return { size: m.size, tris: [...m.keys()].reduce((n, f) => n + fg[f][1] / 3, 0) };
+  });
+  expect(info.size).toBe(1);
+  const { objects } = await readTriangles(page, (await exportBytes(page, "3mf")).bytes);
+  const coded = objects[0].filter((t) => t.seg);
+  expect(coded.length).toBe(info.tris);
+  expect(coded.every((t) => t.seg === "8" && t.paint === "8")).toBe(true);
+});
+
+test("a damaged printPaint in a design file is ignored, not fatal", async () => {
+  for (const bad of ["junk", { slots: 5, of: {} }, { slots: [], of: { b1: 1 }, faces: { b1: null } }, { slots: [], of: { b1: 1 }, faces: { b1: { n: 6, f: 7 } } }]) {
+    const doc = cube();
+    doc.printPaint = bad;
+    await loadDoc(page, doc);
+    const { objects, model } = await readTriangles(page, (await exportBytes(page, "3mf")).bytes);
+    expect(model, JSON.stringify(bad)).not.toContain("mmu_segmentation");
+    expect(objects[0]).toHaveLength(12);
+  }
+  expect(errors).toEqual([]);
+});

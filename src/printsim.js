@@ -2,7 +2,7 @@
 // spirit of a slicer preview (Orca Slicer): layers with walls, infill and top/bottom skins,
 // overhangs, normal or tree supports, a strength / weak-point map and print estimates.
 // It never makes G-code: it is a preview to learn from, not a slicer.
-import { packPaint, unpackPaint } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
+import { packPaint, unpackPaint, MAX_SLOTS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 import * as THREE from "three";
 import { store, findBody } from "./store.js";
 import { el, fmt } from "./util.js";
@@ -948,6 +948,13 @@ export function initPrintSim(app, X) {
     return !same;
   };
   store.on((kind) => { if (kind === "load") unpackPaint(store.doc.printPaint, st); else if (kind === "change") mirrorPaint(); }); // after an undo the design's older copy gets the sim's paint again
+  // face paint is by face number: a body edited into another number of faces loses it (the 3MF export skips it too)
+  function dropStalePaint() {
+    for (const id of [...st.paint.keys()]) {
+      const n = st.faceN && st.faceN.get(id), now = scene.views.get(id)?.data?.faceGroups?.length;
+      if (n != null && now != null && n !== now) { st.paint.delete(id); st.faceN.delete(id); }
+    }
+  }
   function filamentsChanged() {
     if (mirrorPaint()) app.projects.changed();
     buildPlate();
@@ -1024,6 +1031,7 @@ export function initPrintSim(app, X) {
       st.slotOf.set(id, st.brush); st.paint.delete(id);
       return true;
     }
+    dropStalePaint(); // jumpstart-3d: painted 3MF
     const m = st.paint.get(id) || new Map();
     const before = m.get(f);
     if (st.paintTool === "erase" || st.brush === st.slotOf.get(id)) m.delete(f); else m.set(f, st.brush);
@@ -1227,6 +1235,7 @@ export function initPrintSim(app, X) {
   function renderPanel() { if (def && app.command === def) def.render(); }
   function open() {
     st.ids = targetIds();
+    dropStalePaint(); // jumpstart-3d: painted 3MF
     root.visible = true;
     vp.grid.visible = false;
     buildPlate();
@@ -1259,7 +1268,7 @@ export function initPrintSim(app, X) {
               const cur = st.slotOf.get(b.id) ?? 0;
               const fs = el("select", { class: "num psfil", id: "ps-slot-" + b.id, "aria-label": "Filament for " + b.name, title: "Which filament prints this body" },
                 ...st.slots.map((q, i) => el("option", { value: i, selected: i === cur, style: { background: q.color, color: lightText(q.color) } }, "F" + (i + 1))),
-                el("option", { value: "new" }, "+ New"));
+                ...(st.slots.length < MAX_SLOTS ? [el("option", { value: "new" }, "+ New")] : [])); // jumpstart-3d: painted 3MF
               fs.style.background = st.slots[cur]?.color || "";
               fs.style.color = lightText(st.slots[cur]?.color);
               fs.onclick = (e) => e.stopPropagation();
@@ -1305,7 +1314,7 @@ export function initPrintSim(app, X) {
               ci, el("b", {}, "F" + (sl + 1)), el("span", {}, where), el("i", {}, g ? fmt(g, 1) + " g" : used.includes(sl) ? "" : "not used"));
             fl.append(rowEl);
           }
-          const canAdd = st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, 24));
+          const canAdd = st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, MAX_SLOTS)); // jumpstart-3d: painted 3MF (the file codes 15 filaments)
           body.append(el("div", { class: "subhead" }, `Filaments (${used.length} used)`), fl);
           if (canAdd) fl.append(el("button", { class: "btn psadd", id: "ps-addfil", onclick: () => { st.slots.push({ color: nextFilColor() }); st.brush = st.slots.length - 1; renderPanel(); } }, "+ Add filament"));
           // color painting

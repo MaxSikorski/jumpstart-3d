@@ -40,8 +40,12 @@ export function packPaint(st, bodyIds, faceCount) {
   return { slots: st.slots.map((q) => q.color), of, faces };
 }
 
+const validPaint = (pp) => !!pp && Array.isArray(pp.slots) && !!pp.of && typeof pp.of === "object"
+  && Object.values(pp.faces || {}).every((e) => e && typeof e.f === "object" && e.f);
+
 // The other way: fill the sim's state from the design (or empty it when the design has none).
 export function unpackPaint(pp, st) {
+  if (!validPaint(pp)) pp = null; // a hand-edited or damaged file must not break the sim
   st.slots = pp ? pp.slots.map((color) => ({ color })) : [];
   st.slotOf = new Map(pp ? Object.entries(pp.of) : []);
   st.faceN = new Map(pp ? Object.entries(pp.faces || {}).map(([id, e]) => [id, e.n]) : []);
@@ -51,7 +55,7 @@ export function unpackPaint(pp, st) {
 // The paint code of every triangle of one built body (index = triangle number), or null when none of its
 // triangles needs one. Filament 1 is what a slicer uses for an object without paint, so it gets no attribute.
 export function triangleCodes(pp, id, data) {
-  if (!pp || !pp.of) return null;
+  if (!validPaint(pp)) return null;
   const groups = data.faceGroups || [], T = data.triangles.length / 3, slot = new Array(T).fill(pp.of[id] ?? 0);
   const fp = pp.faces && pp.faces[id];
   if (fp && fp.n === groups.length) {
