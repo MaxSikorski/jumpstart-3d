@@ -155,7 +155,10 @@ export function baseAddress() {
 // { ok, url, codec } or { ok: false, reason: "unsupported" | "large", message }
 export async function makeLink(doc, base = baseAddress()) {
   const env = { app: "jumpstart-3d", version: 1, doc: snapshot(doc) };
-  try { validateEnvelope(env); } catch (e) { return { ok: false, reason: "unsupported", message: e instanceof ShareError && e.kind === "unsupported" ? e.message : "This design can't go in a link. Use a project file for this design." }; }
+  try { validateEnvelope(env); } catch (e) {
+    if (e instanceof ShareError && e.kind === "toolarge") return { ok: false, reason: "large", message: /project file/.test(e.message) ? e.message : MAX_PROBLEM };
+    return { ok: false, reason: "unsupported", message: e instanceof ShareError && e.kind === "unsupported" ? e.message : "This design can't go in a link. Use a project file for this design." };
+  }
   const bytes = new TextEncoder().encode(JSON.stringify(env));
   if (bytes.length > LIMITS.JSON_BYTES) return { ok: false, reason: "large", message: MAX_PROBLEM };
   const z = await deflateRaw(bytes);
