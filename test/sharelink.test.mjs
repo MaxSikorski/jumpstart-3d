@@ -436,6 +436,17 @@ test("print paint (painted 3MF): a painted design round-trips; anything outside 
   throwsShare(() => validateEnvelope(JSON.parse(JSON.stringify(env(doc)).replace('"of":{', '"of":{"__proto__":1,'))), "damaged");
 });
 
+test("print paint: the painted-face cap counts every body together, not each body alone", () => {
+  const name = "painted-cube", n = LIMITS.PAINT_FACES / 2; // 2048 faces per body
+  const two = (each) => (d) => {
+    d.bodies.push({ ...structuredClone(d.bodies[0]), id: "b2", name: "Cube 2", seq: 2 });
+    const f = (count) => Object.fromEntries(Array.from({ length: count }, (_, i) => [i, 1]));
+    d.printPaint.faces = { b1: { n: 2 * n, f: f(each) }, b2: { n: 2 * n, f: f(each) } };
+  };
+  validateEnvelope(valid(two(n), name)); // 2048 + 2048 = 4096: exactly the cap
+  bad(two(n + 1), "toolarge", /too many painted faces/, name); // 2049 + 2049 = 4098: each body is under the cap, the total is not
+});
+
 test("names are only ever text: a literal element in a name survives as text", async () => {
   const name = '<img src=x onerror="alert(1)">';
   const r = await makeLink(valid((d) => { d.name = name; }, "beginner-box").doc, BASE);
