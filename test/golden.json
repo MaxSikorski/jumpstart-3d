@@ -401,14 +401,14 @@
     "3mf": "0ead503a3dd831a2c8332124d54dadbdb5893edce2fba28f9b5e3b5e0e78b0e8",
     "step": "d09b5fef2ff4698a611117f7608b85a235d207dd09ecc569334f11b040d77848"
   },
-  "advanced-shell-chain.json": {
+  "advanced-shell-chain-cone.json": {
     "volumes": {
-      "b1 Box": 3176.5
+      "b1 Cone": 1629.1
     },
-    "stlTriangles": 324,
-    "stl": "1da688bb7944c51e81b59f9265aeed158a7caad8b37ec07b1e02daf5e5fd6eeb",
-    "obj": "7f363269aecbe848f43fe467f7fca89711a32d40bc0a30382418ea931f75ec63",
-    "3mf": "a34d1e238952ba4801cd87bdcf3562fe7051dee67cbc331d49607fea3fc1ba3e",
-    "step": "ce8ceed272bf628449c1a66f4d10f1797b7ad175f977dd29a605e8e8d7de8930"
+    "stlTriangles": 1600,
+    "stl": "952bca0ac2fff4cfa0b74ecf87ce7fb455a1ff91e011b79c47f285d10f42c8fb",
+    "obj": "852b7bf5bc7fe35404d7bb95e502600d1e4b39b0cc0df051705f75f08f59c632",
+    "3mf": "1d4451efa1b7eda62f67a1a5f190ff35e08956bfe2b9ae1e2d5cdc31d8ce8b97",
+    "step": "a8d018afd89f312978822421dd36b5659d71998d96c7fb92fb95bf223b2a6a3d"
   }
 }
