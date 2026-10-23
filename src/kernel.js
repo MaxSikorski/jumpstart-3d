@@ -2870,6 +2870,8 @@ export function buildBodies(bodies, quality = 1) {
   for (const b of bodies) {
     try {
       const shape = evalNode(b.node);
+      // jumpstart-3d: a boolean can leave nothing (two boxes that do not meet, a hole that cuts all of a shape); meshing it would throw a bare engine exception
+      if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
       const mesh = meshShape(shape, quality);
       // jumpstart-3d: only new Combine/Group actions use the count to create bodies.
       const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -2888,9 +2890,23 @@ export function buildBodies(bodies, quality = 1) {
   return out;
 }
 
+// jumpstart-3d: the engine throws C++ exceptions as WebAssembly.Exception objects, which have no .message and print as "[object WebAssembly.Exception]"
+const NOTHING_LEFT = "Nothing is left: these shapes don't overlap, or the holes cut all of it away.";
+export function errorText(e) {
+  if (typeof WebAssembly.Exception === "function" && e instanceof WebAssembly.Exception) {
+    try { return OC.getExceptionMessage(e).filter(Boolean).join(": "); } catch (x) { return "Standard_Failure"; }
+  }
+  return (e && e.message) || String(e);
+}
+// empty means no geometry at all: a body of curves only (a wire from a STEP file) is not empty, it shows as lines
+function isEmptyShape(shape) {
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_VERTEX, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try { return !ex.More(); } finally { ex.delete(); }
+}
+
 function friendly(e) {
   if (typeof e === "number") return "The geometry kernel couldn't build this shape";
-  const msg = (e && e.message) || String(e);
+  const msg = errorText(e);
   if (/BRep|Standard_|StdFail|NotDone/i.test(msg)) return "The geometry kernel couldn't build this shape";
   return msg;
 }
@@ -2898,7 +2914,7 @@ function friendly(e) {
 export function exportStep(bodies) {
   const shapes = [];
   for (const b of bodies) {
-    try { shapes.push(transformShape(evalNode(b.node), b.m)); } catch (e) {}
+    try { const shape = transformShape(evalNode(b.node), b.m); if (isEmptyShape(shape)) shape.delete(); else shapes.push(shape); } catch (e) {}
   }
   if (!shapes.length) throw new Error("Nothing to export");
   const comp = shapes.length === 1 ? shapes[0] : R.makeCompound(shapes);

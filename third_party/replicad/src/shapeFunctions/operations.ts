@@ -16,7 +16,7 @@ import {
 } from "../geom.js";
 import { makePlane } from "../geomHelpers.js";
 import { getOC } from "../oclib.js";
-import { GCWithScope } from "../register.js";
+import { GCWithScope, localGC } from "../register.js";
 import { unwrapShape, type ShapeInput } from "./shapeInput.js";
 import { iterTopo } from "./topology.js";
 
@@ -60,6 +60,68 @@ const configureGlue = (
   }
 };
 
+// jumpstart-3d: replicad merged faces after every boolean with SimplifyResult(true, true, 1e-3), and on round faces
+// that merge goes wrong. A torus (two faces) that a boolean leaves untouched becomes one face with no boundary
+// loops, which the mesher turns into no triangles: the torus vanishes from views and exports. On a sphere whose seam
+// is split, merging edges and faces together rebuilds a wrong face (an intersect gave 4188.79 mm3 instead of 2360.38).
+// A result with no spherical or toroidal face is merged exactly as before. Otherwise the same kind of merge (edges, faces, B-splines) runs with the
+// edges of those faces kept, so flat faces still merge and the round ones are left as the boolean made them.
+function simplifiedResult(builder: {
+  Shape(): TopoDS_Shape;
+  SimplifyResult(
+    unifyEdges: boolean,
+    unifyFaces: boolean,
+    angularTolerance: number
+  ): void;
+}): TopoDS_Shape {
+  const oc = getOC();
+  const [r, gc] = localGC();
+  try {
+    const raw = r(builder.Shape());
+    const round: TopoDS_Face[] = [];
+    const faces = r(
+      new oc.TopExp_Explorer(
+        raw,
+        oc.TopAbs_ShapeEnum.TopAbs_FACE,
+        oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+      )
+    );
+    for (; faces.More(); faces.Next()) {
+      const face = r(oc.TopoDS.Face(r(faces.Current())));
+      const surface = r(new oc.BRepAdaptor_Surface(face, true));
+      const type = surface.GetType();
+      if (
+        type === oc.GeomAbs_SurfaceType.GeomAbs_Sphere ||
+        type === oc.GeomAbs_SurfaceType.GeomAbs_Torus
+      ) {
+        round.push(face);
+      }
+    }
+    if (!round.length) {
+      builder.SimplifyResult(true, true, 1e-3);
+      return builder.Shape();
+    }
+    const unify = r(
+      new oc.ShapeUpgrade_UnifySameDomain(raw, true, true, true)
+    );
+    for (const face of round) {
+      const edges = r(
+        new oc.TopExp_Explorer(
+          face,
+          oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+          oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+        )
+      );
+      for (; edges.More(); edges.Next()) unify.KeepShape(r(edges.Current()));
+    }
+    unify.SetAngularTolerance(1e-3);
+    unify.Build();
+    return unify.Shape();
+  } finally {
+    gc();
+  }
+}
+
 /** Builds a raw shape by fusing two shapes. */
 export function fuseShapes(
   leftInput: ShapeInput,
@@ -74,8 +136,7 @@ export function fuseShapes(
 
   configureGlue(builder, optimisation);
   builder.Build();
-  builder.SimplifyResult(true, true, 1e-3);
-  return builder.Shape();
+  return simplifiedResult(builder); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
 /** Builds a raw shape by cutting a tool shape from another shape. */
@@ -92,8 +153,7 @@ export function cutShape(
 
   configureGlue(builder, optimisation);
   builder.Build();
-  builder.SimplifyResult(true, true, 1e-3);
-  return builder.Shape();
+  return simplifiedResult(builder); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
 /** Builds a raw shape containing the intersection of two shapes. */
@@ -108,8 +168,7 @@ export function intersectShapes(
   );
 
   builder.Build();
-  builder.SimplifyResult(true, true, 1e-3);
-  return builder.Shape();
+  return simplifiedResult(builder); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
 const signedDistanceToPlane = (point: SimplePoint, plane: Plane): number =>
