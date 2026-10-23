@@ -1877,8 +1877,8 @@ export function initAdvanced(app) {
     return cands.length ? cands[0].ref : null;
   }
   // a sketch's plane, centred on what is drawn in it
-  function sketchRef(id) {
-    const sk = findSketch(store.view, id);
+  function sketchRef(id, doc = store.view) { // jumpstart-3d: sketch move passes store.doc
+    const sk = findSketch(doc, id);
     if (!sk) return null;
     const M = planeMatrix(sk.plane);
     const box = new THREE.Box3();
@@ -4386,6 +4386,23 @@ export function initAdvanced(app) {
     // rot: the turn so far (about the selection center), shown as X/Y/Z angles
     const st = { ids: app.sel.filter((id) => !app.isLocked(id)), d: [0, 0, 0], rot: new THREE.Quaternion(), copy: false, drag: opts.drag || "ground", center: new THREE.Vector3() };
     if (st.ids.length < app.sel.length) app.toast("Locked bodies stay where they are.");
+    // jumpstart-3d: sketch move. Move/Copy takes one sketch or bodies, never both: an extrude would move twice.
+    // A sketch moves by changing its plane; the curves stay as drawn and the extrudes made from it follow.
+    st.sketch = !st.ids.length && selSketch && findSketch(store.doc, selSketch) ? selSketch : null;
+    let shownSketch = null;
+    const showSketch = () => { // a hidden sketch is drawn while it is moved and stays hidden afterwards
+      if (shownSketch === st.sketch) return;
+      shownSketch = scene.state.forceSketch = st.sketch;
+      scene.syncSketches(store.view);
+    };
+    function pickSketch(e) {
+      const hit = vp.pick(e, scene.regionMeshes())[0];
+      if (hit) return { sketch: hit.object.userData.region.sketch, point: hit.point.clone(), dist: hit.distance };
+      const c = pickSketchCurve(e);
+      const sk = c && findSketch(store.view, c.sketch);
+      const point = sk && vp.rayPlane(e, new THREE.Plane().setFromNormalAndCoplanarPoint(V3(sk.plane.n).normalize(), V3(sk.plane.o)));
+      return point ? { sketch: c.sketch, point, dist: vp.camera.position.distanceTo(point) } : null;
+    }
     const inputs = [];
     let drag = null, hotArrow = null;
     // gizmo: X/Y/Z arrows for moving along an axis, a ball for free 3D moves
@@ -4426,7 +4443,7 @@ export function initAdvanced(app) {
     giz.visible = false;
     vp.overlay.add(giz);
     const sizeGiz = () => {
-      if (!st.ids.length) { giz.visible = false; return; }
+      if (!st.ids.length && !st.sketch) { giz.visible = false; return; }
       giz.visible = true;
       giz.position.copy(st.center).add(new THREE.Vector3(...st.d));
       giz.scale.setScalar(vp.pixelSize(giz.position) * 70);
@@ -4449,12 +4466,14 @@ export function initAdvanced(app) {
     const recenter = () => {
       const box = new THREE.Box3();
       for (const id of st.ids) { const b = findBody(store.doc, id); const bb = b && scene.boxWithMatrix(id, M4(b.m)); if (bb) box.union(bb); }
+      const sr = st.sketch && sketchRef(st.sketch, store.doc); // jumpstart-3d: sketch move
+      if (sr) box.expandByPoint(V3(sr.center));
       st.center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
     };
     const def = {
       title: "Move / Copy",
       keepSelection: true,
-      valid: () => st.ids.length > 0,
+      valid: () => st.ids.length > 0 || !!st.sketch,
       canOk: () => def.valid() && (st.d.some((v) => v) || Math.abs(st.rot.w) < 1 - 1e-9),
       mat() {
         const c = st.center;
@@ -4466,6 +4485,17 @@ export function initAdvanced(app) {
       apply(doc) {
         const T = def.mat();
         st.copyIds = st.copyIds || {};
+        const sk = st.sketch && findSketch(doc, st.sketch); // jumpstart-3d: sketch move
+        if (sk) {
+          let t = sk;
+          if (st.copy) {
+            t = clone(sk);
+            t.id = st.copyIds[sk.id] || (st.copyIds[sk.id] = uid("s"));
+            t.seq = nextSeq(doc); t.name = nextSketchName(doc); t.hidden = false;
+            doc.sketches.push(t);
+          }
+          t.plane = { o: arr3(V3(sk.plane.o).applyMatrix4(T)), x: arr3(V3(sk.plane.x).transformDirection(T)), n: arr3(V3(sk.plane.n).transformDirection(T)) };
+        }
         for (const id of st.ids) {
           const b = findBody(doc, id);
           if (!b) continue;
@@ -4479,9 +4509,12 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, st.copy ? "Copy" : "Move"); },
-      hint: () => st.ids.length ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (Shift: 1° steps). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes to move.",
+      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (Shift: 1° steps). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis.") : "Click the shapes or a sketch to move.",
       build(body) {
-        body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : "Click bodies", st.ids.length ? () => { st.ids = []; changed(); } : null));
+        body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : st.sketch ? el("b", {}, findSketch(store.doc, st.sketch).name || "Sketch") : "Click bodies or a sketch", st.ids.length || st.sketch ? () => { st.ids = []; st.sketch = null; changed(); } : null));
+        // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
+        if (store.doc.sketches.length) body.append(row("Sketch", el("select", { class: "num", id: "mv-sketch", onchange: (e) => { st.sketch = e.target.value || null; if (st.sketch) st.ids = []; changed(); } },
+          el("option", { value: "" }, "…or pick a sketch"), ...store.doc.sketches.map((k) => el("option", { value: k.id, selected: st.sketch === k.id }, k.name || "Sketch"))), "mv-sketch"));
         body.append(row("Drag shape", seg([["ground", "Free on ground"], ["screen", "Free in 3D"]], st.drag, (v) => { st.drag = v; def.render(); }, "mv-drag")));
         body.append(el("div", { class: "subhead" }, "Move by (" + getUnit() + ")"));
         const r3 = el("div", { class: "row3" });
@@ -4505,10 +4538,10 @@ export function initAdvanced(app) {
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "mv-copy", checked: st.copy, onchange: (e) => { st.copy = e.target.checked; changed(false); } }), "Create a copy"));
         body.append(el("button", { class: "btn", id: "mv-reset", onclick: () => { st.d = [0, 0, 0]; st.rot.identity(); changed(); } }, "Reset"));
       },
-      start() { recenter(); scene.setSelected(st.ids); vp.request(); },
+      start() { recenter(); scene.setSelected(st.ids); showSketch(); vp.request(); },
       cleanup() { vp.afterRender.delete(sizeGiz); vp.overlay.remove(giz); tag.remove(); scene.setSelected([]); vp.request(); },
       handler: {
-        wantsTouch: (e) => !!(pickGiz(e) || scene.pickFace(e)),
+        wantsTouch: (e) => !!(pickGiz(e) || scene.pickFace(e) || pickSketch(e)),
         hover(e) {
           if (drag) return;
           const h = pickGiz(e);
@@ -4516,14 +4549,21 @@ export function initAdvanced(app) {
           if (h) { vp.canvas.style.cursor = "grab"; scene.setHovered(null); return; }
           const f = scene.pickFace(e);
           scene.setHovered(f ? f.body : null);
-          vp.canvas.style.cursor = f ? (st.ids.includes(f.body) ? "move" : "pointer") : "default";
+          const sh = !f && pickSketch(e); // jumpstart-3d: sketch move
+          vp.canvas.style.cursor = f ? (st.ids.includes(f.body) ? "move" : "pointer") : sh ? (sh.sketch === st.sketch ? "move" : "pointer") : "default";
         },
         down(e) {
           const h = pickGiz(e);
           if (h && h.userData.ring) return startRotate(e, h);
           if (h) return startDrag(e, h.userData.axis, h.userData.dir);
           const f = scene.pickFace(e);
+          const sh = pickSketch(e); // jumpstart-3d: sketch move. A body in front of the sketch wins.
+          if (sh && (!f || sh.dist < vp.camera.position.distanceTo(f.point))) {
+            if (st.sketch !== sh.sketch) { st.sketch = sh.sketch; st.ids = []; changed(); }
+            return startDrag(e, st.drag === "screen" ? "free" : "ground", null, sh.point);
+          }
           if (!f) return true;
+          st.sketch = null; // jumpstart-3d: sketch move
           if (e.shiftKey) {
             const i = st.ids.indexOf(f.body);
             if (i >= 0) st.ids.splice(i, 1); else st.ids.push(f.body);
@@ -4542,7 +4582,7 @@ export function initAdvanced(app) {
     let ringReadout = null, keyRing = null;
     // arrow keys move it the way it looks on screen (Ctrl/Cmd + Up/Down: lift); , and . turn it
     def.arrowKey = (e) => {
-      if (!st.ids.length || e.altKey) return false;
+      if ((!st.ids.length && !st.sketch) || e.altKey) return false;
       const d = app.arrowDelta(e, (app.gridStep() || 1) * (e.shiftKey ? 10 : 1));
       st.d = st.d.map((v, i) => +(v + d.getComponent(i)).toFixed(6));
       inputs.forEach((f, i) => f.setValue && f.setValue(st.d[i]));
@@ -4551,7 +4591,7 @@ export function initAdvanced(app) {
     };
     // , and . : turn 1° (Shift: 15°) around the ring last dragged (the blue Z ring at first)
     def.turnKey = (e) => {
-      if (!st.ids.length || e.ctrlKey || e.metaKey || e.altKey) return false;
+      if ((!st.ids.length && !st.sketch) || e.ctrlKey || e.metaKey || e.altKey) return false;
       const ringObj = keyRing || rings[2], axis = ringObj.userData.dir.clone();
       const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
       st.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, (s * Math.PI) / 180));
@@ -4654,6 +4694,7 @@ export function initAdvanced(app) {
     function changed(rerender = true) {
       if (rerender) { recenter(); def.render(); }
       scene.setSelected(st.ids);
+      showSketch();
       schedulePreview(def);
       def.refreshOk();
       vp.request();
@@ -5893,7 +5934,7 @@ export function initAdvanced(app) {
     } else if (selSketch) {
       const s = findSketch(doc, selSketch);
       if (s) browser.append(el("div", { class: "props" }, el("dl", {}, el("dt", {}, "Profiles"), el("dd", {}, String(regionsFor(s).length)), el("dt", {}, "Curves"), el("dd", {}, String(s.ents.length))),
-        el("div", { style: { display: "flex", gap: "6px", marginTop: "8px" } }, el("button", { class: "btn", onclick: () => app.enterSketch(s.id) }, "Edit sketch"), el("button", { class: "btn danger", onclick: () => deleteSelected() }, "Delete"))));
+        el("div", { style: { display: "flex", gap: "6px", marginTop: "8px" } }, el("button", { class: "btn", onclick: () => app.enterSketch(s.id) }, "Edit sketch"), el("button", { class: "btn", id: "prop-move-sketch", onclick: () => moveCmd() }, "Move/Copy"), el("button", { class: "btn danger", onclick: () => deleteSelected() }, "Delete"))));
     }
   }
 
