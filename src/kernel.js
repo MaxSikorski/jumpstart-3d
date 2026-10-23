@@ -1803,11 +1803,12 @@ export function cylinderInfo(shape, q) {
 }
 // A helix wire made of one edge per turn: a single long helical edge makes sweeps
 // and booleans slow and unreliable after a dozen turns.
+// jumpstart-3d: the edges are cut at (k - shift) * pitch, never within 1e-3 pitch of either end (no tiny edge).
 function helixWire(pitch, height, radius, center, dir, left, shift = 0) {
   const surf = new OC.Geom_CylindricalSurface(R.makeAx3(center, dir), radius);
   const mw = new OC.BRepBuilderAPI_MakeWire();
-  const cuts = [0];
-  for (let k = 1; (k - shift) * pitch < height - 1e-9; k++) cuts.push((k - shift) * pitch);
+  const tiny = 1e-3 * pitch, cuts = [0];
+  for (let k = Math.floor(shift); (k - shift) * pitch < height - tiny; k++) if ((k - shift) * pitch > tiny) cuts.push((k - shift) * pitch);
   cuts.push(height);
   const sgn = left ? -1 : 1;
   for (let k = 0; k + 1 < cuts.length; k++) {
@@ -2348,7 +2349,11 @@ function threadGroove(shape, mod) {
     const rk = r - sgn * depth + (sgn * wMax) / tan30;
     pts = [[r - sgn * depth, 0], [rk, wMax], [outR, wMax], [outR, -wMax], [rk, -wMax]];
   }
-  const helix = helixWire(p, b - a, r, S, u, !!mod.left, 0.5);
+  // jumpstart-3d: the cut plane at each end (along the helix) must not land on a break between two helix edges, or the boolean
+  // leaves sliver triangles there: put the breaks in the middle of the wider gap between the two planes' phases
+  const ph = (h) => ((h / p) % 1 + 1) % 1, p0 = ph(-a), p1 = ph(L - a), gap = (p1 - p0 + 1) % 1;
+  const brk = gap >= 0.5 ? p0 + gap / 2 : p1 + (1 - gap) / 2;
+  const helix = helixWire(p, b - a, r, S, u, !!mod.left, (1 - (brk % 1)) % 1);
   const sp = helix.startPoint.toTuple();
   let rad = [sp[0] - S[0], sp[1] - S[1], sp[2] - S[2]];
   const along = rad[0] * u[0] + rad[1] * u[1] + rad[2] * u[2];
