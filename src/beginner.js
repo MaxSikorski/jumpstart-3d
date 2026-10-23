@@ -9,7 +9,8 @@ import { FACEPAT } from "./facepat.js";
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
-import { dragAngle, turnAbout, pivotOf, arcPoints, nearestArc, snapSwitch } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { onEscape } from "./pivot.js"; // jumpstart-3d: pivot
+import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, turnFeedback } from "./rotationui.js"; // jumpstart-3d: rotation access
 import {
   M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodiesInDoc, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
@@ -486,10 +487,10 @@ export function initBeginner(app) {
     H.add(m);
     return m;
   });
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.008, 4, 96), new THREE.MeshBasicMaterial({ color: 0x1f4fa8, transparent: true, opacity: 0.6 }));
-  ring.visible = false;
-  H.add(ring);
-  const dimLabels = { w: vp.addLabel(), d: vp.addLabel(), h: vp.addLabel(), z: vp.addLabel(), a: vp.addLabel("angle") };
+  const fb = turnFeedback(vp); // jumpstart-3d: pivot. the dashed ring and the angle pill while turning (they replace the solid ring and the readout in the middle)
+  const pv = app.pivot; // jumpstart-3d: pivot
+  let pivFields = null; // the Pivot X/Y/Z boxes in the inspector, kept in step with the dot every frame
+  const dimLabels = { w: vp.addLabel(), d: vp.addLabel(), h: vp.addLabel(), z: vp.addLabel() };
   // ---------------------------------------------------------------- Tab: type sizes on the shape (like Tinkercad)
   const DIMS = ["w", "d", "h", "z"], DIM_NAME = { w: "Width", d: "Depth", h: "Height", z: "Lift" };
   let dimEdit = null; // { id, i, input }
@@ -597,7 +598,7 @@ export function initBeginner(app) {
     H.visible = !!f;
     for (const l of Object.values(dimLabels)) l.hidden = true;
     if (dimEdit && (!f || f.body.id !== dimEdit.id)) setTimeout(closeDimEdit, 0);
-    if (!f) { ring.visible = false; return; }
+    if (!f) { pv.dot.show(null, "beginner"); return; } // jumpstart-3d: pivot
     const { m, min, max } = f;
     const hs = vp.touchMode ? 1.8 : 1; // bigger handles for fingers
     const cx = (min.x + max.x) / 2, cy = (min.y + max.y) / 2;
@@ -631,7 +632,9 @@ export function initBeginner(app) {
     lift.visible = !adv; // Advanced has its own Move tool
     // rotation arcs around the world-space box
     const wb = app.scene.bodyTightBox(f.body.id) || new THREE.Box3(min, max);
-    const c = wb.getCenter(new THREE.Vector3());
+    const c = pv.get([f.body.id]) || wb.getCenter(new THREE.Vector3()); // jumpstart-3d: pivot. the arcs are drawn round the pivot (the middle unless it was moved)
+    pv.dot.show(app.mode === "beginner" ? c : null, "beginner");
+    if (pivFields && pivFields.root.isConnected) pivFields.sync();
     const size = wb.getSize(new THREE.Vector3());
     const R = Math.max(size.x, size.y) / 2 + ps * 26;
     const cam = vp.camera.position;
@@ -642,19 +645,13 @@ export function initBeginner(app) {
       h.position.copy(c);
       // orient arc toward the camera side
       const toCam = new THREE.Vector3().subVectors(cam, c);
-      if (ax === "z") { h.position.z = wb.min.z; h.rotation.set(0, 0, Math.atan2(toCam.y, toCam.x) - Math.PI / 4.8); }
+      if (ax === "z") { h.rotation.set(0, 0, Math.atan2(toCam.y, toCam.x) - Math.PI / 4.8); } // jumpstart-3d: pivot. no longer down at the bottom plane
       else if (ax === "x") { h.rotation.set(0, Math.PI / 2, 0); h.rotateZ(Math.atan2(toCam.z, -toCam.y) - Math.PI / 4.8 + Math.PI); }
       else { h.rotation.set(Math.PI / 2, 0, 0); h.rotateZ(Math.atan2(toCam.z, toCam.x) - Math.PI / 4.8); }
       h.material.opacity = 1;
       h.visible = !adv && (!drag || (drag.kind === "rot" && drag.axis === ax));
       h.scale.multiplyScalar(hot === h ? 1.02 : 1);
     });
-    if (drag && drag.kind === "rot") {
-      ring.visible = true;
-      ring.position.copy(drag.center);
-      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), drag.axisV);
-      ring.scale.setScalar(drag.radius);
-    } else ring.visible = false;
     // dimension labels while hovering or dragging a size handle
     const editing = dimEdit && dimEdit.id === f.body.id;
     if (editing || (drag ? drag.kind === "size" || drag.kind === "height" : hot && /size|height/.test(hot.userData.handle.type))) {
@@ -673,12 +670,6 @@ export function initBeginner(app) {
         lab("z", dimLabels.z, dimValue(f, "z"), pz.clone().applyMatrix4(m.clone().invert()));
         dimLabels.z.textContent = "↑ " + showLen(wz, 2);
       }
-    }
-    if (drag && drag.kind === "rot") {
-      const s = vp.project(drag.center);
-      dimLabels.a.hidden = false;
-      dimLabels.a.textContent = fmt(drag.angle, 1) + "°";
-      dimLabels.a.style.transform = `translate(${s[0]}px, ${s[1]}px) translate(-50%,-50%)`;
     }
   }
   vp.afterRender.add(updateHandles);
@@ -719,6 +710,7 @@ export function initBeginner(app) {
   let multi = false;
   const handler = {
     hover(e) {
+      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot
       const h = pickHandle(e);
       if (h !== hot) { hot = h; vp.request(); }
       if (h) { app.scene.setHovered(null); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
@@ -733,9 +725,11 @@ export function initBeginner(app) {
       const hits = vp.pick(e, app.scene.regionMeshes());
       if (hits.length) app.enterSketch(hits[0].object.userData.region.sketch);
     },
-    wantsTouch(e) { return !!(pickHandle(e) || app.scene.pickFace(e)); },
+    wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e)); }, // jumpstart-3d: pivot
     down(e) {
       vpEl.querySelectorAll(".popover:not(.mirror-pop)").forEach((p) => p.remove());
+      const pg = pv.dotDown(e, "beginner"); // jumpstart-3d: pivot. the dot first: it only moves the pivot
+      if (pg) { drag = { kind: "pivot", move: pg.move, up: () => { drag = null; pg.finish(); }, restore: pg.cancel }; return true; }
       const h = pickHandle(e);
       rotKeys = null; // a click ends arrow-key turning (a rotation arc starts it again)
       if (h) return startHandle(e, h);
@@ -792,7 +786,7 @@ export function initBeginner(app) {
     },
     up(e) {
       if (!drag) return;
-      if (e && e.type === "pointercancel" && drag.kind === "rot") return handler.cancel(); // jumpstart-3d: rotation access. an interrupted touch turns nothing
+      if (e && e.type === "pointercancel" && (drag.kind === "rot" || drag.kind === "pivot")) return handler.cancel(); // jumpstart-3d: rotation access. an interrupted touch turns nothing
       const d = drag;
       drag = null;
       if (d.kind === "move") {
@@ -809,7 +803,7 @@ export function initBeginner(app) {
       } else if (d.up) d.up(e);
       vp.request();
     },
-    cancel() { if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); },
+    cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); },
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching
@@ -949,7 +943,7 @@ export function initBeginner(app) {
     }
     if (info.type === "rot") {
       rotKeys = { id: body.id, axis: info.axis };
-      const center = pivotOf(app.scene, body.id, M4(body.m)); // jumpstart-3d: rotation access. the body's own middle, fixed under the turn
+      const center = pv.get([body.id]); // jumpstart-3d: pivot. the body's own middle unless the pivot was moved
       if (!center) return false;
       const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[info.axis];
       const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axisV, center);
@@ -961,8 +955,10 @@ export function initBeginner(app) {
       const a0 = angOf(p0);
       const base = body.m;
       // (the shared up() clears drag before calling this one's up, so keep our own handle)
+      const orbit = app.scene.bodyTightBox(body.id), stopEsc = onEscape(() => handler.cancel()); // jumpstart-3d: pivot
+      fb.show(center, axisV, orbit ? orbit.getCenter(new THREE.Vector3()) : center); // jumpstart-3d: pivot. the dashed ring
       const rd = drag = {
-        kind: "rot", axis: info.axis, center, axisV, angle: 0, radius: h.scale.x,
+        kind: "rot", axis: info.axis, center, axisV, angle: 0, radius: h.scale.x, restore: stopEsc,
         move(ev) {
           const p = vp.rayPlane(ev, plane);
           if (!p) return;
@@ -970,10 +966,11 @@ export function initBeginner(app) {
           a = ((a + 540) % 360) - 180;
           a = dragAngle(a, ev.shiftKey); // jumpstart-3d: rotation access. 15° steps; Shift or Free: the pointer's own angle
           rd.angle = a;
+          fb.angle(a, ev); // jumpstart-3d: pivot. the pill beside the pointer
           const R = turnAbout(center, axisV, a);
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
+        up() { const a = rd.angle; drag = null; stopEsc(); fb.hide(); if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
       };
       return true;
     }
@@ -1196,10 +1193,14 @@ export function initBeginner(app) {
     body.append(el("div", { class: "subhead" }, "Turn by (°)"));
     const tr = el("div", { class: "row3" });
     ["X", "Y", "Z"].forEach((lab, i) => tr.append(el("label", {}, lab, app.numField({ value: 0, id: "insp-turn" + i, angle: true, step: 15, onCommit: (v) => turnBy(b.id, "xyz"[i], v) }))));
-    body.append(tr, el("div", { class: "subhead" }, "Dragging an arc"), snapSwitch());
+    // jumpstart-3d: pivot. Pivot X/Y/Z: where turns happen (the white dot), in world coordinates
+    body.append(tr, el("div", { class: "subhead" }, "Pivot (where turns happen)"));
+    const pf = pivFields = pv.fields("insp-piv", () => [b.id]);
+    pf.sync();
+    body.append(pf.root, el("div", { class: "subhead" }, "Dragging an arc"), snapSwitch());
   }
   function turnBy(id, ax, deg) {
-    const cur = findBody(store.doc, id), c = cur && pivotOf(app.scene, id, M4(cur.m));
+    const c = pv.get([id]); // jumpstart-3d: pivot
     if (!c || !deg || app.isLocked(id)) return;
     const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[ax];
     transformBodies([id], turnAbout(c, axisV, deg), `Turn ${ax.toUpperCase()} ${deg}°`);
@@ -1207,12 +1208,13 @@ export function initBeginner(app) {
   function rotate90(id, ax) {
     const box = app.scene.bodyTightBox(id);
     const cur = findBody(store.doc, id);
-    const c = pivotOf(app.scene, id, M4(cur.m)); // jumpstart-3d: rotation access. the body's own middle (not the world box's)
+    const c = pv.get([id]); // jumpstart-3d: pivot. the body's own middle (not the world box's) unless the pivot was moved
+    if (!c) return;
     const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[ax];
     const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, -Math.PI / 2)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
     const next = M4(cur.m).premultiply(R);
     const nb = app.scene.boxWithMatrix(id, next);
-    if (nb) next.premultiply(new THREE.Matrix4().makeTranslation(0, 0, box.min.z - nb.min.z));
+    if (nb && !pv.isCustom([id])) next.premultiply(new THREE.Matrix4().makeTranslation(0, 0, box.min.z - nb.min.z));
     store.update((doc) => { findBody(doc, id).m = arr(next); }, "Rotate");
   }
 
@@ -1222,7 +1224,7 @@ export function initBeginner(app) {
   function rotateByKey(e) {
     if (!rotKeys || app.sel.length !== 1 || app.sel[0] !== rotKeys.id || !findBody(store.doc, rotKeys.id) || app.isLocked(rotKeys.id)) { rotKeys = null; return false; }
     const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
-    const cur = findBody(store.doc, rotKeys.id), c = cur && pivotOf(app.scene, rotKeys.id, M4(cur.m)); if (!c) return false; // jumpstart-3d: rotation access. the body's own middle
+    const c = pv.get([rotKeys.id]); if (!c) return false; // jumpstart-3d: pivot. the body's own middle unless the pivot was moved
     const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[rotKeys.axis];
     const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, (s * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
     transformBodies([rotKeys.id], R, `Rotate ${s > 0 ? "+" : ""}${s}°`);
