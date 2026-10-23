@@ -9,10 +9,19 @@ export const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 // "Failed to load resource" text has no URL in it, so the check is on the message's location.
 const FONT_HOSTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 
+// Known noise in one browser, matched by the exact message: WebKit reports a harmless ResizeObserver note as a page error, and on a file:// page it
+// logs a refused blob:null worker fetch (the engine still starts; the kernel test would fail if it did not).
+const NOISE = [
+  { project: /-webkit$/, message: /^ResizeObserver loop completed with undelivered notifications\.$/ },
+  { project: /^single-webkit$/, message: /^Cannot load blob:null\/[0-9a-f-]+ due to access control checks\.$/ },
+];
+
 export function watchErrors(page) {
   const errors = [];
-  page.on("pageerror", (e) => errors.push("page: " + e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !FONT_HOSTS.test(m.location().url || "")) errors.push("console: " + m.text().slice(0, 300)); });
+  const project = test.info().project.name;
+  const noise = (text) => NOISE.some((n) => n.project.test(project) && n.message.test(text));
+  page.on("pageerror", (e) => { if (!noise(e.message)) errors.push("page: " + e.message); });
+  page.on("console", (m) => { if (m.type() === "error" && !FONT_HOSTS.test(m.location().url || "") && !noise(m.text())) errors.push("console: " + m.text().slice(0, 300)); });
   return errors;
 }
 

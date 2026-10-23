@@ -28,10 +28,10 @@ const refuse = (page) => page.addInitScript((name) => {
   IDBFactory.prototype.open = function (n, ...rest) { if (n === name) throw new DOMException("The operation is insecure.", "SecurityError"); return real.call(this, n, ...rest); };
 }, DB);
 
-// the single file is opened from disk: if the browser has no private file system there, the cases that need one are skipped
+// the single file is opened from disk, and Linux WebKit has no navigator.storage.getDirectory at all: if the browser has no private file system, the cases that need one are skipped
 const needOpfs = async (page, info) => {
   const ok = await page.evaluate(() => navigator.storage.getDirectory().then(() => true, () => false));
-  test.skip(!ok && info.project.name === "single", "no origin private file system (OPFS) on file:// in this browser");
+  test.skip(!ok && (info.project.name === "single" || info.project.name.endsWith("-webkit")), "no origin private file system (OPFS) in this browser");
 };
 
 const save = (page, doc) => loadDoc(page, doc).then(() => page.evaluate(() => window.__app.projects.saveNow()));

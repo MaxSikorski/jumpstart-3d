@@ -1374,3 +1374,16 @@ test("About says forty-four tutorials and lists what the community build adds", 
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
 });
+
+test("without WebGL the loading screen says so instead of waiting forever", async ({ browser }, info) => {
+  const p = await browser.newPage();
+  try {
+    await p.addInitScript(() => {
+      const real = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...rest) { return /webgl/i.test(type) ? null : real.call(this, type, ...rest); };
+    });
+    await p.goto(info.project.use.baseURL);
+    await expect(p.locator("#loading-msg")).toContainText("WebGL is unavailable in this browser");
+    await expect(p.locator("#loading")).toBeVisible();
+  } finally { await p.close(); }
+});
