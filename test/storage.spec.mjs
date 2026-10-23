@@ -181,7 +181,7 @@ test("an edit made just before the tab closes is kept, and applied on the next v
   const rescued = await page.evaluate((k) => {
     window.__store.update((d) => { d.name = "Edited at the close"; }, "Rename");
     window.dispatchEvent(new Event("beforeunload"));
-    return JSON.parse(localStorage.getItem(k));
+    return JSON.parse(localStorage.getItem(Object.keys(localStorage).find((x) => x.startsWith(k + "."))));
   }, RESCUE);
   expect(rescued.id).toBe(doc.id);
   expect(JSON.parse(rescued.doc).name).toBe("Edited at the close");
@@ -474,7 +474,7 @@ test("a slow IndexedDB: when keeping the newer copy fails, nothing is overwritte
   expect(errors).toEqual([]);
 });
 
-test("a rescue copy made on an older base keeps the newer stored design as \"(before fallback)\"", async ({ page }, info) => {
+test("a rescue copy made on an older base keeps the newer stored design as \"(other tab)\"", async ({ page }, info) => {
   const errors = await prepare(page);
   await boot(page, info);
   const id = "t_Rescue_Base";
@@ -484,13 +484,15 @@ test("a rescue copy made on an older base keeps the newer stored design as \"(be
   const written = await page.evaluate((k) => {
     window.__store.update((d) => { d.name = "Rescue base edited"; }, "Rename");
     window.dispatchEvent(new Event("beforeunload"));
-    return JSON.parse(localStorage.getItem(k));
+    const key = Object.keys(localStorage).find((x) => x.startsWith(k + "."));
+    return { ...JSON.parse(localStorage.getItem(key)), key };
   }, RESCUE);
-  expect(typeof written.base).toBe("number");
+  expect(typeof written.base.at).toBe("number");
+  expect(written.base.rev).toMatch(/^t.+:\d+$/);
   await page.waitForTimeout(1600);
   await page.evaluate(() => window.__app.projects.saveNow());
-  await page.evaluate((k) => localStorage.removeItem(k), RESCUE);
-  // a rescue copy whose base is older than the stored design (another visit saved since), and one whose base is the stored design
+  await page.evaluate((k) => localStorage.removeItem(k), written.key);
+  // a rescue copy whose base is older than the stored design (another visit saved since), and one whose base is the stored design (the older single-key format, with a bare stamp as the base)
   const stored = JSON.parse(await rawRead(page, "docs", id));
   const rescue = (name, base) => page.evaluate(([k, id, stored, name, base]) => {
     const next = { ...stored, name, _updated: stored._updated + 50_000 };
@@ -507,6 +509,6 @@ test("a rescue copy made on an older base keeps the newer stored design as \"(be
   }, [RESCUE, id, now]);
   await boot(page, info);
   expect(JSON.parse(await rawRead(page, "docs", id)).name).toBe("Rescue old base");
-  expect(await idbNames(page)).toEqual(["Rescue old base", "Rescue same base (before fallback)"]);
+  expect(await idbNames(page)).toEqual(["Rescue old base", "Rescue same base (other tab)"]);
   expect(errors).toEqual([]);
 });

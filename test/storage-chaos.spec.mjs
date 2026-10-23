@@ -17,8 +17,7 @@
 //
 // Chromium only: the scenarios use the Chrome DevTools Protocol (newCDPSession, Storage.clearDataForOrigin), so they skip on Firefox and WebKit.
 //
-// Known real problems are quarantined, not failed (see `quarantined()`): the run notes a `chaos finding` and carries on. They
-// are written up in the pull request. CHAOS_STRICT=1 makes them fail. CHAOS_SEEDS=1,2,3 and CHAOS_ROUNDS=6 run longer sweeps.
+// CHAOS_SEEDS=1,2,3 and CHAOS_ROUNDS=6 run longer sweeps.
 import { test, expect } from "@playwright/test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,8 +29,9 @@ const RESCUE = "workplane.rescue.v1", LS_INDEX = "workplane.index.v1", LS_DOC = 
 const MARKER = "__js3d.chaos.token";
 const SEEDS = (process.env.CHAOS_SEEDS || "11,29").split(",").map(Number);
 const ROUNDS = +(process.env.CHAOS_ROUNDS || 2);
-const STRICT = process.env.CHAOS_STRICT === "1";
 const SAVED = "Saved in this browser";
+// the rescue copies in localStorage: one key per tab and design
+const rescues = (page) => page.evaluate((k) => Object.keys(localStorage).filter((x) => x === k || x.startsWith(k + ".")).map((x) => localStorage.getItem(x)), RESCUE);
 
 // ---------------------------------------------------------------- seeded choices
 function rng(seed) { // mulberry32
@@ -92,15 +92,6 @@ function judge(w, items, { sameEntry = true } = {}) {
   return bad;
 }
 
-// A known problem: noted, not failed (the run keeps going and the note shows in the report). Flips to a failure with CHAOS_STRICT=1.
-// When the check starts passing the note says so: remove the quarantine then.
-function quarantined(key, ok, text) {
-  if (STRICT) { expect(ok, `${key}: ${text}`).toBe(true); return; }
-  const type = ok ? "chaos finding fixed" : "chaos finding";
-  test.info().annotations.push({ type, description: `${key}: ${text}` });
-  console.log(`${type} ${key}: ${text}`);
-}
-
 // ---------------------------------------------------------------- inside the page
 // Runs before the app in every document of a page; cfg comes from openPage().
 function INIT(cfg) {
@@ -111,6 +102,7 @@ function INIT(cfg) {
     new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) window.__toasts.push({ text: n.textContent, err: n.classList.contains("err") }); })
       .observe(document.getElementById("toasts"), { childList: true });
   });
+  if (cfg.freeze) Date.now = () => cfg.freeze; // two tabs saving in the same millisecond
   if (cfg.noKernel) window.Worker = function () { return { postMessage() {}, terminate() {}, addEventListener() {}, removeEventListener() {} }; };
   if (cfg.seedLs) {
     try {
@@ -424,15 +416,16 @@ scenario("IndexedDB refusing writes (quota exceeded): the saved design stays who
   // the next visit still has no room: the saved design is whole and the rescue copy waits
   page = await openPage(w, { failWrites: true });
   expectWhole(w, await readAll(page), "still refusing writes, after the tab was closed");
-  const rescue = await page.evaluate((k) => localStorage.getItem(k), RESCUE);
-  expect(rescue && sig(JSON.parse(JSON.parse(rescue).doc)), "the edit waits in the rescue copy").toBe(w.known.get(A).get(big.n));
+  const rescue = await rescues(page);
+  expect(rescue.length, "one rescue copy").toBe(1);
+  expect(sig(JSON.parse(JSON.parse(rescue[0]).doc)), "the edit waits in the rescue copy").toBe(w.known.get(A).get(big.n));
   await page.close();
   w.tokens = [];
   // room again: the next visit applies the rescue copy
   page = await openPage(w);
   const stored = (await readAll(page)).items.find((i) => i.entry.id === A);
   expect(stored && sig(JSON.parse(stored.doc)), "the edit made while IndexedDB refused writes is stored once it accepts them").toBe(w.known.get(A).get(big.n));
-  expect(await page.evaluate((k) => localStorage.getItem(k), RESCUE)).toBeNull();
+  expect(await rescues(page)).toEqual([]);
   await closeClean(page);
 });
 
@@ -635,11 +628,12 @@ scenario("beforeunload queues the rescue write in IndexedDB before it returns, w
     IDBObjectStore.prototype.put = function (...a) { puts.push({ store: this.name, key: a[1] }); return realPut.apply(this, a); };
     IDBDatabase.prototype.transaction = function (s, m, ...r) { txs.push(m); return realTx.call(this, s, m, ...r); };
     try { window.dispatchEvent(new Event("beforeunload")); } finally { IDBObjectStore.prototype.put = realPut; IDBDatabase.prototype.transaction = realTx; }
-    return { puts, txs, ls: localStorage.getItem(rescue) };
+    return { puts, txs, ls: Object.keys(localStorage).filter((k) => k.startsWith(rescue)) };
   }, { doc: edit.doc, rescue: RESCUE });
-  expect(seen.ls, "localStorage was full, so no rescue copy there").toBeNull();
+  expect(seen.ls, "localStorage was full, so no rescue copy there").toEqual([]);
   expect(seen.txs, "a read-write transaction was opened inside the handler").toContain("readwrite");
-  expect(seen.puts.some((p) => p.store === "meta" && p.key === RESCUE), `the rescue put was queued inside the handler (saw ${JSON.stringify(seen.puts)})`).toBe(true);
+  const queued = seen.puts.find((p) => p.store === "meta" && String(p.key).startsWith(RESCUE + "."));
+  expect(queued, `the rescue put was queued inside the handler (saw ${JSON.stringify(seen.puts)})`).toBeTruthy();
   await page.close({ runBeforeUnload: true });
   w.tokens = [];
   page = await openPage(w);
@@ -647,7 +641,7 @@ scenario("beforeunload queues the rescue write in IndexedDB before it returns, w
   const it = snap.items.find((x) => x.entry.id === A);
   expect(it && sig(JSON.parse(it.doc)), "the edit is stored after the next start").toBe(w.known.get(A).get(edit.n));
   expect(it.entry.name, "and the list entry matches it").toBe(edit.doc.name);
-  expect(await page.evaluate(async (k) => window.__app.projects._store.getMeta(k), RESCUE), "the rescue copy is used up").toBeNull();
+  expect(await page.evaluate(async (k) => window.__app.projects._store.getMeta(k), queued.key), "the rescue copy is used up").toBeNull();
   await closeClean(page);
 });
 
@@ -824,32 +818,103 @@ scenario("two tabs saving different designs at once: both designs survive, whole
   await closeClean(page);
 });
 
-scenario("two tabs saving the same design: what is stored is whole, and the other tab's saved edit is kept somewhere", async (w) => {
+// Two tabs on one design: whichever save comes second keeps the first one as a design of its own, "<name> (other tab)", and says so.
+const KEPT = /^Saved your edits\. Kept ".* \(other tab\)" in Your designs\.$/;
+const kept = (page) => page.evaluate(() => window.__toasts.map((t) => t.text)).then((t) => t.filter((x) => /^Saved your edits/.test(x)));
+const holds = (snap, id, n, kb = 5) => snap.items.filter((i) => content(JSON.parse(i.doc)) === content(designDoc(id, n, kb)));
+const otherTab = (snap, id) => snap.items.filter((i) => i.entry.id !== id && / \(other tab\)$/.test(i.entry.name) && i.entry.name === JSON.parse(i.doc).name);
+const editOnly = (page, { doc }) => page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, { doc }); // dirty, left to the autosave
+
+for (const [label, cfg] of [["IndexedDB", {}], ["the older localStorage", { refuse: true }], ["IndexedDB, clocks standing still", { freeze: 1_900_000_000_000 }]]) {
+  scenario(`two tabs saving the same design (${label}): neither save is lost, the displaced one is kept as "(other tab)" and the person is told`, async (w) => {
+    const D = "t_chaos_d";
+    const pa = await openPage(w, cfg);
+    await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+    const pb = await openPage(w, cfg); // the same design v1 is open in both
+    const a = step(w, D, "now", 5), b = step(w, D, "now", 5);
+    // at once: both versions exist, one as the design and one as a copy
+    await Promise.all([pa.evaluate(drive, { plan: [a] }), pb.evaluate(drive, { plan: [b] })]);
+    let page = await openPage(w, cfg);
+    let snap = await readAll(page);
+    expect(holds(snap, D, a.n).length, "tab A's version is stored").toBe(1);
+    expect(holds(snap, D, b.n).length, "tab B's version is stored").toBe(1);
+    expect(otherTab(snap, D).length, "exactly one version was kept as a copy").toBe(1);
+    await expect.poll(async () => (await kept(pa)).length + (await kept(pb)).length, "one notice, in the tab whose save displaced the other").toBe(1);
+    expect((await kept(pa)).concat(await kept(pb))[0]).toMatch(KEPT);
+    await closeClean(page);
+    // one after the other: tab A saves, then tab B, which has not seen it
+    const a2 = step(w, D, "now", 5), b2 = step(w, D, "now", 5);
+    await pa.evaluate(drive, { plan: [a2] });
+    const told = (await kept(pb)).length;
+    await pb.evaluate(drive, { plan: [b2] });
+    await expect.poll(async () => (await kept(pb)).length, "tab B is told its save displaced tab A's").toBe(told + 1);
+    page = await openPage(w, cfg);
+    snap = await readAll(page);
+    expectWhole(w, snap, "after the second tab saved over the first");
+    expect(holds(snap, D, b2.n).length, "the later save is the design").toBe(1);
+    expect(JSON.parse(snap.items.find((i) => i.entry.id === D).doc).name, "and is the one stored under the design's id").toBe(designDoc(D, b2.n, 5).name);
+    expect(holds(snap, D, a2.n).length, "tab A's saved edit is kept (this is the old quarantined finding)").toBe(1);
+    expect(holds(snap, D, a2.n)[0].entry.name).toBe(designDoc(D, a2.n, 5).name + " (other tab)");
+    await closeClean(page);
+    await closeClean(pa);
+    await closeClean(pb);
+  });
+}
+
+scenario("one tab saving and reloading never makes a copy", async (w) => {
+  const D = "t_chaos_d";
+  let page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, D, "now", 5), step(w, D, "now", 5)] });
+  await reloadPage(w, page);
+  await page.evaluate(drive, { plan: [step(w, D, "now", 5), step(w, D, "soon", 5)] });
+  await page.close({ runBeforeUnload: true });
+  w.tokens = [];
+  page = await openPage(w);
+  await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const snap = await readAll(page);
+  expect(snap.items.map((i) => i.entry.name), "one design, no copy").toEqual([designDoc(D, w.ver.get(D), 5).name]);
+  expect(await kept(page)).toEqual([]);
+  await closeClean(page);
+});
+
+// ---------------------------------------------------------------- 9b. two tabs closed at once
+scenario("two tabs closed at once with unsaved edits to one design: both edits are kept", async (w) => {
   const D = "t_chaos_d";
   const pa = await openPage(w);
   await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
-  const pb = await openPage(w); // the same design v1 is open in both
-  const a = step(w, D, "now", 5), b = step(w, D, "now", 5);
-  // concurrent saves first: whatever wins is a whole version
-  await Promise.all([pa.evaluate(drive, { plan: [a] }), pb.evaluate(drive, { plan: [b] })]);
-  let page = await openPage(w);
-  const stored = (await readAll(page)).items.find((i) => i.entry.id === D);
-  const which = stored && [...w.known.get(D)].find(([, g]) => g === sig(JSON.parse(stored.doc)));
-  expect(which && [a.n, b.n].includes(which[0]), "after two tabs saved the same design at once, one of the two whole versions is stored").toBe(true);
-  await closeClean(page);
-  // then one after the other: tab A saves, tab B (which has not seen it) saves later
-  const a2 = step(w, D, "now", 5), b2 = step(w, D, "now", 5);
-  await pa.evaluate(drive, { plan: [a2] });
-  await pb.evaluate(drive, { plan: [b2] });
-  page = await openPage(w);
+  const pb = await openPage(w);
+  const ea = step(w, D, "soon", 5), eb = step(w, D, "soon", 5);
+  await editOnly(pa, ea);
+  await editOnly(pb, eb);
+  await Promise.all([pa.close({ runBeforeUnload: true }), pb.close({ runBeforeUnload: true })]); // before either autosave runs
+  w.tokens = [];
+  const page = await openPage(w);
   const snap = await readAll(page);
-  expectWhole(w, snap, "after the second tab saved over the first");
-  const keptA = snap.items.some((i) => content(JSON.parse(i.doc)) === content(designDoc(D, a2.n, 5)));
-  // quarantined: the later save replaces the document outright; nothing compares it with what the other tab stored, and no copy of the replaced version is kept (src/projstore.js:43-50 idbPut, src/projects.js:120)
-  quarantined("two-tabs-same-design-overwrite", keptA, `tab A saved v${a2.n} ("Saved in this browser" was shown), then tab B saved v${b2.n} over it: v${a2.n} is ${keptA ? "still stored" : "gone from IndexedDB, with no copy and no warning in either tab"}`);
+  expect(holds(snap, D, ea.n).length, "the edit of the tab that was closed first").toBe(1);
+  expect(holds(snap, D, eb.n).length, "the edit of the tab that was closed second").toBe(1);
+  expect(otherTab(snap, D).length, "one of them is a copy").toBe(1);
+  expect((await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("workplane.rescue")))), "the rescue copies are used up").toEqual([]);
   await closeClean(page);
-  await closeClean(pa);
+});
+
+scenario("a tab closed with unsaved edits while another tab saved the design meanwhile: the closed tab's edit comes back as a copy", async (w) => {
+  const D = "t_chaos_d";
+  const pa = await openPage(w);
+  await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+  const pb = await openPage(w);
+  const ea = step(w, D, "soon", 5);
+  await editOnly(pa, ea);
+  await pa.close({ runBeforeUnload: true }); // its rescue copy is older than what tab B saves next
+  await pb.waitForTimeout(5);
+  const b = step(w, D, "now", 5);
+  await pb.evaluate(drive, { plan: [b] });
   await closeClean(pb);
+  w.tokens = [];
+  const page = await openPage(w);
+  const snap = await readAll(page);
+  expect(holds(snap, D, b.n).length, "tab B's save is still the design").toBe(1);
+  expect(holds(snap, D, ea.n)[0] && holds(snap, D, ea.n)[0].entry.name, "tab A's last edit is kept as a copy").toBe(designDoc(D, ea.n, 5).name + " (other tab)");
+  await closeClean(page);
 });
 
 // ---------------------------------------------------------------- 10. the judge itself must be able to fail

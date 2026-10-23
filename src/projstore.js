@@ -10,7 +10,11 @@ import { uid } from "./util.js";
 
 const DBNAME = "jumpstart3d-projects";
 const LS_INDEX = "workplane.index.v1", LS_DOC = "workplane.doc.v1.";
-const RESCUE = "workplane.rescue.v1"; // the last unsaved edit, written when the tab closes
+const RESCUE = "workplane.rescue.v1"; // unsaved edits, written when a tab closes: one key per tab and design ("<RESCUE>.<tab>.<id>"; the bare key is the older single copy)
+const OTHER = "(other tab)", BEFORE = "(before fallback)";
+const LOCK = "jumpstart3d-local-designs";
+const TAB = uid("t"); // names this page's saves (list entry `rev`: "<tab>:<n>") and its rescue keys
+const rescueKey = (id) => RESCUE + "." + TAB + "." + id;
 
 const ls = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -41,44 +45,62 @@ function openDB() { // null on error or blocked; a slow open keeps waiting (the 
 const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const committed = (tx) => new Promise((res) => { tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); });
 
-// The IndexedDB version of a design, as a design of its own named "<name> (before fallback)".
-function keepCopy(docs, entries, str, ent) {
+// A displaced version kept as a design of its own named "<name> <suffix>". The id is stable per (design, save), so a retry
+// or a replay writes the same copy again instead of another. Returns [id, document string, list entry], or null if it cannot be read.
+function copyOf(str, ent, suffix) {
   let d = null;
   try { d = JSON.parse(str); } catch (e) {}
-  if (!d) return;
-  const id = uid("d"), name = (d.name || "Untitled") + " (before fallback)";
-  docs.put(JSON.stringify({ ...d, id, name }), id);
-  entries.put({ ver: d.ver || 0, mode: d.mode, updated: d._updated || 0, thumb: null, ...ent, id, name });
+  if (!d || typeof d !== "object") return null;
+  const key = d.id + "|" + ((ent && ent.rev) || d._updated), h = (seed) => { let x = seed; for (let i = 0; i < key.length; i++) { x ^= key.charCodeAt(i); x = Math.imul(x, 0x01000193); } return (x >>> 0).toString(36).padStart(7, "0"); };
+  const id = "d" + h(0x811c9dc5) + h(0x9747b28c), name = (d.name || "Untitled") + " " + suffix;
+  return [id, JSON.stringify({ ...d, id, name }), { ver: d.ver || 0, mode: d.mode, updated: d._updated || 0, thumb: null, ...ent, id, name }];
 }
 
-// the same design apart from its save stamp (a tab's own earlier save, met again by its rescue copy: nothing to keep)
+// the same design apart from its save stamp
 function sameDesign(a, b) {
   try { const x = JSON.parse(a), y = JSON.parse(b); delete x._updated; delete y._updated; return JSON.stringify(x) === JSON.stringify(y); } catch (e) { return false; }
 }
 
-// `base` (optional, a stamp or a function returning one or null) is the `_updated` of the copy these edits started from.
-// With it the stored copy is read in the SAME transaction: if it is newer than the base and is not this very write, it is
-// kept first as "(before fallback)", so edits made on an older copy never replace a newer one. Both writes commit or neither.
-function idbPut(db, id, docString, entry, base) {
+// Notices that edits displaced another tab's version (kept as a copy). Replays at startup can raise one before projects.js listens.
+const notices = { listener: null, held: [] };
+const tell = (name) => { if (notices.listener) notices.listener(name); else notices.held.push(name); };
+
+// `base` is what a write's edits started from: { at: the `_updated` of the copy the tab read or last saved, rev: that save's `rev` } (a bare
+// stamp from an older build also works; null or undefined = no comparison). Did a save by someone else replace that copy since?
+// Revisions decide when both sides have one (two saves can share a millisecond); otherwise the stamps do.
+// `own` (a replayed rescue): the tab that wrote it, whose earlier saves are not "someone else".
+function displaced(stored, ent, entry, docString, base, own) {
+  if (!base || stored == null) return false;
+  const rev = ent && ent.rev;
+  if (rev && (rev === entry.rev || (own && rev.startsWith(own + ":")))) return false; // the same write again, or the same tab's earlier save
+  return (rev && base.rev ? rev !== base.rev : stamp(stored) > base.at) && !sameDesign(stored, docString);
+}
+const baseOf = (b) => { b = typeof b === "function" ? b() : b; return b == null ? null : typeof b === "object" ? b : { at: +b || 0 }; };
+
+// With a `base` (see `displaced`) the stored copy is read in the SAME transaction: if someone else saved it since, it is kept first as
+// "<name> <suffix>", so edits made on an older copy never replace a newer one. Both writes commit or neither.
+function idbPut(db, id, docString, entry, base, { suffix = OTHER, own } = {}) {
   try {
     const tx = db.transaction(["docs", "entries"], "readwrite");
     const docs = tx.objectStore("docs"), entries = tx.objectStore("entries");
+    let kept = null;
     const write = () => { docs.put(docString, id); entries.put({ ...entry, id }); };
-    const b = typeof base === "function" ? base() : base;
-    if (b == null) write();
+    const b = baseOf(base);
+    if (!b) write();
     else {
       const d = docs.get(id), e = entries.get(id);
       let waiting = 2;
       const go = () => {
         if (--waiting) return;
         try {
-          if (d.result != null && stamp(d.result) > b && stamp(d.result) !== stamp(docString) && !sameDesign(d.result, docString)) keepCopy(docs, entries, d.result, e.result);
+          const c = displaced(d.result, e.result, entry, docString, b, own) && copyOf(d.result, e.result, suffix);
+          if (c) { docs.put(c[1], c[0]); entries.put(c[2]); kept = c[2].name; }
           write();
         } catch (err) { try { tx.abort(); } catch (e2) {} }
       };
       d.onsuccess = go; e.onsuccess = go;
     }
-    return committed(tx);
+    return committed(tx).then((ok) => { if (ok && kept && suffix === OTHER) tell(kept); return ok; });
   } catch (e) { return Promise.resolve(false); }
 }
 
@@ -119,7 +141,7 @@ function merge(db, fp) {
   const write = () => {
     found.forEach((f, i) => {
       const { str, ent } = have[i];
-      if (str != null) { if (stamp(f.str) <= stamp(str)) return; keepCopy(docs, entries, str, ent); }
+      if (str != null) { if (stamp(f.str) <= stamp(str)) return; const c = copyOf(str, ent, BEFORE); if (c) { docs.put(c[1], c[0]); entries.put(c[2]); } }
       docs.put(f.str, f.id);
       entries.put(f.entry);
       copied++;
@@ -135,31 +157,45 @@ function merge(db, fp) {
   return committed(tx);
 }
 
-// A rescue copy newer than the stored design is the edit made just before the tab closed. If the stored design is newer
-// than the copy those edits started from (`base`), it is kept as "(before fallback)" first.
-// The tab closing leaves the copy in localStorage and in the database's `meta` store (either may be missing: storage full, or the page torn down first).
+// Rescue copies are the edits a tab had not saved when it closed. They are replayed oldest first, each through the same
+// compare-and-keep as a save: a copy that started from an older version than the stored one keeps the stored one as "(other tab)";
+// a copy older than the stored design that is not that tab's own earlier save is itself kept as "(other tab)". Replaying twice changes
+// nothing (the entry's `rev` says the write is already there), so the journal can be removed after the fact.
+// The tab closing leaves a copy in localStorage and in the database's `meta` store (either may be missing: storage full, or the page torn down first).
 async function applyRescue(db) {
-  for (const where of ["ls", "idb"]) {
-    let raw = null, r = null;
-    try { raw = where === "ls" ? ls.get(RESCUE) : await req(db.transaction("meta").objectStore("meta").get(RESCUE)); } catch (e) {}
-    if (!raw) continue;
-    try { r = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) {}
-    if (r && r.id && typeof r.doc === "string") {
+  const jobs = new Map(); // key -> { raw: the localStorage text, r: the parsed copy }
+  let keys = [];
+  try { keys = Object.keys(localStorage).filter((k) => k === RESCUE || k.startsWith(RESCUE + ".")); } catch (e) {}
+  try { keys.push(...await req(db.transaction("meta").objectStore("meta").getAllKeys(IDBKeyRange.bound(RESCUE, RESCUE + "\uffff")))); } catch (e) {}
+  for (const k of new Set(keys)) {
+    const raw = ls.get(k);
+    let r = null;
+    try { r = raw ? JSON.parse(raw) : null; } catch (e) {}
+    if (!(r && r.id && typeof r.doc === "string")) try { r = await req(db.transaction("meta").objectStore("meta").get(k)); } catch (e) {}
+    jobs.set(k, { raw, r: r && r.id && typeof r.doc === "string" ? r : null });
+  }
+  for (const [k, { raw, r }] of [...jobs].sort((a, b) => (a[1].r ? stamp(a[1].r.doc) : 0) - (b[1].r ? stamp(b[1].r.doc) : 0))) {
+    if (r) {
       const tx = db.transaction(["docs", "entries"]);
       const [cur, ent] = await Promise.all([req(tx.objectStore("docs").get(r.id)), req(tx.objectStore("entries").get(r.id))]);
-      if ((cur == null || stamp(r.doc) > stamp(cur)) && !await idbPut(db, r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null }, r.base)) return; // kept for the next visit
+      const own = r.tab, fresh = cur == null || stamp(r.doc) > stamp(cur);
+      let ok = true;
+      if (fresh) ok = await idbPut(db, r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null }, r.base, { own });
+      else if (displaced(cur, ent, r.entry, r.doc, { at: 0 }, own)) { // not the same write or that tab's earlier save, and not an identical design: an edit nobody else has
+        const c = copyOf(r.doc, r.entry, OTHER);
+        if (c) { ok = await idbPut(db, c[0], c[1], c[2]); if (ok) tell(c[2].name); }
+      }
+      if (!ok) return; // kept for the next visit
     }
-    if (where === "ls") ls.del(RESCUE);
-    else {
-      const del = db.transaction("meta", "readwrite");
-      del.objectStore("meta").delete(RESCUE);
-      await committed(del);
-    }
+    if (ls.get(k) === raw) ls.del(k); // not if another tab wrote it meanwhile
+    const del = db.transaction("meta", "readwrite");
+    del.objectStore("meta").delete(k);
+    await committed(del);
   }
 }
 
-const rescueOf = (id, docString, entry, base) => ({ id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base });
-const rescueWrite = (id, docString, entry, base) => ls.set(RESCUE, JSON.stringify(rescueOf(id, docString, entry, base)));
+const rescueOf = (id, docString, entry, base) => ({ tab: TAB, id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base });
+const rescueWrite = (id, docString, entry, base) => ls.set(rescueKey(id), JSON.stringify(rescueOf(id, docString, entry, base)));
 
 // guard: after a slow open took over, the first write of each design checks the stored copy against the write's base
 function idbDriver(db, guard) {
@@ -168,7 +204,7 @@ function idbDriver(db, guard) {
     async list() { return (await req(db.transaction("entries").objectStore("entries").getAll())).sort((a, b) => (b.updated || 0) - (a.updated || 0)); },
     async get(id) { const v = await req(db.transaction("docs").objectStore("docs").get(id)); return v == null ? null : v; },
     async put(id, docString, entry, base) {
-      const ok = await idbPut(db, id, docString, entry, guard && guard.on && !guard.verified.has(id) ? base : undefined);
+      const ok = await idbPut(db, id, docString, entry, base, guard && guard.on && !guard.verified.has(id) ? { suffix: BEFORE } : {});
       if (ok && guard) guard.verified.add(id);
       return ok;
     },
@@ -181,6 +217,7 @@ function idbDriver(db, guard) {
       tx.objectStore("entries").delete(id);
       return committed(tx);
     },
+    async entry(id) { const v = await req(db.transaction("entries").objectStore("entries").get(id)); return v === undefined ? null : v; },
     async getMeta(key) { const v = await req(db.transaction("meta").objectStore("meta").get(key)); return v === undefined ? null : v; },
     setMeta(key, value) { // null removes the key
       try {
@@ -192,35 +229,49 @@ function idbDriver(db, guard) {
     // for the tab closing: the rescue copy goes to localStorage first (it may be full), then the put is queued in the same call, so a page torn down right after still has it in flight
     putNow(id, docString, entry, base) {
       rescueWrite(id, docString, entry, base);
-      try { const tx = db.transaction("meta", "readwrite"); tx.objectStore("meta").put(rescueOf(id, docString, entry, base), RESCUE); if (tx.commit) tx.commit(); } catch (e) {}
+      try { const tx = db.transaction("meta", "readwrite"); tx.objectStore("meta").put(rescueOf(id, docString, entry, base), rescueKey(id)); if (tx.commit) tx.commit(); } catch (e) {}
     },
   };
 }
 
 // ---------------------------------------------------------------- localStorage driver (the older way)
-function localPut(id, docString, entry) {
-  const before = ls.get(LS_DOC + id);
-  if (!ls.set(LS_DOC + id, docString)) return false;
-  const index = readJSON(LS_INDEX, []).filter((p) => p.id !== id);
-  index.unshift({ ...entry, id });
-  if (ls.set(LS_INDEX, JSON.stringify(index))) return true;
+// localStorage has no atomic compare-and-write, so the async calls run inside one origin-wide Web Lock (without Web Locks they run
+// unlocked, as before). putNow (the tab closing) cannot wait for a lock and writes straight away.
+async function locked(f) {
+  let ran = false;
+  try { if (navigator.locks) return await navigator.locks.request(LOCK, () => { ran = true; return f(); }); } catch (e) { if (ran) throw e; }
+  return f();
+}
+const restore = (k, v) => { if (v == null) ls.del(k); else ls.set(k, v); };
+function localPut(id, docString, entry, base) {
+  const before = ls.get(LS_DOC + id), index = readJSON(LS_INDEX, []);
+  const old = index.find((p) => p.id === id), b = baseOf(base);
+  // someone else's newer copy goes into a design of its own first; if that does not fit, nothing is touched
+  const c = b && displaced(before, old, entry, docString, b) ? copyOf(before, old, OTHER) : null;
+  const copyBefore = c ? ls.get(LS_DOC + c[0]) : null;
+  if (c && !ls.set(LS_DOC + c[0], c[1])) return false;
+  const undo = () => { restore(LS_DOC + id, before); if (c) restore(LS_DOC + c[0], copyBefore); };
+  if (!ls.set(LS_DOC + id, docString)) { undo(); return false; }
+  const next = [{ ...entry, id }, ...(c ? [c[2]] : []), ...index.filter((p) => p.id !== id && !(c && p.id === c[0]))];
+  if (ls.set(LS_INDEX, JSON.stringify(next))) { if (c) tell(c[2].name); return true; }
   // a document with no list entry would be invisible: put back what was there
-  if (before == null) ls.del(LS_DOC + id); else ls.set(LS_DOC + id, before);
+  undo();
   return false;
 }
 const localDriver = {
   kind: "local",
   async list() { return readJSON(LS_INDEX, []); },
   async get(id) { return ls.get(LS_DOC + id); },
-  async put(id, docString, entry) { return localPut(id, docString, entry); },
-  async del(id) {
+  async entry(id) { return readJSON(LS_INDEX, []).find((p) => p.id === id) || null; },
+  put: (id, docString, entry, base) => locked(() => localPut(id, docString, entry, base)),
+  del: (id) => locked(() => {
     ls.del(LS_DOC + id);
     ls.set(LS_INDEX, JSON.stringify(readJSON(LS_INDEX, []).filter((p) => p.id !== id)));
     return true;
-  },
+  }),
   async getMeta() { return null; },
   async setMeta() { return false; },
-  putNow: (id, docString, entry) => localPut(id, docString, entry),
+  putNow: (id, docString, entry, base) => localPut(id, docString, entry, base),
 };
 
 // ---------------------------------------------------------------- the store
@@ -285,10 +336,13 @@ export function openProjectStore() {
     ready,
     get kind() { return driver ? driver.kind : null; },
     onSwitch: (f) => switched.push(f),
+    tab: TAB,
+    onKept: (f) => { notices.listener = f; for (const n of notices.held.splice(0)) f(n); }, // called with the name of a copy kept because another tab's version was displaced
     list: run("list", []),
     get: run("get", null),
     put: run("put", false),
     del: run("del", false, (id) => { if (slow && driver === localDriver) gone.set(id, stamp(ls.get(LS_DOC + id)) || (readJSON(LS_INDEX, []).find((p) => p.id === id) || {}).updated || 0); }),
+    entry: run("entry", null), // the list entry alone (its `rev` goes with the document a tab opens)
     getMeta: run("getMeta", null), // small records kept beside the designs (IndexedDB only; the older storage has no place for them)
     setMeta: run("setMeta", false),
     // for the tab closing: no waiting, no promise
