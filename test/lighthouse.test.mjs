@@ -81,6 +81,12 @@ test("a good result reads clean", () => {
   assert.deepEqual(r.metrics, { lcp: 2500, tbt: 300, cls: 0.05, bytes: 9_000_000 });
 });
 
+test("the largest-paint element is named when Lighthouse reports it", () => {
+  const insight = { "lcp-breakdown-insight": { details: { items: [{ type: "table" }, { type: "node", selector: "body > div#loading > h1" }] } } };
+  assert.equal(readRun(lhr(insight)).lcpElement, "body > div#loading > h1");
+  assert.equal(readRun(lhr()).lcpElement, "");
+});
+
 test("a result with a missing, negative or non-numeric metric is refused", () => {
   assert.match(readRun(lhr({ "total-blocking-time": {} })).problems.join(), /total-blocking-time/);
   assert.match(readRun(lhr({ "largest-contentful-paint": { numericValue: -1 } })).problems.join(), /largest-contentful-paint/);

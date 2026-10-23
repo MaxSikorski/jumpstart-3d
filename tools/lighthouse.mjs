@@ -41,8 +41,9 @@ export function readRun(lhr) {
   else if (!wasm.finished || wasm.statusCode !== 200) problems.push(`the engine download did not finish (status ${wasm.statusCode})`);
   const failed = requests.filter((r) => !r.finished || r.statusCode >= 400);
   if (failed.length) problems.push(`${failed.length} request(s) failed, first: ${failed[0].url}`);
-  const lcpNode = audit("largest-contentful-paint-element")?.details?.items?.[0]?.items?.[0]?.node;
-  return { metrics, problems, lcpElement: lcpNode?.snippet || lcpNode?.nodeLabel || "" };
+  // which element was the largest paint: the "node" entry of the LCP breakdown insight
+  const lcpNode = audit("lcp-breakdown-insight")?.details?.items?.find((x) => x.type === "node");
+  return { metrics, problems, lcpElement: lcpNode?.selector || lcpNode?.nodeLabel || "" };
 }
 
 export function medians(runs) {
