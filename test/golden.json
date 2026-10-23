@@ -435,6 +435,16 @@
     "step": "2a013002c11f0cb943cee78ec7a16466c163e0d07d47df2b164781a645aba774",
     "dxf": "eb6326c48fc24821a54cef40fcca977d1a16e73cfbc61245e8f3b0ecee58b174"
   },
+  "codecad.json": {
+    "volumes": {
+      "b1 L bracket 1": 13213.8
+    },
+    "stlTriangles": 532,
+    "stl": "4b2dd98fda4ba9187bc7cd2c2065858657bf8cb335195e8d6a15d21ae764f099",
+    "obj": "8c393a0f5d2b291fab031894528d65999e537ce614467a616e56b4602f7f474a",
+    "3mf": "53b1d3627ded9a6e0698d0d713a80a8ec6f24547f2f7f328772f1a24aaae3e6c",
+    "step": "94ad7d1a5420b1d72993c45a7a2225872e9b568cc87badb14c4c557c1cfb0c2a"
+  },
   "spring.json": {
     "volumes": {
       "b0 Open spring": 892.6,
