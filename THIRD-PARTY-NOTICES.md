@@ -54,17 +54,24 @@ JumpStart 3D includes the open-source software and fonts below. Their full licen
 
 ## IBM Plex Sans and IBM Plex Mono (fonts)
 
-- Used for: The interface lettering, loaded from Google Fonts.
-- Copyright © 2017 IBM Corp.
+- Used for: The interface lettering. The font files (latin subset, WOFF2) are part of the app; nothing is loaded from the web.
+- Copyright © 2017 IBM Corp. (IBM Plex Sans Condensed, used in the helper pages: © 2019 IBM Corp.)
 - License: SIL Open Font License 1.1
 - Project: https://github.com/IBM/plex
 
 ## Barlow Condensed (font)
 
-- Used for: The headings, loaded from Google Fonts.
+- Used for: The headings (latin subset, WOFF2, part of the app).
 - Copyright 2017 The Barlow Project Authors
 - License: SIL Open Font License 1.1
 - Project: https://github.com/jpt/barlow
+
+## Chakra Petch (font)
+
+- Used for: The lettering of the FlexiGen and Mesh to STEP helper pages (latin subset, WOFF2, part of the app).
+- Copyright 2018 The Chakra Petch Project Authors
+- License: SIL Open Font License 1.1
+- Project: https://github.com/m4rc1e/Chakra-Petch
 
 ## Flatqueue (3.1.0)
 

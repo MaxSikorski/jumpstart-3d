@@ -27,7 +27,7 @@ Pick one:
 - **Offline:** download
   [jumpstart-3d.html](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)
   and double-click it. That one file is the whole app. It works without an
-  internet connection (only the fonts come from the web).
+  internet connection; the fonts are inside the file too.
 - **macOS app:** the Electron wrapper shared by a community member in
   [issue #11](https://github.com/MaxSikorski/jumpstart-3d/issues/11) also
   works. In a folder containing `jumpstart-3d.html`, a `main.js` that loads it,

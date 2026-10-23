@@ -1,3 +1,4 @@
+import re
 import os as _os
 ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 # Builds src/meshstep.html from the Mesh to STEP Helper: runs inside JumpStart 3D (Simulate tab)
@@ -9,6 +10,9 @@ def R(a, b, count=1):
     s = s.replace(a, b, count)
 # its own three.js (with orbit controls), bundled so it works offline
 three = open(ROOT + '/tools/three-global-orbit.min.js').read().replace('</script', '<\\/script')
+# jumpstart-3d: no Google Fonts request; the app puts its own copy of the fonts into the page when it opens the helper (src/helperfonts.js)
+s = re.sub(r'<link rel="preconnect" href="https://fonts.g[a-z]+.com"[^>]*>\n', '', s)
+s = re.sub(r'<link rel="stylesheet" href="https://fonts.googleapis.com/css2[^"]*">\n', '', s)
 R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '<script>' + three + '</script>')
 R('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>', '')
 # newer three.js lights are dimmer at the same numbers
