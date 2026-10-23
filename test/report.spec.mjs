@@ -10,7 +10,7 @@ const DESIGN = "Secret Widget Name";
 const box = (id, w) => body(id, "Part " + id, prim("box", { w, d: 10, h: 10, r: 0, c: 0 }));
 const CUT_NOTE = "…(cut here: paste the rest on GitHub)";
 
-let page, errors, requests, opened = 0;
+let page, errors, requests, sockets, opened = 0;
 // Every request the page and its popups make, to any host, from before the app boots to the end of the file. Only the app's own
 // files (the site, or the single file on disk) and its Google Fonts links are expected; anything else is "outside".
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
@@ -18,9 +18,12 @@ const outside = (info) => requests.filter((r) => !r.url.startsWith("data:") && !
 test.beforeAll(async ({ browser }, info) => {
   const context = await browser.newContext();
   requests = [];
+  sockets = []; // a WebSocket is not in the request list: watch the page and every popup it opens
   // GitHub is a stub: the test never reaches the real site
   await context.route("https://github.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>stub</title>" }));
   context.on("request", (r) => requests.push({ url: r.url(), type: r.resourceType(), method: r.method(), body: r.postData() }));
+  const watchSockets = (p) => p.on("websocket", (ws) => sockets.push(ws.url()));
+  context.on("page", watchSockets);
   page = await context.newPage();
   errors = watchErrors(page);
   await boot(page, info);
@@ -108,6 +111,14 @@ const HOSTILE = [
   ["Auth sk-abc123def456ghi789jkl012 and Bearer ghp_AbCdEf0123456789xyz and 0123456789abcdef0123456789abcdef0123", ["sk-abc", "ghp_", "AbCdEf", "0123456789abcdef"]],
   ["Copies to \u201cMax's Taxes 2025\u201d are paused. \"My Secret Design\" is broken \u2018Private\u2019", ["Taxes", "Secret", "Private", "2025"]],
   ['"Wedding Ring v2" has a build error (x is not defined)', ["Wedding", "Ring"]],
+  // misses found by the verify pass on #97
+  ["Failed:/Users/bob/x and Error:/home/alice/y.stl", ["bob", "alice"]],
+  ["Cannot open 'Wedding Ring v2' or `Client Taxes` or «Acme Corp» or „Marias Haus“", ["Wedding", "Taxes", "Acme", "Marias"]],
+  ["Could not read Clients/Acme Corp/x.stl", ["Clients", "Acme", "Corp"]],
+  ["Could not read Clients/Acme/x.stl", ["Clients", "Acme"]],
+  ["Fetch failed for example.co.uk/private/page and dropbox.fr/secret", ["example", "private", "dropbox", "secret"]],
+  ["Cannot reach [2001:db8::1]:8080 and fe80::1 and 2001:db8:85a3:0:0:8a2e:370:7334", ["2001", "db8", "fe80", "8080", "8a2e"]],
+  ["Bad request token=abc123 and password: hunter2 and api_key=zz9", ["abc123", "hunter2", "zz9"]],
 ];
 test("a ticked error has its names, paths, addresses and keys taken out first", async () => {
   for (const [message, forbidden] of HOSTILE) {
@@ -124,6 +135,10 @@ test("a ticked error has its names, paths, addresses and keys taken out first", 
   await page.evaluate(() => window.__app.toast("Could not read file:///Users/someone/x.html", "err"));
   await openFromMenu(); await page.check("#rp-error");
   expect(await page.inputValue("#rp-details")).toContain("- Last error: Could not read [path removed]");
+  await closeDialog();
+  await page.evaluate(() => window.__app.toast("Don't panic: it's 1/2 done, read/write, and/or 10/12/2025 aren't names", "err"));
+  await openFromMenu(); await page.check("#rp-error");
+  expect(await page.inputValue("#rp-details")).toContain("- Last error: Don't panic: it's 1/2 done, read/write, and/or 10/12/2025 aren't names");
   await closeDialog();
   await page.evaluate(() => window.__app.toast("Boom " + "x ".repeat(450), "err"));
   await openFromMenu(); await page.check("#rp-error");
@@ -172,6 +187,12 @@ test("very long text is cut so the link stays short, with a note where it was cu
   const long = new URL(await href());
   expect(long.href.length).toBeLessThan(6000);
   expect(long.searchParams.get("extra").endsWith(CUT_NOTE)).toBe(true);
+  // a cut that lands inside the Browser line must not put the cut note into the browser field
+  await page.fill("#rp-details", "- Browser: " + "y".repeat(10_000));
+  const inBrowser = new URL(await href());
+  expect(inBrowser.href.length).toBeLessThan(6000);
+  expect(inBrowser.searchParams.get("extra").endsWith(CUT_NOTE)).toBe(true);
+  expect(inBrowser.searchParams.has("browser"), "browser field when the Browser line was cut").toBe(false);
   await closeDialog();
 });
 
@@ -270,4 +291,5 @@ test("nothing but the pressed links went anywhere, in the whole file", async ({}
   expect(opened).toBeGreaterThan(0);
   expect(sent.map((r) => [r.type, r.method, new URL(r.url).hostname, r.body])).toEqual(Array(opened).fill(["document", "GET", "github.com", null]));
   expect(requests.filter((r) => r.method !== "GET" || r.body), "the page uploaded something").toEqual([]);
+  expect(sockets, "WebSockets opened").toEqual([]);
 });
