@@ -1,9 +1,8 @@
-// Upstream 2.3 regressions (J.Siwek's Architechies and CAM Studio), shared by the site and single-file projects.
+// Upstream 2.3 regressions (J.Siwek's Architect and CAM Studio), shared by the site and single-file projects.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc, body, prim, quarantine } from "./helpers.mjs";
-import { BUILD, VERSION } from "../src/version.js";
 
-test.describe("version 2.3", () => {
+test.describe("the 2.3 features", () => {
   let page, errors;
   test.beforeAll(async ({ browser }, info) => {
     page = await browser.newPage();
@@ -14,23 +13,19 @@ test.describe("version 2.3", () => {
   test.afterAll(async () => { await page.close(); });
   test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
 
-  test("the splash text and About show version 2.3 and a community build of 21 or later, with the credit kept", async () => {
-    expect(VERSION).toBe("2.3");
-    expect(BUILD).toBeGreaterThanOrEqual(21);
-    const label = `Version 2.3 · community build ${BUILD}`;
-    expect(await page.locator("#sp-ver").textContent()).toBe(label); // the splash is in the page before the app loads
+  // the splash and About version text is checked for 2.5 in upstream25.spec.mjs
+  test("About still lists what 2.3 added, with the credit kept", async () => {
     await page.click("#btn-about");
     const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-    await expect(about).toContainText(label);
     await expect(about).toContainText("New in version 2.3");
     await expect(about).toContainText("CAM Studio:");
-    await expect(about).toContainText("Architechies:");
+    await expect(about).toContainText("Architect:");
     await page.keyboard.press("Escape");
     await expect(about).toBeHidden();
   });
 
   // quarantined: in Firefox the walls drawn with the mouse on the canvas never appear; not looked into yet
-  test("Architechies: draw a room and a wall, raise them, Send to design makes bodies in Beginner, and the building stays", async ({}, info) => {
+  test("Architect: draw a room and a wall, raise them, Send to design makes bodies in Beginner, and the building stays", async ({}, info) => {
     quarantine(info, ["site-firefox", "single-firefox"], "mouse drawing of walls does not register in Firefox");
     await loadDoc(page, newDoc("Upstream 2.3 house", "beginner"));
     await page.click("#mode-arch");
@@ -86,7 +81,7 @@ test.describe("version 2.3", () => {
     // the box that holds the shapes is about the building's size at the chosen scale (default 1:100 or the saved one): it is not empty or flat
     const size = await page.evaluate(() => { const b = window.__app.scene.allBox(), s = b.getSize(b.min.clone()); return [s.x, s.y, s.z]; });
     expect(size.every((v) => v > 1)).toBe(true);
-    // the building is still in the design: back in Architechies the walls are there
+    // the building is still in the design: back in Architect the walls are there
     await page.click("#mode-arch");
     await page.waitForFunction(() => window.__app.mode === "arch");
     expect((await arch()).walls).toBe(5);
@@ -94,12 +89,12 @@ test.describe("version 2.3", () => {
     await page.waitForFunction(() => window.__app.mode === "beginner");
   });
 
-  test("Your designs shows the Architechies tag on a design saved in that mode", async () => {
+  test("Your designs shows the Architect tag on a design saved in that mode", async () => {
     await loadDoc(page, newDoc("Upstream 2.3 tag", "beginner"));
     await page.click("#mode-arch");
     await page.waitForFunction(() => window.__app.mode === "arch");
     await page.click("#btn-projects");
-    await expect(page.locator(".projgrid .pcard", { hasText: "Upstream 2.3 tag" }).locator(".tag.arch")).toHaveText("Architechies");
+    await expect(page.locator(".projgrid .pcard", { hasText: "Upstream 2.3 tag" }).locator(".tag.arch")).toHaveText("Architect");
     await page.click(".modal-back .xbtn");
     await page.click("#mode-beginner");
     await page.waitForFunction(() => window.__app.mode === "beginner");

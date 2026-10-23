@@ -96,8 +96,8 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has eighty-two step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: forty-four from J.Siwek and thirty-eight added by this community build for the
+JumpStart 3D has eighty-nine step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
 toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
 a tour of the top bar, how the model looks on screen and sketch constraints.
 
@@ -119,10 +119,15 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   a feature timeline, driven by a real CAD kernel (OpenCascade).
 - **3D Sketch** for tubes and pipes, **Lathe**, **Jump Brick Builder**, and **Chisel** for
   clay-style sculpting with Puppet Animator.
-- **Architechies** (new in 2.2): floor plans, walls, doors, windows and roofs, sent to Beginner or
-  Advanced as editable shapes.
+- **Architect** (new in 2.2, called Architechies until 2.4): floor plans, walls, doors, windows and
+  roofs, sent to Beginner or Advanced as editable shapes, scaled to fit the build plate. 2.4 and 2.5
+  add a landscape (hills, ponds, streams, 22 kinds of ground, 39 plants), weather and moving water,
+  a rain, river or sea flood test that shows whether water gets into the house, finishes (colours,
+  textures, face patterns), round-log and square-log walls, floor plans saved as PDF, SVG or DXF,
+  and export of the house with its landscape.
 - **CAM Studio** (new in 2.3): plan and simulate CNC router, mill or laser cuts and save G-code.
-  Sending it to a machine over USB asks the browser's own permission first.
+  Sending it to a machine over USB asks the browser's own permission first. 2.5 adds a 4th axis
+  (rotary) for round parts, with G-code that has A moves.
 - **FlexiGen** for print-in-place articulated figures, and **Mesh to STEP** to turn STL or 3MF
   meshes into editable solids.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
@@ -308,9 +313,9 @@ upstream version stays easy to merge.
 - Hole patterns: rows, staggered rows or a circle of round, square, hex or slot holes on a flat
   face. Round holes can be plain, counterbored, countersunk or tapped; square, hex and slot holes
   are cut through the part or to a depth.
-- Gears: spur gears, straight bevel gears and racks from a module and a tooth count, with a print
-  clearance and an optional bore and keyway. Helical gears are not built yet, and to change a gear's
-  teeth you undo and make it again.
+- Gears: spur gears, helical gears (12 to 30 teeth, 5 to 30 degrees, right or left hand), straight
+  bevel gears and racks from a module and a tooth count, with a print clearance and an optional
+  bore and keyway (spur gears). To change a gear's teeth you undo and make it again.
 - Name plates: a plate sized to one line of text, with the letters raised in a second colour or
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
@@ -360,7 +365,7 @@ upstream version stays easy to merge.
 - Share link: puts a small design in a web address, which you copy and send. Nothing is uploaded,
   the receiver is asked before it opens, and it opens as a new design, never over theirs. The link
   holds the whole design, unencrypted, so anyone with it can open a copy. It is capped at 4096
-  characters, and designs made in Chisel or Architechies, or with joints, need a project file
+  characters, and designs made in Chisel or Architect, or with joints, need a project file
   instead.
 - Report a problem: opens a bug report on GitHub with the app details filled in, never your
   design. The app sends nothing; you press the link and then Create on GitHub.
