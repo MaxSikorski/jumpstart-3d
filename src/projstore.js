@@ -41,11 +41,38 @@ function openDB() { // null on error or blocked; a slow open keeps waiting (the 
 const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const committed = (tx) => new Promise((res) => { tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); });
 
-function idbPut(db, id, docString, entry) {
+// The IndexedDB version of a design, as a design of its own named "<name> (before fallback)".
+function keepCopy(docs, entries, str, ent) {
+  let d = null;
+  try { d = JSON.parse(str); } catch (e) {}
+  if (!d) return;
+  const id = uid("d"), name = (d.name || "Untitled") + " (before fallback)";
+  docs.put(JSON.stringify({ ...d, id, name }), id);
+  entries.put({ ver: d.ver || 0, mode: d.mode, updated: d._updated || 0, thumb: null, ...ent, id, name });
+}
+
+// `base` (optional, a stamp or a function returning one or null) is the `_updated` of the copy these edits started from.
+// With it the stored copy is read in the SAME transaction: if it is newer than the base and is not this very write, it is
+// kept first as "(before fallback)", so edits made on an older copy never replace a newer one. Both writes commit or neither.
+function idbPut(db, id, docString, entry, base) {
   try {
     const tx = db.transaction(["docs", "entries"], "readwrite");
-    tx.objectStore("docs").put(docString, id);
-    tx.objectStore("entries").put({ ...entry, id });
+    const docs = tx.objectStore("docs"), entries = tx.objectStore("entries");
+    const write = () => { docs.put(docString, id); entries.put({ ...entry, id }); };
+    const b = typeof base === "function" ? base() : base;
+    if (b == null) write();
+    else {
+      const d = docs.get(id), e = entries.get(id);
+      let waiting = 2;
+      const go = () => {
+        if (--waiting) return;
+        try {
+          if (d.result != null && stamp(d.result) > b && stamp(d.result) !== stamp(docString)) keepCopy(docs, entries, d.result, e.result);
+          write();
+        } catch (err) { try { tx.abort(); } catch (e2) {} }
+      };
+      d.onsuccess = go; e.onsuccess = go;
+    }
     return committed(tx);
   } catch (e) { return Promise.resolve(false); }
 }
@@ -84,18 +111,10 @@ function merge(db, fp) {
   const docs = tx.objectStore("docs"), entries = tx.objectStore("entries");
   const have = found.map(() => ({}));
   let waiting = found.length * 2, copied = 0;
-  const keep = (str, ent) => { // the IndexedDB version, as a design of its own
-    let d = null;
-    try { d = JSON.parse(str); } catch (e) {}
-    if (!d) return;
-    const id = uid("d"), name = (d.name || "Untitled") + " (before fallback)";
-    docs.put(JSON.stringify({ ...d, id, name }), id);
-    entries.put({ ver: d.ver || 0, mode: d.mode, updated: d._updated || 0, thumb: null, ...ent, id, name });
-  };
   const write = () => {
     found.forEach((f, i) => {
       const { str, ent } = have[i];
-      if (str != null) { if (stamp(f.str) <= stamp(str)) return; keep(str, ent); }
+      if (str != null) { if (stamp(f.str) <= stamp(str)) return; keepCopy(docs, entries, str, ent); }
       docs.put(f.str, f.id);
       entries.put(f.entry);
       copied++;
@@ -111,7 +130,8 @@ function merge(db, fp) {
   return committed(tx);
 }
 
-// A rescue copy newer than the stored design is the edit made just before the tab closed.
+// A rescue copy newer than the stored design is the edit made just before the tab closed. If the stored design is newer
+// than the copy those edits started from (`base`), it is kept as "(before fallback)" first.
 async function applyRescue(db) {
   const raw = ls.get(RESCUE);
   if (!raw) return;
@@ -120,19 +140,24 @@ async function applyRescue(db) {
   if (r && r.id && typeof r.doc === "string") {
     const tx = db.transaction(["docs", "entries"]);
     const [cur, ent] = await Promise.all([req(tx.objectStore("docs").get(r.id)), req(tx.objectStore("entries").get(r.id))]);
-    if ((cur == null || stamp(r.doc) > stamp(cur)) && !await idbPut(db, r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null })) return; // kept for the next visit
+    if ((cur == null || stamp(r.doc) > stamp(cur)) && !await idbPut(db, r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null }, r.base)) return; // kept for the next visit
   }
   ls.del(RESCUE);
 }
 
-const rescueWrite = (id, docString, entry) => ls.set(RESCUE, JSON.stringify({ id, doc: docString, entry: { ...entry, thumb: null } }));
+const rescueWrite = (id, docString, entry, base) => ls.set(RESCUE, JSON.stringify({ id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base }));
 
-function idbDriver(db) {
+// guard: after a slow open took over, the first write of each design checks the stored copy against the write's base
+function idbDriver(db, guard) {
   return {
     kind: "idb",
     async list() { return (await req(db.transaction("entries").objectStore("entries").getAll())).sort((a, b) => (b.updated || 0) - (a.updated || 0)); },
     async get(id) { const v = await req(db.transaction("docs").objectStore("docs").get(id)); return v == null ? null : v; },
-    put: (id, docString, entry) => idbPut(db, id, docString, entry),
+    async put(id, docString, entry, base) {
+      const ok = await idbPut(db, id, docString, entry, guard && guard.on && !guard.verified.has(id) ? base : undefined);
+      if (ok && guard) guard.verified.add(id);
+      return ok;
+    },
     async del(id) {
       // an old copy must never come back through a merge, and an older build must not list a card with no document
       ls.del(LS_DOC + id);
@@ -187,9 +212,13 @@ const FIRST_WAIT = 3000; // how long the first start waits for IndexedDB before 
 // Returns the database, or null (closed) when the copy could not be made.
 async function adopt(db, gone) {
   try {
-    if (gone && gone.size) { // designs deleted on localStorage while IndexedDB was still opening: their IndexedDB copies go too
+    if (gone && gone.size) { // designs deleted on localStorage while IndexedDB was still opening: their IndexedDB copies go too, unless a newer one is there
       const tx = db.transaction(["docs", "entries"], "readwrite");
-      for (const id of gone) { tx.objectStore("docs").delete(id); tx.objectStore("entries").delete(id); }
+      const docs = tx.objectStore("docs"), entries = tx.objectStore("entries");
+      for (const [id, at] of gone) {
+        const g = docs.get(id);
+        g.onsuccess = () => { if (g.result != null && stamp(g.result) <= at) { docs.delete(id); entries.delete(id); } };
+      }
       if (!await committed(tx)) { db.close(); return null; }
     }
     const migrated = await req(db.transaction("meta").objectStore("meta").get("migrated"));
@@ -203,7 +232,8 @@ async function adopt(db, gone) {
 export function openProjectStore() {
   let driver = null;
   const switched = []; // called once, after a slow IndexedDB open took over from localStorage
-  const gone = new Set(); // ids deleted on localStorage while IndexedDB was still opening
+  const gone = new Map(); // id -> the `_updated` of the copy deleted on localStorage while IndexedDB was still opening
+  const guard = { on: false, verified: new Set() };
   const opened = openDB();
   let slow = false;
   const ready = (async () => {
@@ -211,7 +241,7 @@ export function openProjectStore() {
     let db = await Promise.race([opened, new Promise((r) => setTimeout(() => r(waited), FIRST_WAIT))]);
     if (db === waited) { slow = true; driver = localDriver; return "local"; }
     if (db) db = await adopt(db);
-    driver = db ? idbDriver(db) : localDriver;
+    driver = db ? idbDriver(db) : localDriver; // no guard: not a slow open
     return driver.kind;
   })();
   // every call waits for ready and for the call before it, so un-awaited saves land in order
@@ -228,7 +258,8 @@ export function openProjectStore() {
     chain = chain.then(async () => {
       const ok = await adopt(db, gone);
       if (!ok) return;
-      driver = idbDriver(ok);
+      guard.on = true;
+      driver = idbDriver(ok, guard);
       for (const f of switched) { try { f(); } catch (e) {} }
     }).catch(() => {});
   });
@@ -239,10 +270,10 @@ export function openProjectStore() {
     list: run("list", []),
     get: run("get", null),
     put: run("put", false),
-    del: run("del", false, (id) => { if (slow && driver === localDriver) gone.add(id); }),
+    del: run("del", false, (id) => { if (slow && driver === localDriver) gone.set(id, stamp(ls.get(LS_DOC + id)) || (readJSON(LS_INDEX, []).find((p) => p.id === id) || {}).updated || 0); }),
     getMeta: run("getMeta", null), // small records kept beside the designs (IndexedDB only; the older storage has no place for them)
     setMeta: run("setMeta", false),
     // for the tab closing: no waiting, no promise
-    putNow: (id, docString, entry) => (driver ? driver.putNow : rescueWrite)(id, docString, entry),
+    putNow: (id, docString, entry, base) => (driver ? driver.putNow : rescueWrite)(id, docString, entry, base),
   };
 }

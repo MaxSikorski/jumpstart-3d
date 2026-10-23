@@ -119,9 +119,9 @@ export function initProjects(app) {
       doc = store.doc;
       const r = taken || record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
-      opened = { id: r[0], at: r[2].updated };
       dirty = false;
-      if (await ps.put(...r)) { if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
+      // the last argument is read when the write runs: the stamp these edits started from (see idbPut in projstore.js)
+      if (await ps.put(r[0], r[1], r[2], () => (opened.id === r[0] ? opened.at : null))) { if (store.doc.id === r[0]) opened = { id: r[0], at: r[2].updated }; if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
     if (remoteOk) {
@@ -140,13 +140,8 @@ export function initProjects(app) {
     let cur = null;
     try { cur = JSON.parse(await ps.get(store.doc.id)); } catch (e) {}
     const newer = cur && opened.id === store.doc.id && (cur._updated || 0) > opened.at;
-    if (dirty || saving) {
-      if (newer) { // unsaved edits on an older copy: the newer one is kept as a design of its own, never overwritten
-        const id = uid("d"), name = (cur.name || "Untitled") + " (before fallback)";
-        await ps.put(id, JSON.stringify({ ...cur, id, name }), { id, name, ver: cur.ver || 0, mode: cur.mode, updated: cur._updated, thumb: null });
-      }
-      saveSoon();
-    } else if (newer) {
+    if (dirty || saving) saveSoon(); // edits on an older copy are safe: the write keeps a newer stored copy as "(before fallback)" first
+    else if (newer) {
       opened = { id: cur.id, at: cur._updated };
       delete cur._updated;
       app.select([]); if (app.command) app.command.cancel(); app.exitSketch();
@@ -742,7 +737,7 @@ export function initProjects(app) {
   });
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(); ps.putNow(...r); save(r); } }); // jumpstart-3d: designs storage (putNow is the synchronous copy; the save may not finish)
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened.at : null); save(r); } }); // jumpstart-3d: designs storage (putNow is the synchronous copy; the save may not finish)
 
   return {
     // a finished render (PNG) goes through the same save path as models
