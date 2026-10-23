@@ -88,7 +88,7 @@ test("a page that connects becomes the tab, and tools edit that page", async () 
   await until(async () => (await status()).page === "tab", "the tab to connect");
   const st = await status();
   assert.equal(st.page, "tab");
-  assert.equal(st.js3d, "1.7");
+  assert.match(st.js3d, /^1\.\d+$/); // any 1.x: a new bridge call bumps the minor version without an mcp/ change
   assert.equal(st.bodies, 0);
   assert.equal(st.url, site.url);
   const id = data(await call(s.client, "add_shape", { kind: "cylinder", size: { w: 10, d: 10, h: 30 }, name: "Peg" }));

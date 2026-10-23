@@ -33,6 +33,7 @@ import { snapSwitch, fine, makeGizmo, axisAlong, ringDrag, turnFeedback, placePi
 import { liveGizmo, onEscape } from "./pivot.js"; // jumpstart-3d: pivot
 import { initNamePlate } from "./nameplate.js"; // jumpstart-3d: name plates
 import { initKnurl } from "./knurl.js"; // jumpstart-3d: knurl
+import { initSpring } from "./spring.js"; // jumpstart-3d: spring
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
 
@@ -5664,6 +5665,7 @@ export function initAdvanced(app) {
         { id: "ad-gear", label: "Gear", title: "Spur gears, bevel gears and racks by module and tooth count", icon: "gear", fn: () => gears.cmd() }, // jumpstart-3d: gears
         { id: "ad-nameplate", label: "Name plate", title: "A tag or name plate sized to its text, with raised or cut-in letters", icon: "tag", fn: () => namePlate.cmd() }, // jumpstart-3d: name plates
         { id: "ad-knurl", label: "Knurled knob", title: "A knob or grip with straight V grooves all round and an optional round, hex or D bore", icon: "knurl", fn: () => knurl.cmd() }, // jumpstart-3d: knurl
+        { id: "ad-spring", label: "Spring", title: "A compression spring of round wire, with open ends or ends cut flat", icon: "spring", fn: () => spring.cmd() }, // jumpstart-3d: spring
       ] },
       { id: "ad-prims", label: "Primitives", title: "Box, cylinder, sphere, torus, prism and more", icon: "box", dropdown: [
         { id: "ad-box", label: "Box", icon: "box", fn: () => primCmd("box") },
@@ -6108,6 +6110,7 @@ export function initAdvanced(app) {
   const gears = initGears(app, { openCmd, commit, row, seg }); // jumpstart-3d: gears
   const namePlate = initNamePlate(app, { openCmd, commit, row, seg }); // jumpstart-3d: name plates
   const knurl = initKnurl(app, { openCmd, commit, row, seg }); // jumpstart-3d: knurl
+  const spring = initSpring(app, { openCmd, commit, row, seg }); // jumpstart-3d: spring
   // section analysis: lives on after its dialog closes; a chip in the view shows it is on
   const section = (app.section = initSection(app, vp, scene));
   const secChip = el("div", { class: "section-chip", id: "section-chip", hidden: true },
@@ -6241,5 +6244,6 @@ export function initAdvanced(app) {
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
     namePlate: () => namePlate.cmd(), addNamePlate: (spec) => namePlate.add(spec), // jumpstart-3d: name plates
     knurl: () => knurl.cmd(), addKnurl: (spec) => knurl.add(spec), // jumpstart-3d: knurl
+    spring: () => spring.cmd(), addSpring: (spec) => spring.add(spec), // jumpstart-3d: spring
   };
 }
