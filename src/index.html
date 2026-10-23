@@ -519,6 +519,13 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .menu button { padding: 12px 10px; }
   .pcard .acts button { padding: 8px 8px; }
 }
+/* jumpstart-3d: pivot (issue #100). The pivot dot's labels, the angle pill beside the pointer while turning, and the Advanced Pivot panel */
+.vp-label.pivot-tag { font-family: var(--f-ui); font-size: 11px; }
+.vp-label.pivot-snap { font-family: var(--f-ui); background: #e8a317; border-color: #c98a0c; color: #1d1404; font-weight: 600; }
+.turn-pill { position: absolute; left: 0; top: 0; pointer-events: none; background: var(--accent); color: var(--on-accent); border-radius: 12px; padding: 3px 9px; font: 600 13px/1.2 var(--f-mono); box-shadow: 0 3px 10px rgba(0,0,0,.25); white-space: nowrap; z-index: 6; }
+.pivpanel { top: 10px; left: 10px; width: 236px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.pivot-fields { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 860px) { .pivpanel { top: auto; bottom: 54px; left: 10px; } }
 /* jumpstart-3d: rotation access (issue #100). The turn buttons and the Snap 15° / Free switch are 44 px targets for a finger */
 .rot-btn button { min-width: 44px; min-height: 44px; }
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
@@ -740,6 +747,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .report .rp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
 .report a.btn { text-decoration: none; }
 .report .rp-note { margin: 10px 0 0; font-size: 13px; }
+.report.share input[type=text] { display: block; width: 100%; box-sizing: border-box; margin: 8px 0 0; padding: 7px 9px; font: 12.5px/1.45 var(--f-mono, monospace); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; } /* jumpstart-3d: share link */
 @media (pointer: coarse) { .report textarea { font-size: 16px; } }
 .modal-back { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 60; padding: 16px; }
 .modal { background: var(--panel); border-radius: 10px; width: min(760px, 100%); max-height: min(640px, 92vh); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
@@ -1293,6 +1301,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <hr>
         <button data-act="json">Save Project File <small>.json</small></button>
         <button data-act="import">Open a project file…</button>
+        <button id="btn-share-link" title="Make a link that holds a small design, or open one that was shared with you. Nothing is uploaded.">Share link… <small>copy a link</small></button><!-- jumpstart-3d: share link -->
         <button data-act="runscript" title="Run a JavaScript file that uses the JS3D scripting bridge (see BRIDGE.md)">Run script… <small>.js</small></button><!-- jumpstart-3d: run script -->
         <hr>
         <button id="btn-report" title="Open a bug report on GitHub with the app details filled in">Report a problem… <small>GitHub</small></button><!-- jumpstart-3d: report -->

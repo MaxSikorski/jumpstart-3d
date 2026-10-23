@@ -39,7 +39,10 @@ import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 import { initReport } from "./report.js"; // jumpstart-3d: report
+import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
+captureShare(); // jumpstart-3d: share link. first thing: a design link's fragment goes into memory and off the address bar, before boot() or the bridge can see it
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
+import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -138,6 +141,7 @@ function boot() {
 
   // on small screens the side panels start tucked away (toggle from the toolbar)
   if (window.matchMedia("(max-width: 860px)").matches) { $("shapes").classList.add("collapsed"); $("browser").classList.add("collapsed"); }
+  app.pivot = initPivot(app); // jumpstart-3d: pivot. before the two modes: both draw and use it
   app.beginner = initBeginner(app);
   app.advanced = initAdvanced(app);
   if (IS_IOS) document.documentElement.classList.add("ios");
@@ -303,6 +307,7 @@ app.voxel = initVoxel(app);
     vp.setView("home", scene.allBox().isEmpty() ? null : scene.allBox());
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
+    app.sharelink.offer(); // jumpstart-3d: share link. a design link that opened the page is offered now that the saved design is loaded
   });
   load.hideSplash(); // jumpstart-3d: load. the workspace is built: let the mouse in
 }
@@ -775,6 +780,7 @@ app.onShapeClosed = function (skId, regionKeys) {
 
 app.select = function (ids) {
   app.sel = [...new Set(ids)];
+  app.pivot && app.pivot.selection(app.sel); // jumpstart-3d: pivot. a different set of bodies starts from its middle again
   app.scene.setSelected(app.sel);
   app.refreshUI("select");
 };
@@ -1039,3 +1045,4 @@ initBridge(app);
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
 initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing
+initShareLink(app); // jumpstart-3d: share link. Share link… and Import shared link (Open/Export menu); the link stays in the address, nothing is uploaded
