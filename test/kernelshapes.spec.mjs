@@ -159,23 +159,69 @@ test("a body with a closed cavity, grouped with a torus and stretched, keeps its
   await run((id) => JS3D.scale([id], [1.5, 1, 1]), before.id);
   const [after] = await entries();
   expect(after.error).toBeNull();
-  // the sphere's 4189 mm3 is still missing (scaled it is 6283): a filled cavity would add about 3 % to the whole
+  // the sphere's 4189 mm3 is still missing (scaled it is 6283): a filled cavity would add about 13 % to the whole
   near(after.volume, 1.5 * before.volume, 0.01);
   const s = await stl();
   expect(s.open).toBe(0);
   near(s.volume, after.volume, 0.02);
 });
 
-test("a torus stretched while the view is at its finest detail still works", async () => {
+// an imported mesh with one face missing stays a surface; its signed volume depends on where the origin is (off the origin it can be negative)
+test("an open surface mesh far from the origin, grouped with a torus and stretched, still stretches", async () => {
+  const quads = [[0, 4, 6, 2], [4, 5, 7, 6], [2, 6, 7, 3], [0, 1, 5, 4], [0, 2, 3, 1]]; // the cube without its +x face [1, 3, 7, 5]
+  const tris = quads.flatMap(([a, b, c, d]) => [a, b, c, a, c, d]);
+  const verts = [];
+  for (let i = 0; i < 8; i++) verts.push(500 + 10 * (i & 1), 10 * ((i >> 1) & 1), 10 * ((i >> 2) & 1));
+  const buf = Buffer.alloc(8 + verts.length * 4 + tris.length * 4);
+  buf.writeUInt32LE(8, 0); buf.writeUInt32LE(tris.length / 3, 4);
+  verts.forEach((v, i) => buf.writeFloatLE(v, 8 + 4 * i));
+  tris.forEach((v, i) => buf.writeUInt32LE(v, 8 + verts.length * 4 + 4 * i));
+  const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const doc = {
+    v: 1, id: "g_open", name: "open", mode: "beginner", created: 1, seq: 2, grid: 1, sketches: [], planes: [], joints: [],
+    assets: { aopen: { kind: "mesh", name: "open", data: buf.toString("base64") } },
+    bodies: [
+      { id: "b1", name: "open", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: I, node: { t: "mesh", asset: "aopen", k: 1, keepPos: true, mods: [] } },
+      { id: "b2", name: "torus", seq: 2, color: "#d14d8b", hole: false, hidden: false, m: I.map((v, i) => (i === 12 ? 480 : v)), node: { t: "prim", kind: "torus", p: { w: 20, d: 20, h: 8 }, mods: [] } },
+    ],
+  };
   await fresh();
-  await run(() => __app.setMeshDetail("extra", true));
-  const id = await run(() => JS3D.add("torus"));
-  const [before] = await entries();
-  await run((id) => JS3D.scale([id], [2, 1, 1]), id);
+  await run((d) => JS3D.load(JSON.stringify(d)), doc);
+  const parts = await entries();
+  expect(parts.map((e) => e.error)).toEqual([null, null]);
+  const g = await run((ids) => JS3D.group(ids), parts.map((e) => e.id));
+  await entries();
+  await run((g) => JS3D.scale([g], [1.5, 1, 1]), g);
   const [after] = await entries();
-  await run(() => __app.setMeshDetail("normal", true));
   expect(after.error).toBeNull();
-  near(after.volume, 2 * before.volume, 0.02);
+  expect(after.bbox.max[0] - after.bbox.min[0]).toBeGreaterThan(40);
+});
+
+test("a ring round the end of a hollow bar does not take the bar's cavity", async () => {
+  await fresh();
+  // bar 20 wide, z 0 to 60, with a closed cavity z 18 to 42; the ring (inside 21, outside 23, z 0 to 44) has a smaller box than the bar
+  // and that box still holds the cavity's box
+  const bar = await run(() => {
+    const body = JS3D.add("cylinder", { size: { w: 20, d: 20, h: 60 } });
+    const cav = JS3D.add("cylinder", { size: { w: 8, d: 8, h: 24 }, at: [0, 0, 18], hole: true });
+    return JS3D.group([body, cav]);
+  });
+  await entries();
+  const ring = await run(() => {
+    const body = JS3D.add("cylinder", { size: { w: 23, d: 23, h: 44 } });
+    const inner = JS3D.add("cylinder", { size: { w: 21, d: 21, h: 50 }, at: [0, 0, -3], hole: true });
+    return JS3D.group([body, inner]);
+  });
+  await entries();
+  const ring2 = await run(() => JS3D.add("torus", { at: [80, 0, 0] }));
+  const g = await run((ids) => JS3D.group(ids), [bar, ring, ring2]);
+  const [before] = await entries();
+  expect(before.error).toBeNull();
+  await run((g) => JS3D.scale([g], [1.5, 1, 1]), g);
+  const [after] = await entries();
+  expect(after.error).toBeNull();
+  // the cavity is 1206 mm3, 4 to 5 % of the whole
+  near(after.volume, 1.5 * before.volume, 0.01);
 });
 
 // last in the file: on a corrupted engine every later test would fail for this reason

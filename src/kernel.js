@@ -2395,27 +2395,50 @@ function facetedScale(shape, k, o) {
   for (let t = 0; t < I.length; t += 3) { up[find(I[t])] = find(I[t + 1]); up[find(I[t + 1])] = find(I[t + 2]); }
   const pieces = new Map();
   for (let t = 0; t < I.length; t += 3) { const r = find(I[t]); if (!pieces.has(r)) pieces.set(r, []); pieces.get(r).push(I[t], I[t + 1], I[t + 2]); }
-  // a piece whose triangles face inward (negative volume, the sign flipped back by a mirroring stretch) is a closed cavity inside another
-  // piece: solidFromMesh would turn it into a solid, so it is built as one and cut out of the smallest piece whose box holds it
+  // a CLOSED piece whose triangles face inward (negative volume, the sign flipped back by a mirroring stretch) is a cavity inside another
+  // piece: solidFromMesh would turn it into a solid, so it is built as one and cut out of the smallest closed piece whose box holds it and
+  // whose volume drops by the cavity's (the box alone also fits a ring round the end of a hollow bar). An open piece (a surface) has no inside
+  // and a volume that depends on where the origin is, so it is never a cavity.
   const mirrored = k[0] * k[1] * k[2] < 0;
-  const solids = [], cavities = [];
-  for (const tri of pieces.values()) {
-    let vol = 0;
-    for (let t = 0; t < tri.length; t += 3) {
-      const a = tri[t] * 3, b = tri[t + 1] * 3, c = tri[t + 2] * 3;
-      vol += V[a] * (V[b + 1] * V[c + 2] - V[b + 2] * V[c + 1]) + V[a + 1] * (V[b + 2] * V[c] - V[b] * V[c + 2]) + V[a + 2] * (V[b] * V[c + 1] - V[b + 1] * V[c]);
+  const solids = [], cavities = [], closed = [];
+  const isClosed = (tri) => {
+    const use = new Map();
+    for (let t = 0; t < tri.length; t += 3) for (let c = 0; c < 3; c++) {
+      const i = tri[t + c], j = tri[t + (c + 1) % 3], key = Math.min(i, j) * (V.length / 3) + Math.max(i, j);
+      use.set(key, (use.get(key) || 0) + 1);
     }
-    (mirrored ? -vol : vol) < 0 ? cavities.push(solidFromMesh(V, tri)) : solids.push(solidFromMesh(V, tri));
-  }
-  const boxes = solids.map(bboxOf), boxVol = (b) => b.size[0] * b.size[1] * b.size[2];
-  for (const cav of cavities) {
-    const cb = bboxOf(cav);
-    let at = -1;
-    boxes.forEach((b, i) => { if ([0, 1, 2].every((c) => b.min[c] <= cb.min[c] + 1e-6 && b.max[c] >= cb.max[c] - 1e-6) && (at < 0 || boxVol(b) < boxVol(boxes[at]))) at = i; });
-    if (at < 0) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
-    const cut = solids[at].cut(cav);
-    solids[at].delete(); cav.delete();
-    solids[at] = cut;
+    for (const n of use.values()) if (n !== 2) return false;
+    return true;
+  };
+  try {
+    for (const tri of pieces.values()) {
+      let vol = 0;
+      for (let t = 0; t < tri.length; t += 3) {
+        const a = tri[t] * 3, b = tri[t + 1] * 3, c = tri[t + 2] * 3;
+        vol += V[a] * (V[b + 1] * V[c + 2] - V[b + 2] * V[c + 1]) + V[a + 1] * (V[b + 2] * V[c] - V[b] * V[c + 2]) + V[a + 2] * (V[b] * V[c + 1] - V[b + 1] * V[c]);
+      }
+      const shut = isClosed(tri);
+      if (shut && (mirrored ? -vol : vol) < 0) cavities.push(solidFromMesh(V, tri));
+      else { solids.push(solidFromMesh(V, tri)); closed.push(shut); }
+    }
+    const boxes = solids.map(bboxOf), boxVol = (b) => b.size[0] * b.size[1] * b.size[2];
+    while (cavities.length) {
+      const cav = cavities.pop(), cb = bboxOf(cav), cavVol = Math.abs(safeVolume(cav));
+      const fits = solids.map((_, i) => i).filter((i) => closed[i] && [0, 1, 2].every((c) => boxes[i].min[c] <= cb.min[c] + 1e-6 && boxes[i].max[c] >= cb.max[c] - 1e-6))
+        .sort((x, y) => boxVol(boxes[x]) - boxVol(boxes[y]));
+      let ok = false;
+      try {
+        for (const i of fits) {
+          const before = safeVolume(solids[i]), cut = solids[i].cut(cav), drop = before - safeVolume(cut);
+          if (Math.abs(drop - cavVol) <= 0.1 * cavVol) { solids[i].delete(); solids[i] = cut; ok = true; break; }
+          cut.delete();
+        }
+      } finally { cav.delete(); }
+      if (!ok) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
+    }
+  } catch (err) {
+    solids.forEach((x) => x.delete()); cavities.forEach((x) => x.delete());
+    throw err;
   }
   return solids.length === 1 ? solids[0] : R.makeCompound(solids);
 }
