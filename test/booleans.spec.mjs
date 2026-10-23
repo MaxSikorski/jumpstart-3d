@@ -5,7 +5,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { boot, watchErrors, waitIdle } from "./helpers.mjs";
-import { readStl as readStlTriangles, meshReport } from "./fuzz-checks.mjs";
+import { readStl as readStlTriangles, meshReport, readThreeMf } from "./fuzz-checks.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -205,4 +205,67 @@ test("two torus-and-hemisphere groups joined export an STL that holds the group'
   const m = meshReport(readStlTriangles(file)); // the fuzzer's reader: welds at 0.0001 and matches edges by direction
   near(m.volume, g.volume, 0.01);
   expect(m.open).toBe(0);
+});
+
+// Fuzzer seed 32: a cylinder joined with a torus and scaled down, grouped with that torus as a hole that touches it at
+// one point. The cut left a zero-length edge with a 5.78 mm tolerance, and every boolean near it went wrong: an oval
+// sphere that overlaps the group by 44 mm3 intersected to "Nothing is left", and its join and cuts disagreed.
+// The design is the one the fuzzer had built by then (its steps 1 to 15), as the app saved it.
+const TOUCHING_TORI = {
+  v: 1, id: "t_touching_tori", name: "Touching tori", mode: "beginner", created: 1, seq: 2, grid: 1, sketches: [], planes: [], joints: [], params: [],
+  bodies: [
+    { id: "sph", name: "Sphere 1", seq: 1, color: "#29a35a", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -14, 6, 12, 1],
+      node: { t: "prim", kind: "sphere", p: { w: 8, d: 25, h: 23 }, mods: [] } },
+    { id: "grp", name: "Cylinder 1", seq: 2, color: "#f3a712", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -6, 0, 8, 1],
+      node: { t: "group", mods: [], children: [
+        { name: "Cylinder 1", hole: false, m: [6.123233995736766e-17, 1, 0, 0, -1, 6.123233995736766e-17, 0, 0, 0, 0, 1, 0, 9.004441261291504, 3.004441261291504, 0, 1],
+          node: { t: "prim", kind: "cylinder", p: { w: 22, d: 18, h: 12, r: 0, c: 0 }, mods: [
+            { id: "f1", seq: 3, t: "scale", k: [1.5, 1.5, 1.5], o: [0, 0, -3] },
+            { id: "f2", seq: 4, t: "bool", src: "combine", tool: { t: "group", mods: [], children: [
+              { name: "Torus 1", hole: false, m: [6.123233995736766e-17, 1, 0, 0, -1, 6.123233995736766e-17, 0, 0, 0, 0, 1, 0, -10.995558738708496, 5.004441261291505, 8, 1],
+                node: { t: "prim", kind: "torus", p: { w: 22, d: 22, h: 4, tube: 4 }, mods: [] } }] },
+              m: [6.123233995736766e-17, -1, 0, 0, 1, 6.123233995736766e-17, 0, 0, 0, 0, 1, 0, -3.0044412612915044, 9.004441261291504, 0, 1] },
+            { id: "f3", seq: 5, t: "scale", k: [0.5, 0.5, 0.5], o: [-2.220446049e-16, 4.374285221, 3] }] } },
+        { name: "Torus 1", hole: true, m: [6.123233995736766e-17, 1, 0, 0, -1, 6.123233995736766e-17, 0, 0, 0, 0, 1, 0, -10.995558738708496, 5.004441261291505, 8, 1],
+          node: { t: "prim", kind: "torus", p: { w: 22, d: 22, h: 4, tube: 4 }, mods: [] } }] } },
+  ],
+};
+test("a group whose torus hole touches it at one point still intersects, joins and cuts right with an oval sphere", async () => {
+  await run((doc) => JS3D.load(doc), TOUCHING_TORI);
+  const [sph, grp] = await entries();
+  expect([sph.error, grp.error]).toEqual([null, null]);
+  const measure = (ids, op) => run(async ([ids, op]) => {
+    const g = JS3D.group(ids, op ? { op } : {}); await JS3D.ready(60000);
+    const b = JS3D.list().find((e) => e.id === g);
+    JS3D.undo(); await JS3D.ready(60000);
+    return { volume: b.volume, error: b.error };
+  }, [ids, op]);
+  const I = await measure([grp.id, sph.id], "intersect"), J = await measure([grp.id, sph.id]);
+  const C = await measure([grp.id, sph.id], "cut"), C2 = await measure([sph.id, grp.id], "cut");
+  expect([I.error, J.error, C.error, C2.error]).toEqual([null, null, null, null]);
+  near(I.volume, 43.91, 0.01); // the overlap, as each part alone intersects the sphere (the group's hole cuts nothing)
+  near(J.volume + I.volume, sph.volume + grp.volume, 1e-4);
+  near(C.volume, J.volume - sph.volume, 1e-4);
+  near(C2.volume, J.volume - grp.volume, 1e-4);
+});
+
+// Fuzzer seed 33: two tori joined where their lowest circles cross. The mesher leaves a patch of triangles under
+// 0.1 micron across at the crossing; the 3MF writer welded corners only when they rounded to the same 0.01 micron,
+// so one of those triangles stayed with three edges that no other triangle shared, and slicers saw an open mesh.
+test("two tori joined where their lowest circles cross export a closed 3MF", async () => {
+  await fresh();
+  const id = await run(async () => {
+    const a = JS3D.add("torus", { size: { w: 24, d: 24, h: 6 }, at: [-6, -4, 4] });
+    const b = JS3D.add("torus", { size: { w: 24, d: 24, h: 6 }, at: [-14, -20, 4] });
+    await JS3D.ready();
+    const g = JS3D.group([a, b]); await JS3D.ready(60000);
+    return g;
+  });
+  const [g] = await entries();
+  expect(g.id).toBe(id);
+  expect(g.error).toBeNull();
+  const m = readThreeMf(bytes(await run(() => JS3D.export("3mf"))));
+  expect(m.items.length).toBe(1);
+  expect(m.items[0].mesh.open, "3MF edges with no partner").toBe(0);
+  near(m.items[0].placed, g.volume, 0.01);
 });
