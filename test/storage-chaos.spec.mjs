@@ -26,7 +26,7 @@ import { newDoc, body, prim, watchErrors, buildOf } from "./helpers.mjs";
 
 const DB = "jumpstart3d-projects", RECOVERY_DB = "jumpstart3d-recovery";
 const RESCUE = "workplane.rescue.v1", LS_INDEX = "workplane.index.v1", LS_DOC = "workplane.doc.v1.", LAST = "workplane.pref.v1.last";
-const MARKER = "__js3d.chaos.token";
+const MARKER = "__js3d.chaos.token", GONE = "workplane.gone.v1.";
 const SEEDS = (process.env.CHAOS_SEEDS || "11,29").split(",").map(Number);
 const ROUNDS = +(process.env.CHAOS_ROUNDS || 2);
 const SAVED = "Saved in this browser";
@@ -1153,13 +1153,13 @@ scenario("on the older storage, closing the tab with no room for a second copy o
 });
 
 for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: true }]]) {
-  scenario(`a rescue copy does not bring back a design that another tab deleted (${label})`, async (w) => {
+  scenario(`a rescue copy of an edit made before another tab deleted the design does not bring it back (${label})`, async (w) => {
     const D = "t_chaos_d";
     const pa = await openPage(w, cfg);
     await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
     const pb = await openPage(w, cfg);
-    expect(await pb.evaluate(async (id) => { const s = window.__app.projects._store; await s.ready; return s.del(id); }, D), "deleted in the other tab").toBe(true);
     await editOnly(pa, step(w, D, "soon", 5));
+    expect(await pb.evaluate(async (id) => { const s = window.__app.projects._store; await s.ready; return s.del(id); }, D), "deleted in the other tab").toBe(true);
     await closeUnloading(pa);
     w.tokens = [];
     await pb.close({ runBeforeUnload: false });
@@ -1171,6 +1171,93 @@ for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: t
     await closeClean(page);
   });
 }
+
+// The other order: the edit came after the delete (the person kept working in a tab that did not know). An autosave would have brought
+// the design back, so the rescue copy does too.
+const marker = (page, id) => page.evaluate(async ([id, g]) => { const s = window.__app.projects._store; await s.ready; return { ls: localStorage.getItem(g + id), idb: await s.getMeta(g + id) }; }, [id, GONE]);
+for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: true }]]) {
+  scenario(`a rescue copy of an edit made after another tab deleted the design is kept (${label})`, async (w) => {
+    const D = "t_chaos_d";
+    const pa = await openPage(w, cfg);
+    await pa.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+    const pb = await openPage(w, cfg);
+    expect(await pb.evaluate(async (id) => { const s = window.__app.projects._store; await s.ready; return s.del(id); }, D), "deleted in the other tab").toBe(true);
+    await pa.waitForTimeout(40); // the edit is clearly later than the delete
+    const e = step(w, D, "soon", 5);
+    await editOnly(pa, e);
+    await closeUnloading(pa);
+    w.tokens = [];
+    await pb.close({ runBeforeUnload: false });
+    w.tokens = [];
+    const page = await openPage(w, cfg);
+    const snap = await readAll(page);
+    expect(holds(snap, D, e.n).length, "the later edit is stored").toBe(1);
+    expect(await rescues(page), "the rescue copy is used up").toEqual([]);
+    const m = await marker(page, D);
+    expect([m.ls, m.idb], "and the deletion marker is gone").toEqual([null, null]);
+    await closeClean(page);
+  });
+
+  scenario(`a deletion marker goes when the design is written again, is not left by a discarded load, and old ones are pruned (${label})`, async (w) => {
+    const D = "t_chaos_d", X = "t_chaos_x";
+    let page = await openPage(w, cfg);
+    await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+    const del = (id, opts) => page.evaluate(async ([id, opts]) => window.__app.projects._store.del(id, opts), [id, opts]);
+    expect(await del(D), "deleted").toBe(true);
+    let m = await marker(page, D);
+    expect(m.ls !== null || m.idb !== null, "a real delete leaves a marker").toBe(true);
+    await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+    await expect.poll(async () => { const x = await marker(page, D); return [x.ls, x.idb]; }, { message: "saving the design again clears the marker" }).toEqual([null, null]);
+    expect(await del(X, { marker: false }), "a discarded load is deleted").toBe(true);
+    m = await marker(page, X);
+    expect([m.ls, m.idb], "without leaving a marker").toEqual([null, null]);
+    // markers older than 30 days are pruned at the next start; a recent one stays
+    await page.evaluate(async (g) => {
+      const s = window.__app.projects._store, old = Date.now() - 31 * 864e5, fresh = Date.now() - 864e5;
+      if (s.kind === "idb") { await s.setMeta(g + "old", old); await s.setMeta(g + "fresh", fresh); }
+      localStorage.setItem(g + "lsold", String(old)); localStorage.setItem(g + "lsfresh", String(fresh));
+    }, GONE);
+    await reloadPage(w, page);
+    const after = await page.evaluate(async (g) => {
+      const s = window.__app.projects._store; await s.ready;
+      return { lsold: localStorage.getItem(g + "lsold"), lsfresh: localStorage.getItem(g + "lsfresh") !== null, old: await s.getMeta(g + "old"), fresh: (await s.getMeta(g + "fresh")) !== null, kind: s.kind };
+    }, GONE);
+    expect(after.lsold, "an old marker in localStorage is pruned").toBeNull();
+    expect(after.lsfresh, "a recent one stays").toBe(true);
+    if (after.kind === "idb") { expect(after.old, "an old marker in IndexedDB is pruned").toBeNull(); expect(after.fresh, "a recent one stays").toBe(true); }
+    await closeClean(page);
+  });
+}
+
+// An ordinary save must not wait for a transaction that holds the `meta` store: the tab closing writes its rescue copy there and cannot
+// afford to queue behind a save in progress (only a rescue replay locks it).
+scenario("an ordinary save does not wait for a transaction on the meta store (IndexedDB)", async (w) => {
+  const D = "t_chaos_d";
+  const page = await openPage(w);
+  const doc = step(w, D, "now", 5).doc;
+  const r = await page.evaluate(async ({ doc, db }) => {
+    const s = window.__app.projects._store;
+    await s.ready;
+    const conn = await new Promise((res, rej) => { const q = indexedDB.open(db); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+    const tx = conn.transaction("meta", "readwrite"), m = tx.objectStore("meta");
+    let alive = true;
+    const poke = () => { if (alive) m.get("nothing").onsuccess = poke; };
+    poke();
+    setTimeout(() => { alive = false; }, 2500);
+    const now = Date.now(), t0 = performance.now();
+    const ok = await Promise.race([
+      s.put(doc.id, JSON.stringify({ ...doc, _updated: now }), { id: doc.id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null }),
+      new Promise((res) => setTimeout(() => res("waited"), 1500)),
+    ]);
+    const took = performance.now() - t0;
+    await new Promise((res) => { tx.oncomplete = tx.onabort = tx.onerror = () => res(); });
+    conn.close();
+    return { ok, took };
+  }, { doc, db: DB });
+  expect(r.ok, "the save committed while the meta store was held").toBe(true);
+  expect(r.took).toBeLessThan(1500);
+  await closeClean(page);
+});
 
 // Saving on the older storage is serialised with Web Locks; where they are missing it runs unlocked (see `locked` in projstore.js).
 // Both builds must have them, so that path is only for old browsers.

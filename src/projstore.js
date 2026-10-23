@@ -15,7 +15,12 @@ const OTHER = "(other tab)", BEFORE = "(before fallback)";
 const LOCK = "jumpstart3d-local-designs";
 const TAB = uid("t"); // names this page's saves (list entry `rev`: "<tab>:<n>") and its rescue keys
 const rescueKey = (id) => RESCUE + "." + TAB + "." + id;
-const GONE = "workplane.gone.v1."; // a deleted design leaves a marker (until the design is written again) so a rescue copy cannot bring it back; IndexedDB: meta key GONE + id
+const GONE = "workplane.gone.v1."; // a deleted design leaves a marker (its time; cleared when the design is written again, pruned after 30 days) so an older rescue copy cannot bring it back; IndexedDB: meta key GONE + id
+const GONE_TTL = 30 * 864e5;
+// When was the design deleted, from the marker(s) found (Infinity if a marker has no readable time)? null: no marker.
+const deletedAt = (...marks) => marks.reduce((t, v) => { if (v == null) return t; const n = +v; return Math.max(t == null ? -Infinity : t, Number.isFinite(n) ? n : Infinity); }, null);
+// A rescue copy is dropped when the design was deleted at or after its last edit (`edited`, written by the closing tab; a copy without one counts as older).
+const deletedSince = (r, ...marks) => { const t = deletedAt(...marks); return t != null && t >= (+r.edited || 0); };
 
 const ls = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -115,25 +120,30 @@ const baseOf = (b, id) => { b = typeof b === "function" ? b() : b; return b == n
 // The stored copy is read in the SAME transaction: if someone else saved it since (see `displaced`), it is kept first as
 // "<name> <suffix>", so edits made on an older copy never replace a newer one. Both writes commit or neither.
 // `rescue`: { key, raw } a rescue copy in the `meta` store that this write replays; it is deleted in the same transaction if it still holds raw.
+// Only that replay locks `meta`: the closing tab's own rescue write goes to `meta` too and must not queue behind an ordinary save.
+// An ordinary save clears the design's deletion marker once it has committed (a separate small transaction, best effort).
 function idbPut(db, id, docString, entry, base, { suffix = OTHER, own, rescue } = {}) {
   try {
-    const tx = db.transaction(["docs", "entries", "meta"], "readwrite");
-    const docs = tx.objectStore("docs"), entries = tx.objectStore("entries"), meta = tx.objectStore("meta");
+    const tx = db.transaction(rescue ? ["docs", "entries", "meta"] : ["docs", "entries"], "readwrite");
+    const docs = tx.objectStore("docs"), entries = tx.objectStore("entries"), meta = rescue ? tx.objectStore("meta") : null;
     let kept = null;
-    const b = baseOf(base, id), d = docs.get(id), e = entries.get(id), r = rescue ? meta.get(rescue.key) : null;
-    let waiting = rescue ? 3 : 2;
+    const b = baseOf(base, id), d = docs.get(id), e = entries.get(id), r = meta ? meta.get(rescue.key) : null;
+    let waiting = meta ? 3 : 2;
     const go = () => {
       if (--waiting) return;
       try {
         const c = displaced(d.result, e.result, entry, docString, b, own) && copyOf(d.result, e.result, suffix);
         if (c) { putCopy(docs, entries, c); kept = c[2].name; }
         docs.put(docString, id); entries.put({ ...entry, id });
-        meta.delete(GONE + id);
-        if (rescue && JSON.stringify(r.result) === rescue.raw) meta.delete(rescue.key);
+        if (meta) { meta.delete(GONE + id); if (JSON.stringify(r.result) === rescue.raw) meta.delete(rescue.key); }
       } catch (err) { try { tx.abort(); } catch (e2) {} }
     };
     d.onsuccess = go; e.onsuccess = go; if (r) r.onsuccess = go;
-    return committed(tx).then((ok) => { if (ok) seen.set(id, entry.updated || 0); if (ok && kept && suffix === OTHER) tell(kept); return ok; });
+    return committed(tx).then((ok) => {
+      if (ok) { seen.set(id, entry.updated || 0); ls.del(GONE + id); if (!meta) { try { db.transaction("meta", "readwrite").objectStore("meta").delete(GONE + id); } catch (e2) {} } }
+      if (ok && kept && suffix === OTHER) tell(kept);
+      return ok;
+    });
   } catch (e) { return Promise.resolve(false); }
 }
 
@@ -235,7 +245,7 @@ async function applyRescue(db) {
   for (const j of jobs.sort(byAge)) {
     const tx = db.transaction(["docs", "entries", "meta"]);
     const [cur, ent, gone] = await Promise.all([req(tx.objectStore("docs").get(j.r.id)), req(tx.objectStore("entries").get(j.r.id)), req(tx.objectStore("meta").get(GONE + j.r.id))]);
-    const plan = cur == null && (gone != null || ls.get(GONE + j.r.id) != null) ? "skip" : replayPlan(j.r, cur, ent); // deleted in another tab since: the rescue copy must not bring it back
+    const plan = cur == null && deletedSince(j.r, gone, ls.get(GONE + j.r.id)) ? "skip" : replayPlan(j.r, cur, ent); // deleted in another tab since the last edit: the rescue copy must not bring it back (a later edit is kept: an autosave would have)
     if (plan === "write") {
       if (!await idbPut(db, j.r.id, j.r.doc, { ...j.r.entry, thumb: ent ? ent.thumb : null }, j.r.base, { own: j.r.tab, rescue: j.where === "idb" ? { key: j.k, raw: j.raw } : null })) return; // kept for the next visit
       if (j.where === "idb") continue; // removed in the write's own transaction
@@ -244,6 +254,17 @@ async function applyRescue(db) {
     await drop(db, j);
   }
   for (const j of junk) await drop(db, j);
+}
+// Deletion markers older than 30 days (or unreadable) go.
+function pruneGone() {
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith(GONE) && !(+ls.get(k) > Date.now() - GONE_TTL)) ls.del(k); } catch (e) {}
+}
+async function pruneGoneIdb(db) {
+  try {
+    const tx = db.transaction("meta", "readwrite"), c = tx.objectStore("meta").openCursor(IDBKeyRange.bound(GONE, GONE + "￿"));
+    c.onsuccess = () => { const cur = c.result; if (!cur) return; if (!(+cur.value > Date.now() - GONE_TTL)) cur.delete(); cur.continue(); };
+    await committed(tx);
+  } catch (e) {}
 }
 async function drop(db, j) {
   if (j.where === "ls") { if (ls.get(j.k) === j.raw) ls.del(j.k); return; }
@@ -254,10 +275,10 @@ async function drop(db, j) {
   } catch (e) {}
 }
 
-const rescueOf = (id, docString, entry, base) => ({ tab: TAB, id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base });
-const rescueWrite = (id, docString, entry, base) => { const k = rescueKey(id); ls.del(k); return ls.set(k, JSON.stringify(rescueOf(id, docString, entry, base))); }; // removed first: a refused write must not leave the older copy to be mistaken for the newest
+const rescueOf = (id, docString, entry, base, edited) => ({ tab: TAB, id, doc: docString, entry: { ...entry, thumb: null }, base: base == null ? null : base, edited: edited || 0 }); // edited: when the last edit was made (the stamp in doc is the close time)
+const rescueWrite = (id, docString, entry, base, edited) => { const k = rescueKey(id); ls.del(k); return ls.set(k, JSON.stringify(rescueOf(id, docString, entry, base, edited))); }; // removed first: a refused write must not leave the older copy to be mistaken for the newest
 // the tab closing on localStorage: the rescue copy only; if it does not fit (a second full copy of a big design next to the first), the design is written over itself instead, as before the rescue copies existed
-const localNow = (id, docString, entry, base) => { if (!rescueWrite(id, docString, entry, base)) localPut(id, docString, entry, base, TAB); };
+const localNow = (id, docString, entry, base, edited) => { if (!rescueWrite(id, docString, entry, base, edited)) localPut(id, docString, entry, base, TAB); };
 
 // guard: after a slow open took over, the first write of each design checks the stored copy against the write's base
 function idbDriver(db, guard) {
@@ -270,7 +291,7 @@ function idbDriver(db, guard) {
       if (ok && guard) guard.verified.add(id);
       return ok;
     },
-    async del(id) {
+    async del(id, { marker = true } = {}) { // marker: false when the design was never really there to lose (a discarded load)
       // an old copy must never come back through a merge, and an older build must not list a card with no document
       ls.del(LS_DOC + id);
       try { const raw = ls.get(LS_INDEX); if (raw) ls.set(LS_INDEX, JSON.stringify(JSON.parse(raw).filter((p) => p.id !== id))); } catch (e) {}
@@ -278,7 +299,7 @@ function idbDriver(db, guard) {
       const tx = db.transaction(["docs", "entries", "meta"], "readwrite");
       tx.objectStore("docs").delete(id);
       tx.objectStore("entries").delete(id);
-      tx.objectStore("meta").put(Date.now(), GONE + id);
+      if (marker) tx.objectStore("meta").put(Date.now(), GONE + id);
       return committed(tx);
     },
     async entry(id) { const v = await req(db.transaction("entries").objectStore("entries").get(id)); return v === undefined ? null : v; },
@@ -291,9 +312,9 @@ function idbDriver(db, guard) {
       } catch (e) { return Promise.resolve(false); }
     },
     // for the tab closing: the rescue copy goes to localStorage first (it may be full), then the put is queued in the same call, so a page torn down right after still has it in flight
-    putNow(id, docString, entry, base) {
-      rescueWrite(id, docString, entry, base);
-      try { const tx = db.transaction("meta", "readwrite"); tx.objectStore("meta").put(rescueOf(id, docString, entry, base), rescueKey(id)); if (tx.commit) tx.commit(); } catch (e) {}
+    putNow(id, docString, entry, base, edited) {
+      rescueWrite(id, docString, entry, base, edited);
+      try { const tx = db.transaction("meta", "readwrite"); tx.objectStore("meta").put(rescueOf(id, docString, entry, base, edited), rescueKey(id)); if (tx.commit) tx.commit(); } catch (e) {}
     },
   };
 }
@@ -346,13 +367,14 @@ async function localReplay() {
   await locked(() => {
     for (const j of jobs.sort(byAge)) {
       const r = j.r, ent = readJSON(LS_INDEX, []).find((p) => p.id === r.id), cur = ls.get(LS_DOC + r.id),
-        plan = cur == null && ls.get(GONE + r.id) != null ? "skip" : replayPlan(r, cur, ent);
+        plan = cur == null && deletedSince(r, ls.get(GONE + r.id)) ? "skip" : replayPlan(r, cur, ent);
       if (plan === "write" && !localPut(r.id, r.doc, { ...r.entry, thumb: ent ? ent.thumb : null }, r.base, r.tab)) return; // kept for the next visit
       if (plan === "copy") { const c = copyOf(r.doc, r.entry, OTHER); if (c && !localKeep(c)) return; if (c) tell(c[2].name); }
       if (ls.get(j.k) === j.raw) ls.del(j.k);
     }
     for (const j of junk) if (ls.get(j.k) === j.raw) ls.del(j.k);
   });
+  pruneGone();
 }
 const localDriver = {
   kind: "local",
@@ -360,11 +382,11 @@ const localDriver = {
   async get(id) { const v = ls.get(LS_DOC + id); seen.set(id, v == null ? 0 : stamp(v)); return v; },
   async entry(id) { return readJSON(LS_INDEX, []).find((p) => p.id === id) || null; },
   put: (id, docString, entry, base) => locked(() => localPut(id, docString, entry, base, TAB)),
-  del: (id) => locked(() => {
+  del: (id, { marker = true } = {}) => locked(() => {
     seen.delete(id);
     ls.del(LS_DOC + id);
     ls.set(LS_INDEX, JSON.stringify(readJSON(LS_INDEX, []).filter((p) => p.id !== id)));
-    ls.set(GONE + id, String(Date.now()));
+    if (marker) ls.set(GONE + id, String(Date.now()));
     return true;
   }),
   async getMeta() { return null; },
@@ -393,6 +415,7 @@ async function adopt(db, gone) {
     if ((!migrated || !sameFingerprint(migrated.fp, fp)) && !await merge(db, fp, migrated ? migrated.at : Infinity)) { db.close(); return null; }
   } catch (e) { try { db.close(); } catch (e2) {} return null; }
   try { await applyRescue(db); } catch (e) {}
+  pruneGone(); await pruneGoneIdb(db);
   return db;
 }
 
@@ -446,6 +469,6 @@ export function openProjectStore() {
     getMeta: run("getMeta", null), // small records kept beside the designs (IndexedDB only; the older storage has no place for them)
     setMeta: run("setMeta", false),
     // for the tab closing: no waiting, no promise
-    putNow: (id, docString, entry, base) => (driver ? driver.putNow : localNow)(id, docString, entry, base),
+    putNow: (id, docString, entry, base, edited) => (driver ? driver.putNow : localNow)(id, docString, entry, base, edited),
   };
 }

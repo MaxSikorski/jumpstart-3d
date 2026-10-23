@@ -22,7 +22,7 @@ export function initProjects(app) {
   const $ = (id) => document.getElementById(id);
   let db = null, userId = null, downloads = null;
   let remoteOk = false;
-  let dirty = false;
+  let dirty = false, editedAt = 0; // jumpstart-3d: editedAt: when the last edit was made (the closing tab tells projstore.js, so an older delete cannot be mistaken for a later one)
   let opened = { id: null, at: 0, rev: undefined }; // jumpstart-3d: designs storage. which design is open and the `_updated` and `rev` (list entry, see projstore.js) of the copy it was read from or last saved as
   let revs = 0;
   // jumpstart-3d: designs storage. Designs and the list live in projstore.js (IndexedDB, or localStorage where that fails);
@@ -285,7 +285,7 @@ export function initProjects(app) {
     const id = uid("d"), now = Date.now(), doc = { ...structuredClone(shared), id, created: now, ver: 0 };
     delete doc._updated;
     if (!await ps.put(id, JSON.stringify({ ...doc, _updated: now }), { id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null })) return "storage";
-    if (store.doc !== open0 || loads !== gen) { await ps.del(id); return "stale"; }
+    if (store.doc !== open0 || loads !== gen) { await ps.del(id, { marker: false }); return "stale"; }
     app.select([]);
     if (app.command) app.command.cancel();
     app.exitSketch();
@@ -750,7 +750,7 @@ export function initProjects(app) {
   });
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null); } }); // jumpstart-3d: designs storage (putNow starts its writes before this returns; nothing is awaited)
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null, editedAt); } }); // jumpstart-3d: designs storage (putNow starts its writes before this returns; nothing is awaited)
 
   return {
     // a finished render (PNG) goes through the same save path as models
@@ -799,7 +799,7 @@ export function initProjects(app) {
         } catch (e) {}
       });
     },
-    changed() { dirty = true; setState("Unsaved changes"); saveSoon(); rec.touch(); },
+    changed() { dirty = true; editedAt = Date.now(); setState("Unsaved changes"); saveSoon(); rec.touch(); },
     saveNow,
     saveVersion,
     versionName,
