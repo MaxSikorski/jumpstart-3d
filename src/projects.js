@@ -316,6 +316,7 @@ export function initProjects(app) {
     document.body.append(back);
     const close = () => back.remove();
     back.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    modal.querySelector(".xbtn").focus(); // jumpstart-3d: focus inside so Escape closes it, as in About and Shortcuts
     remote.tabs(modal.querySelector(".mbody"), close); // jumpstart-3d: remote
     await saveNow();
     const fr = await mirror.row(); if (fr) grid.before(fr); // jumpstart-3d: copies in a folder
