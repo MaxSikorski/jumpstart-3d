@@ -141,6 +141,7 @@ button { cursor: pointer; }
 .modeswitch button::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: #6f98d8; opacity: .55; }
 .modeswitch #mode-advanced::before { background: #e8a317; }
 .modeswitch #mode-chisel::before { background: #d6a44e; border-radius: 50%; }
+.modeswitch #mode-arch::before { background: #c0574a; clip-path: polygon(50% 0, 100% 45%, 100% 100%, 0 100%, 0 45%); border-radius: 0; width: 9px; height: 9px; }
 .modeswitch .beta { font: 700 8.5px/1 var(--f-ui); letter-spacing: .06em; padding: 2px 4px; border-radius: 4px; background: #d6a44e; color: #1b1407; margin-left: -2px; vertical-align: super; }
 /* Chisel: the sculpting app over the work area, under the top bar */
 .chisel-host { position: fixed; left: 0; right: 0; bottom: 0; top: calc(46px + env(safe-area-inset-top, 0px)); z-index: 40; background: var(--paper); }
@@ -800,6 +801,10 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .tb-btn { padding: 6px 6px; }
   .spacer:first-of-type { display: none; }
 }
+/* jumpstart-3d: four mode buttons overflow a 375 px phone (Export fell off the right edge); the fourth reads "Arch" there */
+.modeswitch #mode-arch .ms { display: none; }
+@media (max-width: 480px) { .modeswitch #mode-arch .ml { display: none; } .modeswitch #mode-arch .ms { display: inline; } }
+@media (max-width: 420px) { .modeswitch { gap: 0; padding: 2px; } .modeswitch button { padding: 4px 4px; font-size: 10px; } }
 @media (min-width: 861px) { .panel-toggle { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
@@ -948,6 +953,86 @@ body.s3d-on .tut-panel { z-index: 96; }
 .fp-tile small { font-size: 10px; line-height: 1.15; text-align: center; }
 .fp-tile[aria-pressed="true"] { border-color: var(--accent, #1f4fa8); box-shadow: 0 0 0 1px var(--accent, #1f4fa8) inset; background: color-mix(in srgb, var(--accent, #1f4fa8) 10%, var(--panel)); }
 .fp-tile svg { display: block; border-radius: 4px; }
+/* Architechies */
+#app[data-mode="arch"] #snap, #app[data-mode="arch"] #nav-sketches, #app[data-mode="arch"] #nav-appear { display: none; }
+.arch-panel { width: 292px; }
+.arch-panel header .arch-sub, .arch-elev header .arch-sub { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.arch-hint { margin: 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.arch-warn { margin: 0; padding: 6px 9px; border-radius: 8px; background: var(--err-bg, #fde8e7); color: var(--danger, #b3261e); font-size: 12px; }
+.arch-inline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.arch-inline .num { width: 70px; flex: none; }
+.arch-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.arch-chips .btn { padding: 3px 8px; font-size: 12px; }
+.arch-cat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.arch-cat.roofs { grid-template-columns: repeat(3, 1fr); }
+.arch-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.arch-tile b { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
+.arch-tile small { font-size: 10.5px; color: var(--ink-3); line-height: 1.2; }
+.arch-tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+.arch-oprow.bad span { color: var(--danger, #b3261e); }
+.arch-oprow > span:nth-child(2) { flex: 1; min-width: 0; white-space: normal; line-height: 1.3; }
+.arch-mini svg { width: 26px; height: 26px; display: block; }
+.arch-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.arch-step { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; }
+.arch-step:hover { border-color: var(--accent); }
+.arch-step b { font-size: 13px; }
+.arch-step small { color: var(--ink-3); font-size: 11.5px; }
+.arch-steps li.done .arch-step b { color: #2e7d4f; }
+.arch-level { width: auto; min-width: 110px; height: 32px; margin: 0 4px; }
+.arch-units { flex: none; margin: 0 4px; }
+.arch-units button { padding: 6px 9px; white-space: nowrap; }
+.arch-unitline { font-size: 12.5px; color: var(--ink-2); }
+.arch-unitline .btn { margin-left: auto; padding: 3px 9px; font-size: 12px; }
+.arch-elev { left: 10px; right: 420px; bottom: 10px; height: 250px; display: flex; flex-direction: column; }
+.arch-elev .ae-wrap { flex: 1; min-height: 0; padding: 4px 8px 8px; }
+.arch-elevsvg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
+.ae-wall { fill: #f1ece2; stroke: #8a8378; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.ae-minor { stroke: #d9d2c5; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ae-major { stroke: #b6ad9e; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.ae-t { fill: var(--ink-3); font-family: var(--f-mono, monospace); }
+.ae-d { fill: #1f4fa8; font-family: var(--f-mono, monospace); font-weight: 600; }
+.ae-dim { stroke: #1f4fa8; stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.ae-open { fill: #bfe3f6; stroke: #2a5b86; stroke-width: 1.6; vector-effect: non-scaling-stroke; cursor: grab; }
+.ae-open.door { fill: #e0c39f; stroke: #6b4a2b; }
+.ae-open.sel { stroke: #1f4fa8; stroke-width: 3; }
+.ae-open.bad { fill: #f6c9c5; stroke: #b3261e; }
+:root[data-theme="dark"] .ae-wall { fill: #3a3833; stroke: #9a9284; } :root[data-theme="dark"] .ae-minor { stroke: #4a4740; } :root[data-theme="dark"] .ae-major { stroke: #645f55; }
+.arch-labels .arch-lbl { pointer-events: none; }
+.arch-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.modal.arch-send { width: min(520px, 100%); }
+@media (max-width: 900px) { .arch-elev { right: 10px; bottom: 10px; height: 200px; } .arch-panel { width: 250px; } }
+/* CAM Studio */
+.cam .bk-panes { flex-direction: row; }
+.cam .s3d-bar select.num { width: auto; min-width: 150px; max-width: 280px; }
+.cam-side { border-left: 0; border-right: 1px solid var(--line); width: 330px; }
+.cam-side h3 { margin: 4px 0 0; font-size: 15px; }
+.cam-side .seg { flex-wrap: wrap; }
+.cam-fs th { text-align: left; font-size: 10.5px; color: var(--muted); font-weight: 600; padding: 2px 4px; }
+.cam-fs td { font-size: 12px; }
+.cam-ok { margin: 0; color: #2e7d4f; font-weight: 600; font-size: 12.5px; }
+.cam-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.cam-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-3); }
+.cam-len { display: flex; align-items: center; gap: 4px; } .cam-len em { font-style: normal; font-size: 11px; color: var(--ink-3); }
+.cam-row2 { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cam-ops { display: flex; flex-direction: column; gap: 6px; }
+.cam-op { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.cam-op summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.cam-opbody { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.cam-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.cam-gcode textarea { width: 100%; font: 11px/1.35 var(--f-mono, monospace); resize: vertical; }
+.cam-about p { font-size: 11.5px; line-height: 1.45; }
+.cam-play { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px var(--shadow); }
+.cam-play #cam-scrub { flex: 1; min-width: 140px; }
+.cam-time { font: 12px var(--f-mono, monospace); color: var(--ink-2); min-width: 150px; }
+.cam-speed { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; } .cam-speed select { width: auto; }
+.cam-modal { width: min(560px, 94vw); max-height: 90vh; overflow: auto; padding: 0; gap: 0; }
+.cam-modal > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-2); }
+.cam-modal > header h3 { margin: 0; font-size: 16px; }
+.cam-mbody { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.cam-mbody p { margin: 0; font-size: 13px; line-height: 1.45; }
+.cam-log { max-height: 150px; overflow: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 11px/1.4 var(--f-mono, monospace); margin: 0; white-space: pre-wrap; }
+#cam-sendprog { width: 100%; }
+@media (max-width: 800px) { .cam .bk-panes { flex-direction: column-reverse; } .cam-side { width: auto; max-height: 45vh; border-right: 0; border-top: 1px solid var(--line); } }
 .bk-panes { display: flex; }
 .bk-view { position: relative; flex: 1; min-width: 0; }
 .bk-side { width: 300px; max-width: 42vw; overflow: auto; border-left: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); font-size: 13px; }
@@ -1126,6 +1211,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
       <button id="mode-beginner" aria-pressed="true" title="Drag shapes and combine them">Beginner</button>
       <button id="mode-advanced" aria-pressed="false" title="Sketches, features and a timeline">Advanced</button>
       <button id="mode-chisel" aria-pressed="false" title="Sculpt with brushes, like clay">Chisel</button>
+      <button id="mode-arch" aria-label="Architechies" aria-pressed="false" title="Architechies: draw floor plans, raise walls, add doors, windows and roofs, then use the building in your design"><span class="ml">Architechies</span><span class="ms">Arch</span></button>
     </div>
     <div class="spacer"></div>
     <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
@@ -1231,7 +1317,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.1.3 · community build 20</p>
+    <p class="sp-ver" id="sp-ver">Version 2.3 · community build 21</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

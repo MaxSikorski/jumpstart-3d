@@ -5587,6 +5587,9 @@ export function initAdvanced(app) {
       group("Bricks", "", [
         { id: "sim-bricks", label: "Jump Brick Builder", title: "Rebuild the selected objects (or all) out of stud-and-tube building bricks you can print, press together and take apart", icon: "bricks", fn: () => app.bricks.open() },
       ]);
+      group("CAM", "", [
+        { id: "sim-cam", label: "CAM Studio", title: "Plan and simulate cutting the design on a CNC router, mill or laser, then save or send the G-code (your design is not changed)", icon: "cam", fn: () => app.cam.open() },
+      ]);
       group("Voxels", "", [
         { id: "sim-voxel", label: "Voxel Studio", title: "Turn the selected objects (or all) into cubes you can paint face by face, then export STL or 3MF or add them to the design (your design is not changed until you add it)", icon: "voxel", fn: () => app.voxel.open() },
       ]);
