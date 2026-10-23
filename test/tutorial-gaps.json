@@ -83,6 +83,7 @@
       "dock-prev"
     ],
     "top bar menus": [
+      "btn-report",
       "export-scope-all",
       "export-scope-sel",
       "export:3mf",

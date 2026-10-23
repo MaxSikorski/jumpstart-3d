@@ -718,6 +718,17 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .recrow .rinfo { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .recrow .rinfo span { font-size: 12px; color: var(--ink-3); }
 .modal.recover { width: min(560px, 100%); }
+/* jumpstart-3d: report */
+.modal.report { width: min(600px, 100%); }
+.report p { margin: 0 0 10px; line-height: 1.5; color: var(--ink-2); }
+.report h3 { margin: 14px 0 4px; font-size: 15px; }
+.report label { display: block; margin: 12px 0 0; font-weight: 600; font-size: 13px; }
+.report textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 7px 9px; font: 12.5px/1.45 var(--f-mono, monospace); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.report label.rp-check { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 400; }
+.report .rp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
+.report a.btn { text-decoration: none; }
+.report .rp-note { margin: 10px 0 0; font-size: 13px; }
+@media (pointer: coarse) { .report textarea { font-size: 16px; } }
 .modal-back { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 60; padding: 16px; }
 .modal { background: var(--panel); border-radius: 10px; width: min(760px, 100%); max-height: min(640px, 92vh); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
 .modal header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line-2); }
@@ -1266,6 +1277,8 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <button data-act="json">Save Project File <small>.json</small></button>
         <button data-act="import">Open a project file…</button>
         <button data-act="runscript" title="Run a JavaScript file that uses the JS3D scripting bridge (see BRIDGE.md)">Run script… <small>.js</small></button><!-- jumpstart-3d: run script -->
+        <hr>
+        <button id="btn-report" title="Open a bug report on GitHub with the app details filled in">Report a problem… <small>GitHub</small></button><!-- jumpstart-3d: report -->
       </div>
     </div>
   </header>
