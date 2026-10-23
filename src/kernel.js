@@ -1547,7 +1547,7 @@ function inFixedOrder(sh, v0) {
 // offset results can come back as a shell or compound: make a solid of them
 function asSolid(sh) {
   if (!sh) return null;
-  if (sh.constructor && sh.constructor.name === "Solid") return sh;
+  if (sh instanceof R.Solid) return sh; // not by constructor name: the build renames classes
   try {
     const ex = new OC.TopExp_Explorer(sh.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
     if (ex.More()) { const s = R.cast(OC.TopoDS.Solid(ex.Current())); ex.delete(); return s; }
