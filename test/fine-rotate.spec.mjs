@@ -6,10 +6,11 @@
 // about the middle of its box, one undo step per press; on a touch screen the same buttons work by tap and are 44 px. Every turn is
 // compared with a rotation worked out in test/rotation-oracle.mjs, never with the app's own matrix code.
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors } from "./helpers.mjs";
-import { tablet, touchPage, M0, turned, turnedBox, expectMatrix, expectBox, open, spotOnBox } from "./rotation-oracle.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { tablet, touchPage, M0, BOX, mul, rot, turned, turnedBox, expectMatrix, expectBox as expectBoxOf, open, spotOnBox } from "./rotation-oracle.mjs";
 
 let page, errors;
+const expectBox = (want, p = page) => expectBoxOf(want, p);
 const run = (fn, arg) => page.evaluate(fn, arg);
 const matrix = (p = page) => p.evaluate(() => window.__store.doc.bodies[0].m);
 const undoDepth = (p = page) => p.evaluate(() => window.__store.undoStack.length);
@@ -26,6 +27,15 @@ async function press(id, p = page, tap = false) {
   await (tap ? p.locator(id).tap() : p.locator(id).click());
   await expect.poll(() => matrix(p)).not.toEqual(before);
   return before;
+}
+
+const MIRROR = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 30, -12, 5, 1]; // M0 flipped left-right (Beginner's Mirror): determinant -1
+const det = (m) => m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]);
+const mirroredTurned = (deg) => { const m = mul(rot("z", deg), MIRROR); m[12] = 30; m[13] = -12; m[14] = 5; return m; };
+// put the shape in a pose, selected, and wait until it is drawn there
+async function setPose(m) {
+  await run((m) => { window.__store.update((d) => { d.bodies[0].m = m; }, "Pose"); window.__app.select(["b1"]); }, m);
+  await expect.poll(() => run((m) => { const e = window.__app.scene.views.get("b1").group.matrix.elements; return e.every((v, i) => Math.abs(v - m[i]) < 1e-9); }, m)).toBe(true);
 }
 
 test.describe("desktop", () => {
@@ -100,6 +110,47 @@ test.describe("desktop", () => {
     expectMatrix(await matrix(), M0);
   });
 
+  test("Beginner: Snap back keeps a mirrored shape mirrored (determinant stays -1); a mirrored shape already square says so", async () => {
+    await open("beginner", page);
+    await setPose(mirroredTurned(20));
+    const depth = await undoDepth();
+    await page.click("#turn-back");
+    await expect.poll(() => undoDepth()).toBe(depth + 1);
+    const m = await matrix();
+    expect(det(m), "still mirrored, not un-mirrored").toBeCloseTo(-1, 6);
+    expectMatrix(m, MIRROR); // the nearest right-angle pose of the same mirrored shape, back where it stood
+    await page.click("#turn-back");
+    await expect(page.locator("#toasts")).toContainText("Already lined up");
+    expect(await undoDepth()).toBe(depth + 1);
+  });
+
+  test("Beginner: − and + turn a wedge about its own middle, so +5 then −5 puts back the exact matrix", async () => {
+    await loadDoc(page, newDoc("fine wedge", "beginner", { bodies: [body("b1", "Wedge", prim("wedge", BOX), M0)] }));
+    await run(() => { window.__app.vp.fit(window.__app.scene.allBox()); window.__app.select(["b1"]); });
+    await page.selectOption("#turn-axis", "y"); // the wedge is a triangle across Y: its world box middle moves when it turns
+    await page.selectOption("#turn-step", "5");
+    const depth = await undoDepth();
+    await press("#turn-plus");
+    await expect.poll(() => undoDepth()).toBe(depth + 1);
+    await press("#turn-minus");
+    await expect.poll(() => undoDepth()).toBe(depth + 2);
+    expectMatrix(await matrix(), M0);
+  });
+
+  test("Advanced: after picking a step the , and . keys still work (the dropdown lets go of the keyboard)", async () => {
+    await open("advanced", page);
+    await clickBox();
+    await page.click("#ad-moverot");
+    await expect(page.locator("#cmd")).toContainText("Move / Copy");
+    await page.focus("#turn-step");
+    await page.selectOption("#turn-step", "5");
+    await page.keyboard.press("Period");
+    await expect(page.locator("#mv-r2")).toHaveValue("5");
+    await page.focus("#turn-axis"); // the keys always turn the ring last touched (Z here); the axis dropdown only lets go of the keyboard
+    await page.selectOption("#turn-axis", "x");
+    expect(await run(() => document.activeElement.tagName), "focus left the axis dropdown").not.toBe("SELECT");
+  });
+
   test("Advanced: with nothing open − and + turn at once; inside Move / Rotate they add to the pending turn (OK commits one step); the , and . keys use the step", async () => {
     const box0 = await open("advanced", page);
     const C = centre(box0);
@@ -109,6 +160,7 @@ test.describe("desktop", () => {
     await page.selectOption("#turn-step", "5");
     const before = await press("#turn-plus");
     expectMatrix(await matrix(), turned("z", 5, C, before));
+    const after5 = await matrix();
     expect(await undoDepth()).toBe(depth + 1);
 
     await page.click("#ad-moverot");
@@ -129,9 +181,9 @@ test.describe("desktop", () => {
     await expect(page.locator("#cmd")).toBeHidden();
     expect(await undoDepth()).toBe(depth + 2);
     const after = await matrix();
-    expect(after).not.toEqual(before);
+    expect(after).not.toEqual(after5);
     await page.click("#btn-undo");
-    expectMatrix(await matrix(), before);
+    expectMatrix(await matrix(), after5); // the open tool's turn was one step; the button turn before it stays
   });
 
   test("a locked shape does not turn, and nothing selected says so", async () => {
@@ -159,6 +211,7 @@ test("touch (tablet): tapping − and + turns by the chosen step, and the status
     await p.touchscreen.tap(spot.x, spot.y);
     await expect.poll(() => p.evaluate(() => window.__app.sel.join(","))).toBe("b1");
     await expect(p.locator("html")).toHaveClass(/touch-ui/);
+    expect(await p.evaluate(() => getComputedStyle(document.getElementById("hint")).display), "the hint line stays on an iPad").not.toBe("none");
     const sizes = await p.evaluate(() => ["turn-axis", "turn-step", "turn-minus", "turn-plus", "turn-back"].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [id, r.width, r.height]; }));
     for (const [id, w, h] of sizes) { expect(w, id + " width").toBeGreaterThanOrEqual(44); expect(h, id + " height").toBeGreaterThanOrEqual(44); }
 
@@ -191,6 +244,7 @@ test("phone: the Turn controls fit the status bar and are 44 px", async ({ brows
       const bar = document.querySelector("footer.status").getBoundingClientRect();
       return { bar: [bar.left, bar.right], items: ["turn-axis", "turn-step", "turn-minus", "turn-plus", "turn-back"].map((id) => { const q = document.getElementById(id).getBoundingClientRect(); return [id, q.width, q.height, q.left, q.right]; }) };
     });
+    expect(await p.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]), "no sideways scroll").toEqual([375, 375]);
     for (const [id, w, h, left, right] of r.items) {
       expect(w, id + " width").toBeGreaterThanOrEqual(44); expect(h, id + " height").toBeGreaterThanOrEqual(44);
       expect(left, id + " inside the bar").toBeGreaterThanOrEqual(r.bar[0] - 0.5); expect(right, id + " inside the bar").toBeLessThanOrEqual(r.bar[1] + 0.5);

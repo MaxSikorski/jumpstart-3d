@@ -524,7 +524,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 /* jumpstart-3d: fine rotation (issue #87). The Turn control in the status bar; on a touch screen the bar gets taller and every target is 44 px */
 .turnctl { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
 :root.touch-ui .status { height: auto; min-height: 56px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; white-space: normal; overflow: visible; }
-:root.touch-ui .status .hintline { display: none; }
+:root.touch-ui .status .hintline { flex: 1 1 220px; } /* wraps to its own row when the controls leave no room; hidden below 600 px */
 :root.touch-ui .status .snapctl { flex-wrap: wrap; row-gap: 4px; }
 :root.touch-ui .turnctl button, :root.touch-ui .turnctl select { min-width: 44px; min-height: 44px; font-size: 16px; }
 :root.touch-ui .turnctl button { padding: 0 10px; }
