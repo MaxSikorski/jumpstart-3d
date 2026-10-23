@@ -137,7 +137,7 @@ An S3 bucket needs a secret key that a web page would have to hold in the open, 
   permission first
 - FlexiGen: print-in-place articulated figures
 - Mesh to STEP: turn STL or 3MF meshes into editable STEP solids
-- Forty-four step-by-step tutorials with built-in animations
+- Forty-four step-by-step tutorials with built-in animations (the community build adds ten more; see below)
 - Projector window, Media (pictures and video on objects), Picture to 3D
 - Works on Mac, iPad and iPhone as well as Windows, Linux and Chromebooks
 - Layer-by-layer print preview, section analysis, multi-filament colors
