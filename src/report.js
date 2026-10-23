@@ -33,13 +33,13 @@ const SCRUB = [
   [new RegExp(NOT_PATH_BEFORE + "\\/[^\\s/]+(?:\\/\\S*)+", "g"), "$1[path removed]"],
   [/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z][a-z0-9-]*\/\S*/gi, "[address removed]"], // any host with a path, whatever the ending (example.co.uk/x)
   // a relative path may hold spaces too ("Clients/Acme Corp/x.stl"): from its first word to the end of the line. It needs a letter in the first part and
-  // a second slash or a file ending after it (words, spaces, dots and dashes only in between), so "1/2", "10/12/2025", "read/write" and "and/or" stay.
-  [/(?:^|[\s(])(?=[^\s/]*[A-Za-z])[^\s/]+\/(?:[A-Za-z_ .-]*\/|[A-Za-z_ .-]*?\.[A-Za-z][A-Za-z0-9]{0,4}\b).*/g, " [path removed]"],
+  // a second slash (not one that starts a date) or a file ending after it (at most one space before the ending), so "1/2", "10/12/2025", "read/write" and "and/or" stay.
+  [/(?:^|[\s(])(?=[^\s/]*[A-Za-z])[^\s/]+\/(?:[\p{L}\p{N}_ .-]*\/(?!\d{1,4}(?:[\s/]|$))|[\p{L}\p{N}_.-]*(?: [\p{L}\p{N}_.-]+)?\.[A-Za-z][A-Za-z0-9]{0,4}(?![.\w])).*/gu, " [path removed]"],
   [/[^\s@]+@[^\s@]+\.[^\s@]+/g, "[email removed]"],
-  [/\b(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key|auth|sig|signature)\s*[=:]\s*\S+/gi, "[key removed]"],
+  [/\b(?:(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key|auth|sig|signature)\s*=|(?:password|passwd|pwd|secret|api[_-]?key)\s*:)\s*\S+/gi, "[key removed]"], // the colon form only for words that are rarely ordinary ("Auth: failed" stays)
   [/\bBearer\s+\S+|\b(?:sk|pk|rk|ghp|gho|ghu|ghs|github_pat|xox[a-z])[-_][\w-]{8,}|\b[\w-]{32,}\b/g, "[key removed]"],
   [/\[[0-9a-f:.]*:[0-9a-f:.]*\](?::\d+)?|(?:^|[^\w:])(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?(?:%\w+)?|(?:^|[^\w:])::[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6}|\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b/gi, " [address removed]"], // IPv6, bracketed, with :: or in full
-  [/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*:\d{2,5}\b|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev|app|me|co|us|uk|de|local|lan|home|internal)\b(?:\/\S*)?/gi, "[address removed]"],
+  [/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\b(?=[^\s:]*[a-z])(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+|localhost):\d{2,5}\b|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev|app|me|co|us|uk|de|local|lan|home|internal)\b(?:\/\S*)?/gi, "[address removed]"],
 ];
 const clean = (text) => SCRUB.reduce((t, [re, to]) => t.replace(re, to), String(text)).replace(/\s+/g, " ").trim().slice(0, 300);
 

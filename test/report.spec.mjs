@@ -118,7 +118,17 @@ const HOSTILE = [
   ["Could not read Clients/Acme/x.stl", ["Clients", "Acme"]],
   ["Fetch failed for example.co.uk/private/page and dropbox.fr/secret", ["example", "private", "dropbox", "secret"]],
   ["Cannot reach [2001:db8::1]:8080 and fe80::1 and 2001:db8:85a3:0:0:8a2e:370:7334", ["2001", "db8", "fe80", "8080", "8a2e"]],
+  ["Could not read Projects/Order 1234/part.stl", ["Projects", "Order", "1234"]],
+  ["Could not read Clients/M\u00fcller GmbH/x.stl", ["Clients", "M\u00fcller", "GmbH"]],
   ["Bad request token=abc123 and password: hunter2 and api_key=zz9", ["abc123", "hunter2", "zz9"]],
+];
+const STAYS = [
+  "Don't panic: it's 1/2 done, read/write, and/or 10/12/2025 aren't names",
+  "read/write failed e.g. disk full",
+  "Use cut and/or combine on part.stl",
+  "Auth: failed",
+  "Signature: invalid shape",
+  "Failed at 12:30 and face:12 and edge:7",
 ];
 test("a ticked error has its names, paths, addresses and keys taken out first", async () => {
   for (const [message, forbidden] of HOSTILE) {
@@ -136,10 +146,12 @@ test("a ticked error has its names, paths, addresses and keys taken out first", 
   await openFromMenu(); await page.check("#rp-error");
   expect(await page.inputValue("#rp-details")).toContain("- Last error: Could not read [path removed]");
   await closeDialog();
-  await page.evaluate(() => window.__app.toast("Don't panic: it's 1/2 done, read/write, and/or 10/12/2025 aren't names", "err"));
-  await openFromMenu(); await page.check("#rp-error");
-  expect(await page.inputValue("#rp-details")).toContain("- Last error: Don't panic: it's 1/2 done, read/write, and/or 10/12/2025 aren't names");
-  await closeDialog();
+  for (const stay of STAYS) { // ordinary words that only look like names, paths, keys or addresses stay as they are
+    await page.evaluate((m) => window.__app.toast(m, "err"), stay);
+    await openFromMenu(); await page.check("#rp-error");
+    expect(await page.inputValue("#rp-details"), stay).toContain("- Last error: " + stay);
+    await closeDialog();
+  }
   await page.evaluate(() => window.__app.toast("Boom " + "x ".repeat(450), "err"));
   await openFromMenu(); await page.check("#rp-error");
   const line = (await page.inputValue("#rp-details")).split("\n").find((l) => l.startsWith("- Last error:"));
