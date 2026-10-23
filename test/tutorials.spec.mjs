@@ -200,10 +200,11 @@ async function checkShowMe(tutId, i, show, mode) {
   }
   if (show.via && spot.isVia && !spot.isSel) { // the menu is closed: Show me points at its button; open it, and Show me must now point at the item
     await page.click(show.via);
-    await expect(page.locator("#ribbon-menu"), `${at}: ${show.via} opens no menu`).toBeVisible();
+    await expect(page.locator("#ribbon-menu, #menu-export:not([hidden])"), `${at}: ${show.via} opens no menu`).toBeVisible();
     const inside = await showMe();
     expect(inside && inside.isSel, `${at}: with ${show.via} open, Show me does not highlight ${show.sel}`).toBe(true);
     await page.keyboard.press("Escape");
+    await page.evaluate(() => { document.getElementById("menu-export").hidden = true; }); // the top bar's Export menu does not close on Escape
     stats.menuItems++;
     return;
   }
@@ -287,7 +288,7 @@ test.describe("walk every tutorial", () => {
 
 // ids from the data files, read as text so the tests can be declared before the browser is up
 function idsOf(mode) {
-  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_arch.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
+  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_arch.js", "tutorial_data_community.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
   return [...src.matchAll(/^\s*id: "([\w-]+)", mode: "(\w+)"/gm)].filter((m) => m[2] === mode).map((m) => m[1]);
 }
 function BEGINNER_IDS() { return idsOf("beginner"); }

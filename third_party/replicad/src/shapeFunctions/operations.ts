@@ -116,7 +116,108 @@ function simplifiedResult(builder: {
     }
     unify.SetAngularTolerance(1e-3);
     unify.Build();
-    return unify.Shape();
+    // jumpstart-3d: a boolean between round faces can leave a face whose outer boundary is split into two loops; the
+    // mesher reads the second loop as a hole and leaves out part of the face (two torus groups joined: 243 mm3 short).
+    // ShapeFix rejoins the loops, solid by solid. A result with loose faces or no solid is returned as it is.
+    const unified = unify.Shape(); // not registered: it is the result when there is nothing to fix
+    const solids = r(
+      new oc.TopExp_Explorer(
+        unified,
+        oc.TopAbs_ShapeEnum.TopAbs_SOLID,
+        oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+      )
+    );
+    const loose = r(
+      new oc.TopExp_Explorer(
+        unified,
+        oc.TopAbs_ShapeEnum.TopAbs_FACE,
+        oc.TopAbs_ShapeEnum.TopAbs_SOLID
+      )
+    );
+    if (!solids.More() || loose.More()) return unified;
+    const fixes: any[] = [];
+    for (; solids.More(); solids.Next()) {
+      const fix = r(new oc.ShapeFix_Solid());
+      fix.Init(r(oc.TopoDS.Solid(r(solids.Current()))));
+      fix.Perform(r(new oc.Message_ProgressRange()));
+      fixes.push(fix);
+    }
+    unified.delete();
+    if (fixes.length === 1) return fixes[0].Solid();
+    const compoundBuilder = r(new oc.TopoDS_Builder());
+    const out = new oc.TopoDS_Compound();
+    compoundBuilder.MakeCompound(out);
+    for (const fix of fixes) compoundBuilder.Add(out, r(fix.Solid()));
+    return out;
+  } finally {
+    gc();
+  }
+}
+
+// jumpstart-3d: two round faces that touch at a single point (a torus cut by a torus hole that only touches it) can
+// leave a zero-length edge whose tolerance grows to millimetres (5.78 mm in fuzz seed 32). The shape still measures
+// right, but every later boolean near that edge goes wrong: its intersect with an oval sphere came out empty although
+// they overlap by 44 mm3. Such a result is built again with a small fuzzy value, which resolves the touching point;
+// the first value that leaves no loose edge and the same volume is kept (1e-4 in that case), else the first result.
+type BooleanBuilder = {
+  Shape(): TopoDS_Shape;
+  SetArguments(shapes: any): void;
+  SetTools(shapes: any): void;
+  SetFuzzyValue(value: number): void;
+  SetGlue(value: any): void;
+  HasErrors(): boolean;
+  Build(): void;
+  delete(): void;
+};
+function withoutLooseEdges<B extends BooleanBuilder>(
+  builder: B,
+  fresh: () => B,
+  left: TopoDS_Shape,
+  right: TopoDS_Shape,
+  optimisation: BooleanOperationOptions["optimisation"]
+): B {
+  const oc = getOC();
+  const [r, gc] = localGC();
+  try {
+    const loosest = (shape: TopoDS_Shape) =>
+      oc.BRep_Tool.MaxTolerance(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE);
+    const volume = (shape: TopoDS_Shape) => {
+      const props = r(new oc.GProp_GProps());
+      oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
+      return props.Mass();
+    };
+    // a clean boolean's edges stay near the inputs' own (5e-6 mm there)
+    const limit = Math.max(1e-3, 100 * Math.max(loosest(left), loosest(right)));
+    if (builder.HasErrors()) return builder;
+    const first = r(builder.Shape());
+    if (loosest(first) <= limit) return builder;
+    // the rebuild only cleans the edge: a fuzzy value that changes the result's volume is not kept
+    const want = volume(first);
+    for (const fuzzy of [1e-6, 1e-5, 1e-4]) {
+      const retry = fresh();
+      const args = r(new oc.NCollection_List_TopoDS_Shape());
+      args.Append(left);
+      const tools = r(new oc.NCollection_List_TopoDS_Shape());
+      tools.Append(right);
+      retry.SetArguments(args);
+      retry.SetTools(tools);
+      retry.SetFuzzyValue(fuzzy);
+      configureGlue(retry, optimisation);
+      try {
+        retry.Build();
+        if (!retry.HasErrors()) {
+          const got = r(retry.Shape());
+          if (loosest(got) <= limit && Math.abs(volume(got) - want) <= 1e-3 + 1e-4 * Math.abs(want)) {
+            return retry; // the caller registers the builder it gets back and the one it passed in
+          }
+        }
+      } catch (e) {
+        retry.delete();
+        throw e;
+      }
+      retry.delete();
+    }
+    return builder;
   } finally {
     gc();
   }
@@ -130,13 +231,14 @@ export function fuseShapes(
 ): TopoDS_Shape {
   const oc = getOC();
   const r = GCWithScope();
-  const builder = r(
-    new oc.BRepAlgoAPI_Fuse(unwrapShape(leftInput), unwrapShape(rightInput))
-  );
+  const left = unwrapShape(leftInput), right = unwrapShape(rightInput); // jumpstart-3d: loose edges
+  const builder = r(new oc.BRepAlgoAPI_Fuse(left, right));
 
   configureGlue(builder, optimisation);
   builder.Build();
-  return simplifiedResult(builder); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Fuse(), left, right, optimisation); // jumpstart-3d: loose edges
+  if (done !== builder) r(done);
+  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
 /** Builds a raw shape by cutting a tool shape from another shape. */
@@ -147,13 +249,14 @@ export function cutShape(
 ): TopoDS_Shape {
   const oc = getOC();
   const r = GCWithScope();
-  const builder = r(
-    new oc.BRepAlgoAPI_Cut(unwrapShape(shapeInput), unwrapShape(toolInput))
-  );
+  const shape = unwrapShape(shapeInput), tool = unwrapShape(toolInput); // jumpstart-3d: loose edges
+  const builder = r(new oc.BRepAlgoAPI_Cut(shape, tool));
 
   configureGlue(builder, optimisation);
   builder.Build();
-  return simplifiedResult(builder); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Cut(), shape, tool, optimisation); // jumpstart-3d: loose edges
+  if (done !== builder) r(done);
+  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
 /** Builds a raw shape containing the intersection of two shapes. */
@@ -163,12 +266,13 @@ export function intersectShapes(
 ): TopoDS_Shape {
   const oc = getOC();
   const r = GCWithScope();
-  const builder = r(
-    new oc.BRepAlgoAPI_Common(unwrapShape(leftInput), unwrapShape(rightInput))
-  );
+  const left = unwrapShape(leftInput), right = unwrapShape(rightInput); // jumpstart-3d: loose edges
+  const builder = r(new oc.BRepAlgoAPI_Common(left, right));
 
   builder.Build();
-  return simplifiedResult(builder); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Common(), left, right, "none"); // jumpstart-3d: loose edges
+  if (done !== builder) r(done);
+  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
 }
 
 const signedDistanceToPlane = (point: SimplePoint, plane: Plane): number =>

@@ -1,24 +1,240 @@
-# Checks that are too slow or too random to hold up every pull request: the chat geometry scorer on both builds and, once it exists, the fuzzer (see test/README.md).
-# A failure opens nothing and posts nothing; it shows as a red run in the Actions tab (`gh run list --workflow nightly`). No secrets, no model: the chat judge drives a mock.
+# Everything too slow to hold up a pull request, every night at 07:00 UTC and on demand (see test/README.md):
+# the full Playwright suite on both builds, the golden exports with the export judge, the chat geometry scorer, the fuzzer,
+# and the same suite in Firefox and WebKit (not blocking yet).
+# When a blocking job fails, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
+# Run it by hand on any branch, a pull request's too: `gh workflow run nightly.yml --ref <branch>`. No secrets, no model: the chat judge drives a mock.
+# To prove a branch with one job instead of the full run: `gh workflow run nightly.yml --ref <branch> -f specs="test/gltf.spec.mjs"` (job `selected specs`; see test/README.md).
 name: nightly
 
 on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      specs:
+        description: 'Run only these spec files (space-separated paths, e.g. test/smoke.spec.mjs) in one job; empty runs everything'
+        default: ''
+      projects:
+        description: 'Playwright projects for the selected specs (space-separated, e.g. "site single" or "site-firefox")'
+        default: 'site single'
 
 permissions:
   contents: read
 
 concurrency:
-  group: nightly-${{ github.ref }}
-  cancel-in-progress: false
+  group: nightly-${{ github.ref }}-${{ inputs.specs }}
+  cancel-in-progress: true
 
 jobs:
-  chat-judge:
-    name: chat judge
+  # With `specs` set this is the only job that runs: the chosen spec files on the chosen projects, about two jobs of runner instead of the full run's twenty.
+  selected:
+    name: selected specs
+    if: ${{ inputs.specs != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # the Firefox and WebKit projects exist only with this set
+      JS3D_CROSS: '1'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
+      SPECS: ${{ inputs.specs }}
+      PROJECTS: ${{ inputs.projects }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Check the inputs
+        run: |
+          # the inputs reach a shell as words: allow only path and project-name characters
+          [[ "$SPECS" =~ ^[A-Za-z0-9_./\ -]+$ ]] || { echo "specs may hold only letters, digits, _ . / - and spaces" >&2; exit 1; }
+          [[ "$PROJECTS" =~ ^[a-z\ -]+$ ]] || { echo "projects may hold only lowercase letters, - and spaces" >&2; exit 1; }
+      - run: npm ci
+      - name: Install the browsers the projects need
+        timeout-minutes: 14
+        run: |
+          browsers=chromium
+          [[ "$PROJECTS" == *firefox* ]] && browsers="$browsers firefox"
+          [[ "$PROJECTS" == *webkit* ]] && browsers="$browsers webkit"
+          if [ "$browsers" = chromium ]; then npx playwright install chromium; else npx playwright install --with-deps $browsers; fi
+      - run: node build.mjs
+      - name: Run the selected specs
+        run: |
+          read -ra specs <<< "$SPECS"
+          args=()
+          for p in $PROJECTS; do args+=(--project "$p"); done
+          npx playwright test "${specs[@]}" "${args[@]}"
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: selected-report
+          path: |
+            playwright-report/
+            test-results/
+            pw-report.json
+          retention-days: 7
+          overwrite: true
+
+  playwright:
+    name: playwright (${{ matrix.shard }}/${{ matrix.total }})
+    if: ${{ inputs.specs == '' }}
+    # J1: The pinned consumer AppImages were probed on Ubuntu 24.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      # every part runs to the end, so one failure shows all the others
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        total: [8]
+    env:
+      # the chat judge has its own job below (its 8-minute clock is shared across both builds); the golden exports run in the golden jobs, which the export judge then checks
+      JS3D_SKIP_CHATJUDGE: '1'
+      JS3D_SKIP_GOLDEN: '1'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      # no --with-deps: the runner image already has Chromium's libraries, and the apt mirror stalled that step for 10 to 12 minutes twice
+      - run: npx playwright install chromium
+      # pretest builds both outputs and runs the Node unit tests in every part
+      - run: npm test -- --shard=${{ matrix.shard }}/${{ matrix.total }}
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-playwright-${{ matrix.shard }}
+          path: pw-report.json
+          retention-days: 3
+          overwrite: true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  # The golden spec exports every design as STL, 3MF and STEP; one job per build (pretest builds both outputs), then the export judge checks the files.
+  golden:
+    name: golden exports (${{ matrix.build }})
+    if: ${{ inputs.specs == '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [site, single]
+    env:
+      # J1: The collector and judge must identify the same workflow run; a rerun of single jobs keeps the same commit and run ID.
+      JUDGE_EXPORTS: '1'
+      JUDGE_RUN_ID: ${{ github.run_id }}
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm test -- test/golden.spec.mjs --project=${{ matrix.build }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: judge-exports-${{ matrix.build }}
+          path: test-results/judge/
+          retention-days: 3
+          overwrite: true
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-golden-${{ matrix.build }}
+          path: pw-report.json
+          retention-days: 3
+          overwrite: true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-report-${{ matrix.build }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  judge:
+    name: export judge
+    if: ${{ inputs.specs == '' }}
+    needs: golden
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # J1: The collector and judge must identify the same workflow run.
+      JUDGE_RUN_ID: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: judge-exports-*
+          merge-multiple: true
+          path: test-results/judge
+      # J1: Both consumers are downloaded from their release pages and checksum-verified (they download in seconds, so they are not cached).
+      # The apt libraries are the slow part when the runner's Ubuntu mirror crawls (runs 39847011980, 39896805061), so their .deb files are cached per runner image;
+      # tools/install-judge-tools.sh installs them offline on a hit and, on a miss, fetches under a hard clock with a mirror fallback.
+      - name: Runner image version
+        id: image
+        run: |
+          # The cache key must follow the runner image; an empty value would share one key across images.
+          [ -n "${ImageVersion:-}" ] || { echo "ImageVersion is empty on this runner; the apt cache key needs it" >&2; exit 1; }
+          echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/js3d-judge-apt
+          key: judge-apt-${{ steps.image.outputs.version }}-${{ hashFiles('tools/install-judge-tools.sh') }}
+      - name: Install export judge consumers
+        timeout-minutes: 10
+        run: |
+          sudo dpkg --configure -a || true
+          bash tools/install-judge-tools.sh
+      - run: npm run test:judge:unit
+      - name: Native negative controls
+        timeout-minutes: 5
+        run: npm run test:judge:integration
+      - name: Judge golden exports
+        # The full report is wanted even when the controls fail.
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: npm run test:judge
+      # J1 end.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: judge-report
+          path: test-results/judge/
+          retention-days: 7
+          overwrite: true
+
+  chat-judge:
+    name: chat judge
+    if: ${{ inputs.specs == '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -30,6 +246,13 @@ jobs:
       - run: npx playwright install chromium
       # builds both outputs, runs the scorer's Node tests, then test/chatjudge.spec.mjs on the site and the single file (one 8-minute mock clock shared by both)
       - run: npm run test:chat-judge
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-chat-judge-1
+          path: pw-report.json
+          retention-days: 3
+          overwrite: true
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -42,8 +265,11 @@ jobs:
 
   fuzz:
     name: fuzz
+    if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -68,6 +294,13 @@ jobs:
         run: node build.mjs
       - if: ${{ steps.have.outputs.present == 'true' }}
         run: npm run fuzz
+      - if: ${{ !cancelled() && steps.have.outputs.present == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-fuzz-1
+          path: pw-report.json
+          retention-days: 3
+          overwrite: true
       - if: ${{ failure() && steps.have.outputs.present == 'true' }}
         uses: actions/upload-artifact@v7
         with:
@@ -77,3 +310,80 @@ jobs:
             test-results/
           retention-days: 7
           overwrite: true
+
+  # The same suite in Firefox and WebKit, on the site and the single file. NOT BLOCKING while it settles: continue-on-error keeps the run green
+  # and the report job lists the failing specs in a section of their own. To make them count, drop continue-on-error and set CROSS_BLOCKING=1 on the report job.
+  # The golden exports and the chat judge stay Chromium only (the export files and the mock clock do not depend on the browser).
+  cross:
+    name: ${{ matrix.browser }} ${{ matrix.build }} (${{ matrix.shard }}/${{ matrix.total }})
+    if: ${{ inputs.specs == '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+        build: [site, single]
+        shard: [1, 2, 3]
+        total: [3]
+    env:
+      JS3D_CROSS: '1'
+      JS3D_SKIP_CHATJUDGE: '1'
+      JS3D_SKIP_GOLDEN: '1'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: pw-report.json
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      # these two browsers need the system libraries, unlike Chromium on the runner image
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+        timeout-minutes: 14
+      - run: node build.mjs
+      - run: npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-cross-${{ matrix.browser }}-${{ matrix.build }}-${{ matrix.shard }}
+          path: pw-report.json
+          retention-days: 3
+          overwrite: true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cross-report-${{ matrix.browser }}-${{ matrix.build }}-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          overwrite: true
+
+  report:
+    name: nightly failures issue
+    needs: [playwright, golden, judge, chat-judge, fuzz, cross]
+    # only the scheduled or full run on main writes the issue, never a selected-specs run or another branch
+    if: ${{ always() && !cancelled() && inputs.specs == '' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: reports
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REF: ${{ github.ref_name }}
+        run: node tools/nightly-issue.mjs

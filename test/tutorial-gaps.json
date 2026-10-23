@@ -2,63 +2,21 @@
   "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
   "gaps": {
     "Advanced toolbar": [
-      "ad-align",
-      "ad-appearance",
-      "ad-box",
-      "ad-capsule",
-      "ad-cone",
-      "ad-edge-more",
-      "ad-facepat",
-      "ad-fastener",
-      "ad-fillet",
-      "ad-gear",
-      "ad-hole-m",
-      "ad-holepattern",
       "ad-ins-dxf",
       "ad-ins-img",
-      "ad-ins-model",
       "ad-ins-svg",
-      "ad-insert",
-      "ad-mirror",
-      "ad-nameplate",
-      "ad-offset",
+      "ad-moverot",
       "ad-pipe",
       "ad-plane-ang",
       "ad-plane-mid",
-      "ad-prism",
-      "ad-pyramid",
-      "ad-section",
       "ad-sketch3d",
-      "ad-sphere",
-      "ad-splitbody",
-      "ad-splitface",
-      "ad-sweep",
-      "ad-text3d",
-      "ad-texture",
-      "ad-thread-offset",
-      "ad-torus",
-      "ad-tube"
+      "ad-sweep"
     ],
     "Beginner toolbar": [
-      "bb-copy",
-      "bb-del",
-      "bb-drop",
-      "bb-dup",
       "bb-extrude",
-      "bb-facepat",
-      "bb-fastener",
-      "bb-gear",
-      "bb-hole",
       "bb-import",
-      "bb-lock",
-      "bb-mirror",
-      "bb-multi",
-      "bb-nameplate",
-      "bb-paste",
       "bb-sketch",
-      "bb-sketch3d",
-      "bb-solid",
-      "bb-ungroup"
+      "bb-sketch3d"
     ],
     "top bar": [
       "btn-about",
@@ -67,27 +25,23 @@
       "btn-full",
       "btn-keys",
       "btn-projects",
-      "btn-redo",
-      "btn-theme",
       "btn-tutorials",
       "mode-advanced",
-      "mode-arch",
-      "mode-beginner",
-      "mode-chisel"
+      "mode-arch"
     ],
     "Beginner shape strip": [
       "dock-help-btn",
-      "dock-holes",
       "dock-next",
-      "dock-objects",
       "dock-prev"
     ],
     "top bar menus": [
+      "btn-plate",
       "btn-report",
       "export-scope-all",
       "export-scope-sel",
       "export:3mf",
       "export:dxf",
+      "export:glb",
       "export:import",
       "export:json",
       "export:obj",
@@ -121,12 +75,8 @@
     ],
     "view buttons": [
       "nav-appear",
-      "nav-fit",
-      "nav-home",
       "nav-light",
       "nav-media",
-      "nav-ortho",
-      "nav-projector",
       "nav-sketches"
     ],
     "Advanced 3D print sim toolbar": [
@@ -141,20 +91,13 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
-      "sim-bricks",
-      "sim-cam",
       "sim-drive",
-      "sim-flexigen",
       "sim-joint",
-      "sim-meshstep",
       "sim-motion",
       "sim-print",
       "sim-render",
       "sim-reset",
-      "sim-stress",
-      "sim-voxel",
-      "ws-design",
-      "ws-simulate"
+      "sim-stress"
     ],
     "Advanced sketch toolbar": [
       "sk-arc3",
@@ -168,24 +111,14 @@
       "sk-c-perpendicular",
       "sk-c-tangent",
       "sk-c-vertical",
-      "sk-circle",
-      "sk-cons",
       "sk-constraints",
-      "sk-dim",
-      "sk-finish",
       "sk-ins-dxf",
       "sk-ins-img",
       "sk-ins-svg",
       "sk-insert",
       "sk-point",
-      "sk-polygon",
-      "sk-rect",
-      "sk-rect-more",
-      "sk-rect3",
-      "sk-rectc",
       "sk-spline",
-      "sk-text",
-      "sk-trim"
+      "sk-text"
     ],
     "snap controls": [
       "snap-more",
@@ -207,8 +140,7 @@
     ],
     "Architechies toolbar": [
       "Architechies toolbar:text:Metric",
-      "Architechies toolbar:text:ft · in",
-      "ar-xray"
+      "Architechies toolbar:text:ft · in"
     ]
   }
 }
