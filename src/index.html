@@ -1169,6 +1169,9 @@ body.s3d-on .tut-panel { z-index: 96; }
 .tut-icon { border: 0; background: transparent; color: var(--ink-2); width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; display: grid; place-items: center; }
 .tut-icon:hover { background: var(--line); }
 .tut-icon svg { width: 15px; height: 15px; }
+:root.touch-ui .tut-icon { width: 44px; height: 44px; } /* jumpstart-3d: a finger can hit Make small and Close */
+:root.touch-ui .tut-mini-line { min-height: 44px; }
+@media (max-width: 699px) { :root.touch-ui:has(#bb-multi[aria-pressed="true"]) .inspector { display: none; } } /* jumpstart-3d: on a phone (same 700 px line as the lesson panel in tutorials.js) the right panel would cover the shapes still to be tapped while Multi-select is on; it comes back when Multi-select goes off. Tablets keep it. */
 .tut-bar { height: 4px; background: var(--line-2); }
 .tut-bar i { display: block; height: 100%; background: #2e9d57; transition: width .3s; }
 .tut-mini-line { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 12px; color: var(--ink); cursor: pointer; font: inherit; }
