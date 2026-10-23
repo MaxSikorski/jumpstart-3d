@@ -325,7 +325,7 @@ jobs:
     name: ${{ matrix.browser }} ${{ matrix.build }} (${{ matrix.shard }}/${{ matrix.total }})
     if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -366,7 +366,9 @@ jobs:
         run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
         timeout-minutes: 5
       - run: node build.mjs
-      - run: ${{ matrix.browser == 'firefox' && 'xvfb-run -a -s "-screen 0 1400x900x24" ' || '' }}npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
+      # a step limit ends the step as a failure (not a cancel), so the uploads below still run; the job limit leaves room for install + Xvfb + this step
+      - timeout-minutes: 20
+        run: ${{ matrix.browser == 'firefox' && 'xvfb-run -a -s "-screen 0 1400x900x24" ' || '' }}npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

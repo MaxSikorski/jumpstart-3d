@@ -104,6 +104,10 @@ function boot() {
   let vp;
   // jumpstart-3d: webgl. A browser with WebGL off (or a headless one without a GPU driver) used to leave the splash up with no word; say what is wrong instead.
   try { vp = app.vp = new Viewport(vpEl); } catch (e) {
+    // only when WebGL really is missing (a probe fails or the error names it); any other error is not ours to disguise
+    const probe = document.createElement("canvas");
+    const hasGl = !!(probe.getContext("webgl2") || probe.getContext("webgl"));
+    if (hasGl && !/WebGL/i.test(String(e && e.message))) throw e;
     console.error("WebGL is unavailable:", e);
     const msg = document.getElementById("loading-msg"), bar = document.querySelector("#loading .sp-bar");
     if (msg) msg.textContent = "WebGL is unavailable in this browser, so JumpStart 3D cannot draw its 3D view. Turn on hardware acceleration in the browser settings, or try another browser.";

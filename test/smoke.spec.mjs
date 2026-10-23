@@ -136,7 +136,7 @@ test("Mesh detail: Fine builds more triangles than Normal", async () => {
   expect(await tris()).toBe(normal);
 });
 
-test("exports STL, OBJ, STEP and the project file", async ({}, info) => {
+test("exports STL, OBJ and the project file", async () => {
   await loadDoc(page, box20());
   const stl = await exportBytes(page, "stl");
   expect(stl.name).toMatch(/\.stl$/);
@@ -145,16 +145,19 @@ test("exports STL, OBJ, STEP and the project file", async ({}, info) => {
   const obj = await exportBytes(page, "obj");
   expect(obj.bytes.toString("utf8")).toMatch(/^# JumpStart 3D export/);
   expect(obj.bytes.toString("utf8").match(/^f /gm)).toHaveLength(12);
-  // quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs; the rest of this test still runs there
-  if (info.project.name !== "single-webkit") {
-    const step = await exportBytes(page, "step");
-    expect(step.bytes.toString("latin1")).toMatch(/^ISO-10303-21/);
-    expect(step.bytes.toString("latin1")).toContain("MANIFOLD_SOLID_BREP");
-  }
   const json = await exportBytes(page, "json");
   const parsed = JSON.parse(json.bytes.toString("utf8"));
   expect(parsed.app).toBe("jumpstart-3d");
   expect(parsed.doc.bodies.map((b) => b.name)).toEqual(["Box"]);
+});
+
+// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
+test("exports STEP", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "STEP export cannot read its blob in the worker in the single file in WebKit");
+  await loadDoc(page, box20());
+  const step = await exportBytes(page, "step");
+  expect(step.bytes.toString("latin1")).toMatch(/^ISO-10303-21/);
+  expect(step.bytes.toString("latin1")).toContain("MANIFOLD_SOLID_BREP");
 });
 
 test("FlexiGen opens on a body and renders", async () => {
@@ -1411,5 +1414,17 @@ test("without WebGL the loading screen says so instead of waiting forever", asyn
     await p.goto(info.project.use.baseURL);
     await expect(p.locator("#loading-msg")).toContainText("WebGL is unavailable in this browser");
     await expect(p.locator("#loading")).toBeVisible();
+  } finally { await p.close(); }
+});
+
+test("another error while the 3D view starts is not reported as missing WebGL", async ({ browser }, info) => {
+  const p = await browser.newPage();
+  try {
+    await p.addInitScript(() => {
+      const gl = window.WebGL2RenderingContext || window.WebGLRenderingContext;
+      if (gl) gl.prototype.getExtension = function () { throw new TypeError("boom"); };
+    });
+    await p.goto(info.project.use.baseURL);
+    await expect(p.locator("#loading-msg")).not.toContainText("WebGL is unavailable");
   } finally { await p.close(); }
 });

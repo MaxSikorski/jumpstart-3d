@@ -31,7 +31,7 @@ const refuse = (page) => page.addInitScript((name) => {
 // The fake folder is an OPFS handle. The single file is opened from disk and Linux WebKit has no navigator.storage.getDirectory at all (no private file system: skipped), and Firefox's OPFS handles have no queryPermission, which the copier calls (skipped).
 const needOpfs = async (page, info) => {
   const ok = await page.evaluate(() => Promise.resolve().then(() => navigator.storage.getDirectory()).then(() => true, () => false));
-  test.skip(browserOf(info) === "firefox" || (!ok && (buildOf(info) === "single" || browserOf(info) === "webkit")), "no origin private file system (OPFS) in this browser");
+  test.skip(browserOf(info) === "firefox" || (!ok && (buildOf(info) === "single" || browserOf(info) === "webkit")), browserOf(info) === "firefox" ? "Firefox's private file system handles have no queryPermission, which the folder copier calls" : "no origin private file system (OPFS) in this browser");
 };
 
 const save = (page, doc) => loadDoc(page, doc).then(() => page.evaluate(() => window.__app.projects.saveNow()));
