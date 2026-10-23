@@ -132,7 +132,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 
 - **Named parameters:** type `w` or `w/2` instead of a number, and everything follows when it
   changes.
-- **Bolts, nuts, gears, hole patterns, name plates and knurled knobs**, ready to drop into a design.
+- **Bolts, nuts, gears, hole patterns, name plates, knurled knobs and springs**, ready to drop into a design.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.
 - **Your printer's plate size**, with steep undersides shaded red.
 - **glTF and OBJ export, OBJ import**, and a pre-painted 3MF for multi-colour printing.
@@ -314,6 +314,8 @@ upstream version stays easy to merge.
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
+- Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
+  right or left hand, with open ends or ends cut flat.
 - Thirty-one more tutorials, for the toolbar buttons that had none.
 
 ### Editing
@@ -328,6 +330,9 @@ upstream version stays easy to merge.
 - Move and turn sketches, and the features built from them follow.
 - Turning shapes: typed angles, 15° steps or free turning, fine steps from the status bar, and a
   movable pivot with snapping.
+- A hidden rebuild-times panel for slow designs (Ctrl+Alt+P, or add `?perf` to the address): the last
+  rebuild body by body, slowest first, with batch, triangles, total and a Copy button for bug reports.
+  Bodies built together share their batch's time evenly (marked ~).
 - An underside view: the plate turns nearly clear when you look from below.
 - Boolean fixes: a torus no longer disappears from a group, two offset spheres cut to the right
   volume, an empty result says "Nothing is left", and joined torus groups export at the right
@@ -517,7 +522,7 @@ and runs on most NAS boxes and cloud drives.
 ## Build it yourself
 
 This section is for building JumpStart 3D from source. You need [Node.js](https://nodejs.org/) 20
-or newer.
+or newer (22.19 or newer to run the Lighthouse loading check; Node 20 still builds, with warnings from the dev tools).
 
 ### Build the app
 

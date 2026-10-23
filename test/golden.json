@@ -151,11 +151,11 @@
     "volumes": {
       "b1 b1": 1378.6
     },
-    "stlTriangles": 9098,
-    "stl": "cb9512d3ca5381ab0e72c833946c6e35dd35e718c1cd15939c591055f8073daa",
-    "obj": "44090fe17845de78592ac869055056f521c54e861119000202f33a0f620d640e",
-    "3mf": "ff7e56429ebe9b77c9c68b5d364acba2754e880c7bd7457e171dfb8171b0bd70",
-    "step": "a39c825fa6b316ffc89310d5161b4d3071c45b0e95190be780fc3cb5d9ccffed"
+    "stlTriangles": 10838,
+    "stl": "14da495c6c804c60188f7bed1114218cee485657d493bc3a0526591230b4d69a",
+    "obj": "dd5fe1deddd34c03f70058aad32557bdf710dd2a3d82140bd8da16b219da6d21",
+    "3mf": "490bf64b2c801d4bf52e8826a440d3c828b3568a2d4f6bffe6c12b3bdb6cd8ac",
+    "step": "eb0693f693230fc920e3dfaaff58b883f7028e722590411ba32bdeb6a57f81c2"
   },
   "advanced-wall-bracket.json": {
     "volumes": {
@@ -338,11 +338,11 @@
       "b3 1/4-20×40 threaded rod": 1064.6,
       "b4 M8 tapped block": 5341.8
     },
-    "stlTriangles": 34780,
-    "stl": "9bf7b6e45756253379421b22c6f1aca93889e9a13deda7c53d9761e51e53459f",
-    "obj": "633801098a8373241f537810465195726853117021596305fe8f07831674eb32",
-    "3mf": "d979819c6a3bf79d2b432f2b14dfc0e6f52837f63ba364e02beb80f0a759f8f3",
-    "step": "10d138ccde16f7f1746d027b030430263b9eede883abf4c831ab19d3f250e86b"
+    "stlTriangles": 34698,
+    "stl": "bfb2d05a5f51289cac31ea515b5d102d667801f562a38d0fc5397fd527679795",
+    "obj": "d8621bcba7a8aa170da27023d4b16fd5ef5721eca9dfbf77a0d99fc132ef17f3",
+    "3mf": "57151e73afaf316ddb520c4ecbe14cf76fa58f1d32f0d535c7401f9038a073ba",
+    "step": "504da8c42ab3a10e8751e44e5f6c974607738e38e16394e84b380258e620143f"
   },
   "holepattern.json": {
     "volumes": {
@@ -434,5 +434,18 @@
     "3mf": "7f3611d2e87a60fc010ab24778df008b6aeb0b455a4b9289694f913a98a79ef2",
     "step": "2a013002c11f0cb943cee78ec7a16466c163e0d07d47df2b164781a645aba774",
     "dxf": "eb6326c48fc24821a54cef40fcca977d1a16e73cfbc61245e8f3b0ecee58b174"
+  },
+  "spring.json": {
+    "volumes": {
+      "b0 Open spring": 892.6,
+      "b1 Flat spring": 880.3,
+      "b2 Fine left spring": 215.3,
+      "b3 Heavy spring": 2728.1
+    },
+    "stlTriangles": 219632,
+    "stl": "66a8c3491824599ac33780fe28f7882206a908b13570a2456742a112bdc7fcdc",
+    "obj": "a1db5a21bf4a206318583f3be2119750ea36b6317a907c004f3cbc92bc0c2478",
+    "3mf": "b6374cb8a815367fa877fd83791b7e8372830d8615cb7764f26d54b5aa7e4af8",
+    "step": "1299eae9c78158bca6be4ab803ed872c147d5e1144b664c8e74b2035890917f0"
   }
 }

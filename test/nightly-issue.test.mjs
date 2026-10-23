@@ -30,3 +30,9 @@ test("a skipped job is not a failure; a cancelled one is", () => {
   assert.equal(buildReport({ needs: { fuzz: { result: "skipped" } }, reports: {}, runUrl: "U", ref: "main" }).open, false);
   assert.equal(buildReport({ needs: { fuzz: { result: "cancelled" } }, reports: {}, runUrl: "U", ref: "main" }).open, true);
 });
+
+test("a failing lighthouse job does not open the issue while the check only reports", () => {
+  const r = buildReport({ needs: { lighthouse: { result: "failure" }, playwright: { result: "success" } }, reports: {}, runUrl: "U", ref: "main" });
+  assert.equal(r.open, false);
+  assert.equal(buildReport({ needs: { lighthouse: { result: "failure" }, playwright: { result: "failure" } }, reports: {}, runUrl: "U", ref: "main" }).open, true);
+});
