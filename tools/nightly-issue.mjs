@@ -4,7 +4,7 @@
 // Firefox and WebKit (job id "cross") run with continue-on-error while they settle: their failures are listed but do not open an issue
 // by themselves. Set CROSS_BLOCKING=1 to make them count.
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const TITLE = "Nightly failures";
@@ -82,6 +82,8 @@ function main() {
     needs, reports, quarantined: quarantinedTests(), runUrl: process.env.RUN_URL, ref: process.env.REF, crossBlocking: process.env.CROSS_BLOCKING === "1",
   });
   console.log(body);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, body + "\n");
+  if (process.env.OPEN_ISSUE !== "true") { console.log("Not a run on main: the report is in the run summary only, no issue opened or changed."); return; }
   if (!open) { console.log("Nothing blocking failed: no issue opened or changed."); return; }
   const gh = (...args) => execFileSync("gh", [...args, "--repo", process.env.GITHUB_REPOSITORY], { encoding: "utf8" });
   const existing = JSON.parse(gh("issue", "list", "--state", "open", "--search", `"${TITLE}" in:title`, "--json", "number,title")).find((i) => i.title === TITLE);

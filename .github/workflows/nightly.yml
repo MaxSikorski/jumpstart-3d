@@ -1,7 +1,7 @@
 # Everything too slow to hold up a pull request, every night at 07:00 UTC and on demand (see test/README.md):
 # the full Playwright suite on both builds, the golden exports with the export judge, the chat geometry scorer, the fuzzer,
 # and the same suite in Firefox and WebKit (not blocking yet).
-# When a blocking job fails, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
+# When a blocking job fails in a run on main, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
 # Run it by hand on any branch, a pull request's too: `gh workflow run nightly.yml --ref <branch>`. No secrets, no model: the chat judge drives a mock.
 name: nightly
 
@@ -325,4 +325,6 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REF: ${{ github.ref_name }}
+          # only a run on main opens or edits the issue; a run on a branch reports in its run summary
+          OPEN_ISSUE: ${{ github.ref == 'refs/heads/main' }}
         run: node tools/nightly-issue.mjs
