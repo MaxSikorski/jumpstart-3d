@@ -99,30 +99,38 @@ function halfEllipsoid(rx, ry, rz, c, n) {
   const o = new OC.gp_Pnt(0, 0, 0), dn = new OC.gp_Dir(n[0], n[1], n[2]), dx = new OC.gp_Dir(n[2] ? 1 : 0, n[2] ? 0 : 1, 0);
   const ax = new OC.gp_Ax3(o, dn, dx), sph = new OC.Geom_SphericalSurface(ax, 1);
   const bs = OC.GeomConvert.SurfaceToBSplineSurface(sph);
-  for (let u = 1; u <= bs.NbUPoles(); u++) for (let v = 1; v <= bs.NbVPoles(); v++) {
-    const p = bs.Pole(u, v), q = new OC.gp_Pnt(p.X() * rx + c[0], p.Y() * ry + c[1], p.Z() * rz + c[2]);
-    bs.SetPole(u, v, q);
-  }
-  const mk = new OC.BRepBuilderAPI_MakeShell(bs, 0, 2 * Math.PI, 0, Math.PI / 2, true);
-  const shell = mk.Shell();
-  mk.delete(); o.delete(); dn.delete(); dx.delete(); ax.delete();
-  return shell;
+  let mk;
+  try {
+    for (let u = 1; u <= bs.NbUPoles(); u++) for (let v = 1; v <= bs.NbVPoles(); v++) {
+      const p = bs.Pole(u, v), q = new OC.gp_Pnt(p.X() * rx + c[0], p.Y() * ry + c[1], p.Z() * rz + c[2]);
+      bs.SetPole(u, v, q);
+      p.delete(); q.delete();
+    }
+    mk = new OC.BRepBuilderAPI_MakeShell(bs, 0, 2 * Math.PI, 0, Math.PI / 2, true);
+    return mk.Shell();
+  } finally { if (mk) mk.delete(); bs.delete(); sph.delete(); ax.delete(); o.delete(); dn.delete(); dx.delete(); }
 }
-// jumpstart-3d: faces and shells that meet edge to edge, sewn into one solid
+// jumpstart-3d: faces and shells that meet edge to edge, sewn into one solid. The caller deletes the parts.
 function sewnSolid(parts) {
   const sew = new OC.BRepBuilderAPI_Sewing(1e-6, true, true, true, false);
-  for (const p of parts) sew.Add(p);
-  const pr = new OC.Message_ProgressRange();
-  sew.Perform(pr); pr.delete();
-  const ex = new OC.TopExp_Explorer(sew.SewedShape(), OC.TopAbs_ShapeEnum.TopAbs_SHELL, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  let sewed, ex, cur, shell, fix;
   try {
+    for (const p of parts) sew.Add(p);
+    const pr = new OC.Message_ProgressRange();
+    sew.Perform(pr); pr.delete();
+    if (sew.NbFreeEdges() > 0) throw new Error("This shape couldn't be built with these sizes");
+    sewed = sew.SewedShape();
+    ex = new OC.TopExp_Explorer(sewed, OC.TopAbs_ShapeEnum.TopAbs_SHELL, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
     if (!ex.More()) throw new Error("This shape couldn't be built with these sizes");
-    const fix = new OC.ShapeFix_Solid();
-    let s = R.cast(fix.SolidFromShell(OC.TopoDS.Shell(ex.Current())));
-    fix.delete();
+    cur = ex.Current();
+    shell = OC.TopoDS.Shell(cur);
+    fix = new OC.ShapeFix_Solid();
+    let s = R.cast(fix.SolidFromShell(shell));
     if (safeVolume(s) < 0) { const r = R.cast(s.wrapped.Reversed()); s.delete(); s = r; }
     return s;
-  } finally { ex.delete(); sew.delete(); }
+  } finally {
+    for (const x of [fix, shell, cur, ex, sewed, sew]) try { x && x.delete(); } catch (e) {}
+  }
 }
 function buildPrim(kind, p) {
   const w = clampPos(p.w), d = clampPos(p.d), h = clampPos(p.h);
@@ -282,12 +290,15 @@ function buildPrim(kind, p) {
         return out.simplify ? out.simplify() : out;
       }
       // jumpstart-3d: two half-ellipsoid ends sewn to the oval side (fusing whole ellipsoids took 10 to 25 s, and a flat capsule came out wrong)
-      const parts = [halfEllipsoid(cx, ry, rz, [L / 2, 0, rz], [1, 0, 0]), halfEllipsoid(cx, ry, rz, [-L / 2, 0, rz], [-1, 0, 0])];
-      if (L > 1e-6) {
-        const side = ellipseDrawing(ry, rz).sketchOnPlane(new R.Plane([-L / 2, 0, rz], [0, 1, 0], [1, 0, 0])).extrude(L);
-        for (const f of side.faces) { if (f.geomType !== "PLANE") parts.push(f.wrapped); }
-      }
-      return sewnSolid(parts);
+      const ends = [halfEllipsoid(cx, ry, rz, [L / 2, 0, rz], [1, 0, 0]), halfEllipsoid(cx, ry, rz, [-L / 2, 0, rz], [-1, 0, 0])];
+      let side = null, faces = [];
+      try {
+        if (L > 1e-6) {
+          side = ellipseDrawing(ry, rz).sketchOnPlane(new R.Plane([-L / 2, 0, rz], [0, 1, 0], [1, 0, 0])).extrude(L);
+          faces = side.faces;
+        }
+        return sewnSolid([...ends, ...faces.filter((f) => f.geomType !== "PLANE").map((f) => f.wrapped)]);
+      } finally { ends.forEach((x) => x.delete()); faces.forEach((f) => f.delete()); if (side) side.delete(); }
     }
     case "arrow": {
       // a flat arrow pointing +X, fitted to w x d, h thick
@@ -892,13 +903,14 @@ function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); 
 // about eight oval spheres the engine fails every ellipsoid with "Expected null or instance of gp_Dir, got an instance
 // of gp_XYZ" until the page is reloaded.
 function normalOnEdge(f, e) {
-  const c2 = new OC.BRepAdaptor_Curve2d(e.wrapped, f.wrapped);
-  const uv = c2.Value((c2.FirstParameter() + c2.LastParameter()) / 2);
-  const pr = new OC.BRepGProp_Face(f.wrapped, false), p = new OC.gp_Pnt(), n = new OC.gp_Vec();
+  let c2, uv, pr, p, n;
   try {
+    c2 = new OC.BRepAdaptor_Curve2d(e.wrapped, f.wrapped);
+    uv = c2.Value((c2.FirstParameter() + c2.LastParameter()) / 2);
+    pr = new OC.BRepGProp_Face(f.wrapped, false); p = new OC.gp_Pnt(); n = new OC.gp_Vec();
     pr.Normal(uv.X(), uv.Y(), p, n);
     return [n.X(), n.Y(), n.Z()];
-  } finally { c2.delete(); uv.delete(); pr.delete(); p.delete(); n.delete(); }
+  } finally { for (const x of [c2, uv, pr, p, n]) try { x && x.delete(); } catch (err) {} }
 }
 function chordRadii(shape, radius) {
   const out = new Map();
@@ -1558,7 +1570,6 @@ function tangentChain(shape, open) {
       if (!f) continue;
       for (const e of f.edges) {
         const list = edgeFaces.get(e.hashCode) || [];
-        let p = null;
         for (const o of list) {
           if (o.f === h || open.has(o.f)) continue;
           try {
@@ -1567,7 +1578,6 @@ function tangentChain(shape, open) {
             if (Math.abs(dot) > 0.9995) { open.add(o.f); queue.push(o.f); }
           } catch (err) {}
         }
-        if (p) p.delete && p.delete();
         e.delete();
       }
     }
