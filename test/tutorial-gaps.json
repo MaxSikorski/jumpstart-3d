@@ -2,25 +2,18 @@
   "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run.",
   "gaps": {
     "Advanced toolbar": [
-      "ad-fastener",
-      "ad-gear",
       "ad-ins-dxf",
       "ad-ins-img",
-      "ad-ins-model",
       "ad-ins-svg",
-      "ad-insert",
+      "ad-moverot",
       "ad-pipe",
       "ad-plane-ang",
       "ad-plane-mid",
       "ad-sketch3d",
-      "ad-splitbody",
-      "ad-splitface",
-      "ad-sweep",
-      "ad-thread-offset"
+      "ad-sweep"
     ],
     "Beginner toolbar": [
       "bb-extrude",
-      "bb-facepat",
       "bb-import",
       "bb-sketch",
       "bb-sketch3d"
@@ -32,12 +25,9 @@
       "btn-full",
       "btn-keys",
       "btn-projects",
-      "btn-theme",
       "btn-tutorials",
       "mode-advanced",
-      "mode-arch",
-      "mode-beginner",
-      "mode-chisel"
+      "mode-arch"
     ],
     "Beginner shape strip": [
       "dock-help-btn",
@@ -45,6 +35,7 @@
       "dock-prev"
     ],
     "top bar menus": [
+      "btn-plate",
       "btn-report",
       "export-scope-all",
       "export-scope-sel",
@@ -86,7 +77,6 @@
       "nav-appear",
       "nav-light",
       "nav-media",
-      "nav-projector",
       "nav-sketches"
     ],
     "Advanced 3D print sim toolbar": [
@@ -101,20 +91,13 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
-      "sim-bricks",
-      "sim-cam",
       "sim-drive",
-      "sim-flexigen",
       "sim-joint",
-      "sim-meshstep",
       "sim-motion",
       "sim-print",
       "sim-render",
       "sim-reset",
-      "sim-stress",
-      "sim-voxel",
-      "ws-design",
-      "ws-simulate"
+      "sim-stress"
     ],
     "Advanced sketch toolbar": [
       "sk-arc3",
@@ -128,28 +111,21 @@
       "sk-c-perpendicular",
       "sk-c-tangent",
       "sk-c-vertical",
-      "sk-circle",
-      "sk-cons",
       "sk-constraints",
-      "sk-dim",
-      "sk-finish",
       "sk-ins-dxf",
       "sk-ins-img",
       "sk-ins-svg",
       "sk-insert",
       "sk-point",
-      "sk-polygon",
-      "sk-rect",
-      "sk-rect-more",
-      "sk-rect3",
-      "sk-rectc",
       "sk-spline",
-      "sk-text",
-      "sk-trim"
+      "sk-text"
     ],
     "snap controls": [
       "snap-more",
       "snap-toggle",
+      "turn-back",
+      "turn-minus",
+      "turn-plus",
       "unit-toggle"
     ],
     "Beginner shape tiles": [
@@ -167,8 +143,7 @@
     ],
     "Architechies toolbar": [
       "Architechies toolbar:text:Metric",
-      "Architechies toolbar:text:ft · in",
-      "ar-xray"
+      "Architechies toolbar:text:ft · in"
     ]
   }
 }

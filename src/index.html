@@ -20,7 +20,7 @@
   OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
   The bundled libraries and fonts (three.js, replicad, the OpenCascade kernel, opentype.js, Flatbush,
-  Flatqueue, Poppins, Liberation, IBM Plex, Barlow) keep their own licenses, listed with full texts in
+  Flatqueue, Poppins, Liberation, IBM Plex, Barlow, Chakra Petch) keep their own licenses, listed with full texts in
   the About dialog and in THIRD-PARTY-NOTICES.md.
 -->
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="format-detection" content="telephone=no">
@@ -50,9 +50,7 @@
 <!-- jumpstart-3d: installable app manifest -->
 <link rel="manifest" href="manifest.webmanifest">
 </head><body>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style id="js3d-fonts"></style><!-- jumpstart-3d: build.mjs puts src/webfonts.css here -->
 <style>
 /* Layout: a drafting-table workspace. Dark title-block bar on top, white panels, a light viewport.
    Deliberately a single light theme, like a drawing sheet. */
@@ -521,6 +519,26 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
   .menu button { padding: 12px 10px; }
   .pcard .acts button { padding: 8px 8px; }
 }
+/* jumpstart-3d: pivot (issue #100). The pivot dot's labels, the angle pill beside the pointer while turning, and the Advanced Pivot panel */
+.vp-label.pivot-tag { font-family: var(--f-ui); font-size: 11px; }
+.vp-label.pivot-snap { font-family: var(--f-ui); background: #e8a317; border-color: #c98a0c; color: #1d1404; font-weight: 600; }
+.turn-pill { position: absolute; left: 0; top: 0; pointer-events: none; background: var(--accent); color: var(--on-accent); border-radius: 12px; padding: 3px 9px; font: 600 13px/1.2 var(--f-mono); box-shadow: 0 3px 10px rgba(0,0,0,.25); white-space: nowrap; z-index: 6; }
+.pivpanel { top: 10px; left: 10px; width: 236px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.pivot-fields { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 860px) { .pivpanel { top: auto; bottom: 54px; left: 10px; } }
+/* jumpstart-3d: rotation access (issue #100). The turn buttons and the Snap 15° / Free switch are 44 px targets for a finger */
+.rot-btn button { min-width: 44px; min-height: 44px; }
+/* jumpstart-3d: fine rotation (issue #87). The Turn control in the status bar; on a touch screen the bar gets taller and every target is 44 px */
+.turnctl { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
+@media (min-width: 601px) {
+  :root.touch-ui .status { min-width: 0; height: auto; min-height: 56px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; white-space: normal; overflow: visible; }
+  :root.touch-ui .status .hintline { flex: 1 1 220px; min-height: 18px; }
+  :root.touch-ui .status .hintline, :root.touch-ui .status #selinfo, :root.touch-ui .status .busy { white-space: nowrap; }
+  :root.touch-ui .status .snapctl { flex: 1 1 100%; flex-wrap: wrap; row-gap: 4px; } /* the controls always get their own row under the hint, so the bar keeps one height */
+  :root.touch-ui .turnctl button, :root.touch-ui .turnctl select { min-width: 44px; min-height: 44px; font-size: 16px; }
+  :root.touch-ui .turnctl button { padding: 0 10px; }
+}
+@media (max-width: 600px) { .turnctl { display: none; } } /* a phone keeps the plain status bar and turns with the rings and the Snap 15 / Free switch */
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
 .lockbar svg { width: 18px; height: 18px; flex: none; }
 .lockbar .btn { margin-left: auto; padding: 4px 10px; }
@@ -630,6 +648,18 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .snapctl .unit-toggle { margin-right: 6px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--accent, #1f4fa8); background: transparent; color: var(--accent, #1f4fa8); font: 700 12px/1.2 var(--f-ui, sans-serif); cursor: pointer; white-space: nowrap; }
 .section-chip { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 12.5px; font-weight: 600; }
 .section-chip[hidden] { display: none; }
+/* jumpstart-3d: printer plate dialog and overhang legend */
+.modal.plate-dlg { width: min(560px, 100%); }
+.plate-dlg .plate-row { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-weight: 600; }
+.plate-dlg .plate-row select, .plate-dlg .plate-row input[type="range"] { flex: 1; min-width: 0; }
+.plate-dlg .plate-facts { font-weight: 600; margin: 4px 0 2px; }
+.plate-dlg .plate-note { padding: 0; margin: 2px 0 8px; }
+.plate-dlg .plate-note a { color: var(--accent); }
+.plate-dlg .plate-fit { margin: 0 0 8px; color: var(--ink-2); }
+.oh-chip { position: absolute; left: 12px; top: 10px; z-index: 9; display: flex; align-items: center; gap: 8px; max-width: min(380px, calc(100% - 24px)); padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 12px; line-height: 1.35; }
+.oh-chip[hidden] { display: none; }
+.oh-chip .oh-sw { flex: none; width: 12px; height: 12px; border-radius: 3px; background: #ff2d2d; }
+.oh-chip .btn { flex: none; padding: 3px 10px; font-size: 12px; }
 .section-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a317; }
 .section-chip .btn { padding: 3px 10px; font-size: 12px; }
 .section-chip .xbtn { width: 26px; height: 26px; }
@@ -728,6 +758,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .report .rp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
 .report a.btn { text-decoration: none; }
 .report .rp-note { margin: 10px 0 0; font-size: 13px; }
+.report.share input[type=text] { display: block; width: 100%; box-sizing: border-box; margin: 8px 0 0; padding: 7px 9px; font: 12.5px/1.45 var(--f-mono, monospace); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; } /* jumpstart-3d: share link */
 @media (pointer: coarse) { .report textarea { font-size: 16px; } }
 .modal-back { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 60; padding: 16px; }
 .modal { background: var(--panel); border-radius: 10px; width: min(760px, 100%); max-height: min(640px, 92vh); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
@@ -1251,6 +1282,10 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
           <label class="mc-row" title="Type the triangle count you want for the whole design and press Enter"><span>Triangles</span><input type="number" id="detail-tris" min="1" step="1" inputmode="numeric"><small id="detail-est"></small></label>
         </div>
         <div class="menu-note">Applies to the view and to STL, OBJ and 3MF exports. STEP is exact at every level. Above 500,000 triangles you are asked first; very fine levels can take many minutes to build.</div>
+        <!-- jumpstart-3d: printer plate -->
+        <hr>
+        <div class="menu-head">Printer</div>
+        <button id="btn-plate" role="menuitem" title="Pick your printer's build area and show steep undersides in red">Printer plate… <small>build area, overhangs</small></button>
         <!-- jumpstart-3d: agent link -->
         <hr>
         <div class="menu-head">AI agent</div>
@@ -1277,6 +1312,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <hr>
         <button data-act="json">Save Project File <small>.json</small></button>
         <button data-act="import">Open a project file…</button>
+        <button id="btn-share-link" title="Make a link that holds a small design, or open one that was shared with you. Nothing is uploaded.">Share link… <small>copy a link</small></button><!-- jumpstart-3d: share link -->
         <button data-act="runscript" title="Run a JavaScript file that uses the JS3D scripting bridge (see BRIDGE.md)">Run script… <small>.js</small></button><!-- jumpstart-3d: run script -->
         <hr>
         <button id="btn-report" title="Open a bug report on GitHub with the app details filled in">Report a problem… <small>GitHub</small></button><!-- jumpstart-3d: report -->
@@ -1331,7 +1367,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.3 · community build 21</p>
+    <p class="sp-ver" id="sp-ver">Version 2.3 · community build 22</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

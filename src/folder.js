@@ -132,11 +132,14 @@ export function initFolder({ ps, toast, fileSafe }) {
     timer = setTimeout(() => { timer = null; now(); }, QUIET);
   }
 
-  // The meta read is queued now, so it is the first thing in the store's chain.
-  const loaded = Promise.all([ps.ready, ps.getMeta(KEY)]).then(([kind, rec]) => {
-    supported = kind === "idb" && typeof window.showDirectoryPicker === "function" && !!window.isSecureContext && !window.claude;
+  // The meta read is queued now, so it is the first thing in the store's chain. When IndexedDB was too slow
+  // to wait for and answers later, the store tells us and the read is made again.
+  const load = () => Promise.all([ps.ready, ps.getMeta(KEY)]).then(([, rec]) => {
+    supported = ps.kind === "idb" && typeof window.showDirectoryPicker === "function" && !!window.isSecureContext && !window.claude;
     if (supported && rec && rec.handle && rec.files) { record = rec; soon(); }
   }).catch(() => {});
+  let loaded = load();
+  ps.onSwitch(() => { loaded = load(); });
 
   return {
     soon,

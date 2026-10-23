@@ -13,6 +13,9 @@ def R(a, b, count=1):
 three = open(ROOT + '/tools/three-global.min.js').read().replace('</script', '<\\/script')
 R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
   '<script>' + three + '</script>')
+# jumpstart-3d: no Google Fonts request; the app puts its own copy of the fonts into the page when it opens the helper (src/helperfonts.js)
+s = re.sub(r'<link rel="preconnect" href="https://fonts.g[a-z]+.com"[^>]*>\n', '', s)
+s = re.sub(r'<link rel="stylesheet" href="https://fonts.googleapis.com/css2[^"]*">\n', '', s)
 # brand
 R('<title>Super Flexi Builder</title>', '<title>FlexiGen</title>')
 R('<div><h1>Super <span>Flexi</span> <em>Builder</em></h1><p>Print-in-place articulation for any STL or 3MF</p></div></div>',
