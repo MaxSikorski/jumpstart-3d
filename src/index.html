@@ -1120,6 +1120,9 @@ body.s3d-on .tut-panel { z-index: 96; }
 @media (max-width: 1340px) { .docname { width: 140px; } }
 @media (max-width: 1480px) { .topbar .brand span { display: none; } }
 @media (max-width: 560px) { #btn-tutorials { display: none; } .docver { display: none; } }
+/* jumpstart-3d: at 560 px and below the Tutorials button is hidden and the top bar is full, so the Open/Export menu carries the entry (44 px tall to tap) */
+.menu .menu-tut { display: none; } /* more specific than .menu button { display: flex } */
+@media (max-width: 560px) { .menu button.menu-tut { display: flex; min-height: 44px; align-items: center; } .menu hr.menu-tut { display: block; } #app[data-mode="chisel"] .menu .menu-tut { display: none; } }
 @media (max-width: 420px) { .topbar { gap: 3px; } .topbar .tb-btn { padding-left: 3px; padding-right: 3px; } }
 @media (max-width: 1100px) { .topbar .brand { display: none; } #btn-keys { display: none; } .docname { width: 110px; } .modeswitch button { padding: 5px 8px; letter-spacing: .04em; } .autosave-btn { padding-left: 6px; padding-right: 6px; } }
 .tut-modal { width: min(780px, 100%); }
@@ -1310,6 +1313,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <div class="menu-wrap">
       <button class="tb-btn" id="btn-export" aria-haspopup="true" title="Open a project file, save a copy, or export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span class="lbl">Open/Export</span></button>
       <div class="menu" id="menu-export" hidden>
+        <button id="btn-tutorials-menu" class="menu-tut" title="Tutorials: step-by-step projects">Tutorials <small>step-by-step lessons</small></button><hr class="menu-tut"><!-- jumpstart-3d: phone Tutorials entry (the top bar has no room at 560 px and below) -->
         <button data-act="stl">STL for 3D printing <small>.stl</small></button>
         <button data-act="obj">OBJ for Blender and other 3D apps <small>.obj</small></button>
         <button data-act="3mf">3MF for 3D printing (with colors) <small>.3mf</small></button>

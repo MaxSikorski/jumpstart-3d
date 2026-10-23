@@ -69,6 +69,7 @@ export const ICON = {
   thread: S('<path d="M8 3h8v18H8z"/><path d="M8 6l8-2M8 10l8-2M8 14l8-2M8 18l8-2" stroke="#1f4fa8"/>'),
   gear: S('<circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5V6M12 18v3.5M2.5 12H6M18 12h3.5M5.3 5.3l2.5 2.5M16.2 16.2l2.5 2.5M5.3 18.7l2.5-2.5M16.2 7.8l2.5-2.5" stroke-width="2.6"/>'), // jumpstart-3d: gears
   tag: S('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="6.5" cy="12" r="1.3"/><path d="M10 10.5h7.5M10 13.5h5" stroke="#1f4fa8"/>'), // jumpstart-3d: name plates
+  knurl: S('<rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 3v18M12 3v18M15 3v18" stroke="#1f4fa8"/>'), // jumpstart-3d: knurl
   texture: S('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l6-6M3 15 15 3M3 21 21 3M9 21l12-12M15 21l6-6" stroke="#1f4fa8" stroke-width="1.3"/>'),
   scale: S('<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M13 11V5h6v6h-6" stroke-dasharray="2 1.6"/><path d="M14 10l6-6M16 4h4v4" stroke="#1f4fa8"/>'),
   align: S('<path d="M4 3v18"/><rect x="7" y="5" width="12" height="5" rx="1"/><rect x="7" y="14" width="7" height="5" rx="1"/>'),
