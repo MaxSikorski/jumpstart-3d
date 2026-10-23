@@ -4,7 +4,9 @@
 // The config blocks service workers for every other spec; case 4 allows one in its own context.
 // The offline case does not assert on requestfailed: Chromium reports a worker request answered by the service worker a second time as a failed network leg.
 import { test, expect } from "@playwright/test";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, mkdtempSync, cpSync, rmSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { serve } from "../mcp/serve.mjs";
 import { watchErrors } from "./helpers.mjs";
 
@@ -151,5 +153,102 @@ test("a second visit loads from the service worker and works offline", async ({ 
   } finally {
     await context?.close();
     await server.close();
+  }
+});
+
+// Upgrades. The previous build's service worker kept four files and no fonts; its cache name came from a hash we do not have, so a copy of docs/
+// with the worker written back to that shape stands in for it ("oldbuild00"). The same server and browser then switch to the real docs/.
+const OLD = "jumpstart-3d-oldbuild00";
+const FONT_COUNT = readdirSync("docs/fonts").filter((f) => f.endsWith(".woff2")).length;
+const siteInto = (live, { old, without } = {}) => {
+  rmSync(live, { recursive: true, force: true });
+  mkdirSync(live, { recursive: true });
+  cpSync("docs", live, { recursive: true });
+  if (old) {
+    rmSync(join(live, "fonts"), { recursive: true, force: true });
+    const sw = readFileSync(join(live, "sw.js"), "utf8").replace(/const VERSION = "[0-9a-f]{10}";/, 'const VERSION = "oldbuild00";').replace(/const FONTS = \[.*\];/, "const FONTS = [];");
+    writeFileSync(join(live, "sw.js"), sw);
+  }
+  if (without) rmSync(join(live, "fonts", without));
+};
+const cacheState = (page) => page.evaluate(async () => {
+  const out = {};
+  for (const k of (await caches.keys()).filter((k) => k.startsWith("jumpstart-3d-"))) out[k] = (await (await caches.open(k)).keys()).length;
+  return out;
+});
+const installOldSite = async (live, browser, server) => {
+  const context = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
+  const page = await context.newPage();
+  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
+  await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 30_000 }).toBe("activated");
+  expect(await cacheState(page)).toEqual({ [OLD]: 4 });
+  return { context, page };
+};
+const offlineStillWorks = async (context, page, server) => {
+  await server.close();
+  await context.setOffline(true);
+  await page.reload();
+  await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
+  await expect(page.locator("#loading")).toBeHidden({ timeout: 20_000 });
+  await page.evaluate(() => JS3D.add("box"));
+  await page.evaluate(() => JS3D.ready());
+  expect(await meshes(page)).toBe(1);
+};
+
+test("an upgrade from the previous service worker installs the fonts and works offline", async ({ browser }, info) => {
+  test.skip(info.project.name !== "site", NOT_SINGLE);
+  test.setTimeout(240_000);
+  const live = mkdtempSync(join(tmpdir(), "js3d-live-"));
+  siteInto(live, { old: true });
+  const server = await serve(live);
+  let context;
+  try {
+    let page;
+    ({ context, page } = await installOldSite(live, browser, server));
+    const errors = watchErrors(page);
+    siteInto(live); // the new build goes live at the same address
+    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration()).update(); });
+    // the new worker takes over and the old cache goes
+    await expect.poll(async () => Object.keys(await cacheState(page)).filter((k) => k !== OLD).length === 1 && !(OLD in await cacheState(page)), { timeout: 60_000 }).toBe(true);
+    const state = await cacheState(page);
+    expect(Object.values(state)).toEqual([4 + FONT_COUNT]);
+    await offlineStillWorks(context, page, server);
+    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    // the fonts come from the new cache: the face loads with the network gone
+    expect(await page.evaluate(() => document.fonts.load('500 12px "IBM Plex Sans"').then((f) => f.length))).toBe(1);
+    expect(await page.evaluate(() => document.fonts.load('500 12px "Barlow Condensed"').then((f) => f.length))).toBe(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await context?.close();
+    await server.close();
+    rmSync(live, { recursive: true, force: true });
+  }
+});
+
+test("one font failing to download keeps the previous install working offline", async ({ browser }, info) => {
+  test.skip(info.project.name !== "site", NOT_SINGLE);
+  test.setTimeout(240_000);
+  const live = mkdtempSync(join(tmpdir(), "js3d-live-"));
+  siteInto(live, { old: true });
+  const server = await serve(live);
+  let context;
+  try {
+    let page;
+    ({ context, page } = await installOldSite(live, browser, server));
+    siteInto(live, { without: "ibm-plex-mono-500.woff2" }); // the new build is live but one font answers 404
+    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration()).update(); });
+    // the new worker starts (it opens its own cache), cannot fetch every file, and is discarded
+    await expect.poll(() => cacheState(page).then((s) => Object.keys(s).length), { timeout: 60_000 }).toBe(2);
+    await expect.poll(() => page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return [!!r.installing, !!r.waiting, r.active.state]; }), { timeout: 60_000 }).toEqual([false, false, "activated"]);
+    const state = await cacheState(page);
+    expect(state[OLD], "the previous cache is untouched").toBe(4);
+    await offlineStillWorks(context, page, server);
+    expect(await cacheState(page)).toMatchObject({ [OLD]: 4 });
+  } finally {
+    await context?.close();
+    await server.close();
+    rmSync(live, { recursive: true, force: true });
   }
 });

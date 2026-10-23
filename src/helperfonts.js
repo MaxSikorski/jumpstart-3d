@@ -1,4 +1,4 @@
-// jumpstart-3d: self-hosted fonts. A srcdoc helper page (FlexiGen, Mesh to STEP) cannot see the page's @font-face rules,
+// jumpstart-3d: self-hosted fonts. A srcdoc helper page (FlexiGen, Mesh to STEP, Chisel) cannot see the page's @font-face rules,
 // so it gets a copy. build.mjs puts the rules in <style id="js3d-fonts">; the site's urls are made absolute so a blob: tab finds the files too.
 export function withFonts(html) {
   const rules = document.getElementById("js3d-fonts");

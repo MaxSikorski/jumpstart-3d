@@ -348,7 +348,7 @@ npm test
 `test/README.md` explains what runs and how to re-record the golden export
 hashes after an intended geometry change.
 
-On every pull request, CI also slices the golden STL and 3MF files with PrusaSlicer and checks their STEP files in FreeCAD, rejecting mesh repairs, invalid or open geometry, missing solids and volume changes; `test/judge-known.json` lists the few known defects and must only shrink; see `test/README.md`.
+Every night, CI also slices the golden STL and 3MF files with PrusaSlicer and checks their STEP files in FreeCAD, rejecting mesh repairs, invalid or open geometry, missing solids and volume changes; `test/judge-known.json` lists the few known defects and must only shrink; see `test/README.md`.
 
 `npm test` also walks a first part on a simulated phone (box, hole, group, STL) over a slow connection and fails if it takes longer than its budget.
 Chat geometry benchmark: `npm run test:chat-judge` checks five scripted cases on both builds (the mock tests the scorer, not how well a model understands a request), while `npm run bench:chat` scores 50 requests on demand against a locally installed Ollama `qwen3:14b` with scripts and vision off, writing local reports to `chat-bench-results/`; see [setup, CORS and commands](test/README.md#chat-geometry-benchmark).
@@ -500,7 +500,7 @@ UPSTREAM-README.md         the author's README from the source release
   up for itself; `screenshot` can save its picture to a file for models that
   cannot see images
 - A regression test suite (`npm test`) that drives the real app in a headless
-  browser on both builds, and runs on every pull request
+  browser on both builds; a short part gates every pull request and the rest runs nightly
 
 ## License
 

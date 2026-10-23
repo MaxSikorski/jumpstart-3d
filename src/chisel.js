@@ -4,6 +4,7 @@
 // them. Bodies of the design can be copied (or converted) into Chisel to sculpt.
 import * as THREE from "three";
 import CHISEL_HTML from "./chisel.html";
+import { withFonts } from "./helperfonts.js";
 import { store, findBody, nextSeq, IDENTITY, regionsFor } from "./store.js";
 import { uid, el, nextColor } from "./util.js";
 import { isInch } from "./units.js";
@@ -232,7 +233,7 @@ export function initChisel(app) {
     ifr = document.createElement("iframe");
     ifr.title = "Chisel sculpting";
     readyP = new Promise((r) => { readyRes = r; });
-    ifr.srcdoc = CHISEL_HTML;
+    ifr.srcdoc = withFonts(CHISEL_HTML);
     host.append(ifr);
     document.body.append(host);
     return readyP;
