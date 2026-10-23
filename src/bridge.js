@@ -13,6 +13,7 @@
 //              gear({kind, module, teeth, width, mate, base, bore, keyway, clear, at, name}) -> id   a spur gear, bevel gear or rack
 //              namePlate({text, font, size, style, depth, thickness, margin, shape, holes, holeDia, color, textColor, at, name}) -> {plate, textBody, size}   a plate sized to one line of text, raised or cut in
 //              knurl({diameter, length, grooves, depth, bore, boreSize, at, name}) -> id   a knurled knob: a cylinder with straight V grooves and an optional round, hex or D bore
+//              spring({wire, outside, freeLength, turns, hand, ends, color, at, name}) -> id   a compression spring of round wire, open ends or ends cut flat
 //              holePattern({body, face, layout, hole}) -> {id, holes, dropped, sketch?}   round, square, hex or slot holes in a grid or circle on a flat face
 //              remove(ids) (alias delete) -> count, duplicate(ids, offset) -> new ids
 //              move(ids, [dx,dy,dz]), moveTo(id, [x,y,z]), rotate(ids, axis, degrees, {about})
@@ -189,7 +190,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.7", // jumpstart-3d: knurl
+    version: "1.8", // jumpstart-3d: spring
     appVersion: VERSION,
     internals: { app, store },
 
@@ -221,6 +222,7 @@ export function initBridge(app) {
     gear(opts = {}) { edit(); return app.advanced.addGear(opts); }, // jumpstart-3d: gears
     namePlate(opts = {}) { edit(); return app.advanced.addNamePlate(opts); }, // jumpstart-3d: name plates
     knurl(opts = {}) { edit(); return app.advanced.addKnurl(opts); }, // jumpstart-3d: knurl
+    spring(opts = {}) { edit(); return app.advanced.addSpring(opts); }, // jumpstart-3d: spring
     remove(ids) {
       edit();
       ids = idList(ids);

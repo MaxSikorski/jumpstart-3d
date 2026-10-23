@@ -10,7 +10,8 @@ import { getUnit, withUnit } from "./units.js";
 const ENDS = [["open", "Open"], ["flat", "Flat cut"]];
 const HANDS = [["right", "Right"], ["left", "Left"]];
 const COLOR = /^#[0-9a-fA-F]{6}$/;
-const MAX_TURNS = 10; // sized from the build timings in test/spring.spec.mjs
+const MAX_TURNS = 10; // 20 turns builds in 6-9 s at Normal but 24-31 s (800k triangles) at Fine, over the 10 s a click should take
+const MAX_WIRE = 600; // wire length in wire thicknesses: about 150k triangles; 3000 stalls the geometry engine, 1500 of a 0.4 mm wire takes 11 s
 const MIN_GAP = 1.05; // pitch / wire: the Coil refuses anything under 1.01; this leaves a visible gap
 
 const isNum = (v) => typeof v === "number" && isFinite(v);
@@ -56,6 +57,7 @@ export function resolve(spec) {
     tilt = 1 / Math.sqrt(1 + (p / C) ** 2);
   }
   if (p < MIN_GAP * w - 1e-9) throw new Error("The coils would touch. Increase the free length, use fewer turns, or use thinner wire.");
+  if (N * Math.hypot(C, p) > MAX_WIRE * w) throw new Error("This spring needs too much wire to build. Use fewer turns, a smaller outside diameter or thicker wire.");
   // where the coil's lowest point is, relative to the body's origin: the body is lowered by this much so the spring stands on z = at
   const drop = ends === "flat" ? w / 2 : w * (1 - tilt) / 2;
   return { w, O, L, N, hand, ends, color, at, name, R, C, p, drop, gap: p - w };

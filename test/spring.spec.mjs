@@ -52,8 +52,8 @@ const counts = () => run(() => ({ bodies: JS3D.doc().bodies.length, sketches: JS
 const near = (got, want, rel, what) => expect(Math.abs(got - want) / Math.abs(want), `${what}: ${got} vs ${want}`).toBeLessThan(rel);
 const field = async (id, v) => { await page.fill("#" + id, String(v)); await page.locator("#" + id).blur(); };
 const nodeOf = (id) => run((id) => JSON.parse(JSON.stringify(JS3D.doc().bodies.find((b) => b.id === id))), id);
-// where the highest vertex of the mesh sits, in the body's own coordinates: the wire's top end, which shows the hand
-const topEnd = (id) => run((id) => { const v = window.__app.scene.views.get(id).data.vertices; let best = 0; for (let i = 2; i < v.length; i += 3) if (v[i] > v[best + 2]) best = i - 2; return [v[best], v[best + 1]]; }, id);
+// the middle of the flat top face, in the body's own coordinates: the vertices within 0.1 mm of the highest one
+const topFace = (id) => run((id) => { const v = window.__app.scene.views.get(id).data.vertices; let hi = -Infinity; for (let i = 2; i < v.length; i += 3) hi = Math.max(hi, v[i]); let x = 0, y = 0, n = 0; for (let i = 2; i < v.length; i += 3) if (v[i] > hi - 0.1) { x += v[i - 2]; y += v[i - 1]; n++; } return [x / n, y / n]; }, id);
 
 test("Advanced: Create > Advanced Create > Spring makes the default open spring in one undo step", async () => {
   await fresh("advanced");
@@ -113,24 +113,16 @@ test("volume, bounds, turns and ends across wire, size, turns, hand and ends", a
   }
 });
 
-test("the hand: the top end of a right-hand spring sits a quarter turn counter-clockwise, a left-hand one clockwise", async () => {
+test("the hand: the top of a 5-turn flat spring ends just before +x, counter-clockwise for right-hand and clockwise for left-hand", async () => {
   await fresh();
-  const [r, l] = await run(() => [JS3D.spring({ turns: 4.5, ends: "flat", at: [0, 0, 0] }), JS3D.spring({ turns: 4.5, ends: "flat", hand: "left", at: [100, 0, 0] })]);
+  const [r, l] = await run(() => [JS3D.spring({ ends: "flat" }), JS3D.spring({ ends: "flat", hand: "left", at: [100, 0, 0] })]);
   await built();
-  // 4.5 turns end opposite the start (the start is on +x), so the top end is on -x either way; use 4.25... turns come in halves, so
-  // compare the top ends of 4.5 and 5 turns instead: after 5 turns the end is back on +x
-  const [a, b] = await run(() => [JS3D.spring({ turns: 5, ends: "flat", at: [0, 100, 0] }), JS3D.spring({ turns: 5, ends: "flat", hand: "left", at: [100, 100, 0] })]);
-  await built();
-  const top = await topEnd(r), topL = await topEnd(l);
-  expect(top[0]).toBeLessThan(-7);
-  expect(topL[0]).toBeLessThan(-7);
-  const t5 = await topEnd(a), t5l = await topEnd(b);
-  expect(t5[0]).toBeGreaterThan(7);
-  expect(t5l[0]).toBeGreaterThan(7);
-  // the flat top face at 5 turns: the wire's last stretch rises toward the end, so the highest vertices lie just before it in angle:
-  // right-hand turns counter-clockwise, so just before +x means y < 0; left-hand is the mirror image
-  expect(t5[1]).toBeLessThan(0);
-  expect(t5l[1]).toBeGreaterThan(0);
+  const [rx, ry] = await topFace(r), [lx, ly] = await topFace(l);
+  const turn = (x, y) => (Math.atan2(y, x) * 180) / Math.PI;
+  expect(turn(rx, ry)).toBeLessThan(-5);
+  expect(turn(rx, ry)).toBeGreaterThan(-90);
+  expect(turn(lx, ly)).toBeGreaterThan(5);
+  expect(turn(lx, ly)).toBeLessThan(90);
 });
 
 test("the spring sits where at says: the axis through x and y, the base at z, for both ends", async () => {
@@ -177,6 +169,8 @@ test("bad input: each bridge error text, and nothing is added", async () => {
     [{ color: "red" }, 'color must look like "#rrggbb"'],
     [{ at: [0, 0] }, "at must be [x, y, z] in mm"],
     [{ freeLength: 10, turns: 5 }, "The coils would touch. Increase the free length, use fewer turns, or use thinner wire."],
+    [{ wire: 0.4, outside: 20, freeLength: 40, turns: 10 }, "This spring needs too much wire to build. Use fewer turns, a smaller outside diameter or thicker wire."],
+    [{ outside: 200, turns: 10, freeLength: 200 }, "This spring needs too much wire to build. Use fewer turns, a smaller outside diameter or thicker wire."],
     [{ freeLength: 10, turns: 5, ends: "flat" }, "The coils would touch. Increase the free length, use fewer turns, or use thinner wire."],
   ];
   for (const [spec, text] of bad) {
