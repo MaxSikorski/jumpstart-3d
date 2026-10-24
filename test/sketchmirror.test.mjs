@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mirrorEnts, reflect } from "../src/sketchmirror.js";
-import { sketchDof } from "../src/constraints.js";
+import { sketchDof, solveSketch } from "../src/constraints.js";
 
 const near = (a, b, m) => assert.ok(Math.abs(a - b) < 1e-9, `${m || ""} ${a} vs ${b}`);
 const Y = { type: "line", a: [0, 0], b: [0, 1] }, X = { type: "line", a: [0, 0], b: [1, 0] }, O = { type: "point", p: [0, 0] };
@@ -85,7 +85,8 @@ test("constraints among the picked shapes are copied with the copy's ids; the re
   const idsOf = (r) => r.cons.map((c) => c.t + (c.k ? ":" + c.k : ""));
   // across the Y axis: horizontal/vertical ones are kept
   let r = mirrorEnts(sk, ids, Y);
-  assert.deepEqual(idsOf(r).sort(), ["dim:ang", "dim:dia", "dim:dist", "dim:dist", "horizontal", "midpoint", "parallel", "perpendicular"]);
+  // (the perpendicular repeats the 90 degree dimension, so only the dimension comes across)
+  assert.deepEqual(idsOf(r).sort(), ["dim:ang", "dim:dia", "dim:dist", "dim:dist", "horizontal", "midpoint", "parallel"]);
   const map = new Map(ids.map((id, i) => [id, r.ents[i].id]));
   assert.equal(r.ents.length, 5);
   const par = r.cons.find((c) => c.t === "parallel");
@@ -101,11 +102,11 @@ test("constraints among the picked shapes are copied with the copy's ids; the re
   assert.ok(r.cons.every((c) => c.id !== "k1" && c.id && !sk.cons.some((o) => o.id === c.id)), "new ids");
   // across an angled line: the horizontal constraint and the vertical-direction dimension would not hold
   r = mirrorEnts(sk, ids, tilt);
-  assert.deepEqual(idsOf(r).sort(), ["dim:ang", "dim:dia", "dim:dist", "midpoint", "parallel", "perpendicular"]);
+  assert.deepEqual(idsOf(r).sort(), ["dim:ang", "dim:dia", "dim:dist", "midpoint", "parallel"]);
   assert.equal(r.cons.find((c) => c.k === "dist").o, "a");
   // a point flip keeps horizontal and vertical
   r = mirrorEnts(sk, ids, O);
-  assert.equal(idsOf(r).length, 8);
+  assert.equal(idsOf(r).length, 7);
 });
 
 test("shapes that already lie on the line, or already have a mirror twin, are not doubled", () => {
@@ -181,4 +182,37 @@ test("angle, point-to-line and line-to-line dimensions come across with the copi
   assert.deepEqual([by("ang").e1, by("ang").e2], [map.get("l1"), map.get("l3")]);
   assert.equal(by("ang").v, 90);
   assert.deepEqual(by("pl").off.map((v) => +v.toFixed(9)), reflect([20, 12], tilt).map((v) => +v.toFixed(9)));
+});
+
+const withCopies = (sk, r) => structuredClone({ pts: [...sk.pts, ...r.pts], ents: [...sk.ents, ...r.ents], cons: [...(sk.cons || []), ...r.cons] });
+
+test("the copied constraints hold every copy point: moving any one of them and solving puts it back", () => {
+  const sk = { pts: [{ id: "p0", x: 0, y: 0 }, { id: "p1", x: 30, y: 0 }, { id: "p2", x: 30, y: 20 }, { id: "p3", x: 0, y: 20 }],
+    ents: [0, 1, 2, 3].map((i) => ({ id: "e" + i, t: "line", a: "p" + i, b: "p" + ((i + 1) % 4) })),
+    cons: [{ id: "k0", t: "origin", p: "p0" }, { id: "k1", t: "horizontal", e1: "e0" }, { id: "k2", t: "horizontal", e1: "e2" }, { id: "k3", t: "vertical", e1: "e1" }, { id: "k4", t: "vertical", e1: "e3" },
+      { id: "d1", t: "dim", k: "dist", p1: "p0", p2: "p1", o: "h", v: 30, off: [15, -4] }, { id: "d2", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20, off: [34, 10] }] };
+  const r = mirrorEnts(sk, ["e0", "e1", "e2", "e3"], Y);
+  assert.equal(r.cons.length, 4, "four equations hold the copy's two corners");
+  for (const moved of r.pts) for (const [dx, dy] of [[5, 0], [0, 5], [-5, -5]]) {
+    const w = withCopies(sk, r);
+    const m = w.pts.find((p) => p.id === moved.id);
+    m.x += dx; m.y += dy;
+    solveSketch(w);
+    for (const q of r.pts) {
+      const p = w.pts.find((x) => x.id === q.id);
+      assert.ok(Math.hypot(p.x - q.x, p.y - q.y) < 1e-6, "moved " + moved.id + " by " + dx + "," + dy + ": " + q.id + " is at " + p.x + "," + p.y);
+    }
+  }
+});
+
+test("a point flip does not copy an angle dimension to a line that maps onto itself backwards", () => {
+  const sk = { pts: [{ id: "a", x: -20, y: -20 }, { id: "b", x: 20, y: 20 }, { id: "c", x: 10, y: 0 }, { id: "d", x: 30, y: 0 }],
+    ents: [{ id: "l1", t: "line", a: "a", b: "b" }, { id: "l2", t: "line", a: "c", b: "d" }],
+    cons: [{ id: "g", t: "dim", k: "ang", e1: "l1", e2: "l2", v: 45, s1: 1, s2: 1, off: [15, 8] }] };
+  const r = mirrorEnts(sk, ["l1", "l2"], O);
+  assert.equal(r.ents.length, 1);
+  assert.equal(r.cons.length, 0, "l1 is its own image but runs backwards: the angle would flip");
+  const w = withCopies(sk, r), before = structuredClone(w.pts);
+  solveSketch(w);
+  assert.deepEqual(w.pts, before);
 });

@@ -267,14 +267,25 @@ test("constraints and dimensions among the shapes are copied: a fully constraine
   const made = newEnts(before, after);
   expect(made).toHaveLength(3); // the left side lies on the axis
   const copied = after.cons.filter((c) => !before.cons.some((o) => o.id === c.id));
-  expect(copied.map((c) => c.t + (c.k || "")).sort()).toEqual(["dimdist", "dimdist", "horizontal", "horizontal"]);
+  expect(copied.map((c) => c.t + (c.k || "")).sort()).toEqual(["dimdist", "dimdist", "horizontal", "vertical"]);
   const ids = new Set(made.map((e) => e.id));
-  // (the copied vertical would only repeat the two dimensions and the horizontals: left out, so the sketch is not over-constrained)
+  // (the second horizontal would only repeat the two dimensions, the first horizontal and the vertical: left out, so the sketch is not over-constrained)
   expect(copied.filter((c) => c.e1).every((c) => ids.has(c.e1))).toBe(true);
   // nothing moved when the solver ran again, and the whole sketch is still fully constrained
   expect(after.pts.slice(0, 4)).toEqual(before.pts);
   expect(after.pts.filter((p) => p.x < 0).map((p) => [p.x, p.y]).sort((a, b) => a[1] - b[1])).toEqual([[-30, 0], [-30, 20]]);
   await expect(page.locator("#sk-note")).toHaveText("Fully constrained"); // exactly: not the over-constrained warning, not "degrees of freedom left"
+  // and it really is held: push each copy point 5 mm away (through the sketcher's own edit, which solves) and it comes back
+  const copyPts = after.pts.filter((p) => p.x < 0);
+  expect(copyPts).toHaveLength(2);
+  for (const p of copyPts) for (const [dx, dy] of [[5, 0], [0, 5]]) {
+    await run(([id, dx, dy]) => window.__app.sketcher.edit("Nudge", (k) => { const q = k.pts.find((x) => x.id === id); q.x += dx; q.y += dy; }), [p.id, dx, dy]);
+    const now = await sk();
+    for (const c of copyPts) {
+      const q = now.pts.find((x) => x.id === c.id);
+      expect([r3(q.x), r3(q.y)], "copy point " + c.id + " after pushing " + p.id + " by " + dx + "," + dy).toEqual([c.x, c.y]);
+    }
+  }
 });
 
 test("text is left out of a mirror, with a note; the other shapes are mirrored", async () => {

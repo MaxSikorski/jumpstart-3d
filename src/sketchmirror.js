@@ -2,7 +2,6 @@
 // The maths (mirrorEnts) is pure data in, data out, so a node test can check it. The tool glue
 // below it (click, panel box, apply) is called from short marked blocks in sketcher.js, app.js and advanced.js.
 import { uid, el } from "./util.js";
-import { sketchDof } from "./constraints.js";
 
 const TOL = 1e-6; // same as the sketcher's point reuse
 const copy = (o) => JSON.parse(JSON.stringify(o));
@@ -63,7 +62,7 @@ export function mirrorEnts(sk, ids, axis) {
     else if (e.t === "spline") n = { t: "spline", pts: e.pts.map(mp), closed: !!e.closed };
     else if (e.t === "point") n = { t: "point", p: mp(e.p) };
     else continue;
-    if (twin(n, [e], e.cons)) { entMap.set(e.id, e.id); direct.add(e.id); skipped.same++; continue; } // it lies on the mirror line
+    if (twin(n, [e], e.cons)) { entMap.set(e.id, e.id); if (n.t !== "line" || n.a === e.a) direct.add(e.id); skipped.same++; continue; } // it lies on the mirror line
     const other = twin(n, sk.ents.filter((o) => o !== e), e.cons) || twin(n, ents, e.cons); // (a construction shape is no twin of a drawn one)
     if (other) { entMap.set(e.id, other.id); skipped.twin++; continue; }
     const ne = { ...copy(e), ...n, id: uid("e") };
@@ -102,9 +101,7 @@ export function mirrorEnts(sk, ids, axis) {
   };
   const all = sk.cons || [];
   const order = [...all.filter((c) => c.t === "dim"), ...all.filter((c) => c.t !== "dim")];
-  const trial = { pts: [...sk.pts, ...pts], ents: [...sk.ents, ...ents], cons: [...all] };
-  const over0 = sketchDof(sk).over;
-  const floor = over0 >= 0 ? over0 : -Infinity;
+  const rank = rankTracker({ pts: [...sk.pts, ...pts], ents: [...sk.ents, ...ents] }, pts, ents);
   const cons = [];
   const seen = new Set(all.map((c) => JSON.stringify(refsOf(c))));
   for (const c of order) {
@@ -112,8 +109,7 @@ export function mirrorEnts(sk, ids, axis) {
     if (!nc) continue;
     const key = JSON.stringify(refsOf(nc));
     if (seen.has(key)) continue; // it would repeat a constraint that is already there
-    trial.cons.push(nc);
-    if (sketchDof(trial).over < floor) { trial.cons.pop(); continue; }
+    if (!rank.add(nc)) continue; // it adds nothing the copies are not already held by
     seen.add(key);
     nc.id = uid(c.t === "dim" ? "dm" : "k");
     cons.push(nc);
@@ -127,6 +123,80 @@ function refsOf(c) {
   const swap = (a, b) => { if (rest[a] != null && rest[b] != null && String(rest[a]) > String(rest[b])) [rest[a], rest[b]] = [rest[b], rest[a]]; };
   if (SYMMETRIC.includes(c.t) || (c.t === "dim" && (c.k === "dist" || c.k === "ll"))) { swap("e1", "e2"); swap("p1", "p2"); }
   return rest;
+}
+
+// ------------------------------------------------------------ which copied constraints are redundant
+// A copied constraint is kept only if it raises the rank of the constraints on the copies' own unknowns
+// (their points' coordinates and circle radii), measured by finite differences: a count would drop whichever
+// came last, not the one that repeats the others. geom: { pts, ents } including the copies.
+export function rankTracker(geom, newPts, newEnts) {
+  const P = new Map(geom.pts.map((p) => [p.id, [p.x, p.y]]));
+  const E = new Map(geom.ents.map((e) => [e.id, { ...e }]));
+  const vars = [...newPts.flatMap((p) => [[P.get(p.id), 0], [P.get(p.id), 1]]), ...newEnts.filter((e) => e.t === "circle").map((e) => [E.get(e.id), "r"])];
+  const basis = [];
+  const take = (f) => { // the rows of residual function f, as unit vectors over vars; true when one is new
+    const base = f();
+    if (!base.length) return false;
+    const rows = base.map(() => []);
+    for (const v of vars) {
+      const h = 1e-5, [o, k] = v, x0 = o[k];
+      o[k] = x0 + h; const up = f(); o[k] = x0 - h; const dn = f(); o[k] = x0;
+      up.forEach((u, i) => rows[i].push((u - dn[i]) / (2 * h)));
+    }
+    let gained = false;
+    for (const r of rows) {
+      const n = Math.hypot(...r);
+      if (n < 1e-9) continue;
+      let w = r.map((x) => x / n);
+      for (const b of basis) { const d = w.reduce((a, x, i) => a + x * b[i], 0); w = w.map((x, i) => x - d * b[i]); }
+      const m = Math.hypot(...w);
+      if (m > 1e-5) { basis.push(w.map((x) => x / m)); gained = true; }
+    }
+    return gained;
+  };
+  // an arc's end stays on its circle: always true, so it is part of what holds the copies
+  for (const e of newEnts) if (e.t === "arc") take(() => [Math.hypot(...sub2(P.get(e.b), P.get(e.c))) - Math.hypot(...sub2(P.get(e.a), P.get(e.c)))]);
+  return { add: (c) => take(() => residuals(c, P, E)) };
+}
+const sub2 = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const cross2 = (a, b) => a[0] * b[1] - a[1] * b[0];
+const dot2 = (a, b) => a[0] * b[0] + a[1] * b[1];
+// how far constraint c is from true, one number for each equation it stands for
+function residuals(c, P, E) {
+  const pt = (id) => P.get(id), en = (id) => E.get(id);
+  const ends = (id) => [pt(en(id).a), pt(en(id).b)];
+  const rad = (e) => (e.t === "circle" ? e.r : Math.hypot(...sub2(pt(e.a), pt(e.c))));
+  const dirOf = (id) => { const [a, b] = ends(id); return sub2(b, a); };
+  const side = (id, p) => { const [a, b] = ends(id), d = sub2(b, a); return cross2(d, sub2(p, a)) / Math.hypot(...d); };
+  if (c.t === "horizontal" || c.t === "vertical") {
+    const [a, b] = c.e1 ? ends(c.e1) : [pt(c.p1), pt(c.p2)], k = c.t === "horizontal" ? 1 : 0;
+    return [a[k] - b[k]];
+  }
+  if (c.t === "parallel" || c.t === "perpendicular") {
+    const d1 = dirOf(c.e1), d2 = dirOf(c.e2), n = Math.hypot(...d1) * Math.hypot(...d2);
+    return [(c.t === "parallel" ? cross2(d1, d2) : dot2(d1, d2)) / n];
+  }
+  if (c.t === "equal") {
+    const a = en(c.e1), b = en(c.e2);
+    return a.t === "line" ? [Math.hypot(...dirOf(c.e1)) - Math.hypot(...dirOf(c.e2))] : [rad(a) - rad(b)];
+  }
+  if (c.t === "concentric") return sub2(pt(en(c.e1).c), pt(en(c.e2).c));
+  if (c.t === "midpoint") { const [a, b] = ends(c.e), p = pt(c.p); return [p[0] - (a[0] + b[0]) / 2, p[1] - (a[1] + b[1]) / 2]; }
+  if (c.t === "coincident") { const e = en(c.e); return e.t === "line" ? [side(c.e, pt(c.p))] : [Math.hypot(...sub2(pt(c.p), pt(e.c))) - rad(e)]; }
+  if (c.t === "tangent") {
+    const a = en(c.e1), b = en(c.e2);
+    if (a.t === "line" || b.t === "line") { const [l, r] = a.t === "line" ? [c.e1, b] : [c.e2, a]; return [Math.abs(side(l, pt(r.c))) - rad(r)]; }
+    const d = Math.hypot(...sub2(pt(a.c), pt(b.c))), x = d - rad(a) - rad(b), y = d - Math.abs(rad(a) - rad(b));
+    return [Math.abs(x) < Math.abs(y) ? x : y];
+  }
+  if (c.t === "dim") {
+    if (c.k === "dist") { const a = pt(c.p1), b = pt(c.p2); return [c.o === "h" ? b[0] - a[0] : c.o === "v" ? b[1] - a[1] : Math.hypot(...sub2(b, a))]; }
+    if (c.k === "dia" || c.k === "rad") return [rad(en(c.e1))];
+    if (c.k === "pl") return [side(c.e, pt(c.p))];
+    if (c.k === "ll") { const [a, b] = ends(c.e2); return [side(c.e1, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2])]; }
+    if (c.k === "ang") { const d1 = dirOf(c.e1).map((v) => v * (c.s1 || 1)), d2 = dirOf(c.e2).map((v) => v * (c.s2 || 1)); return [Math.atan2(cross2(d1, d2), dot2(d1, d2))]; }
+  }
+  return [];
 }
 
 // ------------------------------------------------------------ the tool (called from the sketcher)
