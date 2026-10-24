@@ -66,7 +66,7 @@ const configureGlue = (
 // is split, merging edges and faces together rebuilds a wrong face (an intersect gave 4188.79 mm3 instead of 2360.38).
 // A result with no spherical or toroidal face is merged exactly as before. Otherwise the same kind of merge (edges, faces, B-splines) runs with the
 // edges of those faces kept, so flat faces still merge and the round ones are left as the boolean made them.
-function simplifiedResult(builder: {
+export function simplifiedResult(builder: { // jumpstart-3d: exported so the STEP import can merge the result of one many-solid fuse
   Shape(): TopoDS_Shape;
   SimplifyResult(
     unifyEdges: boolean,

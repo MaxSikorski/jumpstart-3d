@@ -1,0 +1,8 @@
+[
+  {"baseRefName":"main","headRefName":"mcp-deps","isDraft":true,"mergeStateStatus":"CLEAN","number":175,"title":"Bump the MCP server's dependencies",
+   "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"analyze","status":"COMPLETED","workflowName":"codeql"},{"__typename":"CheckRun","conclusion":"SUCCESS","name":"changes","status":"COMPLETED","workflowName":"test"}]},
+  {"baseRefName":"main","headRefName":"boolean-retry-all","isDraft":true,"mergeStateStatus":"BEHIND","number":171,"title":"Join and cut retry like intersect when the first try misses the overlap completely",
+   "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"changes","status":"COMPLETED","workflowName":"test"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"gate (site, smoke)","status":"COMPLETED","workflowName":"test"}]},
+  {"baseRefName":"phase-4","headRefName":"codecad","isDraft":false,"mergeStateStatus":"BLOCKED","number":156,"title":"Code CAD",
+   "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"","name":"gate (single, golden)","status":"IN_PROGRESS","workflowName":"test"}]}
+]
