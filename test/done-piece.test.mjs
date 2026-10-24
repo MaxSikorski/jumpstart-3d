@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeWorld } from "./piece-helpers.mjs";
+import { makeWorld, q } from "./piece-helpers.mjs";
 
 const TOOL = fileURLToPath(new URL("../tools/agent/done-piece.mjs", import.meta.url));
 const world = makeWorld("done-piece");
@@ -212,7 +212,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     writeFileSync(join(repo.origin, "hooks", "pre-receive"), '#!/bin/sh\nwhile read old new ref; do case "$new" in 0000000000000000000000000000000000000000) echo "no deleting" >&2; exit 1;; esac; done\n', { mode: 0o755 });
     const r = await finish(repo, ["stuck"]);
     assert.equal(r.code, 1, r.lines.join("\n"));
-    assert.ok(r.lines.some((l) => /^FAIL: could not delete origin\/stuck: .*rejected.* → /.test(l) && l.endsWith(`→ git -C ${repo.root} push origin --delete stuck`)), r.lines.join("\n"));
+    assert.ok(r.lines.some((l) => /^FAIL: could not delete origin\/stuck: .*rejected.* → /.test(l) && l.endsWith(`→ git -C ${q(repo.root)} push origin --delete ${q("stuck")}`)), r.lines.join("\n"));
     assert.equal(existsSync(folder), false, "the worktree was removed");
     assert.ok(!repo.localBranches().includes("stuck"), "the local branch was deleted");
     assert.ok(r.lines.some((l) => l.startsWith("OK main fast-forwarded")), "main still caught up");
@@ -278,7 +278,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     const sideTip = g(repo.root, "rev-parse", "HEAD");
     const r = await finish(repo, ["away"]);
     assert.equal(r.code, 0, r.lines.join("\n"));
-    assert.ok(r.lines.includes(`WARN: ${repo.root} is on side, not main → skipped the fast-forward; later: git -C ${repo.root} switch main && git -C ${repo.root} pull --ff-only origin main`));
+    assert.ok(r.lines.includes(`WARN: ${repo.root} is on side, not main → skipped the fast-forward; later: git -C ${q(repo.root)} switch main && git -C ${q(repo.root)} pull --ff-only origin main`));
     assert.equal(r.lines.at(-1), "done-piece: OK away");
     assert.equal(existsSync(folder), false);
     assert.equal(g(repo.root, "rev-parse", "HEAD"), sideTip, "the checked-out branch did not move");
@@ -293,7 +293,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     writeFileSync(join(repo.root, "README.md"), "my edit\n");
     const r = await finish(repo, ["busy"]);
     assert.equal(r.code, 0, r.lines.join("\n"));
-    assert.ok(r.lines.includes(`WARN: ${repo.root} has 1 changed tracked file(s) → skipped the fast-forward; after committing or stashing them: git -C ${repo.root} pull --ff-only origin main`));
+    assert.ok(r.lines.includes(`WARN: ${repo.root} has 1 changed tracked file(s) → skipped the fast-forward; after committing or stashing them: git -C ${q(repo.root)} pull --ff-only origin main`));
     assert.equal(existsSync(folder), false);
     assert.equal(g(repo.root, "rev-parse", "HEAD"), head);
     assert.equal(readFileSync(join(repo.root, "README.md"), "utf8"), "my edit\n");
@@ -318,7 +318,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     g(repo.root, "commit", "-q", "-m", "local main commit");
     const r = await finish(repo, ["diverged"]);
     assert.equal(r.code, 1, r.lines.join("\n"));
-    assert.ok(r.lines.some((l) => l.startsWith(`FAIL: could not fast-forward main in ${repo.root}: `) && l.endsWith(`→ git -C ${repo.root} pull --ff-only origin main (or sort out main by hand)`)));
+    assert.ok(r.lines.some((l) => l.startsWith(`FAIL: could not fast-forward main in ${repo.root}: `) && l.endsWith(`→ git -C ${q(repo.root)} pull --ff-only origin main (or sort out main by hand)`)));
     assert.equal(existsSync(folder), false);
     assert.ok(!repo.localBranches().includes("diverged"));
     assert.equal(r.lines.at(-1), "done-piece: 1 problem(s)");
@@ -342,7 +342,7 @@ describe("done-piece", { concurrency: 8 }, () => {
 
     g(repo.root, "switch", "-q", "-c", "here");
     const h = await finish(repo, ["here"]);
-    assert.equal(h.lines.at(-2), `FAIL: here is checked out in the main checkout ${repo.root}, not in a piece worktree → git -C ${repo.root} switch main, then run it again`);
+    assert.equal(h.lines.at(-2), `FAIL: here is checked out in the main checkout ${repo.root}, not in a piece worktree → git -C ${q(repo.root)} switch main, then run it again`);
     assert.equal(h.code, 1);
     assert.ok(existsSync(repo.root), "the main checkout is still there");
     assert.ok(repo.localBranches().includes("here"));
@@ -352,7 +352,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     const piece = repo.addPiece("self");
     repo.githubMerge("self");
     const s = await world.run(TOOL, ["--root", piece, "self"], { env: { FAKE_GH_LOG: repo.ghLog } });
-    assert.equal(s.lines.at(-2), `FAIL: self is the worktree this run was started from (${piece}), which cannot remove itself → run it from the main checkout: node tools/agent/done-piece.mjs self --root ${repo.root}`);
+    assert.equal(s.lines.at(-2), `FAIL: self is the worktree this run was started from (${piece}), which cannot remove itself → run it from the main checkout: node tools/agent/done-piece.mjs ${q("self")} --root ${q(repo.root)}`);
     assert.equal(s.code, 1);
     assertUntouched(repo, "self", piece);
 
@@ -365,6 +365,57 @@ describe("done-piece", { concurrency: 8 }, () => {
       assert.equal(b.lines[0], `FAIL: "${bad}" is not a branch name git accepts → pass the piece's branch name`, bad);
       assert.equal(b.code, 1);
     }
+  });
+
+  it("Main (a case variant of main) is refused and main survives, on any file system", async () => {
+    const repo = world.makeRepo();
+    const before = g(repo.root, "rev-parse", "main");
+    const r = await finish(repo, ["Main"]);
+    assert.equal(r.lines.at(-1), "done-piece: 1 problem(s)");
+    assert.ok(r.lines.some((l) => l.startsWith("FAIL: ")), r.lines.join("\n"));
+    assert.equal(r.code, 1);
+    assert.ok(repo.localBranches().includes("main"), "local main survives");
+    assert.equal(g(repo.root, "rev-parse", "main"), before);
+    assert.ok(repo.remoteBranches().includes("main"));
+    assert.equal(g(repo.root, "rev-parse", "--abbrev-ref", "HEAD"), "main");
+  });
+
+  it("a case variant of a piece's branch is refused, naming the real one, and nothing is deleted", async () => {
+    const repo = world.makeRepo();
+    const folder = repo.addPiece("foo", { file: true });
+    repo.githubMerge("foo");
+    const r = await finish(repo, ["Foo"]);
+    assert.equal(r.lines.at(-2), "FAIL: there is no branch called Foo; the close match is foo → pass the name exactly: node tools/agent/done-piece.mjs 'foo'");
+    assert.equal(r.lines.at(-1), "done-piece: 1 problem(s)");
+    assert.equal(r.code, 1);
+    assertUntouched(repo, "foo", folder);
+    assert.ok(!r.lines.some((l) => l.startsWith("OK removed") || l.startsWith("OK deleted")), r.lines.join("\n"));
+    const exact = await finish(repo, ["foo"]);
+    assert.equal(exact.code, 0, exact.lines.join("\n"));
+  });
+
+  it("an ignored file that is not on the expected list (an ignored PR_BODY.md, a local .claude/) blocks the run, and the worktree stays", async () => {
+    const repo = world.makeRepo();
+    const folder = repo.addPiece("keepme", { file: true, claim: 18805 });
+    repo.githubMerge("keepme");
+    const exclude = join(repo.root, ".git", "info", "exclude");
+    writeFileSync(exclude, readFileSync(exclude, "utf8") + "PR_BODY.md\n.claude/\n");
+    writeFileSync(join(folder, "PR_BODY.md"), "my text\n");
+    mkdirSync(join(folder, ".claude"));
+    writeFileSync(join(folder, ".claude", "notes.md"), "notes\n");
+    writeFileSync(join(folder, "keep.log"), "log\n"); // expected: not listed
+    const r = await finish(repo, ["keepme"]);
+    assert.equal(r.lines.at(-2), `FAIL: 2 ignored item(s) in ${folder} are not on the expected list and would be lost: .claude/, PR_BODY.md → move them out or delete them, then run it again`);
+    assert.equal(r.lines.at(-1), "done-piece: 1 problem(s)");
+    assert.equal(r.code, 1);
+    assertUntouched(repo, "keepme", folder);
+    assert.equal(readFileSync(join(folder, "PR_BODY.md"), "utf8"), "my text\n");
+    // Out of the way, it goes.
+    rmSync(join(folder, "PR_BODY.md"));
+    rmSync(join(folder, ".claude"), { recursive: true });
+    const again = await finish(repo, ["keepme"]);
+    assert.equal(again.code, 0, again.lines.join("\n"));
+    assert.equal(existsSync(folder), false);
   });
 
   it("a branch whose worktree was already removed by hand is cleaned up as a branch", async () => {
@@ -422,7 +473,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     const folder2 = repo2.addPiece("blind");
     repo2.githubMerge("blind");
     const s = await finish(repo2, ["blind"], { env: world.shimEnv({ SHIM_FAIL: "status", SHIM_CWD: folder2 }) });
-    assert.equal(s.lines.at(-2), `FAIL: git status failed in ${folder2}: simulated failure of git status → fix that worktree (git -C ${folder2} status), then run it again`);
+    assert.equal(s.lines.at(-2), `FAIL: git status failed in ${folder2}: simulated failure of git status → fix that worktree (git -C ${q(folder2)} status), then run it again`);
     assert.equal(s.code, 1);
     assertUntouched(repo2, "blind", folder2);
   });
@@ -433,12 +484,12 @@ describe("done-piece", { concurrency: 8 }, () => {
     repo.githubMerge("nolist");
     for (const call of ["ls-files --others --exclude-standard", "ls-files --others --ignored"]) { // the two ls-files calls, one at a time
       const r = await finish(repo, ["nolist"], { env: world.shimEnv({ SHIM_FAIL: call, SHIM_CWD: folder }) });
-      assert.equal(r.lines.at(-2), `FAIL: git ls-files failed in ${folder}: simulated failure of git ${call} → fix that worktree (git -C ${folder} status), then run it again`, call);
+      assert.equal(r.lines.at(-2), `FAIL: git ls-files failed in ${folder}: simulated failure of git ${call} → fix that worktree (git -C ${q(folder)} status), then run it again`, call);
       assert.equal(r.code, 1);
       assertUntouched(repo, "nolist", folder);
     }
     const w = await finish(repo, ["nolist"], { env: world.shimEnv({ SHIM_FAIL: "worktree list" }) });
-    assert.equal(w.lines.at(-2), `FAIL: git worktree list failed in ${repo.root} → fix the repo (git -C ${repo.root} worktree list), then run it again`);
+    assert.equal(w.lines.at(-2), `FAIL: git worktree list failed in ${repo.root} → fix the repo (git -C ${q(repo.root)} worktree list), then run it again`);
     assert.equal(w.code, 1);
     assertUntouched(repo, "nolist", folder);
   });
@@ -449,7 +500,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     repo.githubMerge("noask");
     const r = await finish(repo, ["noask"], { env: world.shimEnv({ SHIM_FAIL: "ls-remote" }) });
     assert.equal(r.code, 1, r.lines.join("\n"));
-    assert.ok(r.lines.includes(`FAIL: could not ask origin about noask: simulated failure of git ls-remote → git -C ${repo.root} push origin --delete noask once origin answers`), r.lines.join("\n"));
+    assert.ok(r.lines.includes(`FAIL: could not ask origin about noask: simulated failure of git ls-remote → git -C ${q(repo.root)} push origin --delete ${q("noask")} once origin answers`), r.lines.join("\n"));
     assert.ok(repo.remoteBranches().includes("noask"));
     assert.equal(existsSync(folder), false);
     assert.ok(!repo.localBranches().includes("noask"));
@@ -462,7 +513,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     repo.githubMerge("rootblind");
     const r = await finish(repo, ["rootblind"], { env: world.shimEnv({ SHIM_FAIL: "status", SHIM_CWD: repo.root }) });
     assert.equal(r.code, 1, r.lines.join("\n"));
-    assert.ok(r.lines.includes(`FAIL: git status failed in ${repo.root}: simulated failure of git status → fix the main checkout (git -C ${repo.root} status), then: git -C ${repo.root} pull --ff-only origin main`));
+    assert.ok(r.lines.includes(`FAIL: git status failed in ${repo.root}: simulated failure of git status → fix the main checkout (git -C ${q(repo.root)} status), then: git -C ${q(repo.root)} pull --ff-only origin main`));
     assert.equal(r.lines.at(-1), "done-piece: 1 problem(s)");
     assert.equal(existsSync(folder), false);
     assert.ok(!repo.localBranches().includes("rootblind"));
@@ -475,7 +526,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     g(repo.root, "worktree", "lock", "--reason", "on a USB stick", folder);
     const r = await finish(repo, ["locked"]);
     assert.match(r.lines.at(-2), /^FAIL: git worktree remove failed: cannot remove a locked working tree.* → git -C .* worktree unlock .*, then run it again$/);
-    assert.ok(r.lines.at(-2).endsWith(`→ git -C ${repo.root} worktree unlock ${folder}, then run it again`));
+    assert.ok(r.lines.at(-2).endsWith(`→ git -C ${q(repo.root)} worktree unlock ${q(folder)}, then run it again`));
     assert.equal(r.code, 1);
     assertUntouched(repo, "locked", folder);
     g(repo.root, "worktree", "unlock", folder);
@@ -505,7 +556,7 @@ describe("done-piece", { concurrency: 8 }, () => {
     const inside = join(repo.root, "inner");
     mkdirSync(inside);
     const s = await world.run(TOOL, ["--root", inside, "x"]);
-    assert.equal(s.lines[0], `FAIL: ${inside} is inside a repo but is not its top folder → pass --root ${repo.root}`);
+    assert.equal(s.lines[0], `FAIL: ${inside} is inside a repo but is not its top folder → pass --root ${q(repo.root)}`);
     assert.equal(s.code, 1);
   });
 

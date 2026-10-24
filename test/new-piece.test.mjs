@@ -4,10 +4,10 @@
 // test ports 8805-8895 are never touched; the choice of the port itself is tested in ports.test.mjs. The tests run side by side (the tools are async children).
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TEST_PORT_FIRST, bases, hold, makeWorld } from "./piece-helpers.mjs";
+import { TEST_PORT_FIRST, bases, hold, makeWorld, q } from "./piece-helpers.mjs";
 
 process.env.JS3D_PORT_FIRST = String(TEST_PORT_FIRST); // before ports.mjs is loaded: the range this file looks at is 18805-18895
 const { claimedPorts, freePort } = await import("../tools/agent/ports.mjs");
@@ -135,7 +135,7 @@ describe("new-piece", { concurrency: 8 }, () => {
   it("a git that cannot tell the root's status is a FAIL, not a clean root", async () => {
     const repo = world.makeRepo();
     const r = await start(repo, ["blind"], { env: world.shimEnv({ SHIM_FAIL: "status", SHIM_CWD: repo.root }) });
-    assert.equal(r.lines.at(-2), `FAIL: git status failed in ${repo.root}: simulated failure of git status → fix the repo (git -C ${repo.root} status), then run it again`);
+    assert.equal(r.lines.at(-2), `FAIL: git status failed in ${repo.root}: simulated failure of git status → fix the repo (git -C ${q(repo.root)} status), then run it again`);
     assert.equal(r.lines.at(-1), "new-piece: 1 problem(s)");
     assert.equal(r.code, 1);
     assertNothingMade(repo, "blind");
@@ -145,7 +145,7 @@ describe("new-piece", { concurrency: 8 }, () => {
     const repo = world.makeRepo();
     g(repo.root, "switch", "-q", "-c", "elsewhere");
     const r = await start(repo, ["x"]);
-    assert.equal(r.lines.at(-2), `FAIL: ${repo.root} is on elsewhere, not main → git -C ${repo.root} switch main`);
+    assert.equal(r.lines.at(-2), `FAIL: ${repo.root} is on elsewhere, not main → git -C ${q(repo.root)} switch main`);
     assert.equal(r.lines.at(-1), "new-piece: 1 problem(s)");
     assert.equal(r.code, 1);
     assertNothingMade(repo, "x");
@@ -158,7 +158,7 @@ describe("new-piece", { concurrency: 8 }, () => {
     const repo = world.makeRepo();
     assert.equal((await start(repo, ["first"])).code, 0);
     const r = await world.run(TOOL, ["--root", repo.sibling("first"), "second"]);
-    assert.equal(r.lines.at(-2), `FAIL: ${repo.sibling("first")} is on first, not main → run it from the main checkout, or pass --root ${repo.root}`);
+    assert.equal(r.lines.at(-2), `FAIL: ${repo.sibling("first")} is on first, not main → run it from the main checkout, or pass --root ${q(repo.root)}`);
     assert.equal(r.code, 1);
     assert.equal(existsSync(repo.sibling("second")), false);
   });
@@ -178,14 +178,14 @@ describe("new-piece", { concurrency: 8 }, () => {
     const repo = world.makeRepo();
     g(repo.root, "branch", "taken");
     const r = await start(repo, ["taken"]);
-    assert.equal(r.lines.at(-2), "FAIL: branch taken already exists → finish it with node tools/agent/done-piece.mjs taken, or pick another name or --branch");
+    assert.equal(r.lines.at(-2), "FAIL: branch taken already exists → finish it with node tools/agent/done-piece.mjs 'taken', or pick another name or --branch");
     assert.equal(r.code, 1);
     assertNothingMade(repo, "taken", "nothing");
 
     // An old piece nobody cleaned up: gone locally, still on origin (also when this clone never fetched that branch).
     g(repo.root, "push", "-q", "origin", "main:refs/heads/oldpiece");
     const o = await start(repo, ["oldpiece"]);
-    assert.equal(o.lines.at(-2), "FAIL: origin already has a branch oldpiece (an old piece nobody cleaned up?) → finish it with node tools/agent/done-piece.mjs oldpiece, or pick another name or --branch");
+    assert.equal(o.lines.at(-2), "FAIL: origin already has a branch oldpiece (an old piece nobody cleaned up?) → finish it with node tools/agent/done-piece.mjs 'oldpiece', or pick another name or --branch");
     assert.equal(o.code, 1);
     assertNothingMade(repo, "oldpiece");
     // A branch of the same tail on origin is not the same branch.
@@ -246,6 +246,17 @@ describe("new-piece", { concurrency: 8 }, () => {
     assertNothingMade(repo, "nolink");
   });
 
+  it("a worktree add that fails after git made the branch takes the branch away again", async () => {
+    const repo = world.makeRepo();
+    const before = repo.localBranches();
+    const r = await start(repo, ["halfway"], { env: world.shimEnv({ SHIM_ADD_LEAVES_BRANCH: "1" }) });
+    assert.match(r.lines.at(-2), /^FAIL: git worktree add failed: simulated checkout failure after the branch was made → fix that, then run it again$/);
+    assert.equal(r.lines.at(-1), "new-piece: 1 problem(s)");
+    assert.equal(r.code, 1);
+    assert.deepEqual(repo.localBranches(), before, "the branch the failed add left behind is gone");
+    assertNothingMade(repo, "halfway");
+  });
+
   it("a claim that cannot be written is rolled back too", async () => {
     // The repo tracks a folder called .js3d-port, so the worktree has a folder where the claim file should go.
     const repo = world.makeRepo();
@@ -266,7 +277,7 @@ describe("new-piece", { concurrency: 8 }, () => {
     const r = await start(repo, ["stuck"], { env: world.shimEnv({ SHIM_TRACK: "1", SHIM_FAIL: "worktree remove" }) });
     const folder = repo.sibling("stuck");
     assert.match(r.lines.at(-3), /^FAIL: branch stuck tracks origin\/main, so a push from Desktop would land on it → /);
-    assert.equal(r.lines.at(-2), `FAIL: roll-back failed (simulated failure of git worktree remove) → git -C ${repo.root} worktree remove --force ${folder}; git -C ${repo.root} branch -D stuck`);
+    assert.equal(r.lines.at(-2), `FAIL: roll-back failed (simulated failure of git worktree remove) → git -C ${q(repo.root)} worktree remove --force ${q(folder)}; git -C ${q(repo.root)} branch -D ${q("stuck")}`);
     assert.equal(r.lines.at(-1), "new-piece: 2 problem(s)");
     assert.equal(r.code, 1);
     assert.equal(existsSync(lockOf(repo)), false, "the lock is released even then");
@@ -337,6 +348,7 @@ describe("new-piece", { concurrency: 8 }, () => {
     const r = await start(repo, ["takeover"]);
     assert.equal(r.code, 0, r.lines.join("\n"));
     assert.equal(existsSync(lockOf(repo)), false);
+    assert.deepEqual(readdirSync(join(repo.root, ".git")).filter((f) => f.startsWith("js3d-port.lock")), [], "the renamed stale lock was removed too");
   });
 
   it("the port file and node_modules are added to the shared exclude once each, and a root exclude without a final newline is respected", async () => {
@@ -370,7 +382,7 @@ describe("new-piece", { concurrency: 8 }, () => {
     const inside = join(repo.root, "inner");
     mkdirSync(inside);
     const s = await world.run(TOOL, ["--root", inside, "x"]);
-    assert.equal(s.lines[0], `FAIL: ${inside} is inside a repo but is not its top folder → pass --root ${repo.root}`);
+    assert.equal(s.lines[0], `FAIL: ${inside} is inside a repo but is not its top folder → pass --root ${q(repo.root)}`);
     assert.equal(s.code, 1);
     const missing = await world.run(TOOL, ["--root", join(plain, "nope"), "x"]);
     assert.match(missing.lines[0], /does not exist → pass --root/);

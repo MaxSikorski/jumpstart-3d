@@ -10,6 +10,9 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
+// What the tools print around a path or name in a command they suggest.
+export const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
 export const TEST_PORT_FIRST = 18805;
 export const bases = (first = TEST_PORT_FIRST) => Array.from({ length: 10 }, (_, i) => first + i * 10); // the base ports new-piece picks from, given the first
 
@@ -24,6 +27,7 @@ console.log(process.env.FAKE_GH_OUT ?? "[]");
 // A `git` that sits in front of the real one and misbehaves on request (all through environment variables, so the same file serves every test):
 //   SHIM_TRACK=1          turns every --no-track into --track (the stand-in for a branch that tracks origin/main anyway)
 //   SHIM_FAIL=<command>   makes that git command fail, e.g. "status" or "worktree remove" (with SHIM_CWD=<folder>: only when run in that folder)
+//   SHIM_ADD_LEAVES_BRANCH=1   makes `worktree add -b <branch> <folder> <base>` create the branch and then fail (a checkout that goes wrong after the branch was made)
 //   SHIM_ADVANCE=<origin.git>|<branch>   adds a commit to that branch of origin just before a push (somebody else pushed first)
 const gitShim = (realGit) => `
 const { spawnSync } = require("node:child_process");
@@ -31,6 +35,10 @@ const e = process.env;
 let args = process.argv.slice(2);
 if (e.SHIM_TRACK) args = args.map((a) => (a === "--no-track" ? "--track" : a));
 if (e.SHIM_FAIL && args.slice(0, e.SHIM_FAIL.split(" ").length).join(" ") === e.SHIM_FAIL && (!e.SHIM_CWD || process.cwd() === e.SHIM_CWD)) { console.error("fatal: simulated failure of git " + e.SHIM_FAIL); process.exit(128); }
+if (e.SHIM_ADD_LEAVES_BRANCH && args[0] === "worktree" && args[1] === "add" && args.includes("-b")) {
+  spawnSync(${JSON.stringify(realGit)}, ["branch", args[args.indexOf("-b") + 1], args[args.length - 1]], { stdio: "inherit" });
+  console.error("fatal: simulated checkout failure after the branch was made"); process.exit(128);
+}
 if (e.SHIM_ADVANCE && args[0] === "push") {
   const [origin, branch] = e.SHIM_ADVANCE.split("|");
   const g = (...a) => spawnSync(${JSON.stringify(realGit)}, a, { cwd: origin, encoding: "utf8" }).stdout.trim();

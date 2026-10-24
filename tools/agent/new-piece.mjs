@@ -9,12 +9,12 @@
 // The folder is a sibling of the root: <root-folder-name>-<name>, e.g. ../jumpstart-3d-<name>. The branch is <name> unless --branch says otherwise.
 // The port is JS3D_PORT for the Playwright run, chosen by freePort in ports.mjs (the shared test-port convention: 8805, 8815 ... 8895, with p, p+1 and p+2 all unanswered on
 // 127.0.0.1 and not claimed in the .js3d-port of any worktree of this repo, the root included). The claim file holds the port as a number on its first line. Choosing the port
-// and writing the claim happen under a lock (the folder <git-common-dir>/js3d-port.lock, tried 50 times, 100 ms apart; a lock older than a minute is taken over), so two runs at
+// and writing the claim happen under a lock (the folder <git-common-dir>/js3d-port.lock, tried 50 times, 100 ms apart; a lock older than a minute is taken over: renamed away, then removed), so two runs at
 // the same time get two ports.
 // Last line: `new-piece: OK <folder> (branch <branch>, JS3D_PORT=<port>)`, or `new-piece: <n> problem(s)` after a FAIL (exit 1). A bad command line exits 2.
 // Run it from the main checkout: `node tools/agent/new-piece.mjs <name>`; --root points at a different checkout. Argument-list spawns only (no shell); git speaks English and never asks.
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -33,12 +33,20 @@ function git(args, cwd) {
   return { ok: r.status === 0, status: r.status, out: (r.stdout ?? "").trim(), err: ((r.stderr ?? "").trim() || r.error?.message || "").trim() };
 }
 const firstLine = (s) => s.split("\n").find((l) => l.trim())?.replace(/^(?:fatal|error): /, "").trim() ?? "";
+// Single-quotes a path or name for a command printed in a hint, so it can be pasted into a shell as it is.
+const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
 
 // The paths of every worktree of the repo, the main checkout first.
 function worktreePaths(root) {
   const r = git(["worktree", "list", "--porcelain"], root);
   return r.ok ? r.out.split("\n").filter((l) => l.startsWith("worktree ")).map((l) => l.slice("worktree ".length)) : [root];
+}
+
+// The branches checked out in any worktree of the repo.
+function checkedOut(root) {
+  const r = git(["worktree", "list", "--porcelain"], root);
+  return r.ok ? r.out.split("\n").filter((l) => l.startsWith("branch refs/heads/")).map((l) => l.slice("branch refs/heads/".length)) : null;
 }
 
 // Adds each name to the repo's info/exclude (once each). `git rev-parse --git-path` answers for the worktree it is run in; for info/exclude that is the shared file.
@@ -70,7 +78,14 @@ async function takePortLock(root) {
     } catch (e) {
       if (e.code !== "EEXIST") return { error: `could not make ${lock}: ${e.message}` };
     }
-    try { if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) { rmSync(lock, { recursive: true, force: true }); continue; } } catch { continue; } // gone meanwhile: try at once
+    try {
+      if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
+        // Rename first (to a name only this run uses), then remove: two runs taking over at once cannot remove a lock the other has just made.
+        const stale = `${lock}.stale-${process.pid}-${Date.now()}`;
+        try { renameSync(lock, stale); rmSync(stale, { recursive: true, force: true }); } catch { /* another run took it over first */ }
+        continue;
+      }
+    } catch { continue; } // gone meanwhile: try at once
     await sleep(LOCK_WAIT_MS);
   }
   return { error: `${lock} is held by another run`, lock };
@@ -90,19 +105,19 @@ export async function newPiece({ name, branch = name, root, say = console.log })
   const toplevel = git(["rev-parse", "--show-toplevel"], root);
   if (!toplevel.ok) return stop(`${root} is not a git repo`, "run it from the main checkout or pass --root <repo>");
   const top = real(toplevel.out);
-  if (top !== root) return stop(`${root} is inside a repo but is not its top folder`, `pass --root ${top}`);
+  if (top !== root) return stop(`${root} is inside a repo but is not its top folder`, `pass --root ${q(top)}`);
   say(`OK repo ${root}`);
 
   const onBranch = git(["symbolic-ref", "--short", "-q", "HEAD"], root);
   if (onBranch.out !== "main") {
     const mainCheckout = worktreePaths(root)[0];
-    const next = mainCheckout && real(mainCheckout) !== root ? `run it from the main checkout, or pass --root ${mainCheckout}` : `git -C ${root} switch main`;
+    const next = mainCheckout && real(mainCheckout) !== root ? `run it from the main checkout, or pass --root ${q(mainCheckout)}` : `git -C ${q(root)} switch main`;
     return stop(`${root} is on ${onBranch.out || "no branch (detached HEAD)"}, not main`, next);
   }
   say("OK branch main");
 
   const status = git(["status", "--porcelain", "--untracked-files=no"], root);
-  if (!status.ok) return stop(`git status failed in ${root}: ${firstLine(status.err)}`, `fix the repo (git -C ${root} status), then run it again`);
+  if (!status.ok) return stop(`git status failed in ${root}: ${firstLine(status.err)}`, `fix the repo (git -C ${q(root)} status), then run it again`);
   const changed = status.out.split("\n").filter(Boolean);
   if (changed.length > 0) return stop(`${changed.length} tracked file(s) changed in ${root}`, "commit or stash them, then run it again (untracked files are fine)");
   say("OK clean (no changed tracked files)");
@@ -111,15 +126,16 @@ export async function newPiece({ name, branch = name, root, say = console.log })
   const fetched = git(["fetch", "origin"], root);
   if (!fetched.ok) return stop(`git fetch origin failed: ${firstLine(fetched.err)}`, "check the network and the origin remote, then run it again");
   const base = git(["rev-parse", "--verify", "--quiet", "--short", "refs/remotes/origin/main"], root);
-  if (!base.ok) return stop("origin/main does not exist after the fetch", `check the origin remote: git -C ${root} remote -v`);
+  if (!base.ok) return stop("origin/main does not exist after the fetch", `check the origin remote: git -C ${q(root)} remote -v`);
+  const baseFull = git(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main^{commit}"], root).out;
   say(`OK fetch origin (origin/main at ${base.out})`);
 
   // 3. The branch and the folder are new, here and on origin
   const folder = join(dirname(root), `${basename(root)}-${name}`);
-  if (git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], root).ok) return stop(`branch ${branch} already exists`, `finish it with node tools/agent/done-piece.mjs ${branch}, or pick another name or --branch`);
+  if (git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], root).ok) return stop(`branch ${branch} already exists`, `finish it with node tools/agent/done-piece.mjs ${q(branch)}, or pick another name or --branch`);
   const remote = git(["ls-remote", "--heads", "origin", `refs/heads/${branch}`], root);
   if (!remote.ok) return stop(`git ls-remote origin failed: ${firstLine(remote.err)}`, "check the network and the origin remote, then run it again");
-  if (remote.out.split("\n").some((l) => l.split("\t")[1] === `refs/heads/${branch}`)) return stop(`origin already has a branch ${branch} (an old piece nobody cleaned up?)`, `finish it with node tools/agent/done-piece.mjs ${branch}, or pick another name or --branch`);
+  if (remote.out.split("\n").some((l) => l.split("\t")[1] === `refs/heads/${branch}`)) return stop(`origin already has a branch ${branch} (an old piece nobody cleaned up?)`, `finish it with node tools/agent/done-piece.mjs ${q(branch)}, or pick another name or --branch`);
   let folderExists = true;
   try { lstatSync(folder); } catch { folderExists = false; }
   if (folderExists) return stop(`${folder} already exists`, "remove it or pick another name");
@@ -136,7 +152,7 @@ export async function newPiece({ name, branch = name, root, say = console.log })
     if (removed.ok && deleted.ok) say("OK rolled back (worktree and branch removed, nothing was made)");
     else {
       problems++;
-      say(`FAIL: roll-back failed (${firstLine(removed.err || deleted.err)}) → git -C ${root} worktree remove --force ${folder}; git -C ${root} branch -D ${branch}`);
+      say(`FAIL: roll-back failed (${firstLine(removed.err || deleted.err)}) → git -C ${q(root)} worktree remove --force ${q(folder)}; git -C ${q(root)} branch -D ${q(branch)}`);
     }
     say(`new-piece: ${problems} problem(s)`);
     return problems;
@@ -148,7 +164,15 @@ export async function newPiece({ name, branch = name, root, say = console.log })
 
     // The worktree, cut from origin/main without tracking it
     const added = git(["worktree", "add", "--no-track", "-b", branch, folder, "origin/main"], root);
-    if (!added.ok) return stop(`git worktree add failed: ${firstLine(added.err)}`, "fix that, then run it again");
+    if (!added.ok) {
+      // git may have made the branch before the checkout failed: take it away again, but only if it is still the fresh one (the old value) and no worktree has it.
+      let left = "";
+      if (baseFull && git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], root).ok && checkedOut(root)?.includes(branch) === false) {
+        const gone = git(["update-ref", "-d", `refs/heads/${branch}`, baseFull], root);
+        if (!gone.ok) left = ` (the branch ${branch} it made is still there: git -C ${q(root)} branch -D ${q(branch)})`;
+      }
+      return stop(`git worktree add failed: ${firstLine(added.err)}${left}`, "fix that, then run it again");
+    }
     say(`OK worktree ${folder} (new branch ${branch} from origin/main ${base.out})`);
 
     // No upstream: a branch that tracks origin/main lets a Desktop push land on main
