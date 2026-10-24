@@ -189,6 +189,48 @@ type BooleanBuilder = {
   Build(): void;
   delete(): void;
 };
+// jumpstart-3d: true when a vertex of one solid of `of` lies in or on a solid of `target`, or anything is uncertain (no solid on
+// either side, a failed distance). One vertex per solid is enough: solids that cross have section edges, so this is only for the
+// ones that nest. The distance tool classifies only against solids (not the compound a boolean returns), a vertex outside a
+// solid's box (enlarged by 1e-6) is skipped without the distance call. Exported for test/booleanretry.test.mjs.
+export function solidsMayTouch(of: TopoDS_Shape, target: TopoDS_Shape): boolean {
+  const oc = getOC();
+  const [r, gc] = localGC();
+  try {
+    const E = oc.TopAbs_ShapeEnum;
+    const solidsOf = (shape: TopoDS_Shape) => {
+      const out: TopoDS_Shape[] = [];
+      const ex = r(new oc.TopExp_Explorer(shape, E.TopAbs_SOLID, E.TopAbs_SHAPE));
+      for (; ex.More(); ex.Next()) out.push(r(ex.Current()));
+      return out;
+    };
+    const [mine, theirs] = [solidsOf(of), solidsOf(target)];
+    if (!mine.length || !theirs.length) return true;
+    for (const solid of theirs) {
+      const box = r(new oc.Bnd_Box());
+      oc.BRepBndLib.Add(solid, box, false);
+      box.Enlarge(1e-6);
+      for (const part of mine) {
+        const ex = r(new oc.TopExp_Explorer(part, E.TopAbs_VERTEX, E.TopAbs_SHAPE));
+        if (!ex.More()) return true;
+        const vertex = r(ex.Current());
+        if (box.IsOut(r(oc.BRep_Tool.Pnt(r(oc.TopoDS.Vertex(vertex)))))) continue;
+        const dist = r(new oc.BRepExtrema_DistShapeShape());
+        dist.LoadS1(vertex);
+        dist.LoadS2(solid);
+        dist.Perform();
+        if (!dist.IsDone() || dist.InnerSolution() || dist.Value() < 1e-6) return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    if (e instanceof WebAssembly.RuntimeError || e instanceof RangeError) throw e;
+    return true;
+  } finally {
+    gc();
+  }
+}
+
 function withoutLooseEdges<B extends BooleanBuilder>(
   builder: B,
   fresh: () => B,
@@ -331,18 +373,9 @@ function withoutLooseEdges<B extends BooleanBuilder>(
     // the first build crossed no face of one input with a face of the other: the solids are apart (a fluted pin in a ring, a
     // meshed gear pair of 362 + 362 or 1442 + 2162 faces, whose 7 intersects took 59 s and 44 s and passed the 120 s watchdog
     // on CI), so a result that shows no overlap is right. Every missed overlap the retries fixed had section edges (seed 32's
-    // cuts and join 11, the oval sphere and cylinder 7). A tool fully inside its base has no section edges either, so one vertex
-    // of each input must also lie outside the other solid (the bundle has no solid classifier: the distance tool is 0 or inner there)
-    const inside = (vertexOf: TopoDS_Shape, solid: TopoDS_Shape) => {
-      const ex = r(new oc.TopExp_Explorer(vertexOf, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE));
-      if (!ex.More()) return false;
-      const dist = r(new oc.BRepExtrema_DistShapeShape());
-      dist.LoadS1(r(ex.Current()));
-      dist.LoadS2(solid);
-      dist.Perform();
-      return !dist.IsDone() || dist.InnerSolution() || dist.Value() < 1e-6;
-    };
-    const apart = () => disjoint && r(builder.SectionEdges()).Size() === 0 && !inside(left, right) && !inside(right, left);
+    // cuts and join 11, the oval sphere and cylinder 7). A tool fully inside its base has no section edges either, so the solids
+    // must also not touch or nest (a boolean's result and a group are compounds of solids: see solidsMayTouch)
+    const apart = () => disjoint && r(builder.SectionEdges()).Size() === 0 && !solidsMayTouch(left, right) && !solidsMayTouch(right, left);
     if (suspect() && !apart()) {
       const found = rebuild([1e-6, 1e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2], (got, fuzzy) => {
         const x = volume(got);
