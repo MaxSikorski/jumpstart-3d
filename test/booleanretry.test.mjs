@@ -43,3 +43,44 @@ test("a cut that is built again leaves the tolerances of its inputs alone", () =
   assert.ok(vertexTolerance(base) < 1e-5, `the part's vertices now have a tolerance of ${vertexTolerance(base)} (2.48 when a retry changed them)`);
   assert.ok(vertexTolerance(part(0)) < 1e-5, "and so does the copy the cache holds");
 });
+
+// The retries run up to 7 intersects, which on a many-face pair whose solids are apart (the meshed gears of gears.spec) passed the
+// 120 s watchdog. When the first build crossed no face of one input with a face of the other, and no vertex of either input is in
+// or on the other solid, the solids are apart and a result that shows no overlap is right: no retry, no intersect.
+const star = (teeth, r0, r1, height) => {
+  const points = [];
+  for (let i = 0; i < teeth; i++) for (const [f, r] of [[0, r0], [0.15, r1], [0.35, r1], [0.5, r0]]) points.push([r * Math.cos(((i + f) / teeth) * 2 * Math.PI), r * Math.sin(((i + f) / teeth) * 2 * Math.PI)]);
+  let d = R.draw(points[0]);
+  for (const p of points.slice(1)) d = d.lineTo(p);
+  return d.close().sketchOnPlane("XY").extrude(height);
+};
+// runs fn and returns how many BRepAlgoAPI_Common builders it made
+const countCommons = (fn) => {
+  const Common = oc.BRepAlgoAPI_Common;
+  let n = 0;
+  oc.BRepAlgoAPI_Common = function (...args) { n++; return new Common(...args); };
+  try { fn(); } finally { oc.BRepAlgoAPI_Common = Common; }
+  return n;
+};
+const near = (a, b, rel = 1e-5) => Math.abs(a - b) <= rel * Math.abs(b);
+
+test("a fluted pin in a ring 0.05 mm away is cut without a single intersect", () => {
+  const pin = star(40, 20, 24, 8);
+  const ring = R.makeCylinder(30, 8).cut(star(40, 20.05, 24.05, 8));
+  let cut;
+  const commons = countCommons(() => { cut = pin.cut(ring); });
+  assert.equal(commons, 0, `${commons} intersects were built`);
+  assert.ok(near(R.measureVolume(cut), R.measureVolume(pin)), `the cut is ${R.measureVolume(cut)}, the pin ${R.measureVolume(pin)}`);
+});
+
+test("seed 32's reverse cut still finds the overlap its first build misses", () => {
+  const cut = part(1).cut(part(0));
+  assert.ok(near(R.measureVolume(cut), 676.968), `the reverse cut is ${R.measureVolume(cut)}`);
+});
+
+test("a tool fully inside its base takes its volume off (no section edges, but not apart)", () => {
+  const big = R.makeBox([-50, -50, -50], [50, 50, 50]);
+  const small = R.makeBox([-5, -5, -5], [5, 5, 5]);
+  const cut = big.cut(small);
+  assert.ok(near(R.measureVolume(cut), 1e6 - 1e3), `the cut is ${R.measureVolume(cut)}`);
+});

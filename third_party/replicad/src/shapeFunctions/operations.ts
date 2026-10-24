@@ -328,7 +328,22 @@ function withoutLooseEdges<B extends BooleanBuilder>(
       repaired?.delete();
       return !!repaired;
     };
-    if (suspect()) {
+    // the first build crossed no face of one input with a face of the other: the solids are apart (a fluted pin in a ring, a
+    // meshed gear pair of 362 + 362 or 1442 + 2162 faces, whose 7 intersects took 59 s and 44 s and passed the 120 s watchdog
+    // on CI), so a result that shows no overlap is right. Every missed overlap the retries fixed had section edges (seed 32's
+    // cuts and join 11, the oval sphere and cylinder 7). A tool fully inside its base has no section edges either, so one vertex
+    // of each input must also lie outside the other solid (the bundle has no solid classifier: the distance tool is 0 or inner there)
+    const inside = (vertexOf: TopoDS_Shape, solid: TopoDS_Shape) => {
+      const ex = r(new oc.TopExp_Explorer(vertexOf, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE));
+      if (!ex.More()) return false;
+      const dist = r(new oc.BRepExtrema_DistShapeShape());
+      dist.LoadS1(r(ex.Current()));
+      dist.LoadS2(solid);
+      dist.Perform();
+      return !dist.IsDone() || dist.InnerSolution() || dist.Value() < 1e-6;
+    };
+    const apart = () => disjoint && r(builder.SectionEdges()).Size() === 0 && !inside(left, right) && !inside(right, left);
+    if (suspect() && !apart()) {
       const found = rebuild([1e-6, 1e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2], (got, fuzzy) => {
         const x = volume(got);
         if (!inRange(x) || (spline() && !isValid(got)) || (disjoint && plain && !settled(got))) return false;
