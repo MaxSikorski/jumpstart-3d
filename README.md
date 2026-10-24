@@ -294,13 +294,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the guide, and
 ## Support the project
 
 JumpStart 3D is free and stays free. If it saves you time, you can chip in towards the
-maintainer's hosting and coffee. Both are Stripe payment links; no account needed. The About
-dialog also has a Support button.
+maintainer's hosting and coffee. The About dialog also has a Support button.
 
-- One-time, any amount: https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
-- Monthly: https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
+- GitHub Sponsors (monthly or one-time, with a GitHub account): https://github.com/sponsors/MaxSikorski
+- One-time, any amount (Stripe, no account needed): https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
+- Monthly (Stripe, no account needed): https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
 
-This supports the community build only; the original author is credited in the app's About dialog
+This supports Max's work on this project only; the original author is credited in the app's About dialog
 and in NOTICE.md.
 
 ## What this repository adds on top of the original
