@@ -2768,6 +2768,10 @@ function solidFromMesh(V, I, k = 1) {
     const bb = bboxOf(shape), diag = Math.hypot(...bb.size) || 1;
     const u = unifiedTol(shape, Math.max(1e-6, diag * 2e-6), 2e-4);
     if (u) { shape.delete(); shape = u; }
+    // jumpstart-3d: mesh import fix. The merge above leaves the corners of a merged face at 1e-7 while the face is flat only to
+    // ~1e-5 mm, so on a lid with flat areas 18 % of the faces were invalid and a join with faces exactly flush came out open
+    // (137 open edges). ShapeFix_Solid raises the tolerances to fit, so the solid is valid for booleans.
+    if (shape.wrapped.ShapeType() === OC.TopAbs_ShapeEnum.TopAbs_SOLID) shape = fixSolid(shape);
   }
   T.unify = Date.now();
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("mesh build ms: faces", T.faces - T.t0, "solid", T.solid - T.faces, "unify", T.unify - T.solid);
