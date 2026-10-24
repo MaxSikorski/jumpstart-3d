@@ -38,6 +38,7 @@ import { initMeshDetail } from "./meshdetail.js";
 import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
+import { initCodeCad } from "./codecad.js"; // jumpstart-3d: Code CAD
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 import { initReport } from "./report.js"; // jumpstart-3d: report
 import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
@@ -1107,6 +1108,7 @@ window.__app = app; window.__store = store; window.__findBody = findBody;
 
 // jumpstart-3d: scripting bridge. window.JS3D, documented in BRIDGE.md; does nothing until a script calls it.
 initBridge(app);
+initCodeCad(app); // jumpstart-3d: Code CAD. the Code CAD… menu entry and app.codeCad; nothing runs until Build or Update
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
 initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing
