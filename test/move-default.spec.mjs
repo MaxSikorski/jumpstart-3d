@@ -49,6 +49,7 @@ test("with the default, dragging the box up the screen raises it, and OK keeps t
   const depth = await run(() => window.__store.undoStack.length);
   await dragUp(80);
   await expect.poll(() => field("mv-d2")).toBeGreaterThan(1); // the height box moved, nothing was chosen first
+  expect(Math.abs(await field("mv-d0")) + Math.abs(await field("mv-d1")), "a free drag also moves sideways; an arrow drag could not").toBeGreaterThan(0);
   const dz = await field("mv-d2");
   await page.click("#cmd-ok");
   await expect(page.locator("#cmd")).toBeHidden();
