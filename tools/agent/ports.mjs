@@ -10,8 +10,10 @@ import { readFileSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
 
-export const PORT_FIRST = 8805;
-export const PORT_LAST = 8895;
+// JS3D_PORT_FIRST moves the whole range (first port, nine more steps of PORT_STEP); the tests of the tools set it so that they never touch the real 8805-8895.
+const override = Number(process.env.JS3D_PORT_FIRST);
+export const PORT_FIRST = Number.isInteger(override) && override >= 1024 && override <= 65400 ? override : 8805;
+export const PORT_LAST = PORT_FIRST + 90;
 export const PORT_STEP = 10;
 export const PORT_SPAN = 3;
 export const PORT_FILE = ".js3d-port";
