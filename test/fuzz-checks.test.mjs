@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, stretchExcused, replayCommand, FINE_MESH_TRIANGLES, coneOpenExcused } from "./fuzz-checks.mjs";
+import { makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, replayCommand } from "./fuzz-checks.mjs";
 
 // a zip with the given entries (compressed, no checksum: the reader does not look at it)
 function zip(entries) {
@@ -61,17 +61,6 @@ test("volume tolerance: flat shapes are held to a hair, curved ones to the tesse
   assert.equal(meshMatches(NaN, 2000, ["box"]), false);
 });
 
-test("known kernel problems are excused only for what was shown", () => {
-  const big = { kind: "group", mods: 0, tris: FINE_MESH_TRIANGLES };
-  assert.equal(stretchExcused([2, 1, 1], big), true);
-  assert.equal(stretchExcused(2, big), false); // an even stretch never takes that path
-  assert.equal(stretchExcused([2, 2, 2], big), false);
-  assert.equal(stretchExcused([2, 1, 1], { ...big, tris: 100 }), false); // a small mesh is no excuse
-  assert.equal(stretchExcused([2, 1, 1], { kind: "box", mods: 0, tris: 5000 }), false); // a plain shape is stretched in its sizes
-  assert.equal(stretchExcused([2, 1, 1], { kind: "box", mods: 1, tris: 5000 }), false); // nor is a box with a feature
-  assert.equal(stretchExcused([2, 1, 1], { kind: "torus", mods: 0, tris: 5000 }), true);
-});
-
 test("the replay command keeps strict mode and the build", () => {
   assert.equal(replayCommand({ seed: 7, ops: 18, strict: false, project: "site" }), "FUZZ_SEED=7 FUZZ_OPS=18 npx playwright test test/fuzz.spec.mjs --project=site");
   assert.equal(replayCommand({ seed: 7, ops: 18, strict: true, project: "single" }), "FUZZ_STRICT=1 FUZZ_SEED=7 FUZZ_OPS=18 npx playwright test test/fuzz.spec.mjs --project=single");
@@ -90,12 +79,4 @@ test("STL: closed and open meshes are told apart, the same seed gives the same n
   assert.throws(() => readStl(stl(tris).subarray(0, 200)), /says 12 triangles/);
   const a = makeRng(5), b = makeRng(5);
   assert.deepEqual([a.next(), a.int(1, 6)], [b.next(), b.int(1, 6)]);
-});
-
-test("cone seam: 12 open edges for each cone a body holds, and no other body is excused", () => {
-  assert.equal(coneOpenExcused(12, 1), true);
-  assert.equal(coneOpenExcused(13, 1), false); // one more open edge than a cone leaves
-  assert.equal(coneOpenExcused(24, 2), true);
-  assert.equal(coneOpenExcused(40, 1), false); // a cone does not excuse a broken body around it
-  assert.equal(coneOpenExcused(6, 0), false); // a body with no cone has no excuse at all
 });

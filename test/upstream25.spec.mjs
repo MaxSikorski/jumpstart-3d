@@ -103,10 +103,10 @@ test.describe("versions 2.4 and 2.5", () => {
     return { name: dl.suggestedFilename(), bytes: Buffer.concat(chunks) };
   };
 
-  test("the splash and About show version 2.5 and the community build, with 2.4 and 2.5 listed and the credit kept", async () => {
-    expect(VERSION).toBe("2.5");
+  test("the splash and About show the current version (2.5.1) and the community build, with 2.4 and 2.5 listed and the credit kept", async () => {
+    expect(VERSION).toBe("2.5.1");
     expect(BUILD).toBeGreaterThanOrEqual(22);
-    const label = `Version 2.5 · community build ${BUILD}`;
+    const label = `Version 2.5.1 · community build ${BUILD}`;
     expect(await page.locator("#sp-ver").textContent()).toBe(label); // app.js rewrites #sp-ver at start-up; smoke.spec.mjs checks the same text in src/index.html
     await page.click("#btn-about");
     const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
