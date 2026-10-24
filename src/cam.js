@@ -147,7 +147,8 @@ export function initCam(app) {
     const canvas = el("canvas", { class: "s3d-canvas", id: "cam-canvas" });
     const side = el("aside", { class: "bk-side cam-side", id: "cam-side" });
     const play = el("div", { class: "cam-play", id: "cam-play" });
-    const view3 = el("div", { class: "bk-view" }, canvas, play);
+    const busy = el("div", { class: "cam-busy", id: "cam-busy", hidden: true }, el("span", { class: "cam-spin" }), el("span", { id: "cam-busy-t" }, "Working…"));
+    const view3 = el("div", { class: "bk-view" }, canvas, play, busy);
     panes.append(side, view3);
     root.append(bar, panes);
     document.body.append(root);
@@ -457,12 +458,30 @@ export function initCam(app) {
   let camW = null, jobId = 0, wBusy = false;
   function camWorker() {
     if (!camW) {
-      try { camW = new Worker(URL.createObjectURL(new Blob([CAM_WORKER_SRC], { type: "text/javascript" }))); camW.onmessage = (e) => onWorker(e.data); camW.onerror = (e) => { console.warn("CAM worker", e.message); }; }
+      try { camW = new Worker(URL.createObjectURL(new Blob([CAM_WORKER_SRC], { type: "text/javascript" }))); camW.onmessage = (e) => onWorker(e.data); camW.onerror = (e) => { console.warn("CAM worker", e.message); workerFailed(); }; }
       catch (e) { camW = false; }
     }
     return camW;
   }
-  function setStatus(t) { const st = ui && ui.side.querySelector("#cam-stats"); if (st) st.textContent = t; }
+  // the worker couldn't run (or crashed): do the work on the page instead
+  function workerFailed() {
+    try { camW && camW.terminate(); } catch (e) {}
+    camW = false; wBusy = false;
+    if (ui && ui.pending) { const P = ui.pending; ui.pending = null; generate(); void P; }
+  }
+  function setStatus(t, busy = true) {
+    if (!ui) return;
+    const st = ui.side.querySelector("#cam-stats"); if (st) st.textContent = t;
+    const b = ui.root.querySelector("#cam-busy"); if (b) { b.hidden = !busy; b.querySelector("#cam-busy-t").textContent = t; }
+  }
+  // while the worker is busy: show the model (and nothing stale), so the window is never blank
+  function showWorking(job) {
+    for (const g of [ui.groups.stock, ui.groups.paths, ui.groups.tool, ui.groups.bed]) g.visible = false;
+    if (job.rotary) { setupRotary(job); const rm = ui.rotG && ui.rotG.getObjectByName("rmodel"); if (rm) rm.visible = true; }
+    else { setupRotary(job); ui.groups.model.visible = true; }
+    for (const g of [ui.groups.stock, ui.groups.paths, ui.groups.tool]) g.visible = false;
+    ui.dirty = true;
+  }
   function generate() {
     clearTimeout(genTimer);
     genTimer = setTimeout(() => {
@@ -472,8 +491,9 @@ export function initCam(app) {
       const job = makeJob(), M = mach(), post = ui.s.post || M.post;
       const tris = job.rotary ? rotModel().tris : ui.tris;
       const id = ++jobId, msg = { id, job, tris: tris.slice(), mach: M, post, units: ui.s.units || M.units, title: store.doc.name || "JumpStart 3D job" };
-      ui.pending = { id, job, post };
+      ui.pending = { id, job, post, t0: performance.now() };
       ui.done = false; ui.working = true;
+      showWorking(job);
       setStatus("Making the toolpaths…");
       const w = camWorker();
       if (w) {
@@ -494,9 +514,11 @@ export function initCam(app) {
   }
   function onWorker(d) {
     if (!ui || !ui.pending || d.id !== ui.pending.id) return;
-    if (d.phase) { setStatus(d.phase === "paths" ? "Making the toolpaths…" : `Simulating the cut… ${Math.round(d.done * 100)}%`); return; }
+    if (d.phase) { setStatus(d.phase === "paths" ? `Making the toolpaths… ${Math.round((d.done || 0) * 100)}%` : `Simulating the cut… ${Math.round(d.done * 100)}%`); return; }
     wBusy = false; ui.working = false;
-    if (!d.ok) { app.toast("Couldn't make the toolpaths: " + d.error, "err"); setStatus("Couldn't make the toolpaths."); return; }
+    if (!d.ok) { app.toast("Couldn't make the toolpaths: " + d.error, "err"); setStatus("Couldn't make the toolpaths.", false); return; }
+    setStatus("", false);
+    for (const g of [ui.groups.stock, ui.groups.paths, ui.groups.bed]) g.visible = true;
     const { job, post } = ui.pending, M = mach(), prog = d.prog;
     ui.result = { job, prog, stats: d.stats, gcode: d.gcode, lines: d.gcode.split("\n").length - 1, post };
     ui.final = d.sim;
@@ -526,7 +548,7 @@ export function initCam(app) {
   }
   function resetSim() {
     const r = ui.result;
-    ui.sim = r.job.rotary ? new RotarySim(r.job, Math.max(0.3, r.job.res)) : new StockSim(r.job, r.job.res);
+    ui.sim = r.job.rotary ? new RotarySim(r.job, Math.max(0.5, r.job.res)) : new StockSim(r.job, r.job.res);
     ui.si = 0; ui.t = 0; ui.done = false;
     buildStockMesh();
   }
