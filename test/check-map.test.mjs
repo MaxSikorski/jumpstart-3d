@@ -33,6 +33,34 @@ function run(args, { home: h = home, cwd } = {}) {
 }
 const withMemory = (root) => ["--root", root, "--memory-dir", join(root, "memory")];
 
+// A scratch repo for the rules about bare file names, slashes that are not paths, and upper/lower case.
+function namesRepo() {
+  const root = folder();
+  const put = (rel, text) => { mkdirSync(join(root, rel, ".."), { recursive: true }); writeFileSync(join(root, rel), text); };
+  put("deep/a/b/deep-file.js", "//\n");
+  put("sub/docs/nested-docs.js", "//\n");
+  for (const skipped of ["node_modules/pkg/only-in-node-modules.js", ".git/only-in-git.js", "docs/only-in-docs.js", "dist/only-in-dist.js", "test-results/only-in-test-results.js"]) put(skipped, "//\n");
+  const memory = folder();
+  writeFileSync(join(memory, "only-in-memory.md"), "# note\n");
+  put("found.md", [
+    "# Found",
+    "",
+    "- Found by name: `deep-file.js` deep in the tree, `nested-docs.js` under a docs folder that is not at the root, and `only-in-memory.md` in the memory folder.",
+    "- Not paths, so ignored: `origin/main`, `origin/docs/x.md`, `refs/heads/x`, `owner/repo`, `js/xss-through-dom`, `nodir/nothing`, `Deep/nothing`.",
+    "- Found with a slash: `deep/a/b/deep-file.js`, `./deep/a/b/deep-file.js:12`, `deep/a`, `deep/a/b/`, `sub/docs/nested-docs.js`.",
+    "",
+  ].join("\n"));
+  put("AGENTS.md", [
+    "# Names (bad)",
+    "",
+    "- Bare names that do not exist: `ghost.js`, `Deep-File.js` (wrong case), `only-in-node-modules.js`, `only-in-git.js`, `only-in-docs.js`, `only-in-dist.js`, `only-in-test-results.js`.",
+    "- With a slash that do not exist: `deep/nothing` (starts at a real folder), `nodir/file.md` (has an extension), `nodir/` (ends with a slash).",
+    "- Wrong case: `Deep/a/b/deep-file.js`, `deep/A/b/`, `deep/a/b/Deep-file.js`, `deep/a/B`.",
+    "",
+  ].join("\n"));
+  return { root, memory };
+}
+
 const BAD = [
   "FAIL: AGENTS.md:7 path `docs/missing-file.md` not found → fix the path or create it",
   "FAIL: AGENTS.md:7 path `nowhere/` not found → fix the path or create it",
@@ -170,4 +198,24 @@ test("--help prints one usage line; a wrong option or number exits 2", () => {
   assert.equal(help.code, 0);
   assert.equal(run(["--nope"]).code, 2);
   assert.equal(run(["--max-lines", "many"]).code, 2);
+});
+
+test("a bare file name passes when a file of that name is anywhere in the tree or in the memory folder; slashes that are not paths are ignored", () => {
+  const { root, memory } = namesRepo();
+  const r = run(["--root", root, "--memory-dir", memory, "found.md"]);
+  assert.deepEqual(r.lines, ["OK paths (8 checked)", "OK skills (0)", "OK memory names (0)", "OK duplicates (3 sentences)", "check-map: OK"]);
+  assert.equal(r.code, 0);
+});
+
+test("a bare name found nowhere (or only in node_modules, .git, or docs, dist and test-results at the root) fails; so do paths with a slash that are not there or are spelled in the wrong case", () => {
+  const { root, memory } = namesRepo();
+  const fail = (line, token) => `FAIL: AGENTS.md:${line} path \`${token}\` not found → fix the path or create it`;
+  const r = run(["--root", root, "--memory-dir", memory, "AGENTS.md"]);
+  assert.deepEqual(r.lines.filter((l) => l.startsWith("FAIL")), [
+    ...["ghost.js", "Deep-File.js", "only-in-node-modules.js", "only-in-git.js", "only-in-docs.js", "only-in-dist.js", "only-in-test-results.js"].map((t) => fail(3, t)),
+    ...["deep/nothing", "nodir/file.md", "nodir/"].map((t) => fail(4, t)),
+    ...["Deep/a/b/deep-file.js", "deep/A/b/", "deep/a/b/Deep-file.js", "deep/a/B"].map((t) => fail(5, t)),
+  ]);
+  assert.equal(r.lines.at(-1), "check-map: 14 problem(s)");
+  assert.equal(r.code, 1);
 });
