@@ -262,11 +262,12 @@ export function initRemote({ ps, toast, fileSafe, open, thumbnail }) {
     const raw = j && j.app === "jumpstart-3d" && !j.backup && j.doc, id = raw && (raw.id || item.id);
     if (!raw || !Array.isArray(raw.bodies) || !Array.isArray(raw.sketches) || !id) throw new Err(`“${item.file}” isn't a JumpStart 3D design file.`);
     const doc = { ...raw, id }, nm = doc.name || "Untitled", t = item.mtime || Date.now(), ssum = sum(doc), had = rec.files[id];
+    // the base of the put is the stamp read here, not the page-wide one that another read in this tab may have moved on
     // only "no entry and nothing stored" means no local copy; a copy that can't be read must not be replaced
     let local = null, odd = false;
     try { const s = await ps.get(id); local = s ? JSON.parse(s) : null; } catch (e) { odd = true; }
     if (odd || (!local && (await ps.list()).some((e) => e.id === id)) || (local && typeof local !== "object")) odd = true;
-    const put = async (did, d) => { if (!await ps.put(did, JSON.stringify({ ...d, id: did, _updated: t }), { id: did, name: d.name || "Untitled", ver: d.ver || 0, mode: d.mode, updated: t, thumb: item.thumb || null })) throw new Err(T.full); };
+    const put = async (did, d) => { if (!await ps.put(did, JSON.stringify({ ...d, id: did, _updated: t }), { id: did, name: d.name || "Untitled", ver: d.ver || 0, mode: d.mode, updated: t, thumb: item.thumb || null }, did === id && local ? +local._updated || 0 : 0)) throw new Err(T.full); };
     let go = id, mark = true, msg = `Opened “${nm}” from the server.`;
     if (!odd && !local) await put(id, doc);
     else if (!odd && sum(local) === ssum) { /* already the same */ }

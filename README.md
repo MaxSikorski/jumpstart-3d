@@ -96,9 +96,10 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has eighty-two step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: fifty-one from J.Siwek and thirty-one added by this community build for the
-toolbar buttons that had none.
+JumpStart 3D has eighty-nine step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
+toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
+a tour of the top bar, how the model looks on screen and sketch constraints.
 
 ### Add yours
 
@@ -325,7 +326,7 @@ upstream version stays easy to merge.
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
 - Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
   right or left hand, with open ends or ends cut flat.
-- Thirty-one more tutorials, for the toolbar buttons that had none.
+- Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.
 
 ### Editing
 
