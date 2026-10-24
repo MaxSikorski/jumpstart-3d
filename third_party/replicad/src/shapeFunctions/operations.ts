@@ -167,21 +167,70 @@ export function simplifiedResult(builder: { // jumpstart-3d: exported so the STE
 //    oval sphere with 50 holes of 0.5 mm built several times slower and ran out of memory when every cut was judged
 //    against the whole body). All limits are relative to the smaller input's volume (0.1 %). A result is suspect when
 //    a fuse is smaller than the larger input or larger than both together, a cut larger than its base or smaller than
-//    base minus tool, an intersect larger than the smaller input or empty. When an input has a rational B-spline face
-//    (the oval sphere's) a fuse that is just the sum of the inputs, a cut that removed nothing and a result that is not
-//    a valid solid are suspect too. Then the result is built again, with the intersect at the same value, and the
-//    first value is kept whose pair adds up (fuse + intersect = both inputs, cut = base - intersect), shows an overlap
-//    and is valid; a value the engine cannot build is skipped.
+//    base minus tool, an intersect larger than the smaller input or empty. A fuse that is just the sum of the inputs and
+//    a cut that removed nothing are suspect too, and so is a result that is not a valid solid when an input has a
+//    rational B-spline face (the oval sphere's). Then the result is built again, with the intersect at the same value,
+//    and the first value is kept whose pair adds up (fuse + intersect = both inputs, cut = base - intersect), shows an
+//    overlap and is valid; a value the engine cannot build is skipped. When the only sign was a result that looks like
+//    no overlap, the intersect is built first at each value: two solids that merely sit near each other (a ring round a
+//    pin) show at once that there is nothing to find, which costs 7 intersects instead of 14 builds. If also no input
+//    has a B-spline face, the kept result must be a valid solid once withoutStrayPCurves has run (a sphere's faces are
+//    never rebuilt; main kept the valid first result there). The retries build non-destructively: the engine's default
+//    changes the inputs' own edges in place, and the inputs can be shapes the kernel's cache still shares geometry
+//    with, so the same cut gave 1612.128 mm3 first and 1611.974 mm3 the second time (seed 32).
 type BooleanBuilder = {
   Shape(): TopoDS_Shape;
   SetArguments(shapes: any): void;
   SetTools(shapes: any): void;
   SetFuzzyValue(value: number): void;
+  SetNonDestructive(value: boolean): void;
   SetGlue(value: any): void;
   HasErrors(): boolean;
   Build(): void;
   delete(): void;
 };
+// jumpstart-3d: true when a vertex of one solid of `of` lies in or on a solid of `target`, or anything is uncertain (no solid on
+// either side, a failed distance). One vertex per solid is enough: solids that cross have section edges, so this is only for the
+// ones that nest. The distance tool classifies only against solids (not the compound a boolean returns), a vertex outside a
+// solid's box (enlarged by 1e-6) is skipped without the distance call. Exported for test/booleanretry.test.mjs.
+export function solidsMayTouch(of: TopoDS_Shape, target: TopoDS_Shape): boolean {
+  const oc = getOC();
+  const [r, gc] = localGC();
+  try {
+    const E = oc.TopAbs_ShapeEnum;
+    const solidsOf = (shape: TopoDS_Shape) => {
+      const out: TopoDS_Shape[] = [];
+      const ex = r(new oc.TopExp_Explorer(shape, E.TopAbs_SOLID, E.TopAbs_SHAPE));
+      for (; ex.More(); ex.Next()) out.push(r(ex.Current()));
+      return out;
+    };
+    const [mine, theirs] = [solidsOf(of), solidsOf(target)];
+    if (!mine.length || !theirs.length) return true;
+    for (const solid of theirs) {
+      const box = r(new oc.Bnd_Box());
+      oc.BRepBndLib.Add(solid, box, false);
+      box.Enlarge(1e-6);
+      for (const part of mine) {
+        const ex = r(new oc.TopExp_Explorer(part, E.TopAbs_VERTEX, E.TopAbs_SHAPE));
+        if (!ex.More()) return true;
+        const vertex = r(ex.Current());
+        if (box.IsOut(r(oc.BRep_Tool.Pnt(r(oc.TopoDS.Vertex(vertex)))))) continue;
+        const dist = r(new oc.BRepExtrema_DistShapeShape());
+        dist.LoadS1(vertex);
+        dist.LoadS2(solid);
+        dist.Perform();
+        if (!dist.IsDone() || dist.InnerSolution() || dist.Value() < 1e-6) return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    if (e instanceof WebAssembly.RuntimeError || e instanceof RangeError) throw e;
+    return true;
+  } finally {
+    gc();
+  }
+}
+
 function withoutLooseEdges<B extends BooleanBuilder>(
   builder: B,
   fresh: () => B,
@@ -214,6 +263,7 @@ function withoutLooseEdges<B extends BooleanBuilder>(
         again.SetArguments(args);
         again.SetTools(tools);
         again.SetFuzzyValue(fuzzy);
+        again.SetNonDestructive(true); // the default raises the tolerances of the inputs' own edges in place, and the kernel's cache holds the inputs
         if (glue) configureGlue(again, optimisation);
         again.Build();
         return again;
@@ -222,10 +272,11 @@ function withoutLooseEdges<B extends BooleanBuilder>(
         throw e;
       }
     };
-    const rebuild = (fuzzies: number[], accept: (got: TopoDS_Shape, fuzzy: number) => boolean): B | null => {
+    const rebuild = (fuzzies: number[], accept: (got: TopoDS_Shape, fuzzy: number) => boolean, before?: (fuzzy: number) => boolean): B | null => {
       for (const fuzzy of fuzzies) {
         let retry: B | null = null;
         try {
+          if (before && !before(fuzzy)) continue; // a value that cannot be kept is not built
           retry = built(fresh, fuzzy, true);
           if (!retry.HasErrors() && accept(r(retry.Shape()), fuzzy)) return retry; // the caller registers the builder it gets back and the one it passed in
         } catch (e) {
@@ -287,26 +338,52 @@ function withoutLooseEdges<B extends BooleanBuilder>(
     const isValid = (shape: TopoDS_Shape) => r(new oc.BRepCheck_Analyzer(shape, true, false)).IsValid();
     // a fuse that is the sum of its inputs or a cut that removed nothing found no overlap
     const noOverlap = (v: number) => kind === "fuse" ? v >= vl() + vr() - tol() : kind === "cut" && v >= vl() - tol();
+    // the volume of the intersect at a fuzzy value (null when the engine cannot build it), built once per value
+    const commons = new Map<number, number | null>();
+    const common = (fuzzy: number): number | null => {
+      if (!commons.has(fuzzy)) {
+        const partner = built(() => new oc.BRepAlgoAPI_Common() as any, fuzzy, false);
+        try {
+          commons.set(fuzzy, partner.HasErrors() ? null : volume(r(partner.Shape())));
+        } finally {
+          partner.delete();
+        }
+      }
+      return commons.get(fuzzy) ?? null;
+    };
+    // a result that looks like no overlap (nothing else is wrong with it) and has no rational B-spline face: main left those
+    // alone. The intersect is built first at each value, because for two solids that merely sit near each other (a ring round
+    // a pin) it is the cheap build and shows at once that there is nothing to find; the retry must also leave a valid solid
+    let disjoint = false, plain = false;
     const suspect = () => {
       if (!judged()) return false;
       const want = volume(first);
       if (!inRange(want) || (kind === "common" && vanished(want))) return true;
-      return spline() && (noOverlap(want) || !isValid(first));
+      if (spline() && !isValid(first)) return true;
+      plain = !spline();
+      return (disjoint = noOverlap(want));
     };
-    if (suspect()) {
+    // valid once withoutStrayPCurves has had its go (a sphere's faces are never rebuilt, so a graze on a sphere stays invalid)
+    const settled = (shape: TopoDS_Shape) => {
+      if (isValid(shape)) return true;
+      const repaired = repairedStrayPCurves(shape, left, right);
+      repaired?.delete();
+      return !!repaired;
+    };
+    // the first build crossed no face of one input with a face of the other: the solids are apart (a fluted pin in a ring, a
+    // meshed gear pair of 362 + 362 or 1442 + 2162 faces, whose 7 intersects took 59 s and 44 s and passed the 120 s watchdog
+    // on CI), so a result that shows no overlap is right. Every missed overlap the retries fixed had section edges (seed 32's
+    // cuts and join 11, the oval sphere and cylinder 7). A tool fully inside its base has no section edges either, so the solids
+    // must also not touch or nest (a boolean's result and a group are compounds of solids: see solidsMayTouch)
+    const apart = () => disjoint && r(builder.SectionEdges()).Size() === 0 && !solidsMayTouch(left, right) && !solidsMayTouch(right, left);
+    if (suspect() && !apart()) {
       const found = rebuild([1e-6, 1e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2], (got, fuzzy) => {
         const x = volume(got);
-        if (!inRange(x) || (spline() && !isValid(got))) return false;
+        if (!inRange(x) || (spline() && !isValid(got)) || (disjoint && plain && !settled(got))) return false;
         if (kind === "common") return !vanished(x);
-        const partner = built(() => new oc.BRepAlgoAPI_Common() as any, fuzzy, false);
-        try {
-          if (partner.HasErrors()) return false;
-          const c = volume(r(partner.Shape()));
-          return !vanished(c) && Math.abs(x - (kind === "fuse" ? vl() + vr() - c : vl() - c)) <= 2 * tol();
-        } finally {
-          partner.delete();
-        }
-      });
+        const c = common(fuzzy);
+        return c !== null && !vanished(c) && Math.abs(x - (kind === "fuse" ? vl() + vr() - c : vl() - c)) <= 2 * tol();
+      }, disjoint ? (fuzzy) => { const c = common(fuzzy); return c !== null && !vanished(c); } : undefined);
       if (found) return found;
     }
 
@@ -319,6 +396,121 @@ function withoutLooseEdges<B extends BooleanBuilder>(
   } finally {
     gc();
   }
+}
+
+// jumpstart-3d: a fuzzy boolean can give an edge a pcurve in the wrong place on one of its faces. In fuzz seed 32 (a
+// torus hole grazing a torus) the 0.15 mm edge where the two tori touch got, on one torus face, the other torus's
+// parameters: 2.48 mm away from the edge. The engine covered it by raising the edge's tolerance to 2.48 mm, so the
+// solid still measured about right, but that face's outline no longer closed in its own parameter space and the
+// mesher left holes there (13 open edges in the STL). Such a face is made again on a copy of its surface, where no
+// edge has a pcurve yet, so ShapeFix projects every edge onto it; shells and solids are put back together with the
+// same edges, a second copy drops the stale pcurves, and SameParameter brings the tolerances down to the real
+// deviation. Only looked at when an edge is loose; kept only when the solid checks valid, no pcurve strays any
+// more and the volume moved less than 1 % (the stray pcurve skews the measured volume too: 0.3 % on the intersect).
+// Faces keep the orientation they have in the solid, so the shells and the solid are added as they are. A shape with
+// a face or an edge outside a solid is left as it is. Returns null when nothing was repaired, else a new shape
+// (the caller owns it); an engine exception other than a crashed instance counts as nothing repaired.
+function repairedStrayPCurves(shape: TopoDS_Shape, left: TopoDS_Shape, right: TopoDS_Shape): TopoDS_Shape | null {
+  const oc = getOC();
+  const [r, gc] = localGC();
+  let out: TopoDS_Shape | null = null;
+  let kept = false;
+  try {
+    const E = oc.TopAbs_ShapeEnum, O = oc.TopAbs_Orientation;
+    const loosest = (s: TopoDS_Shape) => oc.BRep_Tool.MaxTolerance(s, E.TopAbs_EDGE);
+    const limit = Math.max(1e-3, 100 * Math.max(loosest(left), loosest(right)));
+    if (loosest(shape) <= limit) return null;
+    const each = (s: TopoDS_Shape, kind: any, fn: (x: TopoDS_Shape) => void, avoid: any = E.TopAbs_SHAPE) => {
+      const ex = r(new oc.TopExp_Explorer(s, kind, avoid));
+      for (; ex.More(); ex.Next()) fn(r(ex.Current()));
+    };
+    let outside = false;
+    each(shape, E.TopAbs_FACE, () => { outside = true; }, E.TopAbs_SOLID);
+    each(shape, E.TopAbs_EDGE, () => { outside = true; }, E.TopAbs_FACE);
+    if (outside) return null; // faces or edges outside a solid: not something this can put back together
+    const strays = (face: TopoDS_Face) => {
+      let worst = 0;
+      each(face, E.TopAbs_EDGE, (x) => {
+        const edge = r(oc.TopoDS.Edge(x));
+        // the engine hides a stray pcurve by raising the edge's tolerance to cover it
+        if (oc.BRep_Tool.Tolerance(edge) <= limit || oc.BRep_Tool.Degenerated(edge)) return;
+        const c3 = r(new oc.BRepAdaptor_Curve(edge)), c2 = r(new oc.BRepAdaptor_Curve(edge, face));
+        const a = c3.FirstParameter(), b = c3.LastParameter();
+        for (let i = 0; i <= 8; i++) worst = Math.max(worst, r(c3.Value(a + ((b - a) * i) / 8)).Distance(r(c2.Value(a + ((b - a) * i) / 8))));
+      });
+      return worst > 10 * limit;
+    };
+    // the faces that stray, by their place in the order a face explorer visits them (a copy keeps that order)
+    const stray = new Set<number>();
+    let total = 0;
+    each(shape, E.TopAbs_FACE, (f) => { if (strays(r(oc.TopoDS.Face(f)))) stray.add(total); total++; });
+    if (!stray.size) return null;
+    const copy = (s: TopoDS_Shape) => r(r(new oc.BRepBuilderAPI_Transform(s, r(new oc.gp_Trsf()), true, false)).Shape());
+    const remade = (face: TopoDS_Face) => {
+      const forward = r(oc.TopoDS.Face(r(face.Oriented(O.TopAbs_FORWARD))));
+      const surface = r(oc.BRep_Tool.Surface(r(oc.TopoDS.Face(copy(forward))))); // the same geometry, a new object: no edge has a pcurve on it yet
+      const wires: TopoDS_Shape[] = [];
+      each(forward, E.TopAbs_WIRE, (w) => wires.push(r(oc.TopoDS.Wire(w))));
+      const make = r(new oc.BRepBuilderAPI_MakeFace(surface, wires[0] as any, false)); // false keeps the wire's direction (true turned a torus face inside out)
+      for (const w of wires.slice(1)) make.Add(w as any);
+      const made = r(make.Face());
+      each(made, E.TopAbs_WIRE, (w) => r(new oc.ShapeFix_Wire(r(oc.TopoDS.Wire(w)), made, 1e-7)).Perform(r(new oc.Message_ProgressRange())));
+      return face.Orientation() === O.TopAbs_REVERSED ? r(made.Reversed()) : made;
+    };
+    const work = copy(shape); // the boolean's edges can be its inputs' own edges, which the kernel's cache still holds
+    const B = r(new oc.TopoDS_Builder());
+    const solids: TopoDS_Shape[] = [];
+    let seen = 0;
+    // the explorer composes the orientations of a face's shell and solid into the face, so the shells and the solid go in as they are
+    each(work, E.TopAbs_SOLID, (so) => {
+      const solid = r(new oc.TopoDS_Solid());
+      B.MakeSolid(solid);
+      each(so, E.TopAbs_SHELL, (sh) => {
+        const shell = r(new oc.TopoDS_Shell());
+        B.MakeShell(shell);
+        each(sh, E.TopAbs_FACE, (f) => {
+          const face = r(oc.TopoDS.Face(f));
+          B.Add(shell, stray.has(seen++) ? remade(face) : face);
+        });
+        B.Add(solid, shell);
+      });
+      solids.push(solid);
+    });
+    if (seen !== total || !solids.length) return null;
+    let whole: TopoDS_Shape = solids[0];
+    if (solids.length !== 1) {
+      const compound = r(new oc.TopoDS_Compound());
+      B.MakeCompound(compound);
+      for (const s of solids) B.Add(compound, s);
+      whole = compound;
+    }
+    out = r(new oc.BRepBuilderAPI_Transform(whole, r(new oc.gp_Trsf()), true, false)).Shape(); // drops the pcurves on the old surfaces
+    oc.BRepLib.SameParameter(out, 1e-7, true);
+    const volume = (s: TopoDS_Shape) => {
+      const props = r(new oc.GProp_GProps());
+      oc.BRepGProp.VolumeProperties(s, props, false, false, false);
+      return props.Mass();
+    };
+    let clean = r(new oc.BRepCheck_Analyzer(out, true, false)).IsValid();
+    if (clean) each(out, E.TopAbs_FACE, (f) => { if (clean && strays(r(oc.TopoDS.Face(f)))) clean = false; });
+    const before = volume(shape);
+    if (!clean || !(Math.abs(volume(out) - before) <= 1e-3 + 1e-2 * Math.abs(before))) return null;
+    kept = true;
+    return out;
+  } catch (e) {
+    if (e instanceof WebAssembly.RuntimeError || e instanceof RangeError) throw e; // a crashed wasm instance cannot be trusted
+    return null;
+  } finally {
+    if (out && !kept) out.delete();
+    gc();
+  }
+}
+
+function withoutStrayPCurves(shape: TopoDS_Shape, left: TopoDS_Shape, right: TopoDS_Shape): TopoDS_Shape {
+  const out = repairedStrayPCurves(shape, left, right);
+  if (!out) return shape;
+  shape.delete();
+  return out;
 }
 
 /** Builds a raw shape by fusing two shapes. */
@@ -336,7 +528,7 @@ export function fuseShapes(
   builder.Build();
   const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Fuse(), left, right, optimisation, "fuse"); // jumpstart-3d: loose edges
   if (done !== builder) r(done);
-  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  return withoutStrayPCurves(simplifiedResult(done), left, right); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape(); stray pcurves
 }
 
 /** Builds a raw shape by cutting a tool shape from another shape. */
@@ -354,7 +546,7 @@ export function cutShape(
   builder.Build();
   const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Cut(), shape, tool, optimisation, "cut"); // jumpstart-3d: loose edges
   if (done !== builder) r(done);
-  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  return withoutStrayPCurves(simplifiedResult(done), shape, tool); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape(); stray pcurves
 }
 
 /** Builds a raw shape containing the intersection of two shapes. */
@@ -370,7 +562,7 @@ export function intersectShapes(
   builder.Build();
   const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Common(), left, right, "none", "common"); // jumpstart-3d: loose edges
   if (done !== builder) r(done);
-  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  return withoutStrayPCurves(simplifiedResult(done), left, right); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape(); stray pcurves
 }
 
 const signedDistanceToPlane = (point: SimplePoint, plane: Plane): number =>
