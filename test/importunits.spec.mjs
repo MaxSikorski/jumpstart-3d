@@ -432,3 +432,40 @@ test("after a unit change the camera is put on the body when it has grown out of
   });
   await expect.poll(inView, { timeout: 20_000 }).toBe(true);
 });
+
+test("keyboard focus on a note's button keeps it open; Escape or moving the focus away starts the countdown", async () => {
+  // the app's own Tab handler (the size field) takes Tab even over a toast, so the button gets its focus from a key press plus focus()
+  await fresh();
+  await pick(file("Keys.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Keys.stl");
+  await expect(note).toBeVisible();
+  await waitIdle(page);
+  await page.keyboard.press("Shift"); // the last input was the keyboard, so the focus ring (:focus-visible) shows
+  await unitBtn(note, "mm").focus();
+  expect(await page.evaluate(() => document.activeElement.dataset.unit)).toBe("mm");
+  await page.waitForTimeout(11_000);
+  await expect(note).toBeVisible(); // in use by the keyboard
+  await page.keyboard.press("Escape"); // gives the keyboard back to the view
+  expect(await page.evaluate(() => !!document.activeElement.closest("#toasts"))).toBe(false);
+  await expect(note).toBeVisible();
+  await expect(note).toBeHidden({ timeout: 13_000 });
+  // moving the focus elsewhere does the same
+  await pick(file("Keys2.stl", stlBox(20, 10, 5)));
+  const note2 = noteFor("Keys2.stl");
+  await expect(note2).toBeVisible();
+  await page.keyboard.press("Shift");
+  await unitBtn(note2, "cm").focus();
+  await page.evaluate(() => window.__app.vp.canvas.focus());
+  await expect(note2).toBeHidden({ timeout: 13_000 });
+});
+
+test("a note that closes while its button has the focus hands the focus to the view", async () => {
+  await fresh();
+  await pick(file("Focus.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Focus.stl");
+  await expect(note).toBeVisible();
+  await unitBtn(note, "mm").focus();
+  await page.evaluate(() => window.JS3D.undo()); // the body goes, so the note closes
+  await expect(note).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement === window.__app.vp.canvas)).toBe(true);
+});

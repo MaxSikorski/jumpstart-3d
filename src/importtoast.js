@@ -72,7 +72,7 @@ export function showImportToast({ app, bodyId, fileName, mesh, ntOrig, info, fra
     ? el("button", { type: "button", class: "imp-step", title: "Turn the mesh into smooth, editable CAD faces (planes, cylinders, fillets) with the Mesh to STEP Helper", onclick: convert }, "CAD faces…")
     : null;
   const toast = el("div", { class: "toast imp-toast" }, text, el("div", { class: "imp-units", role: "group", "aria-label": "File units" }, el("span", {}, "File units"), ...buttons, ...(toStep ? [toStep] : [])));
-  let timer = 0, off = null, hold = false;
+  let timer = 0, off = null, overPointer = false, overFocus = false; // in use by the pointer or by keyboard focus: the countdown waits for both to end
   const knownK = new Set([1]); // the scales this note itself set; any other scale means something else resized the body
 
   // the body as this note knows it: still the plain imported mesh, with no feature or resize added on top, at a scale the note set
@@ -81,8 +81,13 @@ export function showImportToast({ app, bodyId, fileName, mesh, ntOrig, info, fra
     return b && b.node.t === "mesh" && b.node.asset === asset && !(b.node.mods && b.node.mods.length) && knownK.has(b.node.k || 1) ? b : null;
   };
   const kNow = () => (bodyNow().node.k || 1);
-  function close() { clearTimeout(timer); if (off) off(); toast.remove(); }
-  function arm() { clearTimeout(timer); if (!hold) timer = setTimeout(close, SHOW_MS); }
+  function close() {
+    clearTimeout(timer);
+    if (off) off();
+    if (toast.contains(document.activeElement)) app.vp.canvas.focus(); // a keyboard user does not land on the page body
+    toast.remove();
+  }
+  function arm() { clearTimeout(timer); if (!overPointer && !overFocus) timer = setTimeout(close, SHOW_MS); }
   function refresh() {
     if (!bodyNow()) { close(); return; } // undone, deleted or merged into something else: the buttons no longer have a body
     const k = kNow();
@@ -118,12 +123,12 @@ export function showImportToast({ app, bodyId, fileName, mesh, ntOrig, info, fra
     close();
     app.meshstep.open({ bytes: info.bytes, name: fileName });
   }
-  const pause = () => { hold = true; clearTimeout(timer); };
-  const resume = () => { hold = false; arm(); };
-  toast.addEventListener("pointerenter", pause);
-  toast.addEventListener("pointerleave", resume);
-  toast.addEventListener("focusin", (e) => { if (e.target.matches(":focus-visible")) pause(); }); // a keyboard user; a mouse click leaves the button focused
-  toast.addEventListener("focusout", (e) => { if (!toast.contains(e.relatedTarget)) resume(); });
+  const settle = () => { clearTimeout(timer); arm(); };
+  toast.addEventListener("pointerenter", () => { overPointer = true; settle(); });
+  toast.addEventListener("pointerleave", () => { overPointer = false; settle(); });
+  toast.addEventListener("focusin", (e) => { if (e.target.matches(":focus-visible")) { overFocus = true; settle(); } }); // a keyboard user; a mouse click leaves the button focused
+  toast.addEventListener("focusout", (e) => { if (!toast.contains(e.relatedTarget)) { overFocus = false; settle(); } });
+  toast.addEventListener("keydown", (e) => { if (e.key === "Escape" && overFocus) { e.stopPropagation(); app.vp.canvas.focus(); } }); // Escape hands the keyboard back to the view
   off = store.on((kind) => { if (kind === "preview") return; if (kind === "load") close(); else refresh(); });
   refresh();
   document.getElementById("toasts").append(toast);
