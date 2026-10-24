@@ -181,7 +181,7 @@ test("an edit made just before the tab closes is kept, and applied on the next v
   const rescued = await page.evaluate((k) => {
     window.__store.update((d) => { d.name = "Edited at the close"; }, "Rename");
     window.dispatchEvent(new Event("beforeunload"));
-    return JSON.parse(localStorage.getItem(k));
+    return JSON.parse(localStorage.getItem(Object.keys(localStorage).find((x) => x.startsWith(k + "."))));
   }, RESCUE);
   expect(rescued.id).toBe(doc.id);
   expect(JSON.parse(rescued.doc).name).toBe("Edited at the close");
@@ -316,7 +316,7 @@ test("IndexedDB that opens late takes over from localStorage: nothing lost, noth
 
 // Shared setup for the slow-open cases below: a design that IndexedDB holds in a newer version than the copy an earlier
 // visit left in localStorage (a design moved over once keeps its old copy). Returns the page, ready to open slowly.
-async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = false } = {}) {
+async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = false, future = false } = {}) {
   const p1 = await context.newPage();
   const errs = await prepare(p1);
   await boot(p1, info);
@@ -326,6 +326,10 @@ async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = 
     localStorage.setItem("workplane.doc.v1." + id, JSON.stringify(old));
     localStorage.setItem("workplane.index.v1", JSON.stringify([{ id, name: old.name, ver: 0, mode: "beginner", updated: old._updated, thumb: null }]));
   }, [id, same]);
+  if (future) await p1.evaluate(async (id) => { // IndexedDB's version is stamped later than anything the slow page will save (a tab with a faster clock)
+    const s = window.__app.projects._store, cur = JSON.parse(await s.get(id)), ent = await s.entry(id), t = cur._updated + 3_600_000;
+    await s.put(id, JSON.stringify({ ...cur, name: "Fast future", _updated: t }), { ...ent, name: "Fast future", updated: t });
+  }, id);
   await p1.close();
   const p2 = await context.newPage();
   errs.push(...await prepare(p2));
@@ -435,6 +439,17 @@ test("a slow IndexedDB: deleting the older copy never removes a newer one in Ind
   expect(errors).toEqual([]);
 });
 
+test("a slow IndexedDB: a version saved on localStorage that is older than IndexedDB's different one is kept as a copy", async ({ context }, info) => {
+  const id = "t_Late_Older";
+  const [p, errors] = await newerInIdbOlderInLocal(context, info, id, { future: true });
+  expect(await p.evaluate(() => { window.__store.update((d) => { d.name = "Slow mine"; }, "Rename"); return window.__app.projects.saveNow(); })).toBe(true); // saved on localStorage
+  await p.evaluate(() => window.__releaseIdb());
+  await p.waitForFunction(() => window.__app.projects._store.kind === "idb", null, { timeout: 20_000 });
+  await expect.poll(() => idbNames(p), { timeout: 15_000 }).toEqual(["Fast future", "Slow mine (before fallback)"]); // nothing dropped because its stamp is older
+  await p.waitForFunction(() => window.__store.doc.name === "Fast future", null, { timeout: 10_000 }); // the tab shows the design as IndexedDB has it; its own version is the copy
+  expect(errors).toEqual([]);
+});
+
 test("a slow IndexedDB: a save that starts while the copy runs keeps the newer stored design", async ({ context }, info) => {
   const id = "t_Late_During";
   const [p, errors] = await newerInIdbOlderInLocal(context, info, id, { hook: true });
@@ -474,7 +489,7 @@ test("a slow IndexedDB: when keeping the newer copy fails, nothing is overwritte
   expect(errors).toEqual([]);
 });
 
-test("a rescue copy made on an older base keeps the newer stored design as \"(before fallback)\"", async ({ page }, info) => {
+test("a rescue copy made on an older base keeps the newer stored design as \"(other tab)\"", async ({ page }, info) => {
   const errors = await prepare(page);
   await boot(page, info);
   const id = "t_Rescue_Base";
@@ -484,13 +499,15 @@ test("a rescue copy made on an older base keeps the newer stored design as \"(be
   const written = await page.evaluate((k) => {
     window.__store.update((d) => { d.name = "Rescue base edited"; }, "Rename");
     window.dispatchEvent(new Event("beforeunload"));
-    return JSON.parse(localStorage.getItem(k));
+    const key = Object.keys(localStorage).find((x) => x.startsWith(k + "."));
+    return { ...JSON.parse(localStorage.getItem(key)), key };
   }, RESCUE);
-  expect(typeof written.base).toBe("number");
+  expect(typeof written.base.at).toBe("number");
+  expect(written.base.rev).toMatch(/^t.+:\d+$/);
   await page.waitForTimeout(1600);
   await page.evaluate(() => window.__app.projects.saveNow());
-  await page.evaluate((k) => localStorage.removeItem(k), RESCUE);
-  // a rescue copy whose base is older than the stored design (another visit saved since), and one whose base is the stored design
+  await page.evaluate((k) => localStorage.removeItem(k), written.key);
+  // a rescue copy whose base is older than the stored design (another visit saved since), and one whose base is the stored design (the older single-key format, with a bare stamp as the base)
   const stored = JSON.parse(await rawRead(page, "docs", id));
   const rescue = (name, base) => page.evaluate(([k, id, stored, name, base]) => {
     const next = { ...stored, name, _updated: stored._updated + 50_000 };
@@ -507,6 +524,6 @@ test("a rescue copy made on an older base keeps the newer stored design as \"(be
   }, [RESCUE, id, now]);
   await boot(page, info);
   expect(JSON.parse(await rawRead(page, "docs", id)).name).toBe("Rescue old base");
-  expect(await idbNames(page)).toEqual(["Rescue old base", "Rescue same base (before fallback)"]);
+  expect(await idbNames(page)).toEqual(["Rescue old base", "Rescue same base (other tab)"]);
   expect(errors).toEqual([]);
 });
