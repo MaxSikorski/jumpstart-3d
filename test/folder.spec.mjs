@@ -3,7 +3,7 @@
 // showDirectoryPicker hands out a real directory handle from the browser's private file system (OPFS), which can be
 // stored in IndexedDB like a picked folder. OPFS never asks for permission, so a lapsed permission is stubbed.
 import { test, expect } from "@playwright/test";
-import { boot, reload, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { boot, reload, buildOf, browserOf, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
 
 const DB = "jumpstart3d-projects";
 const box = (w, d, h) => prim("box", { w, d, h, r: 0, c: 0 });
@@ -28,10 +28,10 @@ const refuse = (page) => page.addInitScript((name) => {
   IDBFactory.prototype.open = function (n, ...rest) { if (n === name) throw new DOMException("The operation is insecure.", "SecurityError"); return real.call(this, n, ...rest); };
 }, DB);
 
-// the single file is opened from disk: if the browser has no private file system there, the cases that need one are skipped
+// The fake folder is an OPFS handle. The single file is opened from disk and Linux WebKit has no navigator.storage.getDirectory at all (no private file system: skipped), and Firefox's OPFS handles have no queryPermission, which the copier calls (skipped).
 const needOpfs = async (page, info) => {
-  const ok = await page.evaluate(() => navigator.storage.getDirectory().then(() => true, () => false));
-  test.skip(!ok && info.project.name === "single", "no origin private file system (OPFS) on file:// in this browser");
+  const ok = await page.evaluate(() => Promise.resolve().then(() => navigator.storage.getDirectory()).then(() => true, () => false));
+  test.skip(browserOf(info) === "firefox" || (!ok && (buildOf(info) === "single" || browserOf(info) === "webkit")), browserOf(info) === "firefox" ? "Firefox's private file system handles have no queryPermission, which the folder copier calls" : "no origin private file system (OPFS) in this browser");
 };
 
 const save = (page, doc) => loadDoc(page, doc).then(() => page.evaluate(() => window.__app.projects.saveNow()));

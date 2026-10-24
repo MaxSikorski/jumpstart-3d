@@ -69,6 +69,8 @@ export const ICON = {
   thread: S('<path d="M8 3h8v18H8z"/><path d="M8 6l8-2M8 10l8-2M8 14l8-2M8 18l8-2" stroke="#1f4fa8"/>'),
   gear: S('<circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5V6M12 18v3.5M2.5 12H6M18 12h3.5M5.3 5.3l2.5 2.5M16.2 16.2l2.5 2.5M5.3 18.7l2.5-2.5M16.2 7.8l2.5-2.5" stroke-width="2.6"/>'), // jumpstart-3d: gears
   tag: S('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="6.5" cy="12" r="1.3"/><path d="M10 10.5h7.5M10 13.5h5" stroke="#1f4fa8"/>'), // jumpstart-3d: name plates
+  knurl: S('<rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 3v18M12 3v18M15 3v18" stroke="#1f4fa8"/>'), // jumpstart-3d: knurl
+  spring: S('<path d="M7 4h10M7 20h10M8 4c6 1 6 3 0 4s-6 3 0 4 6 3 0 4-6 3 0 4" stroke="#1f4fa8"/>'), // jumpstart-3d: spring
   texture: S('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l6-6M3 15 15 3M3 21 21 3M9 21l12-12M15 21l6-6" stroke="#1f4fa8" stroke-width="1.3"/>'),
   scale: S('<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M13 11V5h6v6h-6" stroke-dasharray="2 1.6"/><path d="M14 10l6-6M16 4h4v4" stroke="#1f4fa8"/>'),
   align: S('<path d="M4 3v18"/><rect x="7" y="5" width="12" height="5" rx="1"/><rect x="7" y="14" width="7" height="5" rx="1"/>'),
@@ -94,6 +96,11 @@ export const ICON = {
   archFloor: S('<path d="M2 15 12 10l10 5-10 5z" stroke="#1f4fa8"/><path d="M2 15v2.5l10 5 10-5V15"/>'),
   archPlan: S('<path d="M3 3h18v18H3z"/><path d="M3 10h8v11M11 14h10M15 3v7" stroke="#1f4fa8"/>'),
   archXray: S('<path d="M4 20V8l8-5 8 5v12z" stroke-dasharray="2.5 2.5"/><path d="M10 20v-6h4v6" stroke="#1f4fa8"/>'),
+  archLand: S('<path d="M2 18c3-5 5-7 8-4s5 1 7-1 4-1 5 1v6H2z"/><path d="M5 20c2-1 4-1 6 0s4 1 6 0" stroke="#3d8fd6"/><circle cx="17" cy="6" r="2.5" stroke="#4c8c39"/><path d="M17 8.5V12" stroke="#6b4a2b"/>'),
+  archSim: S('<path d="M7 13a4 4 0 0 1 .5-8 5 5 0 0 1 9.5 1.5A3.3 3.3 0 0 1 17 13z"/><path d="M8 15.5l-1 2.5M12 15.5l-1 2.5M16 15.5l-1 2.5" stroke="#3d8fd6"/><path d="M3 21c2-1.3 4-1.3 6 0s4 1.3 6 0 4-1.3 6 0" stroke="#3d8fd6"/>'),
+  archFinish: S('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 14h18M9 4v5M15 9v5M9 14v6" stroke="#a85b48"/>'),
+  archPlanDoc: S('<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 11h7v6H9zM12 11v3" stroke="#1f4fa8"/>'),
+  archExport: S('<path d="M4 15v5h16v-5"/><path d="M12 3v12M8 11l4 4 4-4" stroke="#1f4fa8"/>'),
   archSend: S('<path d="M3 13 12 6l9 7"/><path d="M6 11v8h7"/><path d="M15 17h6M18.5 14.5 21 17l-2.5 2.5" stroke="#1f4fa8"/>'),
   facePattern: S('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 6.5l2 1.2v2.3l-2 1.2-2-1.2V7.7z M16 6.5l2 1.2v2.3l-2 1.2-2-1.2V7.7z M12 13l2 1.2v2.3l-2 1.2-2-1.2v-2.3z" stroke="#1f4fa8"/>'),
   voxel: S('<path d="M4 9l4-2 4 2-4 2z M4 9v5l4 2v-5 M12 9v5l-4 2"/><path d="M12 9l4-2 4 2-4 2z M12 9v5l4 2v-5 M20 9v5l-4 2" stroke="#1f4fa8"/><path d="M8 7V3l4-1 4 1v4"/>'),

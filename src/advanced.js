@@ -29,9 +29,11 @@ import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
-import { snapSwitch, makeGizmo, axisAlong, ringDrag, turnFeedback, placePill } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { snapSwitch, fine, makeGizmo, axisAlong, ringDrag, turnFeedback, placePill } from "./rotationui.js"; // jumpstart-3d: rotation access
 import { liveGizmo, onEscape } from "./pivot.js"; // jumpstart-3d: pivot
 import { initNamePlate } from "./nameplate.js"; // jumpstart-3d: name plates
+import { initKnurl } from "./knurl.js"; // jumpstart-3d: knurl
+import { initSpring } from "./spring.js"; // jumpstart-3d: spring
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
 
@@ -4495,7 +4497,7 @@ export function initAdvanced(app) {
         }
       },
       ok() { commit(def, st.copy ? "Copy" : "Move"); },
-      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it 1° (Shift: 15°). Choose Free in 3D to rotate around any axis. Ring drags turn in 15° steps (Shift or Free: any angle).") : "Click the shapes or a sketch to move.", // jumpstart-3d: rotation access (15° steps in both hints)
+      hint: () => st.ids.length || st.sketch ? (st.drag === "screen" ? "Drag the shape to move it in 3D, an arrow to move along an axis, or a ring to rotate (15° steps; hold Shift or choose Free for any angle). Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it " + fine.step + "°. Or type exact values." : "Drag the shape to move it on the ground, an arrow to move along an axis, or the blue ring to turn it. Arrow keys move it as it looks on screen (Ctrl+↑↓ up and down); , and . turn it " + fine.step + "° (Shift: 15°). Choose Free in 3D to rotate around any axis. Ring drags turn in 15° steps (Shift or Free: any angle).") : "Click the shapes or a sketch to move.", // jumpstart-3d: rotation access (15° steps in both hints)
       build(body) {
         body.append(pickbox(true, st.ids.length ? el("span", {}, el("b", {}, st.ids.length), ` bod${st.ids.length > 1 ? "ies" : "y"}`) : st.sketch ? el("b", {}, findSketch(store.doc, st.sketch).name || "Sketch") : "Click bodies or a sketch", st.ids.length || st.sketch ? () => { st.ids = []; st.sketch = null; changed(); } : null));
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
@@ -4597,9 +4599,14 @@ export function initAdvanced(app) {
     };
     // , and . : turn 1° (Shift: 15°) around the ring last dragged (the blue Z ring at first)
     def.turnKey = (e) => {
-      if ((!st.ids.length && !st.sketch) || e.ctrlKey || e.metaKey || e.altKey) return false;
-      const ringObj = keyRing || rings[2], axis = ringObj.userData.dir.clone();
-      const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+      if (e.ctrlKey || e.metaKey || e.altKey) return false;
+      return def.turnBy((e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step), keyRing || rings[2]); // jumpstart-3d: fine rotation. the step chosen in the status bar
+    };
+    // jumpstart-3d: fine rotation. the status bar's − / + too: s degrees around a ring (the blue Z one at first), added to the pending turn
+    def.turnBy = (s, ringObj, axisName) => {
+      if (!st.ids.length && !st.sketch) return false;
+      ringObj = axisName ? rings.find((r) => r.userData.axis === "rot-" + axisName) : ringObj;
+      const axis = ringObj.userData.dir.clone();
       st.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, (s * Math.PI) / 180));
       const ang = eulerDeg();
       angInputs.forEach((f, i) => f.setValue(ang[i]));
@@ -5657,6 +5664,8 @@ export function initAdvanced(app) {
         { id: "ad-fastener", label: "Fastener", title: "Bolts, nuts, threaded rods and tap cutters, metric and inch", icon: "thread", fn: () => fasteners.cmd() }, // jumpstart-3d: fasteners
         { id: "ad-gear", label: "Gear", title: "Spur gears, bevel gears and racks by module and tooth count", icon: "gear", fn: () => gears.cmd() }, // jumpstart-3d: gears
         { id: "ad-nameplate", label: "Name plate", title: "A tag or name plate sized to its text, with raised or cut-in letters", icon: "tag", fn: () => namePlate.cmd() }, // jumpstart-3d: name plates
+        { id: "ad-knurl", label: "Knurled knob", title: "A knob or grip with straight V grooves all round and an optional round, hex or D bore", icon: "knurl", fn: () => knurl.cmd() }, // jumpstart-3d: knurl
+        { id: "ad-spring", label: "Spring", title: "A compression spring of round wire, with open ends or ends cut flat", icon: "spring", fn: () => spring.cmd() }, // jumpstart-3d: spring
       ] },
       { id: "ad-prims", label: "Primitives", title: "Box, cylinder, sphere, torus, prism and more", icon: "box", dropdown: [
         { id: "ad-box", label: "Box", icon: "box", fn: () => primCmd("box") },
@@ -6100,6 +6109,8 @@ export function initAdvanced(app) {
   const holePattern = initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv, offsetSelect, pitchRow, planeFromFace, CLEAR, CBORE, CSINK, TAP, isInchKey }); // jumpstart-3d: hole pattern
   const gears = initGears(app, { openCmd, commit, row, seg }); // jumpstart-3d: gears
   const namePlate = initNamePlate(app, { openCmd, commit, row, seg }); // jumpstart-3d: name plates
+  const knurl = initKnurl(app, { openCmd, commit, row, seg }); // jumpstart-3d: knurl
+  const spring = initSpring(app, { openCmd, commit, row, seg }); // jumpstart-3d: spring
   // section analysis: lives on after its dialog closes; a chip in the view shows it is on
   const section = (app.section = initSection(app, vp, scene));
   const secChip = el("div", { class: "section-chip", id: "section-chip", hidden: true },
@@ -6232,5 +6243,7 @@ export function initAdvanced(app) {
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
     namePlate: () => namePlate.cmd(), addNamePlate: (spec) => namePlate.add(spec), // jumpstart-3d: name plates
+    knurl: () => knurl.cmd(), addKnurl: (spec) => knurl.add(spec), // jumpstart-3d: knurl
+    spring: () => spring.cmd(), addSpring: (spec) => spring.add(spec), // jumpstart-3d: spring
   };
 }

@@ -11,7 +11,7 @@ const USAGE = `jumpstart: run scripts and make files with JumpStart 3D, in a hea
 
 Usage:
   jumpstart run <script.js> [--app <url|file|dir>]        run a script (JS3D in scope); prints its return value as JSON
-  jumpstart export <project.json> <out.stl|obj|3mf|step>  open a project and write an export file
+  jumpstart export <project.json> <out.stl|obj|3mf|glb|step>  open a project and write an export file
   jumpstart shot <project.json> <out.png> [--width N]     write a picture of the 3D view (default 800 pixels wide)
   jumpstart status [--app <url|file|dir>]                 start the app and print its versions and design as JSON
 
@@ -22,7 +22,7 @@ JS3D_VIEWPORT sets the window size (default 1000x700). Needs Chromium: npx playw
 Results are JSON on stdout. Exit codes: 0 ok, 1 the script or the app failed, 2 bad usage.`;
 
 const LONG = { timeoutMs: 600_000 }; // exports, pictures and scripts of big designs can take minutes
-const KINDS = new Set(["stl", "obj", "3mf", "step"]);
+const KINDS = new Set(["stl", "obj", "3mf", "glb", "step"]);
 const ARITY = { run: 1, export: 2, shot: 2, status: 0 }; // how many arguments each command takes
 
 class Usage extends Error {} // bad usage: exit 2
@@ -52,7 +52,7 @@ const COMMANDS = {
   async export([project, out]) {
     if (!project || !out) throw new Usage("export needs a project file and an output file");
     const kind = extname(out).slice(1).toLowerCase();
-    if (!KINDS.has(kind)) throw new Usage(`export writes .stl, .obj, .3mf or .step, not "${extname(out) || out}"`);
+    if (!KINDS.has(kind)) throw new Usage(`export writes .stl, .obj, .3mf, .glb or .step, not "${extname(out) || out}"`);
     const text = await readFile(where(project), "utf8");
     return async (s) => { await s.call("load", [text], LONG); return save(out, await s.call("export", [kind, {}], LONG)); };
   },

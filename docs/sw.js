@@ -1,6 +1,6 @@
 // jumpstart-3d: offline. The hosted site's service worker: keeps the page, the app, the worker and the geometry engine on this computer, so the next visit opens at once and works without a connection.
 // Never remove sw.js from the site: a 404 on the update check keeps the old worker serving its cache forever; to retire it, publish a sw.js that calls self.registration.unregister().
-const VERSION = "bbea2f80d0"; // build.mjs replaces this line with a hash of the files below and the fonts
+const VERSION = "7e319ad8b1"; // build.mjs replaces this line with a hash of the files below and the fonts
 const CACHE = "jumpstart-3d-" + VERSION;
 const FILES = ["./", "app.js", "worker.js", "occt-gz.wasm"];
 const FONTS = ["fonts/barlow-condensed-500.woff2","fonts/barlow-condensed-600.woff2","fonts/barlow-condensed-700.woff2","fonts/chakra-petch-500.woff2","fonts/chakra-petch-600.woff2","fonts/chakra-petch-700.woff2","fonts/ibm-plex-mono-400.woff2","fonts/ibm-plex-mono-500.woff2","fonts/ibm-plex-sans-400.woff2","fonts/ibm-plex-sans-500.woff2","fonts/ibm-plex-sans-600.woff2","fonts/ibm-plex-sans-condensed-500.woff2","fonts/ibm-plex-sans-condensed-600.woff2"]; // build.mjs puts the font files (fonts/*.woff2) here: offline, the page keeps its own lettering

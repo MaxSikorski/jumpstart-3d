@@ -9,10 +9,30 @@ export const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 // "Failed to load resource" text has no URL in it, so the check is on the message's location.
 const FONT_HOSTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 
+// Known noise in one browser, matched by the exact message: WebKit reports a harmless ResizeObserver note as a page error, logs a refused blob:null
+// fetch on a file:// page (the engine still starts; the kernel test would fail if it did not), refuses port 1, which chat.spec uses as "no server there", and Firefox logs the blocked request to remote.spec's unreachable fake server (dav.example.test).
+const NOISE = [
+  { project: /-webkit$/, message: /^ResizeObserver loop completed with undelivered notifications\.$/ },
+  { project: /^single-webkit$/, message: /^Cannot load blob:null\/[0-9a-f-]{36}\.$/ },
+  { project: /-firefox$/, message: /^\[JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https:\/\/dav\.example\.test\/dav\/jumpstart\/[\w.-]*\. \(Reason: CORS request did not succeed\)\. Status code: \(null\)\."\]$/ },
+  { project: /-webkit$/, message: /^Not allowed to use restricted network port 1: http:\/\/127\.0\.0\.1:1\/api\/chat$/ },
+];
+
+// The projects are named <build> or <build>-<browser>: "site", "single-firefox", "site-webkit".
+export const buildOf = (info) => info.project.name.split("-")[0];
+export const browserOf = (info) => info.project.name.split("-")[1] || "chromium";
+
+// A quarantined test skips in the named projects only; the comment above it starts with "// quarantined:" (see test/README.md).
+export const quarantine = (info, projects, why) => test.skip(projects.includes(info.project.name), why);
+
+export const isKnownNoise = (project, text) => NOISE.some((n) => n.project.test(project) && n.message.test(text));
+
 export function watchErrors(page) {
   const errors = [];
-  page.on("pageerror", (e) => errors.push("page: " + e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !FONT_HOSTS.test(m.location().url || "")) errors.push("console: " + m.text().slice(0, 300)); });
+  const project = test.info().project.name;
+  const noise = (text) => isKnownNoise(project, text);
+  page.on("pageerror", (e) => { if (!noise(e.message)) errors.push("page: " + e.message); });
+  page.on("console", (m) => { if (m.type() === "error" && !FONT_HOSTS.test(m.location().url || "") && !noise(m.text())) errors.push("console: " + m.text().slice(0, 300)); });
   return errors;
 }
 

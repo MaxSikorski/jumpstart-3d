@@ -1,6 +1,6 @@
 # Everything too slow to hold up a pull request, every night at 07:00 UTC and on demand (see test/README.md):
 # the full Playwright suite on both builds, the golden exports with the export judge, the chat geometry scorer, the fuzzer,
-# and the same suite in Firefox and WebKit (not blocking yet).
+# the loading check (Lighthouse, not blocking yet), and the same suite in Firefox and WebKit (not blocking yet).
 # When a blocking job fails, the last job opens (or updates) one issue titled "Nightly failures" with the failing specs and the run link, using this run's GITHUB_TOKEN. It closes nothing.
 # Run it by hand on any branch, a pull request's too: `gh workflow run nightly.yml --ref <branch>`. No secrets, no model: the chat judge drives a mock.
 # To prove a branch with one job instead of the full run: `gh workflow run nightly.yml --ref <branch> -f specs="test/gltf.spec.mjs"` (job `selected specs`; see test/README.md).
@@ -29,7 +29,7 @@ jobs:
   # With `specs` set this is the only job that runs: the chosen spec files on the chosen projects, about two jobs of runner instead of the full run's twenty.
   selected:
     name: selected specs
-    if: ${{ inputs.specs != '' }}
+    if: ${{ inputs.specs != '' && inputs.specs != 'lighthouse' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -58,13 +58,20 @@ jobs:
           [[ "$PROJECTS" == *firefox* ]] && browsers="$browsers firefox"
           [[ "$PROJECTS" == *webkit* ]] && browsers="$browsers webkit"
           if [ "$browsers" = chromium ]; then npx playwright install chromium; else npx playwright install --with-deps $browsers; fi
+      # Headless Firefox on the runner finds no GL driver; the cross job below explains the Xvfb + Mesa route
+      - name: Virtual screen for Firefox
+        if: ${{ contains(inputs.projects, 'firefox') }}
+        timeout-minutes: 5
+        run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
       - run: node build.mjs
       - name: Run the selected specs
         run: |
           read -ra specs <<< "$SPECS"
           args=()
           for p in $PROJECTS; do args+=(--project "$p"); done
-          npx playwright test "${specs[@]}" "${args[@]}"
+          run=(npx playwright test "${specs[@]}" "${args[@]}")
+          if [[ "$PROJECTS" == *firefox* ]]; then run=(xvfb-run -a -s "-screen 0 1400x900x24" "${run[@]}"); fi
+          "${run[@]}"
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -311,6 +318,37 @@ jobs:
           retention-days: 7
           overwrite: true
 
+  # Loading check: Lighthouse (mobile preset) on the built site, three cold loads, medians against lighthouse-budget.json (tools/lighthouse.mjs, test/README.md).
+  # NOT BLOCKING until a baseline recorded on this runner is committed: with no baseline the script only reports and exits 0.
+  # To switch enforcement on: collect summary.json from five runs, `node tools/lighthouse.mjs --record-from <the five>`, review and commit lighthouse-budget.json, then delete the continue-on-error line below.
+  # Also runs alone with `-f specs=lighthouse`. Needs Node 22.19 or newer (Lighthouse 13), which setup-node's "22" gives.
+  lighthouse:
+    name: lighthouse loading check
+    if: ${{ inputs.specs == '' || inputs.specs == 'lighthouse' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: node build.mjs
+      - run: node tools/lighthouse.mjs
+      - if: ${{ !cancelled() }}
+        run: test -f lighthouse-report/summary.md && cat lighthouse-report/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-report
+          path: lighthouse-report/
+          retention-days: 30
+          overwrite: true
+
   # The same suite in Firefox and WebKit, on the site and the single file. NOT BLOCKING while it settles: continue-on-error keeps the run green
   # and the report job lists the failing specs in a section of their own. To make them count, drop continue-on-error and set CROSS_BLOCKING=1 on the report job.
   # The golden exports and the chat judge stay Chromium only (the export files and the mock clock do not depend on the browser).
@@ -318,7 +356,7 @@ jobs:
     name: ${{ matrix.browser }} ${{ matrix.build }} (${{ matrix.shard }}/${{ matrix.total }})
     if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -341,10 +379,27 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       # these two browsers need the system libraries, unlike Chromium on the runner image
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # the runner's apt mirror now and then stalls this step for the whole 14 minutes (4 of 12 jobs on 2026-10-23: the default mirror served the 117 MB at ~50 KB/s).
+      # Tried three times, 4 minutes each; after a stall the retries use archive.ubuntu.com, as tools/install-judge-tools.sh does, with leftover apt processes and locks cleared first
+      - run: |
+          for try in 1 2 3; do
+            timeout 240 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
+            echo "install attempt $try did not finish"
+            sudo pkill -9 -f '[a]pt-get|/usr/lib/apt/method[s]' || true
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+            sudo dpkg --configure -a || true
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+          done
+          exit 1
         timeout-minutes: 14
+      # Headless Firefox on the runner finds no GL driver at all; under a virtual screen (Xvfb) it gets WebGL from Mesa's software renderer (probed 2026-10-23)
+      - if: ${{ matrix.browser == 'firefox' }}
+        run: sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0 libegl1
+        timeout-minutes: 5
       - run: node build.mjs
-      - run: npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
+      # a step limit ends the step as a failure (not a cancel), so the uploads below still run; the job limit leaves room for install + Xvfb + this step
+      - timeout-minutes: 20
+        run: ${{ matrix.browser == 'firefox' && 'xvfb-run -a -s "-screen 0 1400x900x24" ' || '' }}npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -364,7 +419,7 @@ jobs:
 
   report:
     name: nightly failures issue
-    needs: [playwright, golden, judge, chat-judge, fuzz, cross]
+    needs: [playwright, golden, judge, chat-judge, fuzz, lighthouse, cross]
     # only the scheduled or full run on main writes the issue, never a selected-specs run or another branch
     if: ${{ always() && !cancelled() && inputs.specs == '' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04

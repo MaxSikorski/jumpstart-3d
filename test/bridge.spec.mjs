@@ -2,7 +2,7 @@
 // The calls run inside the page, so they are the same calls a console script or a tool server makes.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, exportBytes, sha256, stlTriangles } from "./helpers.mjs";
+import { boot, watchErrors, exportBytes, sha256, stlTriangles, quarantine } from "./helpers.mjs";
 
 const golden = JSON.parse(readFileSync(new URL("./golden.json", import.meta.url), "utf8"));
 const PNG = [0x89, 0x50, 0x4e, 0x47];
@@ -30,7 +30,7 @@ test("JS3D exists, lists the shape kinds, and does nothing until called", async 
   // the page is as it was after boot: the bridge edited nothing
   const state = await run(() => ({ bodies: __store.doc.bodies.length, undo: __store.undoStack.length, app: !!window.__app, findBody: typeof window.__findBody }));
   expect(state).toEqual({ bodies: 0, undo: 0, app: true, findBody: "function" });
-  expect(await run(() => JS3D.version)).toBe("1.6");
+  expect(await run(() => JS3D.version)).toBe("1.8");
   const kinds = await run(() => JS3D.kinds());
   expect(kinds.length).toBe(20);
   expect(kinds.find((k) => k.kind === "box").defaults).toEqual({ w: 20, d: 20, h: 20, r: 0, c: 0 });
@@ -291,8 +291,8 @@ test("select, mode, fit and history", async () => {
   expect(await run(() => { JS3D.select([]); return JS3D.selection(); })).toEqual([]);
   expect(await run(() => JS3D.mode())).toBe("beginner");
   expect(await run(() => { JS3D.setMode("advanced"); return [JS3D.mode(), __store.doc.mode]; })).toEqual(["advanced", "advanced"]);
-  expect(await run(() => { JS3D.setMode("arch"); return [JS3D.mode(), __store.doc.mode, __app.arch.active]; })).toEqual(["arch", "arch", true]); // Architechies
-  // a fit picture in Architechies frames the building (the hidden bodies are not in it): the view ends up centred above the ground, far back
+  expect(await run(() => { JS3D.setMode("arch"); return [JS3D.mode(), __store.doc.mode, __app.arch.active]; })).toEqual(["arch", "arch", true]); // Architect
+  // a fit picture in Architect frames the building (the hidden bodies are not in it): the view ends up centred above the ground, far back
   const png = bytes(await run(() => JS3D.screenshot({ fit: true })));
   expect([...png.subarray(0, 4)]).toEqual(PNG);
   const view = await run(() => ({ z: __app.vp.view.target.z, dist: __app.vp.view.dist }));
@@ -304,7 +304,9 @@ test("select, mode, fit and history", async () => {
   expect(await run(() => { const n = []; while (JS3D.undo()) n.push(1); return [n.length, JS3D.undo(), JS3D.redo()]; })).toEqual([1, null, "Add box"]);
 });
 
-test("export: each kind gives the right bytes, matching the Export menu", async () => {
+// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
+test("export: each kind gives the right bytes, matching the Export menu", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   await fresh();
   const ids = await run(() => {
     const a = JS3D.add("box", { size: [30, 30, 10] });

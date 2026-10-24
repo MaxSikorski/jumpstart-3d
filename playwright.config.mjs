@@ -22,10 +22,12 @@ if (process.env.JS3D_SKIP_CHATJUDGE === "1") BUILDS_IGNORE.push(/chatjudge\.spec
 if (process.env.JS3D_SKIP_GOLDEN === "1") BUILDS_IGNORE.push(/golden\.spec\.mjs/);
 
 const CROSS = process.env.JS3D_CROSS === "1";
+// Firefox on a Linux runner gets WebGL only from Mesa's software renderer under a virtual screen (the nightly workflow runs it with xvfb-run); the prefs force it on
+const firefoxPrefs = { "webgl.force-enabled": true, "webgl.disable-fail-if-major-performance-caveat": true };
 const crossProject = (build, browser, baseURL) => ({
   name: `${build}-${browser}`,
   testIgnore: BUILDS_IGNORE,
-  use: { ...devices[browser === "firefox" ? "Desktop Firefox" : "Desktop Safari"], viewport: { width: 1400, height: 880 }, launchOptions: {}, baseURL },
+  use: { ...devices[browser === "firefox" ? "Desktop Firefox" : "Desktop Safari"], viewport: { width: 1400, height: 880 }, launchOptions: browser === "firefox" ? { firefoxUserPrefs: firefoxPrefs } : {}, baseURL },
 });
 const singleURL = pathToFileURL("dist/jumpstart-3d.html").href;
 

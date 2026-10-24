@@ -7,6 +7,7 @@ export class KernelClient {
     this.inflight = null;
     this.ready = false;
     this.bad = new Set();
+    this.solo = new Set(); // jumpstart-3d: keys of bodies a timed-out batch is retrying one at a time
     this.req = 0;
     this.stepWaiters = new Map();
     this.assets = new Map(); // imported files (STL/STEP), sent to the worker once
@@ -24,8 +25,8 @@ export class KernelClient {
   }
   start() {
     this.ready = false;
-    this.worker = new Worker(this.workerUrl, this.workerType === "classic" ? {} : { type: "module" });
-    this.worker.onmessage = (ev) => this.handle(ev.data);
+    const w = (this.worker = new Worker(this.workerUrl, this.workerType === "classic" ? {} : { type: "module" })); // jumpstart-3d: w
+    this.worker.onmessage = (ev) => w === this.worker && this.handle(ev.data); // jumpstart-3d: ignore a late reply from a terminated worker
     this.worker.onerror = (e) => { this.onFail && this.onFail(e.message || "The geometry engine failed to start"); };
     this.worker.postMessage({ type: "init", parts: this.parts });
   }
@@ -35,12 +36,14 @@ export class KernelClient {
     else if (msg.type === "built") {
       clearTimeout(this.watchdog);
       for (const r of msg.results) {
+        this.solo.delete(r.rev); // jumpstart-3d
         r.key = r.rev;
         delete r.rev;
         this.meshes.set(r.key, r);
         if (this.meshes.size > 160) this.meshes.delete(this.meshes.keys().next().value);
       }
       this.inflight = null;
+      this.perf && this.perf.done(msg.results); // jumpstart-3d: perf panel
       this.onResults && this.onResults(msg.results);
       this.pump();
     } else if (msg.type === "step") {
@@ -54,8 +57,10 @@ export class KernelClient {
       clearTimeout(this.watchdog);
       const items = this.inflight || [];
       this.inflight = null;
+      items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
       res.forEach((r) => this.meshes.set(r.key, r));
+      this.perf && this.perf.done(res); // jumpstart-3d: perf panel
       this.onResults && this.onResults(res);
       this.pump();
     }
@@ -77,36 +82,50 @@ export class KernelClient {
   }
   // drop queued work nobody needs any more
   prune(neededKeys) {
-    for (const k of [...this.queue.keys()]) if (!neededKeys.has(k)) this.queue.delete(k);
+    this.needed = neededKeys; // jumpstart-3d: stalled() skips timed-out bodies that a newer edit replaced
+    for (const k of [...this.queue.keys()]) if (!neededKeys.has(k)) { this.queue.delete(k); this.solo.delete(k); }
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
     // send small batches so the screen updates progressively
-    // heavy parts (imported meshes, 3D Sketch tubes along free curves) go one at a time, each with
+    // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
-    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
+    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
     const batch = [];
     for (const [k, it] of this.queue) {
-      if (batch.length && (heavy(it) || heavy(batch[0]))) break;
+      const alone = (b) => heavy(b) || this.solo.has(b.key); // jumpstart-3d: a retried body also goes alone
+      if (batch.length && (alone(it) || alone(batch[0]))) break;
       batch.push(it); this.queue.delete(k);
-      if (batch.length >= 4 || heavy(it)) break;
+      if (batch.length >= 4 || alone(it)) break;
     }
     this.inflight = batch;
+    this.perf && this.perf.start(); // jumpstart-3d: perf panel
     const req = ++this.req;
     this.worker.postMessage({ type: "build", req, quality: this.quality || 1, bodies: batch.map((b) => ({ id: b.id, rev: b.key, node: b.node })) });
     // map results back by rev = key
     clearTimeout(this.watchdog);
     // imported meshes take longer to turn into solids: give them more time
     const slow = batch.some(heavy);
-    this.watchdog = setTimeout(() => this.stalled(batch), (slow ? 120000 : 25000) * (this.quality || 1));
+    this.watchdog = setTimeout(() => this.stalled(batch), this.watchdogMs || (slow ? 120000 : 25000) * (this.quality || 1)); // jumpstart-3d: watchdogMs is a test-only override
     this.onBusy && this.onBusy(true);
   }
   stalled(batch) {
+    this.perf && this.perf.abort(batch); // jumpstart-3d: perf panel
     // OpenCascade occasionally loops forever on extreme fillets; restart the worker.
     try { this.worker.terminate(); } catch (e) {}
     // jumpstart-3d: load. a restart drops the old worker's STEP jobs: say so instead of waiting forever
     for (const w of this.stepWaiters.values()) w.reject(new Error("the geometry engine restarted. Try the export again"));
     this.stepWaiters.clear();
+    // jumpstart-3d: a slow device or busy runner can push a healthy batch of several bodies past the limit. Retry each body alone with its own full limit; only a body that stalls alone is marked bad.
+    if (batch.length > 1) {
+      const current = batch.filter((b) => !this.needed || this.needed.has(b.key)); // replaced bodies are dropped, not marked bad
+      for (const b of current) this.solo.add(b.key);
+      this.queue = new Map([...current.map((b) => [b.key, b]), ...this.queue]);
+      this.inflight = null;
+      this.start();
+      return;
+    }
+    this.solo.delete(batch[0].key);
     const res = batch.map((b) => {
       this.bad.add(b.key);
       return { id: b.id, key: b.key, ok: false, error: "This shape stalled the geometry engine. Undo the last change or adjust its values." };

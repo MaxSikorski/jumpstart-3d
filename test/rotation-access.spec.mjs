@@ -5,67 +5,18 @@
 //  - Advanced: one click on Modify > Move / Rotate shows the rings, the exact boxes, and OK commits one undo step.
 // Every turn is compared with a rotation worked out here from the box's own middle, never with the app's own matrix code.
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors, loadDoc, waitIdle, newDoc, body, prim } from "./helpers.mjs";
-
-const M0 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 30, -12, 5, 1]; // column-major: moved to (30, -12, 5), not turned
-const BOX = { w: 40, d: 24, h: 16, r: 0, c: 0 }; // three different sizes, so a turn about any axis changes the box
-const design = (mode) => newDoc("rotation access", mode, { bodies: [body("b1", "Box", prim("box", BOX), M0)] });
-
-// ---- the oracle: 4 x 4 column-major matrices
-const mul = (a, b) => { const o = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return o; };
-const tr = (x, y, z) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];
-const rot = (ax, deg) => {
-  const c = Math.cos((deg * Math.PI) / 180), s = Math.sin((deg * Math.PI) / 180), m = tr(0, 0, 0);
-  if (ax === "x") { m[5] = c; m[6] = s; m[9] = -s; m[10] = c; }
-  if (ax === "y") { m[0] = c; m[2] = -s; m[8] = s; m[10] = c; }
-  if (ax === "z") { m[0] = c; m[1] = s; m[4] = -s; m[5] = c; }
-  return m;
-};
-// the turn about the middle of the box, applied after the starting matrix
-const turned = (ax, deg, C, base = M0) => mul(mul(mul(tr(C[0], C[1], C[2]), rot(ax, deg)), tr(-C[0], -C[1], -C[2])), base);
-// the box after the turn: the same middle, the half-sizes mixed by cos and sin
-function turnedBox(ax, deg, box) {
-  const C = [0, 1, 2].map((i) => (box[i] + box[i + 3]) / 2), h = [0, 1, 2].map((i) => (box[i + 3] - box[i]) / 2);
-  const c = Math.abs(Math.cos((deg * Math.PI) / 180)), s = Math.abs(Math.sin((deg * Math.PI) / 180));
-  const [i, j] = { x: [1, 2], y: [0, 2], z: [0, 1] }[ax];
-  const n = h.slice();
-  n[i] = c * h[i] + s * h[j]; n[j] = s * h[i] + c * h[j];
-  return [...C.map((v, k) => v - n[k]), ...C.map((v, k) => v + n[k])];
-}
-// the angle a turn about one axis left in the matrix (the box started unturned)
-const angleOf = (ax, m) => (Math.atan2({ x: m[6], y: m[8], z: m[1] }[ax], { x: m[5], y: m[0], z: m[0] }[ax]) * 180) / Math.PI;
-const expectMatrix = (got, want) => { expect(got).toHaveLength(16); want.forEach((v, i) => expect(got[i], `m[${i}]`).toBeCloseTo(v, 6)); };
+import { boot, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { tablet, touchPage, touch, touchTo, M0, BOX, settle, design, mul, tr, rot, turned, turnedBox, angleOf, expectMatrix, boxNow as boxOf, expectBox as expectBoxOf, open as openOn, spotOnBox as spotOf } from "./rotation-oracle.mjs";
 
 let page, errors;
+const boxNow = (p = page) => boxOf(p);
+const expectBox = (want, p = page) => expectBoxOf(want, p);
+const open = (mode, p = page) => openOn(mode, p);
+const spotOnBox = (p = page) => spotOf(p);
 const run = (fn, arg) => page.evaluate(fn, arg);
 const matrix = () => run(() => window.__store.doc.bodies[0].m);
 const previewMatrix = () => run(() => (window.__store.preview ? window.__store.preview.bodies[0].m : null));
 const undoDepth = () => run(() => window.__store.undoStack.length);
-const boxNow = (p = page) => p.evaluate(() => { const b = window.__app.scene.bodyTightBox("b1"); return b ? [...b.min.toArray(), ...b.max.toArray()] : null; });
-const boxGap = async (want, p) => { const b = await boxNow(p); return b ? Math.max(...b.map((v, i) => Math.abs(v - want[i]))) : Infinity; }; // the worst gap to the wanted box
-const expectBox = (want, p = page) => expect.poll(() => boxGap(want, p), { timeout: 20_000 }).toBeLessThan(1e-3);
-const settle = async (p = page) => { // the camera stops moving, twice in a row
-  for (let ok = 0; ok < 2;) { await p.waitForTimeout(200); ok = (await p.evaluate(() => !window.__app.vp.isMoving())) ? ok + 1 : 0; }
-};
-
-async function open(mode, p = page) {
-  await loadDoc(p, design(mode));
-  await p.evaluate(() => window.__app.vp.fit(window.__app.scene.allBox()));
-  await settle(p);
-  return boxNow(p);
-}
-
-// a spot on the box's top face that shows the box (for a click or a tap)
-const spotOnBox = (p = page) => p.evaluate(() => {
-  const { vp, scene } = window.__app, b = scene.bodyTightBox("b1"), r = vp.canvas.getBoundingClientRect();
-  for (const fx of [0.5, 0.3, 0.7]) for (const fy of [0.5, 0.3, 0.7]) {
-    const v = vp.view.target.clone().set(b.min.x + fx * (b.max.x - b.min.x), b.min.y + fy * (b.max.y - b.min.y), b.max.z);
-    const [px, py] = vp.project(v), e = { clientX: r.left + px, clientY: r.top + py };
-    const top = document.elementFromPoint(e.clientX, e.clientY);
-    if (top === vp.canvas && scene.pickFace(e) && scene.pickFace(e).body === "b1") return { x: e.clientX, y: e.clientY };
-  }
-  return null;
-});
 async function clickBox() {
   const p = await spotOnBox();
   expect(p, "a visible spot on the box").not.toBeNull();
@@ -416,20 +367,6 @@ test("Advanced: a typed decimal angle turns by that much about the middle; comma
 });
 
 // ------------------------------------------------------------------------------------------------ touch (Chromium: real touch events through the DevTools protocol)
-const tablet = { viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1, serviceWorkers: "block" };
-async function touchPage(browser, info, options) {
-  const ctx = await browser.newContext(options);
-  const p = await ctx.newPage();
-  const errs = watchErrors(p);
-  await boot(p, info);
-  const cdp = await ctx.newCDPSession(p);
-  return { ctx, p, cdp, errs };
-}
-const touch = (cdp, type, pts) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts.map((q, i) => ({ x: q.x, y: q.y, id: q.id ?? i })) });
-async function touchTo(cdp, from, to, steps = 10) {
-  for (let i = 1; i <= steps; i++) await touch(cdp, "touchMove", [{ x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps }]);
-}
-
 test("touch (tablet): the Snap 15 / Free switch changes what a finger drag turns; a press 14 px off the arc still picks that arc; the buttons are 44 px", async ({ browser, browserName }, info) => {
   test.skip(browserName !== "chromium", "touch events through the DevTools protocol");
   const { ctx, p, cdp, errs } = await touchPage(browser, info, tablet);

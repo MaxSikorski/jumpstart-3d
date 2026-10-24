@@ -63,7 +63,7 @@ test("status prints the app and JS3D versions as JSON", () => {
   assert.equal(r.status, 0, r.stderr);
   const st = JSON.parse(r.stdout);
   assert.match(st.app, /^\d/);
-  assert.equal(st.js3d, "1.6");
+  assert.match(st.js3d, /^1\.\d+$/); // any 1.x: a new bridge call bumps the minor version without an mcp/ change
   assert.equal(st.bodies, 0);
   assert.equal(typeof st.design, "string");
   assert.match(st.url, /^http:\/\/127\.0\.0\.1:\d+\//);

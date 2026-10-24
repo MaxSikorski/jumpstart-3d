@@ -142,7 +142,7 @@ button { cursor: pointer; }
 .modeswitch #mode-arch::before { background: #c0574a; clip-path: polygon(50% 0, 100% 45%, 100% 100%, 0 100%, 0 45%); border-radius: 0; width: 9px; height: 9px; }
 .modeswitch .beta { font: 700 8.5px/1 var(--f-ui); letter-spacing: .06em; padding: 2px 4px; border-radius: 4px; background: #d6a44e; color: #1b1407; margin-left: -2px; vertical-align: super; }
 /* Chisel: the sculpting app over the work area, under the top bar */
-.chisel-host { position: fixed; left: 0; right: 0; bottom: 0; top: calc(46px + env(safe-area-inset-top, 0px)); z-index: 40; background: var(--paper); }
+.chisel-host { position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--topbar-h, 46px) + env(safe-area-inset-top, 0px)); z-index: 40; background: var(--paper); }
 /* Chisel's Easy / Pro switch, hanging just under the Chisel button */
 .chisel-level { position: fixed; z-index: 42; display: inline-flex; gap: 2px; padding: 3px; border-radius: 0 0 12px 12px; background: var(--block); box-shadow: 0 6px 16px var(--shadow); }
 .chisel-level[hidden] { display: none; }
@@ -153,7 +153,7 @@ button { cursor: pointer; }
 :root[data-ui="contrast"] .chisel-level button[aria-pressed="true"] { background: var(--accent); color: #000; }
 .chisel-host[hidden] { display: none; }
 .chisel-host iframe { width: 100%; height: 100%; border: 0; display: block; }
-.toasts { z-index: 45 !important; }
+.toasts { z-index: 80 !important; } /* jumpstart-3d: above the .modal-back scrim (60) and the snap menu (70), so a failed-save toast shows over an open dialog; the 3D print sim (90) and full-screen layers stay above */
 #app[data-mode="chisel"] .toasts { position: fixed; }
 .expbadge { font: 700 9.5px/1 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: #1b1407; background: #d6a44e; border-radius: 4px; padding: 3px 5px; margin-left: 6px; }
 .modeswitch button[aria-pressed="true"] { background: var(--block-ink); color: var(--block); }
@@ -175,6 +175,8 @@ button { cursor: pointer; }
 .menu .menu-head { padding: 6px 10px 2px; font: 600 11px/1.2 var(--f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
 .menu .menu-note { padding: 4px 10px 6px; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); max-width: 250px; }
 #menu-theme { min-width: 270px; }
+/* jumpstart-3d: a menu taller than the space under the toolbar scrolls inside itself (46px toolbar + notch inset + 20px gap) instead of running off the window */
+.menu { max-height: calc(100vh - 46px - env(safe-area-inset-top, 0px) - 20px); max-height: calc(100dvh - 46px - env(safe-area-inset-top, 0px) - 20px); overflow-y: auto; overscroll-behavior: contain; }
 .exhead { font: 600 10.5px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding: 6px 10px 4px; }
 .menu .exopt { padding: 6px 10px; }
 .menu .exopt::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink-3); flex: none; align-self: center; box-sizing: border-box; }
@@ -528,6 +530,17 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 @media (max-width: 860px) { .pivpanel { top: auto; bottom: 54px; left: 10px; } }
 /* jumpstart-3d: rotation access (issue #100). The turn buttons and the Snap 15° / Free switch are 44 px targets for a finger */
 .rot-btn button { min-width: 44px; min-height: 44px; }
+/* jumpstart-3d: fine rotation (issue #87). The Turn control in the status bar; on a touch screen the bar gets taller and every target is 44 px */
+.turnctl { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
+@media (min-width: 601px) {
+  :root.touch-ui .status { min-width: 0; height: auto; min-height: 56px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; white-space: normal; overflow: visible; }
+  :root.touch-ui .status .hintline { flex: 1 1 220px; min-height: 18px; }
+  :root.touch-ui .status .hintline, :root.touch-ui .status #selinfo, :root.touch-ui .status .busy { white-space: nowrap; }
+  :root.touch-ui .status .snapctl { flex: 1 1 100%; flex-wrap: wrap; row-gap: 4px; } /* the controls always get their own row under the hint, so the bar keeps one height */
+  :root.touch-ui .turnctl button, :root.touch-ui .turnctl select { min-width: 44px; min-height: 44px; font-size: 16px; }
+  :root.touch-ui .turnctl button { padding: 0 10px; }
+}
+@media (max-width: 600px) { .turnctl { display: none; } } /* a phone keeps the plain status bar and turns with the rings and the Snap 15 / Free switch */
 .lockbar { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
 .lockbar svg { width: 18px; height: 18px; flex: none; }
 .lockbar .btn { margin-left: auto; padding: 4px 10px; }
@@ -837,6 +850,11 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 @media (max-width: 480px) { .modeswitch #mode-arch .ml { display: none; } .modeswitch #mode-arch .ms { display: inline; } }
 @media (max-width: 420px) { .modeswitch { gap: 0; padding: 2px; } .modeswitch button { padding: 4px 4px; font-size: 10px; } }
 @media (min-width: 861px) { .panel-toggle { display: none !important; } }
+/* jumpstart-3d: iPad width (issue #87). The top bar's controls sum to more than the screen in some window widths (899 px of controls at 801-898, 1029 at 961-1028, 1196 at 1101-1195 ...), which widened the whole page and scrolled it sideways. Tighter gaps keep a landscape iPad on one row; below that the bar wraps onto a second row instead of overflowing, and nothing is hidden */
+.topbar { flex-wrap: wrap; height: auto; min-height: 46px; row-gap: 4px; }
+.topbar .docname { flex: 4 1 60px; max-width: 220px; } /* a wrapping bar breaks lines by each item's basis: the name box starts small and takes what is left, as it did when it shrank */
+/* the two things below the bar (Chisel's host, the Lathe message) read its real height, --topbar-h, which app.js keeps; 46px is one row */
+@media (min-width: 561px) and (max-width: 1180px) { .topbar { gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
 /* simulate workspace */
@@ -969,7 +987,7 @@ body.s3d-on { overflow: hidden; }
 .lathe-pedal.down, .lathe-pedal.on { transform: translateY(4px); box-shadow: 0 1px 0 #15181b; background: linear-gradient(#3f8b4a, #26632f); }
 .lathe-lab { max-width: calc(100% - 24px); }
 .chisel-lathe-btn { margin-left: 6px; }
-.lathe-msg { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: #b33a00; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
+.lathe-msg { position: absolute; left: 50%; top: var(--topbar-h, 46px); transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: #b33a00; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
 .lathe-msg[hidden] { display: none; }
 .lathe-pedal.running { background: linear-gradient(#c8432b, #8f2a19); }
 body.s3d-on .tut-panel { z-index: 96; }
@@ -984,7 +1002,7 @@ body.s3d-on .tut-panel { z-index: 96; }
 .fp-tile small { font-size: 10px; line-height: 1.15; text-align: center; }
 .fp-tile[aria-pressed="true"] { border-color: var(--accent, #1f4fa8); box-shadow: 0 0 0 1px var(--accent, #1f4fa8) inset; background: color-mix(in srgb, var(--accent, #1f4fa8) 10%, var(--panel)); }
 .fp-tile svg { display: block; border-radius: 4px; }
-/* Architechies */
+/* Architect */
 #app[data-mode="arch"] #snap, #app[data-mode="arch"] #nav-sketches, #app[data-mode="arch"] #nav-appear { display: none; }
 .arch-panel { width: 292px; }
 .arch-panel header .arch-sub, .arch-elev header .arch-sub { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -996,6 +1014,25 @@ body.s3d-on .tut-panel { z-index: 96; }
 .arch-chips .btn { padding: 3px 8px; font-size: 12px; }
 .arch-cat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
 .arch-cat.roofs { grid-template-columns: repeat(3, 1fr); }
+.arch-cat.land { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.arch-cat.land .btn { padding: 5px 4px; font-size: 12px; }
+.arch-cat.land .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.arch-cat.ground, .arch-cat.plants { grid-template-columns: repeat(3, 1fr); }
+.arch-swatch { display: block; width: 34px; height: 20px; border-radius: 5px; border: 1px solid var(--line); }
+#ar-fin-color { width: 44px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.check.dis { opacity: .5; }
+.bk-side > * { flex-shrink: 0; }
+.arch-swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+.arch-sw { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); cursor: pointer; padding: 0; }
+.arch-sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+#ar-wallcolor { width: 40px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.arch-lbl.bad { background: #c0392b; border-color: #c0392b; color: #fff; font-weight: 600; }
+.arch-lbl.good { background: #2e7d32; border-color: #2e7d32; color: #fff; font-weight: 600; }
+.flood-result { margin-top: 8px; }
+.flood-verdict { padding: 8px 10px; border-radius: 8px; font-weight: 600; font-size: 13px; margin: 6px 0; }
+.flood-verdict.bad { background: color-mix(in srgb, #c0392b 14%, var(--panel)); color: #b0281b; border: 1px solid #e3a59e; }
+.flood-verdict.good { background: color-mix(in srgb, #2e7d32 12%, var(--panel)); color: #23692a; border: 1px solid #a8d3ab; }
+.arch-chips .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .arch-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; text-align: center; }
 .arch-tile b { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
 .arch-tile small { font-size: 10.5px; color: var(--ink-3); line-height: 1.2; }
@@ -1102,6 +1139,9 @@ body.s3d-on .tut-panel { z-index: 96; }
 @media (max-width: 1340px) { .docname { width: 140px; } }
 @media (max-width: 1480px) { .topbar .brand span { display: none; } }
 @media (max-width: 560px) { #btn-tutorials { display: none; } .docver { display: none; } }
+/* jumpstart-3d: at 560 px and below the Tutorials button is hidden and the top bar is full, so the Open/Export menu carries the entry (44 px tall to tap) */
+.menu .menu-tut { display: none; } /* more specific than .menu button { display: flex } */
+@media (max-width: 560px) { .menu button.menu-tut { display: flex; min-height: 44px; align-items: center; } .menu hr.menu-tut { display: block; } #app[data-mode="chisel"] .menu .menu-tut { display: none; } }
 @media (max-width: 420px) { .topbar { gap: 3px; } .topbar .tb-btn { padding-left: 3px; padding-right: 3px; } }
 @media (max-width: 1100px) { .topbar .brand { display: none; } #btn-keys { display: none; } .docname { width: 110px; } .modeswitch button { padding: 5px 8px; letter-spacing: .04em; } .autosave-btn { padding-left: 6px; padding-right: 6px; } }
 .tut-modal { width: min(780px, 100%); }
@@ -1129,6 +1169,9 @@ body.s3d-on .tut-panel { z-index: 96; }
 .tut-icon { border: 0; background: transparent; color: var(--ink-2); width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; display: grid; place-items: center; }
 .tut-icon:hover { background: var(--line); }
 .tut-icon svg { width: 15px; height: 15px; }
+:root.touch-ui .tut-icon { width: 44px; height: 44px; } /* jumpstart-3d: a finger can hit Make small and Close */
+:root.touch-ui .tut-mini-line { min-height: 44px; }
+@media (max-width: 699px) { :root.touch-ui:has(#bb-multi[aria-pressed="true"]) .inspector { display: none; } } /* jumpstart-3d: on a phone (same 700 px line as the lesson panel in tutorials.js) the right panel would cover the shapes still to be tapped while Multi-select is on; it comes back when Multi-select goes off. Tablets keep it. */
 .tut-bar { height: 4px; background: var(--line-2); }
 .tut-bar i { display: block; height: 100%; background: #2e9d57; transition: width .3s; }
 .tut-mini-line { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 12px; color: var(--ink); cursor: pointer; font: inherit; }
@@ -1242,7 +1285,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
       <button id="mode-beginner" aria-pressed="true" title="Drag shapes and combine them">Beginner</button>
       <button id="mode-advanced" aria-pressed="false" title="Sketches, features and a timeline">Advanced</button>
       <button id="mode-chisel" aria-pressed="false" title="Sculpt with brushes, like clay">Chisel</button>
-      <button id="mode-arch" aria-label="Architechies" aria-pressed="false" title="Architechies: draw floor plans, raise walls, add doors, windows and roofs, then use the building in your design"><span class="ml">Architechies</span><span class="ms">Arch</span></button>
+      <button id="mode-arch" aria-label="Architect" aria-pressed="false" title="Architect: draw floor plans, raise walls, add doors, windows and roofs, then use the building in your design"><span class="ml">Architect</span><span class="ms">Arch</span></button>
     </div>
     <div class="spacer"></div>
     <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
@@ -1292,6 +1335,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <div class="menu-wrap">
       <button class="tb-btn" id="btn-export" aria-haspopup="true" title="Open a project file, save a copy, or export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span class="lbl">Open/Export</span></button>
       <div class="menu" id="menu-export" hidden>
+        <button id="btn-tutorials-menu" class="menu-tut" title="Tutorials: step-by-step projects">Tutorials <small>step-by-step lessons</small></button><hr class="menu-tut"><!-- jumpstart-3d: phone Tutorials entry (the top bar has no room at 560 px and below) -->
         <button data-act="stl">STL for 3D printing <small>.stl</small></button>
         <button data-act="obj">OBJ for Blender and other 3D apps <small>.obj</small></button>
         <button data-act="3mf">3MF for 3D printing (with colors) <small>.3mf</small></button>
@@ -1356,7 +1400,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.3 · community build 22</p>
+    <p class="sp-ver" id="sp-ver">Version 2.5 · community build 23</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

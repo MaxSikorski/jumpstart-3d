@@ -3,7 +3,7 @@
 // points, read from JS3D.doc().sketches in stored order.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, exportBytes } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, exportBytes, quarantine } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -205,7 +205,9 @@ test("a bevel gear is two hidden sketches and a straight loft with the frustum v
   expect(await failure(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, width: 11 }))).toBe("width must be a positive number of mm, at most 10 for this bevel gear (a third of the way to the cone's tip)");
 });
 
-test("a bevel pair placed as the docs say meshes: cutting one from the other removes nothing, and a missed turn does overlap", async () => {
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
+test("a bevel pair placed as the docs say meshes: cutting one from the other removes nothing, and a missed turn does overlap", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on bevel gears");
   // the shared volume is read as "one gear minus (it cut by the other)": an intersect that is empty makes the kernel throw
   await fresh();
   const pair = (turn, op) => run(async ([turn, op]) => {
@@ -249,7 +251,15 @@ test("limits: 130 teeth warns, 150 teeth turned bevel is refused with Create off
   await fresh();
   const before = await counts();
   const bad = [
-    [{ kind: "helical", module: 2, teeth: 20 }, 'kind must be "spur", "bevel" or "rack"'],
+    [{ kind: "worm", module: 2, teeth: 20 }, 'kind must be "spur", "helical", "bevel" or "rack"'],
+    [{ kind: "helical", module: 2, teeth: 31 }, "teeth must be a whole number from 12 to 30 for a helical gear"],
+    [{ kind: "helical", module: 2, teeth: 20, angle: 4 }, "angle must be a number from 5 to 30 (degrees of helix angle)"],
+    [{ kind: "helical", module: 2, teeth: 20, angle: 31 }, "angle must be a number from 5 to 30 (degrees of helix angle)"],
+    [{ kind: "helical", module: 2, teeth: 20, hand: "up" }, 'hand must be "right" or "left"'],
+    [{ module: 2, teeth: 20, angle: 20 }, "angle and hand are only for helical gears"],
+    [{ kind: "bevel", module: 2, teeth: 20, hand: "left" }, "angle and hand are only for helical gears"],
+    [{ kind: "helical", module: 2, teeth: 30, angle: 30, width: 18 }, "width must be a positive number of mm, at most 17.592 for this helical gear (a wider one needs too many sections and would take too long to build)"],
+    [{ kind: "helical", module: 2, teeth: 20, bore: 5, keyway: true }, "keyway is for spur gears only"],
     [{ module: 11, teeth: 20 }, "module must be a number from 0.3 to 10 (mm)"],
     [{ module: 2, teeth: 11 }, "teeth must be a whole number from 12 to 200 for a spur gear"],
     [{ module: 2, teeth: 201 }, "teeth must be a whole number from 12 to 200 for a spur gear"],
@@ -291,7 +301,9 @@ test("Beginner: the Gear button opens the dialog and a rack from it is one body 
   expect(list[0].bbox.min[2]).toBeGreaterThanOrEqual(0);
 });
 
-test("the golden design exports to STEP as three true solids", async () => {
+// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
+test("the golden design exports to STEP as three true solids", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/gears.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();
@@ -302,4 +314,175 @@ test("the golden design exports to STEP as three true solids", async () => {
   const text = bytes.toString("latin1");
   expect(text.startsWith("ISO-10303-21")).toBe(true);
   expect(text.match(/MANIFOLD_SOLID_BREP/g)).toHaveLength(3);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Helical gears (step 3b): a straight Loft through outlines turned a little further at each height
+// Tooth phase: the built mesh is cut at several heights; every cut point must lie on the stored outline turned by height * tan(angle) /
+// pitch radius (right hand turns counter-clockwise going up). Returns the largest distance in mm per height. `flip` turns the wrong way,
+// which must come out large (proves the check can see a wrong twist, a stepped tooth or none at all).
+const toothPhase = (id, o) => run(({ id, m, z, angle, hand, flip, fracs }) => {
+  const node = JS3D.get(id).node, sk = JS3D.doc().sketches.find((s) => s.id === node.sections[0].sketch), P = new Map(sk.pts.map((p) => [p.id, p]));
+  const ring = sk.ents.filter((e) => e.t === "line").map((e) => [P.get(e.a), P.get(e.b)]);
+  const d = __app.scene.views.get(id).data, V = d.vertices, T = d.triangles, w = JS3D.get(id).node.sections.length > 1 ? JS3D.doc().sketches.find((s) => s.id === node.sections.at(-1).sketch).plane.o[2] : 0;
+  const beta = (angle * Math.PI) / 180, rp = (m / Math.cos(beta)) * z / 2, sign = (hand === "right" ? 1 : -1) * (flip ? -1 : 1);
+  return fracs.map((f) => {
+    const h = f * w, th = (sign * h * Math.tan(beta)) / rp, co = Math.cos(th), si = Math.sin(th);
+    const seg = ring.map(([p, q]) => [p.x * co - p.y * si, p.x * si + p.y * co, q.x * co - q.y * si, q.x * si + q.y * co]);
+    let worst = 0, cuts = 0;
+    for (let i = 0; i < T.length; i += 3) {
+      for (let e = 0; e < 3; e++) {
+        const a = T[i + e], b = T[i + ((e + 1) % 3)], za = V[3 * a + 2], zb = V[3 * b + 2];
+        if ((za - h) * (zb - h) >= 0) continue;
+        const t = (h - za) / (zb - za), x = V[3 * a] + t * (V[3 * b] - V[3 * a]), y = V[3 * a + 1] + t * (V[3 * b + 1] - V[3 * a + 1]);
+        const near = Math.floor((((Math.atan2(y, x) - th) / (2 * Math.PI)) % 1 + 1) % 1 * seg.length); // the outline segment at this angle, and 40 each side
+        let best = 1e9;
+        for (let k = -40; k <= 40; k++) {
+          const s2 = seg[(((near + k) % seg.length) + seg.length) % seg.length], dx = s2[2] - s2[0], dy = s2[3] - s2[1];
+          const u = Math.max(0, Math.min(1, ((x - s2[0]) * dx + (y - s2[1]) * dy) / (dx * dx + dy * dy)));
+          best = Math.min(best, Math.hypot(s2[0] + u * dx - x, s2[1] + u * dy - y));
+        }
+        worst = Math.max(worst, best); cuts++;
+      }
+    }
+    return { cuts, worst };
+  });
+}, { fracs: [0.1, 0.35, 0.6, 0.9], flip: false, ...o, id });
+
+test("a helical gear turns its teeth with height: right and left hand, checked at four heights, volume and bounds", async () => {
+  await fresh();
+  // normal module 2, 24 teeth, 20 degrees, 12 wide: pitch radius 25.5, the teeth turn 9.7 degrees from bottom to top
+  const [r, l] = await run(() => [
+    JS3D.gear({ kind: "helical", module: 2, teeth: 24, angle: 20, width: 12, clear: 0 }),
+    JS3D.gear({ kind: "helical", module: 2, teeth: 24, angle: 20, width: 12, hand: "left", clear: 0, at: [80, 0, 0] }),
+  ]);
+  const list = await built();
+  expect(list.filter((b) => b.error)).toEqual([]);
+  const doc = await run(() => JS3D.doc());
+  const area = await shoelace(await sketchOf(r));
+  for (const id of [r, l]) {
+    const g = list.find((b) => b.id === id);
+    near(g.volume, area * 12, 0.002, "volume against the outline");
+    expect(g.bbox.min[2]).toBeCloseTo(0, 4);
+    expect(g.bbox.max[2]).toBeCloseTo(12, 4);
+  }
+  // the outlines are sections 0.1 pitch (1.5 degrees) apart: 9.7 degrees needs 8 sections
+  expect(doc.sketches.filter((s) => s.name.startsWith("Helical gear 24 teeth m2 section "))).toHaveLength(2 * 8);
+  expect(doc.sketches.every((s) => s.hidden)).toBe(true);
+  expect(await run((id) => JS3D.get(id).node, r)).toMatchObject({ t: "loft", ruled: true, closed: false });
+  for (const [id, hand] of [[r, "right"], [l, "left"]]) {
+    for (const c of await toothPhase(id, { m: 2, z: 24, angle: 20, hand })) {
+      expect(c.cuts).toBeGreaterThan(100);
+      expect(c.worst, "tooth phase against the outline turned by height").toBeLessThan(0.1);
+    }
+    // the same mesh against the wrong hand is far off at the middle heights
+    const wrong = await toothPhase(id, { m: 2, z: 24, angle: 20, hand, flip: true, fracs: [0.5, 0.9] });
+    for (const c of wrong) expect(c.worst).toBeGreaterThan(0.5);
+  }
+  // the top outline is the bottom one turned 12 * tan(20 degrees) / pitch radius radians: counter-clockwise for the right hand, clockwise for the left
+  const turn = async (id) => {
+    const n = await run((id) => JS3D.get(id).node, id), a = await sketchData(n.sections[0].sketch), b = await sketchData(n.sections.at(-1).sketch);
+    return Math.atan2(b.pts[0].y, b.pts[0].x) - Math.atan2(a.pts[0].y, a.pts[0].x);
+  };
+  const twist = (12 * Math.tan((20 * Math.PI) / 180)) / (((2 / Math.cos((20 * Math.PI) / 180)) * 24) / 2);
+  expect(await turn(r)).toBeCloseTo(twist, 5);
+  expect(await turn(l)).toBeCloseTo(-twist, 5);
+});
+
+test("a helical gear with hardly any twist is two sections; a bore takes its exact area off", async () => {
+  await fresh();
+  const [a, b] = await run(() => [
+    JS3D.gear({ kind: "helical", module: 2, teeth: 20, angle: 5, width: 2, clear: 0 }),
+    JS3D.gear({ kind: "helical", module: 2, teeth: 20, angle: 20, width: 8, clear: 0, bore: 10, at: [80, 0, 0] }),
+  ]);
+  const list = await built();
+  expect(list.filter((x) => x.error)).toEqual([]);
+  expect((await run((id) => JS3D.get(id).node.sections.length, a))).toBe(2);
+  const area = await shoelace(await sketchOf(b));
+  near(list.find((x) => x.id === b).volume, (area - Math.PI * 25) * 8, 0.003, "bore");
+});
+
+// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
+test("a helical gear exports to STEP as one solid and reads back with the same volume", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
+  await fresh();
+  const id = await run(() => JS3D.gear({ kind: "helical", module: 2, teeth: 20, angle: 25, width: 10 }));
+  const g = await bodyOf(id);
+  expect(g.error).toBeNull();
+  const bytes = await run(() => JS3D.export("step"));
+  const buf = ArrayBuffer.isView(bytes) ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) : Buffer.from(Object.values(bytes));
+  const text = buf.toString("latin1");
+  expect(text.startsWith("ISO-10303-21")).toBe(true);
+  expect(text.match(/MANIFOLD_SOLID_BREP/g)).toHaveLength(1);
+  const back = await run(async (data) => {
+    JS3D.newDesign("beginner");
+    const doc = JS3D.doc();
+    doc.assets = { helical: { kind: "step", name: "Helical gear", data } };
+    doc.bodies.push({ id: "h1", name: "Helical gear", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "step", asset: "helical", mods: [] } });
+    __store.load(doc);
+    await JS3D.ready(60000);
+    return JS3D.list();
+  }, buf.toString("base64"));
+  expect(back).toHaveLength(1);
+  expect(back[0].error).toBeNull();
+  near(back[0].volume, g.volume, 0.001, "volume after the STEP round trip");
+});
+
+test("the largest helical gear allowed still builds, and a right-hand and a left-hand gear of one size mesh while two of one hand do not", async () => {
+  await fresh();
+  // 30 teeth at 30 degrees may be 17.592 wide at most: 15 sections of 540 lines
+  const big = await run(() => JS3D.gear({ kind: "helical", module: 2, teeth: 30, angle: 30, width: 17.592 }));
+  expect((await bodyOf(big)).error).toBeNull();
+  await run(() => JS3D.undo());
+  // a pair: normal module 2, 16 and 24 teeth, 20 degrees: centres 2 * 40 / (2 * cos 20 degrees) apart, the second turned half a tooth
+  const d = 40 / Math.cos((20 * Math.PI) / 180);
+  // an empty intersect makes the kernel throw, so the meshed pair is read as the first gear minus the second cut from it
+  const pair = (hand2, op) => run(async ([d, hand2, op]) => {
+    JS3D.newDesign("beginner");
+    const a = JS3D.gear({ kind: "helical", module: 2, teeth: 16, angle: 20, width: 8, clear: 0 });
+    const b = JS3D.gear({ kind: "helical", module: 2, teeth: 24, angle: 20, hand: hand2, width: 8, clear: 0, at: [d, 0, 0] });
+    await JS3D.ready(60000);
+    const one = JS3D.list()[0].volume;
+    JS3D.rotate(b, "z", 7.5, { about: [d, 0, 0] });
+    const g = JS3D.group([a, b], { op });
+    await JS3D.ready(60000);
+    const row = JS3D.list().find((x) => x.id === g);
+    return { one, v: row.volume, error: row.error };
+  }, [d, hand2, op]);
+  const clash = await pair("right", "intersect");
+  expect(clash.error).toBeNull();
+  expect(clash.v).toBeGreaterThan(50);
+  const meshed = await pair("left", "cut");
+  expect(meshed.error).toBeNull();
+  expect(meshed.one - meshed.v).toBeLessThan(clash.v / 20);
+});
+
+test("the dialog: Helical adds the helix angle and hand, refuses what the build cannot do, and creates the gear", async () => {
+  await fresh("advanced");
+  await openFromRibbon();
+  await kind("Helical");
+  await expect(page.locator("#ge-angle")).toHaveValue("20");
+  await expect(page.locator("#ge-hand button[aria-pressed=true]")).toHaveText("Right");
+  await expect(page.locator("#cmd")).toContainText("Normal module 2, so the pitch diameter is 42.567 mm");
+  await expect(page.locator("#cmd")).toContainText("opposite hand");
+  await field("ge-teeth", 31);
+  await expect(page.locator("#cmd")).toContainText("teeth must be a whole number from 12 to 30 for a helical gear");
+  await expect(page.locator("#cmd-ok")).toBeDisabled();
+  await field("ge-teeth", 20);
+  await field("ge-angle", 15);
+  await field("ge-width", 400);
+  await expect(page.locator("#cmd")).toContainText("a wider one needs too many sections");
+  await expect(page.locator("#cmd-ok")).toBeDisabled();
+  await field("ge-width", 10);
+  await page.locator("#ge-hand button", { hasText: "Left" }).click();
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const list = await built();
+  expect(list.map((b) => b.name)).toEqual(["Helical gear 20 teeth m2"]);
+  expect(list[0].error).toBeNull();
+  const node = await run(() => JS3D.get(JS3D.list()[0].id).node);
+  expect(node.t).toBe("loft");
+  expect(await run(() => __store.undoStack.at(-1).label)).toBe("Add Helical gear 20 teeth m2");
+  const last = await sketchData(node.sections.at(-1).sketch);
+  expect(Math.atan2(last.pts[0].y, last.pts[0].x)).toBeLessThan(0); // left hand turns clockwise going up
 });

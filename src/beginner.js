@@ -10,7 +10,7 @@ import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
 import { onEscape } from "./pivot.js"; // jumpstart-3d: pivot
-import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, turnFeedback } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, fine, turnFeedback } from "./rotationui.js"; // jumpstart-3d: rotation access
 import {
   M4, arr, makePrimBody, frameOnFace, deleteBodies, duplicateBodies, groupBodiesInDoc, ungroupBody, transformBodies, setBodyProps, PRIM_DEFAULTS, nextName,
 } from "./ops.js";
@@ -182,6 +182,8 @@ export function initBeginner(app) {
     btn("thread", "Fastener", "Bolts, nuts, threaded rods and tap cutters, metric and inch", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners
     btn("gear", "Gear", "Spur gears, bevel gears and racks by module and tooth count", () => app.advanced.gear(), "bb-gear", true); // jumpstart-3d: gears
     btn("tag", "Name plate", "A tag or name plate sized to its text, with raised or cut-in letters", () => app.advanced.namePlate(), "bb-nameplate", true); // jumpstart-3d: name plates
+    btn("knurl", "Knurled knob", "A knob or grip with straight V grooves all round and an optional round, hex or D bore", () => app.advanced.knurl(), "bb-knurl", true); // jumpstart-3d: knurl
+    btn("spring", "Coil spring", "A compression spring of round wire, with open ends or ends cut flat", () => app.advanced.spring(), "bb-spring", true); // jumpstart-3d: spring
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);
@@ -975,7 +977,7 @@ export function initBeginner(app) {
           const R = turnAbout(center, axisV, a);
           store.setPreview((doc) => { const b = findBody(doc, body.id); b.m = arr(M4(base).premultiply(R)); });
         },
-        up() { const a = rd.angle; drag = null; stopEsc(); fb.hide(); if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told && !(vp.touchMode && !rd.moved)) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it 1° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
+        up() { const a = rd.angle; drag = null; stopEsc(); fb.hide(); if (a) store.commitPreview(`Rotate ${a}°`); else store.setPreview(null); if (!rotKeys.told && !(vp.touchMode && !rd.moved)) { rotKeys.told = true; app.toast(`Fine-tune: the , and . keys turn it ${fine.step}° around ${info.axis.toUpperCase()} (Shift: 15°). Arrow keys still move it. Hold Shift while dragging to turn by any angle.`); } }, // jumpstart-3d: rotation access
       };
       return true;
     }
@@ -1228,7 +1230,7 @@ export function initBeginner(app) {
   let rotKeys = null;
   function rotateByKey(e) {
     if (!rotKeys || app.sel.length !== 1 || app.sel[0] !== rotKeys.id || !findBody(store.doc, rotKeys.id) || app.isLocked(rotKeys.id)) { rotKeys = null; return false; }
-    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : 1);
+    const s = (e.code === "Period" ? 1 : -1) * (e.shiftKey ? 15 : fine.step);
     const c = pv.get([rotKeys.id]); if (!c) return false; // jumpstart-3d: pivot. the body's own middle unless the pivot was moved
     const axisV = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) }[rotKeys.axis];
     const R = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeRotationAxis(axisV, (s * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, loadDoc, newDoc, body, prim, IDENTITY, waitIdle, bodies, watchErrors } from "./helpers.mjs";
+import { boot, loadDoc, newDoc, body, prim, IDENTITY, waitIdle, bodies, watchErrors, quarantine } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -186,7 +186,9 @@ for (const stage of ["hole-free", "complete"]) for (const scenario of ["failure"
   });
 }
 
-test('deleting Combine before Keep piece is refused without an undo entry', async () => {
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on a Combine/Cut (app or runner-speed finding, see the PR notes)
+test('deleting Combine before Keep piece is refused without an undo entry', async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on this Combine/Cut build");
   await loadDoc(page, fixture('advanced')); await combine('advanced');
   const before = await run(() => ({doc: JS3D.doc(), depth: __store.undoStack.length}));
   await page.locator('.tl-item[aria-label*="Combine"]').first().dblclick();
@@ -195,7 +197,9 @@ test('deleting Combine before Keep piece is refused without an undo entry', asyn
   expect(await run(() => ({doc: JS3D.doc(), depth: __store.undoStack.length}))).toEqual(before);
 });
 
-test('editing a connected Join to a through Cut splits in one undo', async () => {
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on a Combine/Cut (app or runner-speed finding, see the PR notes)
+test('editing a connected Join to a through Cut splits in one undo', async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on this Combine/Cut build");
   await loadDoc(page, fixture('advanced')); await combine('advanced', 'Join');
   const before = await run(() => ({doc: JS3D.doc(), depth: __store.undoStack.length}));
   await page.locator('.tl-item[aria-label*="Combine"]').first().dblclick();

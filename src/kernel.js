@@ -1442,7 +1442,7 @@ function thickSolid(shape, d, openHashes, vIn, grows) {
           const v = safeVolume(sh);
           // inside walls: less than the body; outside walls: more than... the walls alone are
           // smaller than the grown body, so only check they're a sensible solid
-          if (v > 1e-6 && (grows ? validSolid(sh) : v < vIn * 0.995)) res = sh; else sh.delete();
+          if (v > 1e-6 && (grows ? validSolid(sh) : v < vIn * 0.995)) res = inFixedOrder(sh, v); else sh.delete();
         }
       } catch (e) { res = null; }
       b.delete(); list.delete();
@@ -1456,7 +1456,8 @@ function validSolid(sh) {
 }
 // The whole body grown (d > 0) or shrunk (d < 0) by |d|, as a solid.
 function offsetSolid(shape, d, vIn, grows) {
-  const good = (sh) => { const v = safeVolume(sh); return v > 1e-6 && (grows ? v > vIn * 1.0005 : v < vIn * 0.9995); };
+  let vol; // the volume good() measured last, for inFixedOrder
+  const good = (sh) => { const v = vol = safeVolume(sh); return v > 1e-6 && (grows ? v > vIn * 1.0005 : v < vIn * 0.9995); };
   const attempts = [
     (b) => b.PerformByJoin(shape.wrapped, d, 1e-3, OC.BRepOffset_Mode.BRepOffset_Skin, false, false, OC.GeomAbs_JoinType.GeomAbs_Arc, false),
     (b) => b.PerformByJoin(shape.wrapped, d, 1e-3, OC.BRepOffset_Mode.BRepOffset_Skin, true, false, OC.GeomAbs_JoinType.GeomAbs_Arc, false),
@@ -1471,7 +1472,7 @@ function offsetSolid(shape, d, vIn, grows) {
       if (b.IsDone()) {
         let sh = R.cast(b.Shape());
         sh = asSolid(sh);
-        if (sh && good(sh)) res = sh; else if (sh) sh.delete();
+        if (sh && good(sh)) res = inFixedOrder(sh, vol); else if (sh) sh.delete();
       }
     } catch (e) { res = null; }
     b.delete();
@@ -1484,17 +1485,69 @@ function offsetSolid(shape, d, vIn, grows) {
     let res = null;
     try {
       b.PerformByJoin(u.wrapped, d, 1e-2, OC.BRepOffset_Mode.BRepOffset_Skin, true, false, OC.GeomAbs_JoinType.GeomAbs_Arc, false);
-      if (b.IsDone()) { const sh = asSolid(R.cast(b.Shape())); if (sh && good(sh)) res = sh; else if (sh) sh.delete(); }
+      if (b.IsDone()) { const sh = asSolid(R.cast(b.Shape())); if (sh && good(sh)) res = inFixedOrder(sh, vol); else if (sh) sh.delete(); }
     } catch (e) {}
     b.delete(); u.delete();
     if (res) return res;
   }
   return null;
 }
+// jumpstart-3d: OpenCascade's offset builder returns a solid's faces (and shells) in an order that depends on where its
+// objects sit in memory, so the same shell exported different STL/OBJ/3MF bytes depending on what had been built before
+// (same shape, same triangles, other order). The solid is put back together with its shells and faces sorted by
+// position. Anything that is not a plain solid, or whose volume changes, is left as it was.
+function inFixedOrder(sh, v0) {
+  if (!(sh instanceof R.Solid)) return sh; // not by constructor name: the build renames classes
+  const O = OC.TopAbs_Orientation, o = sh.wrapped.Orientation();
+  if (o !== O.TopAbs_FORWARD && o !== O.TopAbs_REVERSED) return sh;
+  const owned = []; // everything made here that is not handed back
+  const grab = (parent, kind, wrap) => {
+    const out = [], ex = new OC.TopExp_Explorer(parent, OC.TopAbs_ShapeEnum[kind], OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    try { for (; ex.More(); ex.Next()) out.push(wrap(ex.Current())); } finally { ex.delete(); }
+    owned.push(...out);
+    return out;
+  };
+  const byKey = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  const area = (f) => { try { return Math.round(R.measureArea(f) * 1e3); } catch (e) { return 0; } };
+  const parts = [];
+  let out = null;
+  try {
+    for (const shell of grab(sh.wrapped, "TopAbs_SHELL", (x) => OC.TopoDS.Shell(x))) {
+      const faces = grab(shell, "TopAbs_FACE", (x) => R.cast(OC.TopoDS.Face(x)));
+      const keyed = faces.map((f) => { const bb = f.boundingBox, [lo, hi] = bb.bounds; bb.delete(); return { f, k: [...lo, ...hi].map((v) => Math.round(v * 1e3)), t: f.geomType, a: null }; });
+      // faces equal on box, type and area keep OpenCascade's order (rare)
+      keyed.sort((p, q) => byKey(p.k, q.k) || (p.t < q.t ? -1 : p.t > q.t ? 1 : 0) || (p.a ??= area(p.f)) - (q.a ??= area(q.f)));
+      parts.push({ keyed, closed: shell.Closed() });
+    }
+    parts.sort((p, q) => { for (let i = 0; i < Math.min(p.keyed.length, q.keyed.length); i++) { const d = byKey(p.keyed[i].k, q.keyed[i].k); if (d) return d; } return p.keyed.length - q.keyed.length; });
+    const B = new OC.TopoDS_Builder(), solid = new OC.TopoDS_Solid();
+    owned.push(B, solid);
+    B.MakeSolid(solid);
+    for (const { keyed, closed } of parts) {
+      const shell = new OC.TopoDS_Shell();
+      owned.push(shell);
+      B.MakeShell(shell);
+      // the explorer hands out faces with the solid's own orientation folded in: fold it back out
+      for (const { f } of keyed) {
+        let w = f.wrapped;
+        if (o === O.TopAbs_REVERSED) { w = w.Reversed(); owned.push(w); }
+        B.Add(shell, w);
+      }
+      shell.Closed(closed); // MakeShell starts open; the offset builder's shells are closed, and STEP writes that
+      B.Add(solid, shell);
+    }
+    if (o === O.TopAbs_REVERSED) solid.Orientation(O.TopAbs_REVERSED);
+    out = R.cast(solid);
+    const v1 = safeVolume(out), v = v0 ?? safeVolume(sh);
+    if (!(Math.abs(v1 - v) <= 1e-6 * Math.abs(v))) { out.delete(); return sh; }
+    sh.delete();
+    return out;
+  } catch (e) { if (out) out.delete(); return sh; } finally { owned.forEach((x) => x.delete()); }
+}
 // offset results can come back as a shell or compound: make a solid of them
 function asSolid(sh) {
   if (!sh) return null;
-  if (sh.constructor && sh.constructor.name === "Solid") return sh;
+  if (sh instanceof R.Solid) return sh; // not by constructor name: the build renames classes
   try {
     const ex = new OC.TopExp_Explorer(sh.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
     if (ex.More()) { const s = R.cast(OC.TopoDS.Solid(ex.Current())); ex.delete(); return s; }
@@ -1750,13 +1803,16 @@ export function cylinderInfo(shape, q) {
 }
 // A helix wire made of one edge per turn: a single long helical edge makes sweeps
 // and booleans slow and unreliable after a dozen turns.
-function helixWire(pitch, height, radius, center, dir, left) {
+// jumpstart-3d: the edges are cut at (k - shift) * pitch, never within 1e-3 pitch of either end (no tiny edge).
+function helixWire(pitch, height, radius, center, dir, left, shift = 0) {
   const surf = new OC.Geom_CylindricalSurface(R.makeAx3(center, dir), radius);
   const mw = new OC.BRepBuilderAPI_MakeWire();
-  const n = Math.max(1, Math.ceil(height / pitch - 1e-9));
+  const tiny = 1e-3 * pitch, cuts = [0];
+  for (let k = Math.floor(shift); (k - shift) * pitch < height - tiny; k++) if ((k - shift) * pitch > tiny) cuts.push((k - shift) * pitch);
+  cuts.push(height);
   const sgn = left ? -1 : 1;
-  for (let k = 0; k < n; k++) {
-    const h0 = k * pitch, h1 = Math.min(height, (k + 1) * pitch);
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const h0 = cuts[k], h1 = cuts[k + 1];
     const a = new OC.gp_Pnt2d((sgn * 2 * Math.PI * h0) / pitch, h0), b = new OC.gp_Pnt2d((sgn * 2 * Math.PI * h1) / pitch, h1);
     const seg = new OC.GC_MakeSegment2d(a, b);
     const me = new OC.BRepBuilderAPI_MakeEdge(seg.Value(), surf);
@@ -2293,7 +2349,11 @@ function threadGroove(shape, mod) {
     const rk = r - sgn * depth + (sgn * wMax) / tan30;
     pts = [[r - sgn * depth, 0], [rk, wMax], [outR, wMax], [outR, -wMax], [rk, -wMax]];
   }
-  const helix = helixWire(p, b - a, r, S, u, !!mod.left);
+  // jumpstart-3d: the cut plane at each end (along the helix) must not land on a break between two helix edges, or the boolean
+  // leaves sliver triangles there: put the breaks in the middle of the wider gap between the two planes' phases
+  const ph = (h) => ((h / p) % 1 + 1) % 1, p0 = ph(-a), p1 = ph(L - a), gap = (p1 - p0 + 1) % 1;
+  const brk = gap >= 0.5 ? p0 + gap / 2 : p1 + (1 - gap) / 2;
+  const helix = helixWire(p, b - a, r, S, u, !!mod.left, (1 - (brk % 1)) % 1);
   const sp = helix.startPoint.toTuple();
   let rad = [sp[0] - S[0], sp[1] - S[1], sp[2] - S[2]];
   const along = rad[0] * u[0] + rad[1] * u[1] + rad[2] * u[2];
