@@ -5,7 +5,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,6 +66,7 @@ function light() {
       "- Another item · state: ready", "",
     ].join("\n"));
     writeFileSync(join(root, "AGENTS.md"), "# Map\n\nSee `base.txt`.\n");
+    appendFileSync(join(root, ".git", "info", "exclude"), ".claude/\nAGENTS.md\n.js3d-port\n"); // local-only files: git does not count them as new
   }
   const base = realpathSync(mkdtempSync(join(scratch, "s-")));
   cpSync(template, base, { recursive: true });
@@ -79,12 +80,13 @@ function scenario() {
   const { base, root } = s;
   const add = (name, ...args) => { const dir = join(base, `wt-${name}`); git(root, "worktree", "add", "-q", ...args.map((a) => (a === "<dir>" ? dir : a))); return dir; };
   add("feat-merged", "<dir>", "feat-merged"); // its tip is the second parent of the #12 merge
-  add("fresh", "--no-track", "-b", "fresh", "<dir>", "origin/main");
+  const fresh = add("fresh", "--no-track", "-b", "fresh", "<dir>", "origin/main");
+  writeFileSync(join(fresh, ".js3d-port"), "8815\n"); // this worktree has claimed 8815 (ignored by git, so the worktree stays clean)
   const local = add("local-only", "--no-track", "-b", "local-only", "<dir>", "origin/main");
   commit(local, "l1.txt", "1\n", "local one");
   commit(local, "l2.txt", "2\n", "local two");
   writeFileSync(join(local, "base.txt"), "changed\n"); // one tracked file changed
-  writeFileSync(join(local, "untracked.txt"), "x\n"); // untracked files do not count
+  writeFileSync(join(local, "untracked.txt"), "x\n"); // and one new file
   const deps = add("mcp-deps", "--no-track", "-b", "mcp-deps", "<dir>", "origin/main");
   commit(deps, "d.txt", "d\n", "deps");
   git(deps, "push", "-q", "origin", "mcp-deps");
@@ -127,7 +129,7 @@ const fakeGh = (root, overrides = {}) => (args) => {
 };
 const LOG = "/private/tmp/scratch/chaos-b/4a.log"; // the file descriptor 1 of the playwright run in fixtures/status/lsof.txt
 const readLog = (p) => (p === LOG ? { text: fx("line-reporter.log") } : { note: "output not in a file" });
-const collectWith = (root, extra = {}) => S.collect({ root, fetch: false, run: makeRun(), platform: "darwin", readLog, probePort: async (p) => p !== 8805, now: NOW, ...extra });
+const collectWith = (root, extra = {}) => S.collect({ root, fetch: false, run: makeRun(), platform: "darwin", readLog, portBusy: async (p) => p === 8805, now: NOW, ...extra });
 
 // ---- parsers --------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -187,6 +189,13 @@ test("parseProgress: the line reporter gives the highest started number and the 
   assert.deepEqual(S.parseProgress("[3/9] a\n[4/9] b\n"), { total: 9, done: 4, failed: 0 });
 });
 
+test("parseProgress counts only the last run in the text (a rerun appended to the same log)", () => {
+  const first = "Running 100 tests using 2 workers\n  ✓  1 [site] › a.spec.mjs:1:1 › a\n  ✘  100 [site] › a.spec.mjs:2:1 › b\n";
+  assert.deepEqual(S.parseProgress(first), { total: 100, done: 100, failed: 1 });
+  assert.deepEqual(S.parseProgress(`${first}\nRunning 20 tests using 1 worker\n  ✓  1 [site] › a.spec.mjs:2:1 › b\n  ✓  2 [site] › a.spec.mjs:3:1 › c\n`), { total: 20, done: 2, failed: 0 });
+  assert.deepEqual(S.parseProgress(`${first}\nRunning 20 tests using 1 worker\n[3/20] a\n  1) [site] › a.spec.mjs:2:1 › b\n`), { total: 20, done: 3, failed: 1 });
+});
+
 test("parseProgress: only the header (dot reporter) is 0 done; nothing yet is null", () => {
   assert.deepEqual(S.parseProgress("\nRunning 1 test using 1 worker\n.....\n"), { total: 1, done: 0, failed: 0 });
   assert.equal(S.parseProgress(""), null);
@@ -228,14 +237,6 @@ test("ciWord: fail beats running beats pass; no checks is none", () => {
   assert.equal(S.ciWord([ctx("ERROR"), run("SUCCESS")]), "fail");
 });
 
-test("freePort: the first port from 8805 in steps of 10 where it and port + 2 are both free", async () => {
-  assert.equal(await S.freePort(async () => true), 8805);
-  assert.equal(await S.freePort(async (p) => p !== 8805), 8815);
-  assert.equal(await S.freePort(async (p) => p !== 8827), 8805);
-  assert.equal(await S.freePort(async (p) => p !== 8807 && p !== 8815), 8825);
-  assert.equal(await S.freePort(async () => false), null);
-});
-
 // ---- git: worktrees, main, releases ---------------------------------------------------------------------------------------------------------------------------
 
 test("worktreeStates: merged, new, ahead not pushed with a dirty file, pushed, pushed with 1 new, behind origin, detached, missing", async () => {
@@ -247,7 +248,7 @@ test("worktreeStates: merged, new, ahead not pushed with a dirty file, pushed, p
   assert.equal(by("main").dirty, 0);
   assert.equal(row("feat-merged"), "merged");
   assert.equal(row("fresh"), "new, no commits · clean · AGE");
-  assert.equal(row("local-only"), "ahead 2 · not pushed · 1 dirty · AGE");
+  assert.equal(row("local-only"), "ahead 2 · not pushed · 1 dirty, 1 new file · AGE");
   assert.equal(row("mcp-deps"), "ahead 1 · pushed · clean · AGE");
   assert.equal(row("pushed-plus"), "ahead 2 · pushed, 1 new · clean · AGE");
   assert.equal(row("behind-origin"), "ahead 1 · behind origin 1 · clean · AGE");
@@ -314,6 +315,77 @@ test("unreleased PRs are the merges since the newest tag, oldest first, PR merge
   assert.equal(line, `main: ${data.main.sha.slice(0, 7)} ahead 1, behind 6 vs origin/main · unreleased: #13 #14 · CI on main: skipped (offline) · 1 dirty`);
 });
 
+// A branch that merged origin/main into itself and was then merged by a PR. The old main tip it pulled in is the second parent of the
+// inner merge, which is not a merged branch: a worktree still at that tip is "new, no commits", and only the PR branch itself reads "merged".
+for (const inner of ["Merge origin/main into feat", "Merge pull request #99 from x/side"]) {
+  test(`a worktree at the old main tip that "${inner}" pulled in is new, not merged; the PRs since the tag leave the inner merge out`, async () => {
+    const { root, base } = light();
+    const oldTip = git(root, "rev-parse", "main");
+    git(root, "worktree", "add", "-q", "--no-track", "-b", "old-tip", join(base, "wt-old-tip"), oldTip);
+    git(root, "checkout", "-q", "-b", "feat", "main~1"); // the first commit: the branch started before #12 was merged
+    commit(root, "f1.txt", "1\n", "feat one");
+    git(root, "merge", "-q", "--no-ff", "-m", inner, oldTip);
+    git(root, "checkout", "-q", "main");
+    git(root, "merge", "-q", "--no-ff", "-m", "Merge pull request #20 from x/feat", "feat");
+    git(root, "push", "-q", "origin", "main");
+    git(root, "worktree", "add", "-q", join(base, "wt-feat"), "feat");
+    const data = await collectWith(root, { offline: true });
+    const rows = Object.fromEntries(data.worktrees.map((w) => [w.branch, S.describeWorktree({ ...w, age: "AGE" })]));
+    assert.deepEqual(rows, { feat: "merged", "old-tip": "new, no commits · clean · AGE" });
+    assert.deepEqual(S.render(data).warnings.filter((w) => w.includes("worktree")), ["WARN: worktree feat is merged → git worktree remove ../wt-feat && git branch -D feat"]);
+    assert.deepEqual(data.main.unreleased, [12, 20]);
+  });
+}
+
+test("new files are counted ('3 new files'), ignored files are not, and a merged worktree with anything in it gets no removal advice", async () => {
+  const { root, base } = light();
+  const merged = join(base, "wt-feat-merged");
+  git(root, "worktree", "add", "-q", merged, "feat-merged"); // the branch of PR #12: merged
+  const look = async () => {
+    const lines = S.render(await collectWith(root, { offline: true })).lines.map(noAge);
+    return { row: lines.find((l) => l.includes("../wt-feat-merged")), advice: lines.filter((l) => l.startsWith("WARN: worktree")), main: lines.find((l) => l.startsWith("main:")) };
+  };
+  const clean = await look();
+  assert.equal(clean.row, "  feat-merged  merged  ../wt-feat-merged");
+  assert.deepEqual(clean.advice, ["WARN: worktree feat-merged is merged → git worktree remove ../wt-feat-merged && git branch -D feat-merged"]);
+  writeFileSync(join(merged, "notes.txt"), "x\n");
+  mkdirSync(join(merged, "sub"));
+  writeFileSync(join(merged, "sub", "a.txt"), "a\n");
+  writeFileSync(join(merged, "sub", "b.txt"), "b\n");
+  writeFileSync(join(merged, ".js3d-port"), "8815\n"); // ignored through .git/info/exclude: not counted
+  const withFiles = await look();
+  assert.equal(withFiles.row, "  feat-merged  merged · 3 new files  ../wt-feat-merged");
+  assert.deepEqual(withFiles.advice, []);
+  writeFileSync(join(merged, "merged.txt"), "changed\n"); // a tracked file changed too
+  const withBoth = await look();
+  assert.equal(withBoth.row, "  feat-merged  merged · 1 dirty, 3 new files  ../wt-feat-merged");
+  assert.deepEqual(withBoth.advice, []);
+  rmSync(join(merged, "notes.txt"));
+  rmSync(join(merged, "sub"), { recursive: true });
+  const dirtyOnly = await look();
+  assert.equal(dirtyOnly.row, "  feat-merged  merged · 1 dirty  ../wt-feat-merged");
+  assert.deepEqual(dirtyOnly.advice, []);
+  // the main checkout: one new file, then one changed file too, said on the main line
+  git(merged, "checkout", "--", "merged.txt");
+  writeFileSync(join(root, "how-fast.md"), "x\n");
+  assert.match((await look()).main, / · unreleased: #12 · CI on main: skipped \(offline\) · 1 new file$/);
+  writeFileSync(join(root, "base.txt"), "changed\n");
+  assert.match((await look()).main, / · 1 dirty, 1 new file$/);
+});
+
+test("the main checkout is the first worktree listed, whatever branch it is on", async () => {
+  const { root, base } = light();
+  git(root, "checkout", "-q", "-b", "other");
+  git(root, "worktree", "add", "-q", join(base, "wt-main"), "main"); // main is free to be checked out elsewhere now
+  const data = await collectWith(root, { offline: true });
+  assert.equal(data.main.checkout, "other");
+  assert.deepEqual(data.worktrees.map((w) => w.branch), ["main"]); // listed like any other worktree
+  const lines = S.render(data).lines;
+  assert.match(lines.find((l) => l.startsWith("main:")), / = origin\/main · unreleased: #12 · CI on main: skipped \(offline\) · checkout on other$/);
+  git(root, "checkout", "-q", "--detach");
+  assert.equal((await collectWith(root, { offline: true })).main.checkout, "(detached)");
+});
+
 // ---- collect + render, with injected gh -----------------------------------------------------------------------------------------------------------------------
 
 test("collect asks gh for exactly four things, and reads them", async () => {
@@ -352,10 +424,10 @@ test("a full report from a real repo, injected gh and macOS command output: ever
     "  feat-merged  merged  ../wt-feat-merged",
     "  fresh  new, no commits · clean · AGE  ../wt-fresh",
     "  gone  missing → git worktree prune  ../wt-gone",
-    "  local-only  ahead 2 · not pushed · 1 dirty · AGE  ../wt-local-only",
+    "  local-only  ahead 2 · not pushed · 1 dirty, 1 new file · AGE  ../wt-local-only",
     "  mcp-deps  ahead 1 · pushed · PR #175 · clean · AGE  ../wt-mcp-deps",
     "  pushed-plus  ahead 2 · pushed, 1 new · clean · AGE  ../wt-pushed-plus",
-    "Tests: 2 of 2 running, 0 free · next free port 8815",
+    "Tests: 2 of 2 running, 0 free · next free port 8825", // 8805 is busy and 8815 is claimed by the worktree fresh
     "  jumpstart-3d-chaos-b  storage-chaos.spec.mjs, backup.spec.mjs +1  201 / 300, 2 failed · 13 min in · ETA ~7 min",
     "  jumpstart-3d-codecad  chat-bench  (output not in a file) · 26 h 03 min in",
     "Actions: 1 running, 1 queued",
@@ -376,18 +448,19 @@ test("on Linux the folder and output file come from /proc, and memory from /proc
   const commands = [];
   const run = makeRun();
   const data = await collectWith(shared.root, {
-    offline: true, platform: "linux", run: async (cmd, args, o) => { commands.push(cmd); return run(cmd, args, o); },
+    offline: true, platform: "linux", run: async (cmd, args, o) => { commands.push(cmd === "ps" ? `ps ${args.join(" ")}` : cmd); return run(cmd, args, o); },
     readlink: (p) => links[p], readFile: (p) => (p === "/proc/meminfo" ? fx("meminfo.txt") : readFileSync(p, "utf8")),
   });
   assert.deepEqual(data.tests.runs.map((r) => [r.pid, r.cwd, r.progress, r.note]), [[38943, "/w/jumpstart-3d-chaos-b", { total: 300, done: 201, failed: 2 }, null], [41002, "/w/jumpstart-3d-codecad", null, "output not in a file"]]);
   assert.deepEqual(data.memory, { totalBytes: 16384000 * 1024, usedBytes: 8192000 * 1024, swap: { bytes: 0, text: "0.00M" } });
   assert.ok(!commands.includes("lsof") && !commands.includes("vm_stat") && !commands.includes("sysctl"), commands.join());
+  assert.ok(commands.includes("ps -eww -o pid=,etime=,args="), commands.join()); // wide, so a long command line is not cut
 });
 
 test("a failed gh call prints a FAIL line in its own place and exits 1; the other sections still print", async () => {
   const bad = { code: 1, stdout: "", stderr: "HTTP 401: Bad credentials (https://api.github.com/graphql)\nrun gh auth login" };
   const run = makeRun({ gh: fakeGh(shared.root, { "pr list": bad, "run list": { code: 4, stdout: "", stderr: "" }, "api rate_limit": ok("not json") }) });
-  const r = await S.main(["--root", shared.root, "--no-fetch"], { run, platform: "darwin", readLog, probePort: async () => true, now: NOW });
+  const r = await S.main(["--root", shared.root, "--no-fetch"], { run, platform: "darwin", readLog, portBusy: async () => false, now: NOW });
   const lines = r.out.trimEnd().split("\n").map(noAge);
   assert.equal(r.code, 1);
   assert.ok(lines.includes("FAIL: gh pr list failed (HTTP 401: Bad credentials (https://api.github.com/graphql)) → gh auth status, or run with --offline"), r.out);
@@ -404,7 +477,7 @@ test("main: a failed release view, a failed fetch and a failed ps", async () => 
   const gh = fakeGh(shared.root, { "release view": { code: 1, stdout: "", stderr: "release not found" } });
   const run = makeRun({ gh });
   const failPs = async (cmd, args, o) => (cmd === "ps" ? { code: 127, stdout: "", stderr: "spawn ps ENOENT" } : cmd === "git" && args[0] === "fetch" ? { code: 128, stdout: "", stderr: "fatal" } : run(cmd, args, o));
-  const r = await S.main(["--root", shared.root], { run: failPs, platform: "darwin", readLog, probePort: async () => true, now: NOW });
+  const r = await S.main(["--root", shared.root], { run: failPs, platform: "darwin", readLog, portBusy: async () => false, now: NOW });
   const lines = r.out.trimEnd().split("\n");
   assert.equal(r.code, 1);
   assert.ok(lines.includes("FAIL: gh release view failed (release not found) → gh auth status, or run with --offline"));
@@ -416,9 +489,9 @@ test("main: a failed release view, a failed fetch and a failed ps", async () => 
 test("a git fetch runs unless --no-fetch or --offline", async () => {
   const seen = [];
   const run = async (cmd, args, o) => { if (args[0] === "fetch") seen.push(args.join(" ")); return makeRun({ gh: fakeGh(shared.root) })(cmd, args, o); };
-  const deps = { run, platform: "darwin", readLog, probePort: async () => true, now: NOW };
+  const deps = { run, platform: "darwin", readLog, portBusy: async () => false, now: NOW };
   await S.main(["--root", shared.root], deps);
-  assert.deepEqual(seen, ["fetch -q --prune origin"]);
+  assert.deepEqual(seen, ["fetch -q --prune --no-auto-maintenance origin"]);
   await S.main(["--root", shared.root, "--no-fetch"], deps);
   await S.main(["--root", shared.root, "--offline"], deps);
   assert.equal(seen.length, 1);
@@ -452,11 +525,11 @@ test("the backlog line appears only when .claude/backlog.md exists", async () =>
 
 // ---- render, with a made-up data object -----------------------------------------------------------------------------------------------------------------------
 
-const wt = (extra) => ({ detached: false, isMain: false, dirty: 0, state: "ahead", ahead: 1, remote: { new: 0, behind: 0 }, age: "1 day ago", ...extra });
+const wt = (extra) => ({ detached: false, isMain: false, dirty: 0, untracked: 0, state: "ahead", ahead: 1, remote: { new: 0, behind: 0 }, age: "1 day ago", ...extra });
 const FULL = () => ({
   time: "2026-10-24 08:15 EDT", project: "jumpstart-3d", root: "/x/jumpstart-3d", offline: false,
   live: { tag: "v2.5.1-community.24", url: "https://github.com/MaxSikorski/jumpstart-3d/releases/tag/v2.5.1-community.24", published: "2026-10-24 02:36 UTC" },
-  main: { sha: "897f68a4bc25eb5cb65749d00cb615bbe95293fd", originSha: "897f68a4bc25eb5cb65749d00cb615bbe95293fd", ahead: 0, behind: 0, dirty: 0, lastTag: "v2.5.1-community.24", unreleased: [176, 177] },
+  main: { sha: "897f68a4bc25eb5cb65749d00cb615bbe95293fd", originSha: "897f68a4bc25eb5cb65749d00cb615bbe95293fd", ahead: 0, behind: 0, dirty: 0, untracked: 0, checkout: "main", lastTag: "v2.5.1-community.24", unreleased: [176, 177] },
   actions: { ci: [{ name: "test", word: "running" }, { name: "codeql", word: "running" }], nightly: { word: "failure 40047654784" }, running: 2, queued: 0 },
   prs: { list: [
     { number: 175, draft: true, ci: "pass", branch: "mcp-deps", title: "Bump the MCP server's dependencies", state: "CLEAN", base: "main" },
@@ -554,12 +627,12 @@ test("render: UNSTABLE shows no flag, DIRTY does; unreleased PRs are cut at 8; n
   const lines = S.render(d).lines;
   assert.ok(lines.includes("  #175  draft  pass  mcp-deps           Bump the MCP server's dependencies"));
   assert.ok(lines.includes("  #171  draft  fail  boolean-retry-all  Join and cut retry like intersect [DIRTY]"));
-  assert.ok(lines.includes("main: 897f68a ahead 1 vs origin/main · unreleased: #1 #2 #3 #4 #5 #6 #7 #8 +2 · CI on main: none yet · 2 dirty"));
+  assert.ok(lines.includes("main: 897f68a ahead 1 vs origin/main · unreleased: #1 #2 #3 #4 #5 #6 #7 #8 +2 · CI on main: not in the last 20 runs · 2 dirty"));
   d.main.unreleased = null; // no release tag at all
   d.main.originSha = null;
-  assert.ok(S.render(d).lines.includes("main: 897f68a (no origin/main) · CI on main: none yet · 2 dirty"));
+  assert.ok(S.render(d).lines.includes("main: 897f68a (no origin/main) · CI on main: not in the last 20 runs · 2 dirty"));
   d.main.sha = null;
-  assert.equal(S.render(d).lines[2], "main: no local main branch · CI on main: none yet · 2 dirty");
+  assert.equal(S.render(d).lines[2], "main: no local main branch · CI on main: not in the last 20 runs · 2 dirty");
 });
 
 test("render: no PRs, no worktrees, no runs, no free port, runs without a log, a run of a tool", () => {
@@ -683,14 +756,27 @@ test("a gh that fails (a fake gh with no login) is a FAIL line and exit 1 withou
   assert.match(r.out.trimEnd().split("\n").at(-1), /^status: 4 problem\(s\)$/);
 });
 
-test("the root defaults to the folder two levels above the script", async () => {
-  const copy = join(shared.root, "tools", "agent");
-  mkdirSync(copy, { recursive: true });
-  cpSync(TOOL, join(copy, "status.mjs"));
-  cpSync(fileURLToPath(new URL("../tools/agent/check-map.mjs", import.meta.url)), join(copy, "check-map.mjs"));
-  const r = await exec(process.execPath, [join(copy, "status.mjs"), "--offline", "--no-fetch"], { cwd: home, env: process.env });
-  assert.match(r.stdout.split("\n")[0], / · repo$/);
-  assert.ok(r.stdout.includes("Worktrees: 8"));
+// The tools copied into a checkout of a scratch repo, as they sit in the real one.
+function installTools(folder) {
+  const dest = join(folder, "tools", "agent");
+  mkdirSync(dest, { recursive: true });
+  for (const name of ["status.mjs", "check-map.mjs", "ports.mjs"]) cpSync(fileURLToPath(new URL(`../tools/agent/${name}`, import.meta.url)), join(dest, name));
+  return join(dest, "status.mjs");
+}
+
+test("with no --root the report is about the main checkout: a run from the main checkout, and a run from inside a linked worktree", async () => {
+  const { root, base } = light();
+  git(root, "worktree", "add", "-q", "--no-track", "-b", "elsewhere", join(base, "wt-elsewhere"), "origin/main");
+  const fromMain = await exec(process.execPath, [installTools(root), "--offline", "--no-fetch"], { cwd: home, env: process.env });
+  const fromWorktree = await exec(process.execPath, [installTools(join(base, "wt-elsewhere")), "--offline", "--no-fetch"], { cwd: home, env: process.env });
+  // the tools sit untracked in the checkout they were copied into: 3 new files there, and the main line says so
+  for (const [r, elsewhere] of [[fromMain, "clean"], [fromWorktree, "3 new files"]]) {
+    const out = r.stdout.split("\n");
+    assert.match(out[0], / · repo$/); // not "wt-elsewhere"
+    assert.match(out.find((l) => l.startsWith("main:")), / · 3 new files$/);
+    assert.ok(out.includes("Worktrees: 1"));
+    assert.match(out.find((l) => l.includes("../wt-elsewhere")), new RegExp(`^ +elsewhere +new, no commits · ${elsewhere} · .+ ago +\\.\\./wt-elsewhere$`));
+  }
 });
 
 test("a real playwright-like process: its folder, its output file and its progress are read from the system (lsof on a Mac, /proc on Linux)", async (t) => {

@@ -1,20 +1,22 @@
 // Where are we, in one call: the live release, main and its CI, open PRs, worktrees (merged? pushed? dirty?), test runs and free slots, RAM and swap,
 // the GitHub API budget, the agent map (check-map) and the ready backlog items. About 25 lines, then the WARN lines (each with its next step) and a last line.
-// Read-only except `git fetch -q --prune origin` (20 s limit). --offline uses no fetch and no gh at all; --no-fetch skips only the fetch.
+// Read-only except `git fetch -q --prune --no-auto-maintenance origin` (20 s limit). --offline uses no fetch and no gh at all; --no-fetch skips only the fetch.
 // A failed gh call prints one FAIL line in place of its section (the other sections still print) and the exit code is 1. Exit 2 = bad usage.
 // Every git, gh, ps, lsof and sysctl call goes through execFile with an argument array (never a shell string), so no quoting trap can eat an argument.
-// A test run is a process whose program is `node` and whose script is playwright (`playwright test`, `playwright/cli.js test`) or tools/(chat-bench|judge-exports|measure-load).mjs:
-// shells, `npm exec`, workers, wait loops and agent prompts that only mention "playwright test" never count.
+// A test run is a process whose program is `node` and whose script is playwright (`playwright test`, `playwright/cli.js test`) or
+// tools/(chat-bench|judge-exports|measure-load).mjs: shells, `npm exec`, workers, wait loops and agent prompts that only mention "playwright test" never count.
+// The main checkout is the first entry of `git worktree list`; with no --root the report is about it, also when the script is run from a linked worktree.
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
-import net from "node:net";
 import { freemem, totalmem } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { check as checkMap } from "./check-map.mjs";
+import { claimedPorts, freePort, isListening } from "./ports.mjs";
 
-const USAGE = "usage: node tools/agent/status.mjs [--root <dir>] [--offline] [--no-fetch] [--json] [--ram-limit <GB>] [--help]  (--offline = no git fetch and no gh; default RAM limit = total RAM minus 3 GB)";
+const USAGE = "usage: node tools/agent/status.mjs [--root <dir>] [--offline] [--no-fetch] [--json] [--ram-limit <GB>] [--help]  "
+  + "(--offline = no git fetch and no gh; default root = the main checkout; default RAM limit = total RAM minus 3 GB)";
 const SLOTS = 2; // Playwright runs at once on this Mac
 const GB = 1024 ** 3;
 const LOG_MAX = 20e6; // a run's output file bigger than this is not read
@@ -97,10 +99,11 @@ export function parseLsof(text) {
   return found;
 }
 
-// A Playwright run's output (list or line reporter) -> { total, done, failed } or null before the "Running N tests" line.
+// A Playwright run's output (list or line reporter) -> { total, done, failed } or null before the "Running N tests" line. Only the last run in the text counts.
 // List reporter: done = the highest finished number. Line reporter: `[n/total]` is the number started, shown as is (at most `workers` ahead of finished).
 export function parseProgress(text) {
-  const head = /Running (\d+) tests? using (\d+) workers?/.exec(text);
+  const head = [...text.matchAll(/Running (\d+) tests? using (\d+) workers?/g)].at(-1); // a log may hold several runs (a rerun appended): the last one counts
+  if (head) text = text.slice(head.index);
   let total = head ? Number(head[1]) : null;
   let done = 0;
   let failed = 0;
@@ -154,7 +157,8 @@ export function runCommand(cmd, args, { cwd, timeout = 60_000 } = {}) {
   const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GH_PROMPT_DISABLED: "1" };
   return new Promise((done) => {
     execFile(cmd, args, { cwd, env, timeout, encoding: "utf8", maxBuffer: 64 << 20 }, (err, stdout, stderr) => {
-      const why = !err || typeof err.code === "number" ? "" : err.killed ? `timed out after ${timeout / 1000} s` : err.message; // an exit code alone says "exit N" in the FAIL line
+      // an exit code alone has no text: the FAIL line then says "exit N"
+      const why = !err || typeof err.code === "number" ? "" : err.killed ? `timed out after ${timeout / 1000} s` : err.message;
       done({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout, stderr: stderr || why });
     });
   });
@@ -164,18 +168,6 @@ const failure = (what, r, hint = GH_HINT) => ({ error: `${what} failed (${r.stde
 function ghJson(r, what) {
   if (r.code !== 0) return failure(what, r);
   try { return { value: JSON.parse(r.stdout) }; } catch { return failure(what, { stderr: "unreadable output", code: r.code }); }
-}
-
-const probe = (port) => new Promise((done) => {
-  const server = net.createServer();
-  server.once("error", () => done(false));
-  server.listen(port, "127.0.0.1", () => server.close(() => done(true)));
-});
-
-// First port from 8805 in steps of 10 where it and port + 2 (the mobile project's gzip server) are both free. Playwright reuses a server it finds, so a busy port tests another checkout's site.
-export async function freePort(isFree) {
-  for (let p = 8805; p <= 8895; p += 10) if ((await isFree(p)) && (await isFree(p + 2))) return p;
-  return null;
 }
 
 function defaultReadLog(path) {
@@ -190,8 +182,8 @@ const defaultReadlink = (p) => { try { return readlinkSync(p); } catch { return 
 // ---- worktrees -----------------------------------------------------------------------------------------------------------------------------------------------
 
 function parseWorktrees(text) {
-  return text.split("\n\n").map((block) => {
-    const w = { path: null, head: null, branch: null, detached: false, bare: false };
+  return text.split("\n\n").map((block, i) => {
+    const w = { path: null, head: null, branch: null, detached: false, bare: false, main: i === 0 }; // git lists the main working tree first
     for (const l of block.split("\n")) {
       if (l.startsWith("worktree ")) w.path = l.slice(9);
       else if (l.startsWith("HEAD ")) w.head = l.slice(5);
@@ -200,21 +192,30 @@ function parseWorktrees(text) {
       else if (l === "bare") w.bare = true;
     }
     return w;
-  }).filter((w) => w.path && !w.bare).sort((a, b) => (a.path < b.path ? -1 : 1)); // by folder, whatever order this git version lists them in
+  }).filter((w) => w.path && !w.bare).sort((a, b) => (a.path < b.path ? -1 : 1)); // by folder, whatever order this git version lists the linked ones in
 }
 
-// Every worktree: { path, rel, branch, detached, isMain, missing, dirty, state: merged | new | ahead, ahead, remote: null | { new, behind }, age }.
-// merged = the tip is the second parent of a merge on origin/main (the last 500 merges); new = the tip is already on origin/main; remote = the branch's refs/remotes/origin/<branch> (branches are --no-track).
+// Every worktree: { path, rel, branch, detached, isMain, missing, dirty, untracked, state: merged | new | ahead, ahead, remote: null | { new, behind }, age }.
+// isMain = the first entry of `git worktree list`; dirty = changed tracked files, untracked = new files that git does not ignore.
+// merged = the tip is the second parent of a merge on origin/main's first-parent line (the last 500 merges): a PR merge.
+// `--first-parent` leaves out the merges inside a PR's branch ("Merge origin/main into <branch>"), whose second parent is an old main tip, not a merged branch.
+// new = the tip is already on origin/main.
+// remote = the branch's refs/remotes/origin/<branch> (branches are --no-track).
 export async function worktreeStates({ root, run }) {
   const git = (args, cwd = root) => run("git", args, { cwd });
   const base = (await git(["rev-parse", "-q", "--verify", "origin/main"])).code === 0 ? "origin/main" : "main";
-  const [list, merges] = await Promise.all([git(["worktree", "list", "--porcelain"]), git(["rev-list", "--merges", "--parents", "-n", "500", base])]);
+  const [list, merges] = await Promise.all([
+    git(["worktree", "list", "--porcelain"]),
+    git(["rev-list", "--first-parent", "--merges", "--parents", "-n", "500", base]),
+  ]);
   const mergedTips = new Set(merges.stdout.split("\n").map((l) => l.split(" ")[2]).filter(Boolean));
   return Promise.all(parseWorktrees(list.stdout).map(async (w) => {
-    const info = { path: w.path, rel: relative(root, w.path), branch: w.branch, detached: w.detached, isMain: w.branch === "main" };
+    const info = { path: w.path, rel: relative(root, w.path), branch: w.branch, detached: w.detached, isMain: w.main };
     if (!existsSync(w.path)) return { ...info, missing: true };
-    const dirty = lines((await git(["status", "--porcelain", "--untracked-files=no"], w.path)).stdout).length;
-    if (info.isMain) return { ...info, dirty };
+    const changes = lines((await git(["status", "--porcelain", "--untracked-files=all"], w.path)).stdout);
+    const untracked = changes.filter((l) => l.startsWith("??")).length;
+    const dirty = { dirty: changes.length - untracked, untracked };
+    if (info.isMain) return { ...info, ...dirty };
     const [count, age, remote] = await Promise.all([
       git(["rev-list", "--count", `${base}..${w.head}`]),
       git(["log", "-1", "--format=%cr"], w.path),
@@ -222,21 +223,32 @@ export async function worktreeStates({ root, run }) {
     ]);
     const ahead = Number(count.stdout);
     const [mine, theirs] = remote?.code === 0 ? remote.stdout.trim().split(/\s+/).map(Number) : [];
-    return { ...info, dirty, age: age.stdout.trim(), ahead, state: mergedTips.has(w.head) ? "merged" : ahead === 0 ? "new" : "ahead", remote: mine === undefined ? null : { new: mine, behind: theirs } };
+    return {
+      ...info, ...dirty, age: age.stdout.trim(), ahead,
+      state: mergedTips.has(w.head) ? "merged" : ahead === 0 ? "new" : "ahead",
+      remote: mine === undefined ? null : { new: mine, behind: theirs },
+    };
   }));
 }
 
-const pushText = (r) => (!r ? "not pushed" : [r.new === 0 && r.behind === 0 ? "pushed" : r.new ? `pushed, ${r.new} new` : null, r.behind ? `behind origin ${r.behind}` : null].filter(Boolean).join(", "));
+const pushText = (r) => {
+  if (!r) return "not pushed";
+  const ahead = r.new === 0 && r.behind === 0 ? "pushed" : r.new ? `pushed, ${r.new} new` : null;
+  return [ahead, r.behind ? `behind origin ${r.behind}` : null].filter(Boolean).join(", ");
+};
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+// "clean", "2 dirty", "1 new file" or "2 dirty, 3 new files": changed tracked files, and files git does not know yet
+export const changesText = (w) => [w.dirty && `${w.dirty} dirty`, w.untracked && plural(w.untracked, "new file")].filter(Boolean).join(", ") || "clean";
 
 // One worktree's status text; w.pr (an open PR number) is added by collect.
 export function describeWorktree(w) {
   if (w.missing) return "missing → git worktree prune";
-  const dirty = w.dirty ? `${w.dirty} dirty` : "clean";
-  if (w.state === "merged") return w.dirty ? `merged · ${dirty}` : "merged";
+  const changes = changesText(w);
+  if (w.state === "merged") return changes === "clean" ? "merged" : `merged · ${changes}`;
   const parts = [w.state === "new" ? "new, no commits" : `ahead ${w.ahead}`];
   if (w.state === "ahead" && w.branch) parts.push(pushText(w.remote));
   if (w.pr) parts.push(`PR #${w.pr}`);
-  parts.push(dirty, w.age);
+  parts.push(changes, w.age);
   return parts.join(" · ");
 }
 
@@ -253,12 +265,13 @@ async function mainState({ root, run }) {
     if (r.code === 0) [out.ahead, out.behind] = r.stdout.trim().split(/\s+/).map(Number);
   }
   if (lastTag) {
-    const r = await git(["log", "--merges", "--format=%s", `${lastTag}..${originSha ? "origin/main" : "main"}`]);
+    const r = await git(["log", "--first-parent", "--merges", "--format=%s", `${lastTag}..${originSha ? "origin/main" : "main"}`]);
     if (r.code === 0) out.unreleased = lines(r.stdout).map((s) => /^Merge pull request #(\d+)/.exec(s)?.[1]).filter(Boolean).map(Number).reverse();
   }
   return out;
 }
 
+const PR_FIELDS = "number,title,isDraft,headRefName,baseRefName,mergeStateStatus,statusCheckRollup";
 const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 function describeRun(r) {
   if (r.status !== "completed") return QUEUED.has(r.status) ? "queued" : "running";
@@ -267,10 +280,15 @@ function describeRun(r) {
 
 // One `gh run list` -> CI on origin/main per workflow (test first), the newest nightly, and the running/queued counts.
 function actionsFrom(runs, originSha) {
-  const names = [...new Set(runs.map((r) => r.workflowName))].filter((n) => n !== "nightly").sort((a, b) => (a === "test" ? -1 : b === "test" ? 1 : a.localeCompare(b)));
-  const ci = names.map((name) => ({ name, run: runs.find((r) => r.workflowName === name && r.headBranch === "main" && r.headSha === originSha) })).filter((c) => c.run).map((c) => ({ name: c.name, word: describeRun(c.run) }));
+  const names = [...new Set(runs.map((r) => r.workflowName))].filter((n) => n !== "nightly");
+  names.sort((a, b) => (a === "test" ? -1 : b === "test" ? 1 : a.localeCompare(b)));
+  const onMain = (name) => runs.find((r) => r.workflowName === name && r.headBranch === "main" && r.headSha === originSha);
+  const ci = names.filter(onMain).map((name) => ({ name, word: describeRun(onMain(name)) }));
   const nightly = runs.find((r) => r.workflowName === "nightly" && r.headBranch === "main");
-  return { ci, nightly: nightly ? { word: describeRun(nightly) } : null, running: runs.filter((r) => r.status === "in_progress").length, queued: runs.filter((r) => QUEUED.has(r.status)).length };
+  return {
+    ci, nightly: nightly ? { word: describeRun(nightly) } : null,
+    running: runs.filter((r) => r.status === "in_progress").length, queued: runs.filter((r) => QUEUED.has(r.status)).length,
+  };
 }
 
 async function locate(pids, { platform, run, readlink }) {
@@ -279,8 +297,8 @@ async function locate(pids, { platform, run, readlink }) {
   return new Map(pids.map((p) => [p, { cwd: readlink(`/proc/${p}/cwd`), out: readlink(`/proc/${p}/fd/1`) }])); // Linux
 }
 
-async function testRuns({ platform, run, readLog, readlink, probePort }) {
-  const ps = await run("ps", platform === "darwin" ? ["-axo", "pid=,etime=,command="] : ["-eo", "pid=,etime=,args="]);
+async function testRuns({ platform, run, readLog, readlink }) {
+  const ps = await run("ps", platform === "darwin" ? ["-axo", "pid=,etime=,command="] : ["-eww", "-o", "pid=,etime=,args="]);
   if (ps.code !== 0) return failure("ps", ps, "check that ps is on the PATH");
   const runs = parsePs(ps.stdout);
   const where = await locate(runs.map((r) => r.pid), { platform, run, readlink });
@@ -289,7 +307,7 @@ async function testRuns({ platform, run, readLog, readlink, probePort }) {
     const log = w.out?.startsWith("/") ? readLog(w.out) : { note: "output not in a file" };
     Object.assign(r, { cwd: w.cwd ?? null, progress: log.text === undefined ? null : parseProgress(log.text), note: log.note ?? null });
   }
-  return { runs, free: Math.max(0, SLOTS - runs.length), port: await freePort(probePort) };
+  return { runs, free: Math.max(0, SLOTS - runs.length) };
 }
 
 async function memoryState({ platform, run, readFile }) {
@@ -301,7 +319,10 @@ async function memoryState({ platform, run, readFile }) {
   } else if (platform === "linux") {
     try {
       const m = parseMeminfo(readFile("/proc/meminfo"));
-      if (m) return { totalBytes: m.totalBytes, usedBytes: m.usedBytes, swap: m.swapBytes === null ? null : { bytes: m.swapBytes, text: `${(m.swapBytes / 1024 ** 2).toFixed(2)}M` } };
+      if (m) {
+        const swap = m.swapBytes === null ? null : { bytes: m.swapBytes, text: `${(m.swapBytes / 1024 ** 2).toFixed(2)}M` };
+        return { totalBytes: m.totalBytes, usedBytes: m.usedBytes, swap };
+      }
     } catch { /* fall through to os */ }
   }
   return { totalBytes: totalmem(), usedBytes: totalmem() - freemem(), swap: null };
@@ -322,41 +343,53 @@ function mapState(root) {
 }
 
 // Everything the report needs, as plain data. The gh calls run side by side; a failed one becomes { error, hint } in its section.
-// fetch = run `git fetch` first. Injectable: run (cmd, args, { cwd, timeout }), readFile, readLog, readlink, platform, probePort, now.
-export async function collect({ root, offline = false, fetch = true, run = runCommand, readFile = (p) => readFileSync(p, "utf8"), readLog = defaultReadLog, readlink = defaultReadlink, platform = process.platform, probePort = probe, now = () => new Date() }) {
+// fetch = run `git fetch` first. Injectable: run (cmd, args, { cwd, timeout }), readFile, readLog, readlink, platform, portBusy (a connect check), now.
+export async function collect({
+  root, offline = false, fetch = true, run = runCommand, readFile = (p) => readFileSync(p, "utf8"),
+  readLog = defaultReadLog, readlink = defaultReadlink, platform = process.platform, portBusy = isListening, now = () => new Date(),
+}) {
   const data = { time: clock(now()), project: basename(root), root, offline };
   if ((await run("git", ["rev-parse", "--git-dir"], { cwd: root })).code !== 0) return { ...data, notRepo: true };
-  if (fetch && !offline) data.fetchFailed = (await run("git", ["fetch", "-q", "--prune", "origin"], { cwd: root, timeout: 20_000 })).code !== 0;
+  if (fetch && !offline) {
+    const fetched = await run("git", ["fetch", "-q", "--prune", "--no-auto-maintenance", "origin"], { cwd: root, timeout: 20_000 });
+    data.fetchFailed = fetched.code !== 0;
+  }
   const gh = (args) => (offline ? null : run("gh", args, { cwd: root }));
   const [release, runs, prs, rate, main, worktrees, tests, memory] = await Promise.all([
     gh(["release", "view", "--json", "tagName,url,publishedAt"]),
     gh(["run", "list", "--limit", "20", "--json", "workflowName,status,conclusion,headSha,headBranch,databaseId"]),
-    gh(["pr", "list", "--state", "open", "--limit", "30", "--json", "number,title,isDraft,headRefName,baseRefName,mergeStateStatus,statusCheckRollup"]),
+    gh(["pr", "list", "--state", "open", "--limit", "30", "--json", PR_FIELDS]),
     gh(["api", "rate_limit"]),
     mainState({ root, run }),
     worktreeStates({ root, run }),
-    testRuns({ platform, run, readLog, readlink, probePort }),
+    testRuns({ platform, run, readLog, readlink }),
     memoryState({ platform, run, readFile }),
   ]);
   const mainWorktree = worktrees.find((w) => w.isMain);
-  data.main = { ...main, dirty: mainWorktree?.dirty ?? 0 };
+  data.main = {
+    ...main, dirty: mainWorktree?.dirty ?? 0, untracked: mainWorktree?.untracked ?? 0,
+    checkout: mainWorktree?.detached ? "(detached)" : mainWorktree?.branch ?? null,
+  };
 
   if (offline) data.live = { tag: main.lastTag };
   else {
     const r = ghJson(release, "gh release view");
-    data.live = r.error ? r : { tag: r.value.tagName, url: r.value.url, published: r.value.publishedAt.replace("T", " ").slice(0, 16) + " UTC" };
+    const published = (t) => `${t.replace("T", " ").slice(0, 16)} UTC`;
+    data.live = r.error ? r : { tag: r.value.tagName, url: r.value.url, published: published(r.value.publishedAt) };
   }
   if (!offline) {
     const a = ghJson(runs, "gh run list");
     data.actions = a.error ? a : actionsFrom(a.value, main.originSha ?? main.sha);
     const p = ghJson(prs, "gh pr list");
-    data.prs = p.error ? p : { list: p.value.map((x) => ({ number: x.number, draft: x.isDraft, ci: ciWord(x.statusCheckRollup), branch: x.headRefName, title: x.title, state: x.mergeStateStatus, base: x.baseRefName })) };
+    data.prs = p.error ? p : { list: p.value.map((x) => ({
+      number: x.number, draft: x.isDraft, ci: ciWord(x.statusCheckRollup), branch: x.headRefName, title: x.title, state: x.mergeStateStatus, base: x.baseRefName,
+    })) };
     const l = ghJson(rate, "gh api rate_limit");
     const res = l.value?.resources;
     data.api = l.error ? l : { core: res.core, graphql: res.graphql, reset: hhmm(new Date(res.core.reset * 1000)) };
   }
   data.worktrees = worktrees.filter((w) => !w.isMain).map((w) => ({ ...w, pr: data.prs?.list?.find((p) => p.branch === w.branch)?.number }));
-  data.tests = tests;
+  data.tests = tests.error ? tests : { ...tests, port: await freePort({ claimed: claimedPorts(worktrees.map((w) => w.path)), busy: portBusy }) };
   data.memory = memory;
   data.map = mapState(root);
   data.backlog = backlogState(root, readFile);
@@ -372,20 +405,51 @@ function table(rows) {
   return rows.map((r) => `  ${r.map((c, i) => (i < r.length - 1 ? c.padEnd(widths[i]) : c)).join("  ").trimEnd()}`);
 }
 const capped = (rows, max) => (rows.length > max ? [...rows.slice(0, max), [`… and ${rows.length - max} more`]] : rows);
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
 function runRow(r) {
-  const label = r.tool !== "playwright" ? r.tool : r.lastFailed ? "last failed" : r.specs.length ? `${r.specs.slice(0, 2).join(", ")}${r.specs.length > 2 ? ` +${r.specs.length - 2}` : ""}` : "all specs";
+  const specs = r.specs.slice(0, 2).join(", ") + (r.specs.length > 2 ? ` +${r.specs.length - 2}` : "");
+  const label = r.tool !== "playwright" ? r.tool : r.lastFailed ? "last failed" : r.specs.length ? specs : "all specs";
   const p = r.progress;
   const left = r.note ? `(${r.note})` : p ? `${p.done} / ${p.total}, ${p.failed} failed` : "no progress yet";
   const rest = p ? eta(r.elapsed, p.done, p.total) : null;
-  return [r.cwd ? basename(r.cwd) : "(folder unknown)", label, [left, `${formatDuration(r.elapsed)} in`, rest === null ? null : `ETA ~${formatDuration(rest)}`].filter(Boolean).join(" · ")];
+  const timing = [left, `${formatDuration(r.elapsed)} in`, rest === null ? null : `ETA ~${formatDuration(rest)}`];
+  return [r.cwd ? basename(r.cwd) : "(folder unknown)", label, timing.filter(Boolean).join(" · ")];
+}
+
+// The "main:" line: where main stands, what is unreleased, CI, and what is not clean in the main checkout.
+function mainLine(data) {
+  const m = data.main;
+  const behind = [m.ahead && `ahead ${m.ahead}`, m.behind && `behind ${m.behind}`].filter(Boolean).join(", ");
+  const sync = !m.originSha ? "(no origin/main)" : behind ? `${behind} vs origin/main` : "= origin/main";
+  const parts = [m.sha ? `main: ${m.sha.slice(0, 7)} ${sync}` : "main: no local main branch"];
+  if (m.unreleased) {
+    const shown = m.unreleased.slice(0, 8).map((n) => `#${n}`).join(" ") + (m.unreleased.length > 8 ? ` +${m.unreleased.length - 8}` : "");
+    parts.push(`unreleased: ${shown || "none"}`);
+  }
+  if (data.offline) parts.push("CI on main: skipped (offline)");
+  else if (!data.actions.error) {
+    const ci = data.actions.ci.map((c) => `${c.name} ${c.word}`).join(", ");
+    parts.push(`CI on main: ${ci || "not in the last 20 runs"}`);
+    if (data.actions.nightly) parts.push(`nightly ${data.actions.nightly.word}`);
+  }
+  if (m.checkout && m.checkout !== "main") parts.push(`checkout on ${m.checkout}`);
+  if (changesText(m) !== "clean") parts.push(changesText(m));
+  return parts.join(" · ");
+}
+
+function prRows(prs) {
+  return prs.map((p) => {
+    const flags = [QUIET_MERGE_STATES.has(p.state) ? "" : `[${p.state}]`, p.base === "main" ? "" : `base=${p.base}`];
+    return [`#${p.number}`, p.draft ? "draft" : "ready", p.ci, p.branch, [cut(p.title, 50), ...flags].filter(Boolean).join(" ")];
+  });
 }
 
 // data -> { lines, problems, warnings }. ramLimit in GB (default: total RAM minus 3).
 export function render(data, { ramLimit } = {}) {
   const head = `status ${data.time} · ${data.project}`;
-  if (data.notRepo) return { lines: [head, `FAIL: ${data.root} is not a git repository → pass --root <the repo>`, "status: 1 problem(s)"], problems: 1, warnings: [] };
+  if (data.notRepo) {
+    const lines = [head, `FAIL: ${data.root} is not a git repository → pass --root <the repo>`, "status: 1 problem(s)"];
+    return { lines, problems: 1, warnings: [] };
+  }
   const out = [head];
   const warnings = [];
   let problems = 0;
@@ -394,39 +458,34 @@ export function render(data, { ramLimit } = {}) {
   const offline = (label) => `${label}: skipped (offline)`;
 
   const live = data.live;
-  out.push(live.error ? failed(live) : data.offline ? (live.tag ? `Live: ${live.tag} (local tag; offline)` : "Live: none (no local tag; offline)") : `Live: ${live.tag} · ${live.published} · ${live.url}`);
+  if (live.error) out.push(failed(live));
+  else if (data.offline) out.push(live.tag ? `Live: ${live.tag} (local tag; offline)` : "Live: none (no local tag; offline)");
+  else out.push(`Live: ${live.tag} · ${live.published} · ${live.url}`);
 
-  const m = data.main;
-  const sync = !m.originSha ? "(no origin/main)" : m.ahead || m.behind ? `${[m.ahead && `ahead ${m.ahead}`, m.behind && `behind ${m.behind}`].filter(Boolean).join(", ")} vs origin/main` : "= origin/main";
-  const parts = [m.sha ? `main: ${m.sha.slice(0, 7)} ${sync}` : "main: no local main branch"];
-  if (m.unreleased) parts.push(`unreleased: ${m.unreleased.length ? `${m.unreleased.slice(0, 8).map((n) => `#${n}`).join(" ")}${m.unreleased.length > 8 ? ` +${m.unreleased.length - 8}` : ""}` : "none"}`);
-  if (data.offline) parts.push(offline("CI on main"));
-  else if (!data.actions.error) {
-    parts.push(`CI on main: ${data.actions.ci.length ? data.actions.ci.map((c) => `${c.name} ${c.word}`).join(", ") : "none yet"}`);
-    if (data.actions.nightly) parts.push(`nightly ${data.actions.nightly.word}`);
-  }
-  if (m.dirty) parts.push(`${m.dirty} dirty`);
-  out.push(parts.join(" · "));
-  if (m.behind) warn(`main is ${m.behind} behind origin/main`, "git merge --ff-only origin/main");
+  out.push(mainLine(data));
+  if (data.main.behind) warn(`main is ${data.main.behind} behind origin/main`, "git merge --ff-only origin/main");
 
   if (data.offline) out.push(offline("PRs"));
   else if (data.prs.error) out.push(failed(data.prs));
   else if (!data.prs.list.length) out.push("PRs: none open");
   else {
     const n = data.prs.list.length;
-    out.push(`PRs: ${n}${n >= 30 ? "+" : ""} open`, ...table(capped(data.prs.list.map((p) => [
-      `#${p.number}`, p.draft ? "draft" : "ready", p.ci, p.branch,
-      [cut(p.title, 50), QUIET_MERGE_STATES.has(p.state) ? "" : `[${p.state}]`, p.base === "main" ? "" : `base=${p.base}`].filter(Boolean).join(" "),
-    ]), 8)));
+    out.push(`PRs: ${n}${n >= 30 ? "+" : ""} open`, ...table(capped(prRows(data.prs.list), 8)));
   }
 
   out.push(data.worktrees.length ? `Worktrees: ${data.worktrees.length}` : "Worktrees: none besides the main checkout",
     ...table(capped(data.worktrees.map((w) => [w.branch ?? "(detached)", describeWorktree(w), w.rel]), 10)));
-  for (const w of data.worktrees.filter((x) => x.state === "merged")) warn(`worktree ${w.branch} is merged`, `git worktree remove ${w.rel} && git branch -D ${w.branch}`);
+  // Only a branch that is merged and has nothing in its folder that is not in the repo gets the removal advice.
+  for (const w of data.worktrees.filter((x) => x.state === "merged" && changesText(x) === "clean")) {
+    warn(`worktree ${w.branch} is merged`, `git worktree remove ${w.rel} && git branch -D ${w.branch}`);
+  }
 
   const t = data.tests;
   if (t.error) out.push(failed(t));
-  else out.push(`Tests: ${t.runs.length} of ${SLOTS} running, ${t.free} free · ${t.port === null ? "no free port from 8805" : `next free port ${t.port}`}`, ...table(capped(t.runs.map(runRow), 5)));
+  else {
+    const port = t.port === null ? "no free port from 8805" : `next free port ${t.port}`;
+    out.push(`Tests: ${t.runs.length} of ${SLOTS} running, ${t.free} free · ${port}`, ...table(capped(t.runs.map(runRow), 5)));
+  }
 
   if (data.offline) out.push(offline("Actions"));
   else out.push(data.actions.error ? failed(data.actions) : `Actions: ${data.actions.running} running, ${data.actions.queued} queued`);
@@ -442,11 +501,15 @@ export function render(data, { ramLimit } = {}) {
   else {
     const { core, graphql } = data.api;
     out.push(`GitHub API left: core ${core.remaining}/${core.limit} · graphql ${graphql.remaining}/${graphql.limit} · resets ${data.api.reset}`);
-    for (const [name, r] of [["core", core], ["graphql", graphql]]) if (r.remaining < 500) warn(`GitHub API ${name} has ${r.remaining} left`, "poll less: one watcher, 60 s apart");
+    for (const [name, r] of [["core", core], ["graphql", graphql]]) {
+      if (r.remaining < 500) warn(`GitHub API ${name} has ${r.remaining} left`, "poll less: one watcher, 60 s apart");
+    }
   }
 
-  out.push(data.map.skipped ? "Map: skipped (no AGENTS.md here)" : data.map.problems ? `Map: ${plural(data.map.problems, "problem")} → node tools/agent/check-map.mjs` : "Map: OK (check-map)");
-  if (data.map.problems) warn(`the agent map has ${plural(data.map.problems, "problem")}`, "node tools/agent/check-map.mjs");
+  const mapProblems = plural(data.map.problems, "problem");
+  if (data.map.skipped) out.push("Map: skipped (no AGENTS.md here)");
+  else out.push(data.map.problems ? `Map: ${mapProblems} → node tools/agent/check-map.mjs` : "Map: OK (check-map)");
+  if (data.map.problems) warn(`the agent map has ${mapProblems}`, "node tools/agent/check-map.mjs");
   if (data.backlog) out.push(data.backlog.count ? `Backlog ready: ${data.backlog.count} · first: ${cut(data.backlog.first, 70)}` : "Backlog ready: none");
   if (data.fetchFailed) warn("git fetch failed", "origin numbers may be stale");
 
@@ -457,25 +520,42 @@ export function render(data, { ramLimit } = {}) {
 
 // ---- command line --------------------------------------------------------------------------------------------------------------------------------------------
 
+const OPTIONS = {
+  root: { type: "string" }, "ram-limit": { type: "string" },
+  offline: { type: "boolean" }, "no-fetch": { type: "boolean" }, json: { type: "boolean" }, help: { type: "boolean" },
+};
+
+// The main checkout: the folder above the repo's shared git directory, so a run from inside a linked worktree reports on the main checkout.
+// Falls back to the folder two levels above this script.
+async function defaultRoot(run) {
+  const fallback = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const r = await run("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: fallback });
+  const common = r.stdout.trim();
+  return r.code === 0 && basename(common) === ".git" ? dirname(common) : fallback;
+}
+
 // argv (without node and the script) -> { code, out, err }. deps are passed to collect (tests inject run, platform, now, ...).
 export async function main(argv, deps = {}) {
   let values;
   try {
-    ({ values } = parseArgs({ args: argv, options: { root: { type: "string" }, offline: { type: "boolean" }, "no-fetch": { type: "boolean" }, json: { type: "boolean" }, "ram-limit": { type: "string" }, help: { type: "boolean" } } }));
+    ({ values } = parseArgs({ args: argv, options: OPTIONS }));
   } catch (e) {
     return { code: 2, out: "", err: `status: ${e.message}\n${USAGE}\n` };
   }
   if (values.help) return { code: 0, out: `${USAGE}\n`, err: "" };
   const ramLimit = values["ram-limit"] === undefined ? undefined : Number(values["ram-limit"]);
-  if (ramLimit !== undefined && !(ramLimit > 0)) return { code: 2, out: "", err: `status: --ram-limit needs a number of GB\n${USAGE}\n` };
-  let root = resolve(values.root ?? resolve(dirname(fileURLToPath(import.meta.url)), "../.."));
+  if (ramLimit !== undefined && !(ramLimit > 0)) {
+    return { code: 2, out: "", err: `status: --ram-limit needs a number of GB\n${USAGE}\n` };
+  }
+  let root = resolve(values.root ?? await defaultRoot(deps.run ?? runCommand));
   try { root = realpathSync(root); } catch { /* a missing folder shows up as "not a git repository" */ }
   const data = await collect({ root, offline: values.offline ?? false, fetch: !values["no-fetch"], ...deps });
   const { lines: text, problems } = render(data, { ramLimit });
   return { code: problems ? 1 : 0, out: `${values.json ? JSON.stringify(data, null, 2) : text.join("\n")}\n`, err: "" };
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) { // realpath: a script reached through a symlinked folder (macOS /tmp, /var) must still run
+// realpath: a script reached through a symlinked folder (macOS /tmp, /var) must still run
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { code, out, err } = await main(process.argv.slice(2));
   process.stdout.write(out);
   process.stderr.write(err);
