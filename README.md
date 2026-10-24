@@ -6,7 +6,7 @@ A free 3D CAD tool that runs in your web browser. No install, no account, no ser
 between Tinkercad and a real CAD program: drag shapes together in Beginner mode, or sketch,
 extrude, fillet and shell in Advanced mode.
 
-Created by **J.Siwek**, who publishes it under the MIT License. Find him at the
+Created by **J.Siwek**, who publishes his original under the MIT License. Find him at the
 [official site](https://classyapps.org/) (his own downloads), his
 [source repository on GitHub](https://github.com/classyapps2026/jumpstart3d) and his
 [video introducing 2.0](https://youtu.be/OmoVmYzoIsk).
@@ -126,7 +126,11 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   and export of the house with its landscape.
 - **CAM Studio** (new in 2.3): plan and simulate CNC router, mill or laser cuts and save G-code.
   Sending it to a machine over USB asks the browser's own permission first. 2.5 adds a 4th axis
-  (rotary) for round parts, with G-code that has A moves.
+  (rotary) for round parts, with G-code that has A moves. 2.5.1 (J.Siwek) brings 48 machine
+  profiles (7 with a rotary axis; your own machines can have a rotary axis and a tool changer),
+  Fanuc-style and Haas-style G-code (program number, G54, tool length offsets), more materials
+  and bits, and toolpaths, G-code and the cutting simulation made in a background worker so the
+  window never freezes.
 - **FlexiGen** for print-in-place articulated figures, and **Mesh to STEP** to turn STL or 3MF
   meshes into editable solids.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
@@ -290,13 +294,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the guide, and
 ## Support the project
 
 JumpStart 3D is free and stays free. If it saves you time, you can chip in towards the
-maintainer's hosting and coffee. Both are Stripe payment links; no account needed. The About
-dialog also has a Support button.
+maintainer's hosting and coffee. The About dialog also has a Support button.
 
-- One-time, any amount: https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
-- Monthly: https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
+- GitHub Sponsors (monthly or one-time, with a GitHub account): https://github.com/sponsors/MaxSikorski
+- One-time, any amount (Stripe, no account needed): https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
+- Monthly (Stripe, no account needed): https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
 
-This supports the community build only; the original author is credited in the app's About dialog
+This supports Max's work on this project only; the original author is credited in the app's About dialog
 and in NOTICE.md.
 
 ## What this repository adds on top of the original
@@ -557,9 +561,13 @@ The map of folders, the rules of thumb for changes and how to send a pull reques
 
 ## License
 
-JumpStart 3D is MIT licensed. The author released the source of version 2.0 under the MIT License
-(on his first official site, https://sites.google.com/view/jumpstart-3d-creator/home, and in his
-GitHub repository, https://github.com/classyapps2026/jumpstart3d). This repository's additions, by
-Max Sikorski and the community, use the same license. The author's repository has the app source
-but not the bundled libraries; this repository has both, so it builds on its own. The full text is
-in [LICENSE](LICENSE); credit, history and third-party licenses are in [NOTICE.md](NOTICE.md).
+From build 24 (v2.5.1-community.24) on, this project is licensed under the
+[GNU AGPL-3.0](LICENSE) (AGPL-3.0-only). In one sentence: you may use, change and share it, and
+anyone who runs a changed version for others, including as a website, must share their source
+under the same license.
+
+It is based on J.Siwek's JumpStart 3D, which is MIT licensed. His code stays MIT, and his license
+and copyright are kept in [LICENSES/MIT-jumpstart-3d-jsiwek.txt](LICENSES/MIT-jumpstart-3d-jsiwek.txt).
+Builds up to 23 were released under the earlier terms and keep them. Bundled libraries keep their
+own licenses ([THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)). Credit, history and details are
+in [NOTICE.md](NOTICE.md).
