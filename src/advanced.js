@@ -2226,9 +2226,21 @@ export function initAdvanced(app) {
     const accept = kind === "svg" ? ".svg,image/svg+xml" : kind === "dxf" ? ".dxf" : kind === "image" ? "image/png,image/jpeg,image/webp,image/gif,image/bmp" : kind === "model" ? MODELS : ".svg,.dxf,image/png,image/jpeg,image/webp,image/gif," + MODELS;
     const f = await pickFile(accept);
     if (!f) return;
+    return openModelFile(f); // jumpstart-3d: drop import. the picker and the page-wide drop share one entry
+  }
+  // jumpstart-3d: drop import. What a file is, by its ending in any letter case: "model" (STL, OBJ, 3MF, STEP, STP), "svg", "dxf",
+  // "image" (by its type), or null. Shared by the picker and the page-wide drop so they accept the same files.
+  function fileKind(f) {
     const ext = (f.name.split(".").pop() || "").toLowerCase();
-    if (ext === "stl" || ext === "obj" || ext === "3mf" || ext === "step" || ext === "stp") return importModel(f); // jumpstart-3d: OBJ import
-    const type = ext === "svg" ? "svg" : ext === "dxf" ? "dxf" : /^image\//.test(f.type) ? "image" : null;
+    if (ext === "stl" || ext === "obj" || ext === "3mf" || ext === "step" || ext === "stp") return "model"; // jumpstart-3d: OBJ import
+    return ext === "svg" ? "svg" : ext === "dxf" ? "dxf" : /^image\//.test(f.type) ? "image" : null;
+  }
+  // jumpstart-3d: drop import. Opens any file the Import button takes: a mesh or STEP model, an SVG or DXF drawing, a picture.
+  // The picker (insertFile) and the page-wide drop (dropimport.js) both end here. Resolves once the file is handed over
+  // (the dialog it opens may still be showing); never rejects.
+  async function openModelFile(f) {
+    const type = fileKind(f);
+    if (type === "model") return importModel(f);
     if (!type) { app.toast("Pick an SVG, DXF or picture file.", "err"); return; }
     try {
       if (type === "image") {
@@ -2253,7 +2265,7 @@ export function initAdvanced(app) {
     try {
       const bytes = bytesIn || new Uint8Array(await file.arrayBuffer());
       if (ext === "step" || ext === "stp") {
-        addImported({ kind: "step", bytes, name: base, k: 1 });
+        addImported({ kind: "step", bytes, name: base, k: 1, plate: true }); // jumpstart-3d: drop import. a model file lands on the plate centre
         app.toast(`Imported ${file.name} as a CAD solid. It may take a moment to appear.`);
         return;
       }
@@ -2269,14 +2281,14 @@ export function initAdvanced(app) {
       importStlCmd(mesh, base, file.name, nt0, { ...res, err, bytes });
     } catch (e) { app.toast(e.message || "That file couldn't be read.", "err"); }
   }
-  function addImported({ kind, bytes, name, k }) {
+  function addImported({ kind, bytes, name, k, plate }) { // jumpstart-3d: drop import. plate: put it at the plate centre (X 0, Y 0), not at the view target
     const id = contentId(bytes);
     const data = toB64(bytes);
     let bodyId = null;
     store.update((doc) => {
       doc.assets = doc.assets || {};
       if (!doc.assets[id]) doc.assets[id] = { kind, name, data };
-      const t = vp.view.target, g = 10;
+      const t = plate ? { x: 0, y: 0 } : vp.view.target, g = 10; // jumpstart-3d: drop import. was: vp.view.target
       const b = { id: (bodyId = uid("b")), name: nextName(doc, name), seq: nextSeq(doc), color: app.mode === "beginner" ? nextColor() : BODY_COLORS[doc.bodies.length % BODY_COLORS.length], hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, Math.round(t.x / g) * g, Math.round(t.y / g) * g, 0, 1], node: { t: kind, asset: id, ...(k !== 1 ? { k } : {}), mods: [] } };
       doc.bodies.push(b);
     }, "Import " + name);
@@ -2289,10 +2301,25 @@ export function initAdvanced(app) {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
+        if (plate && v && v.data && store.doc.bodies.some((b) => b.id === bodyId)) frameIfOffScreen(bodyId); // jumpstart-3d: drop import
+        if (err && store.doc.bodies.some((b) => b.id === bodyId)) app.toast(`Couldn't build ${name}: ${err}`, "err"); // jumpstart-3d: drop import. a failed build used to show only in the status line
         if (v && v.data && Date.now() - t0 > 2500) app.toast(name + " is ready.");
       } else if (Date.now() - t0 > 1500 && !told) { told = true; app.toast("Preparing " + name + "… larger models can take up to a minute."); }
     }, 500);
     return bodyId;
+  }
+  // jumpstart-3d: drop import. A file import lands at the plate centre; a view that is zoomed in or panned away would not show it, so frame it then.
+  // A body that is already fully in view leaves the camera alone.
+  function frameIfOffScreen(id) {
+    const box = scene.bodyTightBox(id);
+    if (!box || box.isEmpty()) return;
+    vp.updateCamera(); // the camera as the view says it is now, not as the last frame drew it
+    vp.camera.updateMatrixWorld(true);
+    const out = [0, 1, 2, 3, 4, 5, 6, 7].some((i) => {
+      const [x, y, z] = vp.project(new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
+      return !(x >= 0 && x <= vp.w && y >= 0 && y <= vp.h && z > -1 && z < 1);
+    });
+    if (out) vp.fit(box);
   }
   function importStlCmd(mesh, name, fileName, ntOrig, info = {}) {
     const b = meshBounds(mesh);
@@ -2311,7 +2338,7 @@ export function initAdvanced(app) {
       title: "Import " + (info.format || "STL"),
       valid: () => true,
       canOk: () => true,
-      ok() { closeCmd(false); addImported({ kind: "mesh", bytes: packMesh(mesh), name, k: K[st.unit] }); },
+      ok() { closeCmd(false); addImported({ kind: "mesh", bytes: packMesh(mesh), name, k: K[st.unit], plate: true }); }, // jumpstart-3d: drop import. plate
       hint: () => "Pick the units the file was made in, then OK.",
       build(body) {
         const nt = mesh.I.length / 3;
@@ -4399,7 +4426,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ Move / Copy
   function moveCmd(opts = {}) {
     // rot: the turn so far (about the selection center), shown as X/Y/Z angles
-    const st = { ids: app.sel.filter((id) => !app.isLocked(id)), d: [0, 0, 0], rot: new THREE.Quaternion(), copy: false, drag: opts.drag || "ground", center: new THREE.Vector3() };
+    const st = { ids: app.sel.filter((id) => !app.isLocked(id)), d: [0, 0, 0], rot: new THREE.Quaternion(), copy: false, drag: opts.drag || "screen", center: new THREE.Vector3() }; // jumpstart-3d: Free in 3D is the default drag (#163)
     if (st.ids.length < app.sel.length) app.toast("Locked bodies stay where they are.");
     // jumpstart-3d: sketch move. Move/Copy takes one sketch or bodies, never both: an extrude would move twice.
     // A sketch moves by changing its plane; the curves stay as drawn and the extrudes made from it follow.
@@ -4503,7 +4530,7 @@ export function initAdvanced(app) {
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
         if (store.doc.sketches.length) body.append(row("Sketch", el("select", { class: "num", id: "mv-sketch", onchange: (e) => { st.sketch = e.target.value || null; if (st.sketch) st.ids = []; changed(); } },
           el("option", { value: "" }, "…or pick a sketch"), ...store.doc.sketches.map((k) => el("option", { value: k.id, selected: st.sketch === k.id }, k.name || "Sketch"))), "mv-sketch"));
-        body.append(row("Drag shape", seg([["ground", "Free on ground"], ["screen", "Free in 3D"]], st.drag, (v) => { st.drag = v; def.render(); }, "mv-drag")));
+        body.append(row("Drag shape", seg([["screen", "Free in 3D"], ["ground", "Free on ground"]], st.drag, (v) => { st.drag = v; def.render(); app.status(); }, "mv-drag"))); // jumpstart-3d: Free in 3D first (#163); the hint follows the choice
         body.append(row("Ring turn", snapSwitch())); // jumpstart-3d: rotation access
         body.append(el("div", { class: "subhead" }, "Move by (" + getUnit() + ")"));
         const r3 = el("div", { class: "row3" });
@@ -6221,6 +6248,8 @@ export function initAdvanced(app) {
     move: () => moveCmd(),
     texture: (opts) => textureCmd(opts || null),
     insertFile: (kind) => insertFile(kind),
+    openModelFile: (file) => openModelFile(file), // jumpstart-3d: drop import
+    fileKind: (file) => fileKind(file), // jumpstart-3d: drop import
     importModel: (file, bytes) => importModel(file, bytes),
     exportSketchesDXF,
     get selectedSketch() { return selSketch; },

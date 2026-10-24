@@ -1,0 +1,10 @@
+
+Running 300 tests using 2 workers
+
+  ✓   1 [site] › test/a.spec.mjs:10:3 › opens (1.2s)
+  ✓   2 [single] › test/a.spec.mjs:10:3 › opens (1.1s)
+  -   3 [site] › test/a.spec.mjs:20:3 › skipped one
+  ✘   4 [site] › test/a.spec.mjs:30:3 › breaks (2.0s)
+  ✓   5 [single] › test/a.spec.mjs:30:3 › fine (0.9s)
+  ✓  124 [site] › test/b.spec.mjs:5:1 › later (0.3s)
+  ✓  123 [single] › test/b.spec.mjs:5:1 › later (0.3s)

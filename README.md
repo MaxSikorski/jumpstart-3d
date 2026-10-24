@@ -96,9 +96,10 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has eighty-two step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: fifty-one from J.Siwek and thirty-one added by this community build for the
-toolbar buttons that had none.
+JumpStart 3D has eighty-nine step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
+toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
+a tour of the top bar, how the model looks on screen and sketch constraints.
 
 ### Add yours
 
@@ -294,13 +295,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the guide, and
 ## Support the project
 
 JumpStart 3D is free and stays free. If it saves you time, you can chip in towards the
-maintainer's hosting and coffee. Both are Stripe payment links; no account needed. The About
-dialog also has a Support button.
+maintainer's hosting and coffee. The About dialog also has a Support button.
 
-- One-time, any amount: https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
-- Monthly: https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
+- GitHub Sponsors (monthly or one-time, with a GitHub account): https://github.com/sponsors/MaxSikorski
+- One-time, any amount (Stripe, no account needed): https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
+- Monthly (Stripe, no account needed): https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
 
-This supports the community build only; the original author is credited in the app's About dialog
+This supports Max's work on this project only; the original author is credited in the app's About dialog
 and in NOTICE.md.
 
 ## What this repository adds on top of the original
@@ -325,7 +326,7 @@ upstream version stays easy to merge.
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
 - Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
   right or left hand, with open ends or ends cut flat.
-- Thirty-one more tutorials, for the toolbar buttons that had none.
+- Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.
 
 ### Editing
 

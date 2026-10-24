@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nightly-${{ github.ref }}-${{ inputs.specs }}
+  group: nightly-${{ github.event_name }}-${{ github.ref }}-${{ inputs.specs }}
   cancel-in-progress: true
 
 jobs:
