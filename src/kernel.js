@@ -1,6 +1,7 @@
 // Geometry kernel: turns the document's node trees into OpenCascade solids
 // and meshes. Runs inside a Web Worker in the app, and directly in Node for tests.
 import * as R from "replicad";
+import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: the round-face-safe merge after a boolean (exported for the STEP import)
 import { fontBytes } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
 
@@ -2772,22 +2773,54 @@ function solidFromMesh(V, I, k = 1) {
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("mesh build ms: faces", T.faces - T.t0, "solid", T.solid - T.faces, "unify", T.unify - T.solid);
   return shape;
 }
+// jumpstart-3d: plain words for a STEP file that cannot be used
+const STEP_UNREADABLE = "Could not read this STEP file (it may be damaged or not a STEP file).";
+const STEP_NO_SHAPES = "This STEP file has no solids or surfaces in it, so there is nothing to import.";
+// jumpstart-3d: all the solids of a STEP file fused in ONE boolean (the first as the argument, the others as tools), then merged once with the
+// round-face-safe simplifiedResult. Fusing them one after another took 45 s for 200 parts (every step runs against everything fused so far);
+// this takes under a second and gives the same shape. A fuse the engine reports errors for falls back to J.Siwek's one-after-another loop.
+function fuseSolids(solids) {
+  const args = new OC.NCollection_List_TopoDS_Shape(), tools = new OC.NCollection_List_TopoDS_Shape();
+  const builder = new OC.BRepAlgoAPI_Fuse();
+  try {
+    args.Append(solids[0].wrapped);
+    for (const x of solids.slice(1)) tools.Append(x.wrapped);
+    builder.SetArguments(args);
+    builder.SetTools(tools);
+    builder.Build();
+    if (!builder.HasErrors()) {
+      const fused = R.cast(simplifiedResult(builder));
+      solids.forEach((x) => x.delete());
+      return fused;
+    }
+  } catch (e) { // jumpstart-3d: a crashed or out-of-memory engine cannot be trusted for the loop either (as operations.ts rebuild() does)
+    if (e instanceof WebAssembly.RuntimeError || e instanceof RangeError) throw e;
+    /* the loop below builds it, or reports the same trouble */ }
+  finally { builder.delete(); args.delete(); tools.delete(); }
+  let acc = solids[0]; for (const x of solids.slice(1)) { const f = acc.fuse(x); acc.delete(); x.delete(); acc = f; }
+  return acc;
+}
 function buildStepAsset(node) {
   const bytes = assetBytes(node);
   const name = "import_" + Math.random().toString(36).slice(2);
   OC.FS.writeFile("/" + name, bytes);
   const reader = new OC.STEPControl_Reader();
   try {
-    if (!reader.ReadFile(name)) throw new Error("This STEP file couldn't be read");
+    // jumpstart-3d: ReadFile returns a status string (never false), so `!reader.ReadFile(name)` could not fire and a damaged or non-STEP file showed "This shape has not type, it is null"
+    if (reader.ReadFile(name) !== OC.IFSelect_ReturnStatus.IFSelect_RetDone) throw new Error(STEP_UNREADABLE);
     reader.TransferRoots();
-    let shape = R.cast(reader.OneShape());
+    // jumpstart-3d: a file with nothing in it gives a null shape, which R.cast reports as "This shape has not type, it is null"
+    const whole = reader.OneShape();
+    if (whole.IsNull()) { whole.delete(); throw new Error(STEP_NO_SHAPES); }
+    let shape = R.cast(whole);
+    if (isEmptyShape(shape)) { shape.delete(); throw new Error(STEP_NO_SHAPES); } // jumpstart-3d
     // one solid when the file has several
     const solids = [];
     const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
     for (; ex.More(); ex.Next()) solids.push(R.cast(OC.TopoDS.Solid(ex.Current())));
     ex.delete();
     if (solids.length === 1) { shape.delete(); shape = solids[0]; }
-    else if (solids.length > 1) { let acc = solids[0]; for (const x of solids.slice(1)) { const f = acc.fuse(x); acc.delete(); x.delete(); acc = f; } shape.delete(); shape = acc; }
+    else if (solids.length > 1) { shape.delete(); shape = fuseSolids(solids); } // jumpstart-3d: was the one-after-another fuse loop, now the fallback in fuseSolids
     if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
     return shape;
   } finally {

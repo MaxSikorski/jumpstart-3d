@@ -1,6 +1,6 @@
 {
   "name": "jumpstart-3d",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Build and edit 3D parts in JumpStart 3D from your agent: add shapes, cut holes, look at the view, export STL, STEP, OBJ and 3MF.",
   "author": {
     "name": "Max Sikorski",
@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/MaxSikorski/jumpstart-3d",
   "repository": "https://github.com/MaxSikorski/jumpstart-3d",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "keywords": [
     "cad",
     "3d",
