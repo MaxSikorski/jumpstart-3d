@@ -30,6 +30,19 @@ test("the convention: 8805 to 8895 in steps of 10, three ports each, claims in .
   assert.deepEqual([P.PORT_FIRST, P.PORT_LAST, P.PORT_STEP, P.PORT_SPAN, P.PORT_FILE], [8805, 8895, 10, 3, ".js3d-port"]);
 });
 
+test("JS3D_PORT_FIRST moves the whole range (the tests of new-piece and done-piece use it); an unset or bad value changes nothing", () => {
+  const ask = (value) => {
+    const env = { ...process.env };
+    delete env.JS3D_PORT_FIRST;
+    if (value !== undefined) env.JS3D_PORT_FIRST = value;
+    const code = `import * as P from ${JSON.stringify(new URL("../tools/agent/ports.mjs", import.meta.url).href)}; console.log(JSON.stringify([P.PORT_FIRST, P.PORT_LAST]))`;
+    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", code], { env, encoding: "utf8" }));
+  };
+  assert.deepEqual(ask("18805"), [18805, 18895]);
+  assert.deepEqual(ask("23000"), [23000, 23090]);
+  for (const bad of [undefined, "", "abc", "80", "1.5", "70000"]) assert.deepEqual(ask(bad), [8805, 8895], `${bad}`);
+});
+
 test("isListening is a connect: true for a server on 127.0.0.1 and for one on every address, false once it is gone", async () => {
   for (const host of ["127.0.0.1", "0.0.0.0"]) {
     const server = await listenOn(host);
