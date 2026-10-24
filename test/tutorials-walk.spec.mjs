@@ -151,9 +151,13 @@ test("c4-top-bar: every button in the tour does something and the lesson stays a
   const auto = page.locator("#btn-autosave");
   if ((await auto.textContent()).includes("Off")) await auto.click();
   await expect(auto).toContainText("On"); await next();
+  const sel0 = await page.evaluate(() => [...window.__app.sel]);
+  expect(sel0.length, "the new block is selected").toBe(1);
   await page.click("#btn-projects");
   await expect(page.locator(".modal-back").first()).toBeVisible();
   await page.keyboard.press("Escape"); await expect(page.locator(".modal-back")).toHaveCount(0); // Escape itself must close it
+  expect(await page.evaluate(() => [...window.__app.sel]), "the same Escape must not clear the selection").toEqual(sel0);
+  await expect(page.locator("#btn-projects")).toBeFocused(); // focus goes back to the button that opened the dialog
   await next();
   await page.click("#mode-advanced"); await expect.poll(() => page.evaluate(() => window.__app.mode)).toBe("advanced");
   await page.click("#mode-beginner"); await expect.poll(() => page.evaluate(() => window.__app.mode)).toBe("beginner");
@@ -211,8 +215,9 @@ test("c4-screen-looks: material, appearance, lighting, sketches and media switch
   await ticks(2, "material"); await next();
   await page.click("#nav-appear"); await expect(page.locator("#nav-appear")).toHaveAttribute("aria-pressed", "false");
   await page.click("#nav-appear"); await expect(page.locator("#nav-appear")).toHaveAttribute("aria-pressed", "true"); await next();
-  const lit = () => page.evaluate(() => window.__app.vp.realistic); // the test browser may start with realistic lighting off, so compare with where it began
+  const lit = () => page.evaluate(() => window.__app.vp.realistic); // realistic lighting starts off (app.js), so the first click turns it on
   const lit0 = await lit();
+  expect(lit0, "a fresh profile starts with realistic lighting off").toBe(false);
   await page.click("#nav-light"); await expect.poll(lit).toBe(!lit0);
   await page.click("#nav-light"); await expect.poll(lit).toBe(lit0); await next();
   await openSketchXY();

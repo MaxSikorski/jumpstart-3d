@@ -19,7 +19,8 @@
       "bb-sketch3d"
     ],
     "top bar": [
-      "btn-chat"
+      "btn-chat",
+      "mode-arch"
     ],
     "top bar menus": [
       "btn-plate",

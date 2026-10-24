@@ -302,6 +302,7 @@ export function initProjects(app) {
 
   // ---------------------------------------------------------------- designs modal
   async function openModal() {
+    const opener = document.activeElement; // jumpstart-3d: focus goes back here when the dialog closes
     const back = el("div", { class: "modal-back", onclick: (e) => { if (e.target === back) close(); } });
     const grid = el("div", { class: "projgrid" }, el("div", { class: "empty" }, "Loading…"));
     const where = (remoteOk ? "Designs are saved to your account and in this browser." : "Designs are saved in this browser. Export a project file to keep a copy elsewhere, or back up every design into one file below.") + " Each design opens in the mode you last used it in; switch any time with the Beginner / Advanced buttons.";
@@ -314,8 +315,8 @@ export function initProjects(app) {
           el("button", { class: "btn", id: "btn-restore-folder", title: "Add the designs from the project files in a folder; nothing here is deleted or overwritten", onclick: () => folderPick.click() }, "Restore from a folder…")), grid));
     back.append(modal);
     document.body.append(back);
-    const close = () => back.remove();
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    const close = () => { back.remove(); try { if (opener && opener !== document.body && opener.isConnected) opener.focus(); } catch (e) {} };
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }); // jumpstart-3d: stopped here, so the same Escape does not also clear the selection or change the tool (as the share-link dialog does)
     modal.querySelector(".xbtn").focus(); // jumpstart-3d: focus inside so Escape closes it, as in About and Shortcuts
     remote.tabs(modal.querySelector(".mbody"), close); // jumpstart-3d: remote
     await saveNow();
