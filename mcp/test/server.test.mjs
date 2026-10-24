@@ -106,7 +106,7 @@ test("export_file writes a GLB: the glTF magic, version 2 and a length field equ
   assert.equal(bytes.readUInt32LE(8), bytes.length);
 });
 
-test("set_mode switches to Architechies and back to Beginner", async () => {
+test("set_mode switches to Architect and back to Beginner", async () => {
   const mode = async () => data(await call(s.client, "status")).designMode;
   assert.equal(await mode(), "beginner");
   assert.equal(data(await call(s.client, "run_script", { code: "return JS3D.mode();" })), "beginner");
@@ -217,10 +217,18 @@ test("add_gear makes a 20-tooth spur gear, refuses a kind the schema does not li
   assert.equal(gear.name, "Spur gear 20 teeth m2");
   assert.equal(gear.error, null);
   assert.ok(gear.volume > Math.PI * 17.5 ** 2 * 6 && gear.volume < Math.PI * 22 ** 2 * 6, "volume " + gear.volume);
-  // the tool's schema lists the three kinds, so the server's own validation answers before the page does (its wording is the SDK's, so only the value is checked)
-  const bad = await call(s.client, "add_gear", { kind: "helical", module: 2, teeth: 20 });
+  // the tool's schema lists the four kinds, so the server's own validation answers before the page does (its wording is the SDK's, so only the value is checked)
+  const bad = await call(s.client, "add_gear", { kind: "worm", module: 2, teeth: 20 });
   assert.equal(bad.isError, true);
-  assert.match(bad.content[0].text, /helical/);
+  assert.match(bad.content[0].text, /worm/);
+  // helical forwards angle and hand
+  await call(s.client, "new_design");
+  data(await call(s.client, "add_gear", { kind: "helical", module: 2, teeth: 20, angle: 15, hand: "left" }));
+  assert.deepEqual(data(await call(s.client, "wait_ready")), { ready: true });
+  assert.equal(data(await call(s.client, "list_bodies"))[0].name, "Helical gear 20 teeth m2");
+  const badHand = await call(s.client, "add_gear", { kind: "helical", module: 2, teeth: 20, hand: "up" });
+  assert.equal(badHand.isError, true);
+  assert.match(badHand.content[0].text, /up/);
   const bad2 = await call(s.client, "add_gear", { module: 11, teeth: 20 });
   assert.equal(bad2.isError, true);
   assert.match(bad2.content[0].text, /^module must be a number from 0\.3 to 10 \(mm\)/);
