@@ -22,6 +22,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `nameplate.js` | A plate sized to its text, raised or cut in |
 | `knurl.js` | Knurled knobs |
 | `spring.js` | Compression springs |
+| `sketchmirror.js` | Sketch Mirror (M, Modify group): copies picked shapes across a line, the X or Y axis or the origin; `mirrorEnts` is the pure maths, the rest is the tool's clicks and panel box |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
@@ -38,7 +39,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sw.js` | Service worker, site only (see section 4) |
 
 ## 2. J.Siwek's, with our marked blocks
-Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 135, `projects.js` 60, `app.js` 58, `beginner.js` 43, `index.html` 35, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 7.
+Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 153, `projects.js` 60, `app.js` 63, `beginner.js` 43, `index.html` 35, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 14.
 Few markers (1 to 5): `inflate.js`, `icons.js`, `tutorials.js`, `tutorial_data.js`, `dims.js`, `facepat.js`, `meshimport.js`, `ops.js`, `voxel.js`, `constraints.js`, `lathe.js`, `recovery.js`, `scene.js`, `worker.js`, `version.js`.
 `kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`); `version.js` holds the community build number that `/ship` bumps.
 
