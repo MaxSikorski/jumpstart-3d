@@ -267,8 +267,9 @@ test("constraints and dimensions among the shapes are copied: a fully constraine
   const made = newEnts(before, after);
   expect(made).toHaveLength(3); // the left side lies on the axis
   const copied = after.cons.filter((c) => !before.cons.some((o) => o.id === c.id));
-  expect(copied.map((c) => c.t + (c.k || "")).sort()).toEqual(["dimdist", "dimdist", "horizontal", "horizontal", "vertical"]);
+  expect(copied.map((c) => c.t + (c.k || "")).sort()).toEqual(["dimdist", "dimdist", "horizontal", "horizontal"]);
   const ids = new Set(made.map((e) => e.id));
+  // (the copied vertical would only repeat the two dimensions and the horizontals: left out, so the sketch is not over-constrained)
   expect(copied.filter((c) => c.e1).every((c) => ids.has(c.e1))).toBe(true);
   // nothing moved when the solver ran again, and the whole sketch is still fully constrained
   expect(after.pts.slice(0, 4)).toEqual(before.pts);
