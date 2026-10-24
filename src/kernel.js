@@ -1593,7 +1593,9 @@ function solidsOnly(shape) {
   } catch (e) { return shape; }
 }
 function fixSolid(s) {
-  try { const f = new OC.ShapeFix_Solid(); f.Init(s.wrapped); f.Perform(new OC.Message_ProgressRange()); const r = R.cast(f.Solid()); f.delete(); s.delete(); return r; } catch (e) { return s; }
+  // jumpstart-3d: the fixer and the progress range are freed on every path (they leaked when ShapeFix threw)
+  let f, p;
+  try { f = new OC.ShapeFix_Solid(); p = new OC.Message_ProgressRange(); f.Init(s.wrapped); f.Perform(p); const r = R.cast(f.Solid()); s.delete(); return r; } catch (e) { return s; } finally { if (f) f.delete(); if (p) p.delete(); }
 }
 function unified(shape) {
   try {
@@ -2797,6 +2799,14 @@ function solidFromMesh(V, I, k = 1) {
     const bb = bboxOf(shape), diag = Math.hypot(...bb.size) || 1;
     const u = unifiedTol(shape, Math.max(1e-6, diag * 2e-6), 2e-4);
     if (u) { shape.delete(); shape = u; }
+    // jumpstart-3d: mesh import fix. The merge above leaves the corners of a merged face at 1e-7 while the face is flat only to
+    // ~1e-5 mm, so on a lid with flat areas 18 % of the faces were invalid and a join with faces exactly flush came out open
+    // (137 open edges). ShapeFix_Solid raises the tolerances to fit, so the solid is valid for booleans.
+    // The repaired solid replaces the merged one only when its volume is the same.
+    if (shape.wrapped.ShapeType() === OC.TopAbs_ShapeEnum.TopAbs_SOLID) {
+      const before = safeVolume(shape), fixed = fixSolid(shape.clone()), after = safeVolume(fixed);
+      if (Math.abs(after - before) <= Math.abs(before) * 1e-6) { shape.delete(); shape = fixed; } else fixed.delete();
+    }
   }
   T.unify = Date.now();
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("mesh build ms: faces", T.faces - T.t0, "solid", T.solid - T.faces, "unify", T.unify - T.solid);
