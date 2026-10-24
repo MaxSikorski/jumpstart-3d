@@ -321,6 +321,103 @@ function withoutLooseEdges<B extends BooleanBuilder>(
   }
 }
 
+// jumpstart-3d: a fuzzy boolean can give an edge a pcurve in the wrong place on one of its faces. In fuzz seed 32 (a
+// torus hole grazing a torus) the 0.15 mm edge where the two tori touch got, on one torus face, the other torus's
+// parameters: 2.48 mm away from the edge. The engine covered it by raising the edge's tolerance to 2.48 mm, so the
+// solid still measured about right, but that face's outline no longer closed in its own parameter space and the
+// mesher left holes there (13 open edges in the STL). Such a face is made again on a copy of its surface, where no
+// edge has a pcurve yet, so ShapeFix projects every edge onto it; shells and solids are put back together with the
+// same edges, a second copy drops the stale pcurves, and SameParameter brings the tolerances down to the real
+// deviation. Only looked at when an edge is loose; kept only when the solid checks valid, no pcurve strays any
+// more and the volume moved less than 1 % (the stray pcurve skews the measured volume too: 0.3 % on the intersect).
+function withoutStrayPCurves(shape: TopoDS_Shape, left: TopoDS_Shape, right: TopoDS_Shape): TopoDS_Shape {
+  const oc = getOC();
+  const [r, gc] = localGC();
+  try {
+    const E = oc.TopAbs_ShapeEnum, O = oc.TopAbs_Orientation;
+    const loosest = (s: TopoDS_Shape) => oc.BRep_Tool.MaxTolerance(s, E.TopAbs_EDGE);
+    const limit = Math.max(1e-3, 100 * Math.max(loosest(left), loosest(right)));
+    if (loosest(shape) <= limit) return shape;
+    const each = (s: TopoDS_Shape, kind: any, fn: (x: TopoDS_Shape) => void, avoid: any = E.TopAbs_SHAPE) => {
+      const ex = r(new oc.TopExp_Explorer(s, kind, avoid));
+      for (; ex.More(); ex.Next()) fn(r(ex.Current()));
+    };
+    let loose = false;
+    each(shape, E.TopAbs_FACE, () => { loose = true; }, E.TopAbs_SOLID);
+    if (loose) return shape; // faces outside a solid: not something this can put back together
+    const strays = (face: TopoDS_Face) => {
+      let worst = 0;
+      each(face, E.TopAbs_EDGE, (x) => {
+        const edge = r(oc.TopoDS.Edge(x));
+        if (oc.BRep_Tool.Degenerated(edge)) return;
+        const c3 = r(new oc.BRepAdaptor_Curve(edge)), c2 = r(new oc.BRepAdaptor_Curve(edge, face));
+        const a = c3.FirstParameter(), b = c3.LastParameter();
+        for (let i = 0; i <= 8; i++) worst = Math.max(worst, r(c3.Value(a + ((b - a) * i) / 8)).Distance(r(c2.Value(a + ((b - a) * i) / 8))));
+      });
+      return worst > 10 * limit;
+    };
+    const copy = (s: TopoDS_Shape) => r(r(new oc.BRepBuilderAPI_Transform(s, r(new oc.gp_Trsf()), true, false)).Shape());
+    let any = false;
+    each(shape, E.TopAbs_FACE, (f) => { if (!any && strays(r(oc.TopoDS.Face(f)))) any = true; });
+    if (!any) return shape;
+    const remade = (face: TopoDS_Face) => {
+      const forward = r(oc.TopoDS.Face(r(face.Oriented(O.TopAbs_FORWARD))));
+      const surface = r(oc.BRep_Tool.Surface(r(oc.TopoDS.Face(copy(forward))))); // the same geometry, a new object: no edge has a pcurve on it yet
+      const wires: TopoDS_Shape[] = [];
+      each(forward, E.TopAbs_WIRE, (w) => wires.push(r(oc.TopoDS.Wire(w))));
+      const make = r(new oc.BRepBuilderAPI_MakeFace(surface, wires[0] as any, false)); // false keeps the wire's direction (true turned a torus face inside out)
+      for (const w of wires.slice(1)) make.Add(w as any);
+      const made = r(make.Face());
+      each(made, E.TopAbs_WIRE, (w) => r(new oc.ShapeFix_Wire(r(oc.TopoDS.Wire(w)), made, 1e-7)).Perform(r(new oc.Message_ProgressRange())));
+      return face.Orientation() === O.TopAbs_REVERSED ? r(made.Reversed()) : made;
+    };
+    const work = copy(shape); // the boolean's edges can be its inputs' own edges, which the kernel's cache still holds
+    const B = r(new oc.TopoDS_Builder());
+    const solids: TopoDS_Shape[] = [];
+    each(work, E.TopAbs_SOLID, (so) => {
+      const solid = r(new oc.TopoDS_Solid());
+      B.MakeSolid(solid);
+      each(so, E.TopAbs_SHELL, (sh) => {
+        const shell = r(new oc.TopoDS_Shell());
+        B.MakeShell(shell);
+        each(sh, E.TopAbs_FACE, (f) => {
+          const face = r(oc.TopoDS.Face(f));
+          B.Add(shell, strays(face) ? remade(face) : face);
+        });
+        B.Add(solid, r(shell.Oriented(sh.Orientation())));
+      });
+      solids.push(r(solid.Oriented(so.Orientation())));
+    });
+    let whole: TopoDS_Shape = solids[0];
+    if (solids.length !== 1) {
+      const compound = r(new oc.TopoDS_Compound());
+      B.MakeCompound(compound);
+      for (const s of solids) B.Add(compound, s);
+      whole = compound;
+    }
+    const result = new oc.BRepBuilderAPI_Transform(whole, r(new oc.gp_Trsf()), true, false); // drops the pcurves on the old surfaces
+    const out = result.Shape();
+    result.delete();
+    oc.BRepLib.SameParameter(out, 1e-7, true);
+    const volume = (s: TopoDS_Shape) => {
+      const props = r(new oc.GProp_GProps());
+      oc.BRepGProp.VolumeProperties(s, props, false, false, false);
+      return props.Mass();
+    };
+    let clean = r(new oc.BRepCheck_Analyzer(out, true, false)).IsValid();
+    if (clean) each(out, E.TopAbs_FACE, (f) => { if (clean && strays(r(oc.TopoDS.Face(f)))) clean = false; });
+    const before = volume(shape);
+    if (!clean || !(Math.abs(volume(out) - before) <= 1e-3 + 1e-2 * Math.abs(before))) {
+      out.delete();
+      return shape;
+    }
+    shape.delete();
+    return out;
+  } finally {
+    gc();
+  }
+}
+
 /** Builds a raw shape by fusing two shapes. */
 export function fuseShapes(
   leftInput: ShapeInput,
@@ -336,7 +433,7 @@ export function fuseShapes(
   builder.Build();
   const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Fuse(), left, right, optimisation, "fuse"); // jumpstart-3d: loose edges
   if (done !== builder) r(done);
-  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  return withoutStrayPCurves(simplifiedResult(done), left, right); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape(); stray pcurves
 }
 
 /** Builds a raw shape by cutting a tool shape from another shape. */
@@ -354,7 +451,7 @@ export function cutShape(
   builder.Build();
   const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Cut(), shape, tool, optimisation, "cut"); // jumpstart-3d: loose edges
   if (done !== builder) r(done);
-  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  return withoutStrayPCurves(simplifiedResult(done), shape, tool); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape(); stray pcurves
 }
 
 /** Builds a raw shape containing the intersection of two shapes. */
@@ -370,7 +467,7 @@ export function intersectShapes(
   builder.Build();
   const done = withoutLooseEdges(builder, () => new oc.BRepAlgoAPI_Common(), left, right, "none", "common"); // jumpstart-3d: loose edges
   if (done !== builder) r(done);
-  return simplifiedResult(done); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape()
+  return withoutStrayPCurves(simplifiedResult(done), left, right); // jumpstart-3d: was SimplifyResult(true, true, 1e-3) and builder.Shape(); stray pcurves
 }
 
 const signedDistanceToPlane = (point: SimplePoint, plane: Plane): number =>

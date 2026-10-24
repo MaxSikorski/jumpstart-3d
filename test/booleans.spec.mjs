@@ -247,8 +247,29 @@ test("a group whose torus hole touches it at one point still intersects, joins a
   expect([I.error, J.error, C.error, C2.error]).toEqual([null, null, null, null]);
   near(I.volume, 43.91, 0.01); // the overlap, as each part alone intersects the sphere (the group's hole cuts 33.8 mm3 off the cylinder)
   near(J.volume + I.volume, sph.volume + grp.volume, 1e-4);
-  near(C.volume, J.volume - sph.volume, 2e-4); // the join of the oval sphere is about 0.16 mm3 (4e-5) under the sum rule here
+  near(C.volume, J.volume - sph.volume, 1e-4);
   near(C2.volume, J.volume - grp.volume, 1e-4);
+});
+
+// Fuzzer seed 32 after the retry for join and cut: the cut now finds the 33.8 mm3 the torus hole takes off, but it left a
+// 0.15 mm edge whose outline on one torus face was 2.48 mm off; that face's outline did not close and the STL had 13 open edges.
+test("seed 32's group, and its join and cut with the oval sphere, export closed STLs of the right volume", async () => {
+  await run((doc) => JS3D.load(doc), TOUCHING_TORI);
+  const [sph, grp] = await entries();
+  expect([sph.error, grp.error]).toEqual([null, null]);
+  near(grp.volume, 1612.13, 1e-4); // the cylinder joined with the torus (1645.93) less the 33.8 mm3 the hole cuts
+  const closed = async (id, volume) => {
+    const m = meshReport(readStlTriangles(bytes(await run((id) => JS3D.export("stl", { ids: [id] }), id))));
+    expect(m.open).toBe(0);
+    near(m.volume, volume, 0.01); // curved faces: the triangles sit inside the surface (0.4 % here)
+  };
+  await closed(grp.id, grp.volume);
+  for (const op of [null, "cut"]) {
+    const g = await run(async ([ids, op]) => { const g = JS3D.group(ids, op ? { op } : {}); await JS3D.ready(60000); return JS3D.list().find((e) => e.id === g); }, [[grp.id, sph.id], op]);
+    expect(g.error).toBeNull();
+    await closed(g.id, g.volume);
+    await run(async () => { JS3D.undo(); await JS3D.ready(60000); });
+  }
 });
 
 // Fuzzer seed 33: two tori joined where their lowest circles cross. The mesher leaves a patch of triangles under
