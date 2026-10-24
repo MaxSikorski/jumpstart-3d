@@ -149,6 +149,7 @@ test("every project fixture makes a link, or is refused as too big, and reads ba
   for (const f of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
     const doc = fixture(f.replace(/\.json$/, ""));
     const r = await makeLink(doc, BASE);
+    if (!r.ok && JSON.stringify(doc).includes('"codeCad"')) { assert.equal(r.reason, "unsupported", f + ": " + r.message); continue; } // Code CAD text is not carried by a link (codecad.spec.mjs)
     if (!r.ok) { assert.equal(r.reason, "large", f + ": " + r.message); assert.match(r.message, /project file/); large++; continue; }
     assert.ok(r.url.length <= LIMITS.URL, f);
     assert.equal(r.codec, "d", f);

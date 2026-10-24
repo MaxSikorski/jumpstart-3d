@@ -104,7 +104,7 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has eighty-nine step-by-step tutorials with animations, behind the **Tutorials** button
+JumpStart 3D has ninety step-by-step tutorials with animations, behind the **Tutorials** button
 in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
 toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
 a tour of the top bar, how the model looks on screen and sketch constraints.
@@ -150,6 +150,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 
 - **Named parameters:** type `w` or `w/2` instead of a number, and everything follows when it
   changes.
+- **Code CAD** (Open/Export › Code CAD…): write replicad code that builds one solid, and keep the code with the part.
 - **Bolts, nuts, gears, hole patterns, name plates, knurled knobs and springs**, ready to drop into a design.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.
 - **Your printer's plate size**, with steep undersides shaded red.
@@ -332,6 +333,11 @@ upstream version stays easy to merge.
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
+- Code CAD: replicad code (a function body that gets `replicad` and `params` and returns one closed solid) builds in a
+  temporary background engine and becomes an ordinary STEP body that keeps its code. Opening a design never runs the
+  code; press Update to run it again, for instance after a linked named parameter changed. The code runs in a
+  locked-down worker (no network, no browser storage, no imports, no code built from text) but it is not a full
+  sandbox: it can use a lot of processor time and memory, so run only code you trust. Scripts call `JS3D.codeCad`.
 - Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
   right or left hand, with open ends or ends cut flat.
 - Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.
