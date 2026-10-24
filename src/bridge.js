@@ -60,10 +60,11 @@ export function initBridge(app) {
     if (!Array.isArray(v) || v.length !== 3 || !v.every((x) => typeof x === "number" && isFinite(x))) throw new Error(`${what} must be [x, y, z] in mm`);
     return v;
   };
-  // every call that changes the design starts here. Chisel keeps its own copy of the shapes and writes it back into whatever
-  // design is open when you leave, so nothing may be edited or loaded under it.
+  // every call that changes the design starts here. Chisel and CosForge keep their own copy (the shapes, the costume) and write it back into whatever
+  // design is open when you leave, so nothing may be edited or loaded under them.
   const edit = () => {
     if (app.mode === "chisel") throw new Error("leave Chisel mode first");
+    if (app.cosforge && app.cosforge.isOpen) throw new Error("close CosForge first"); // jumpstart-3d: CosForge
     if (app.command) app.command.cancel();
   };
   const bool = (v, what) => {

@@ -32,6 +32,7 @@ import { initAdvanced } from "./advanced.js";
 import { initProjects } from "./projects.js";
 import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
+import { initCosForge } from "./cosforge.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
 import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
@@ -183,6 +184,7 @@ app.voxel = initVoxel(app);
   $("btn-tutorials-menu").onclick = () => { $("menu-export").hidden = true; app.tutorials.open(); }; // jumpstart-3d: phone entry
   app.flexigen = initFlexiGen(app);
   app.meshstep = initMeshStep(app);
+  app.cosforge = initCosForge(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
   app.cam = initCam(app);
@@ -658,11 +660,29 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.7.1", [
+        ["Modern Sci-Fi armor:", "a new CosForge style with 27 original templates to build from: Vanguard, Interceptor, Sentinel, Strike Team and Flight helmets, a Night Watch cowl and a visor mask; Vanguard, Hex Core and Tactical chest pieces; back plates and a Jet Pack Mk II; pauldrons, arm guards, bracers, a Pulse Gauntlet and hand plates; thigh plates, knees, greaves, boots and toe caps; a collar, belt, hip plates and an Energy Shield. Add the whole Vanguard set at once."],
+        ["Sharper shapes:", "the new templates start with angled form cages (keeled chests, jutting jaws, ridged limbs) that you can keep reshaping in the Form step."],
+        ["Light lines:", "panel lines and emblems can glow in the accent colour (Surface details → Light lines and Glowing emblem), and 3MF exports keep the colours for multi-colour printing. A new angled-eyes helmet opening, too."],
+      ]),
+      sec("New in version 2.7", [
+        ["CosForge Form tool:", "a new Form step puts a control cage over any costume part, like the form tools in CAD. Pick points, edges, faces, rows or columns (Shift adds), then drag the arrows (X, Y, Z, or yellow to push and pull along the surface) or the white ball, or use Pull out, Push in, Move, Scale, Rotate, Flatten and Make smooth. Symmetry keeps left and right matched, soft selection blends the edit into nearby points, and the cage can be smooth or creased, with fewer or more points or subdivided. The outline, details, add-ons, cuts and joints all follow the new shape."],
+        ["26 more templates:", "Recon Helmet, Space Bubble Helmet, Jet Pack, Power Gauntlet, Armored Collar, Armored Hand Plate and Riot Shield (Sci-Fi); Dragon Helm, Dragon Pauldron, Dragon Gauntlet, King's Crown, Knight Hand Plate, Gorget and Wing Back Plate (Fantasy); High Collar, Lightning Helm, Star Gauntlet and Hero Shield (Comic Hero); Respirator Mask, Clockwork Gauntlet, Riveted Collar and Riveted Plate Pauldron (Steampunk); Menpo Face Guard, Nodowa Throat Guard, Horned Kabuto and Tekko Hand Guard (Samurai). Almost 100 templates in all."],
+        ["New part types:", "collars (gorgets) that sit on the shoulders around the neck, and a lower-face mask style."],
+      ]),
+      sec("New in version 2.6", [
+        ["CosForge:", "a new cosplay costume designer that opens in its own window (Simulate → CosForge in Advanced, or the CosForge button in Beginner). Enter the wearer's measurements and a mannequin is built to match, in an arms-down, A or T pose."],
+        ["Costume templates:", "over 70 parts in Sci-Fi, Fantasy, Comic Hero, Steampunk and Samurai styles, plus plain forms: helmets with visors, slits or cowls, masks, crowns, chest and back plates, belts, tassets, pauldrons, arm guards, bracers, hand plates, thigh plates, knee guards, greaves, boot covers, toe caps and shields. Add one part or a whole set."],
+        ["Shape and sculpt:", "every part is a form you can change: coverage, openings, edges (rolled, trimmed, flared), ridges, panel lines, hex plates, dragon scales, overlapping plates, muscles, emblems and rivets, plus add-ons like horns, spikes, fins, ears, wings, gems, antennas, goggles and thrusters. Sculpt with bulge, push, emboss, engrave and smooth brushes."],
+        ["Fit to the body:", "parts follow the body when the measurements change. Move, turn and size them, and check the fit: the inside turns green, orange or red, and helmets warn when the head won't fit through."],
+        ["Cut and join:", "cut parts anywhere with flat cuts, or let Auto-cut split them until every piece fits your printer (eight bed sizes). Joints go on the inside of each cut: pegs, snap clips, slide-in dovetails or magnet cups."],
+        ["Export or keep editing:", "save pieces as STL (a .zip of pieces), 3MF with colours or OBJ, as worn or laid out ready to print, or add them to your design to edit in the other modes. Import your own STL or 3MF parts, or objects from your design, to fit and cut them too. The costume is kept with the design."],
+      ]),
       sec("New in version 2.5.1", [
         ["CAM Studio machines:", "48 machine profiles, grouped from desktop and hobby routers, benchtop and knee mills, pro and shop routers, to industrial nesting routers, vertical machining centers and lasers, plus 7 with a 4th (rotary) axis. Your own machines can now have a rotary axis and a tool changer."],
         ["Industrial G-code:", "new Fanuc-style and Haas-style posts: program number, G54, tool changes with length offsets (G43 H), coolant, and a safe return home at the end."],
         ["More materials and bits:", "steels, stainless, cast iron, titanium, 7075 aluminium, copper, acetal, polycarbonate and carbon fiber; carbide end mills up to 3/4\", a face mill, bull and ball noses, a chamfer mill and a tap drill."],
-        ["No more freezing:", "CAM Studio now works out the toolpaths, G-code and the whole cutting simulation in the background, so the window keeps responding while it works and you can keep changing settings. Scrubbing and replaying are spread over frames too."],
+        ["No more freezing:", "CAM Studio now works out the toolpaths, G-code and the whole cutting simulation in the background, so the window keeps responding while it works and you can keep changing settings. Scrubbing and replaying are spread over frames too. While it works, the model stays on screen with a progress bubble, and 4th-axis jobs are about ten times faster."],
       ]),
       sec("New in version 2.5", [
         ["Log cabins:", "new Log cabin wall types in Architect: round logs (8\", 10\" or 250 mm) that cross past each corner, and hewn square logs (6\", 8\" or 200 mm) with chinking between them. Pick one before drawing, or turn any wall into logs with Build as. They go to Beginner and Advanced as real logs you can print."],
@@ -739,6 +759,7 @@ app.showAbout = function () {
       sec("Simulate", [
         ["3D Print Sim:", "30+ printer profiles (Bambu Lab, Creality, Elegoo, Flashforge, Prusa, Snapmaker), multi-color printing with AMS-style switchers, dual nozzles and tool changers: paint faces with a filament per toolhead and watch the tool changes (changes, purge waste, prime tower), supports, layer-by-layer preview, print time, and strength maps."],
         ["Simulate:", "joints and motion, stress tests, and printed-part strength by filament and print orientation."],
+        ["CosForge:", "design cosplay costumes on a mannequin built from your measurements, with themed templates you can shape, reshape with a control cage (Form), sculpt, fit, cut into printable pieces with joints, and export or add to your design."],
         ["FlexiGen:", "turn one object into a print-in-place articulated flexi model with six joint styles, then export STL or 3MF. It works on a copy, so your design is never changed."],
         ["Render:", "photo-style pictures with studio, sun, spotlight, overcast or three-point lighting, light color and direction, your own background picture, and Low to Ultra high quality, saved as PNG."]]),
       sec("Files and saving", [
