@@ -156,21 +156,7 @@ export function meshMatches(mesh, exact, kinds) {
   return Number.isFinite(mesh) && Math.abs(mesh - exact) <= abs + rel * Math.max(Math.abs(mesh), Math.abs(exact));
 }
 
-// "This body can't be stretched unevenly" is the kernel giving up on rebuilding a stretched body from a fine mesh of more
-// than 4000 triangles (src/kernel.js, facetedScale). Excused only for that: factors that differ, a body that is rebuilt
-// that way (a group, a torus or text) and a mesh that is big.
-export const FINE_MESH_TRIANGLES = 2000; // drawn triangles: a group of 1396 stretched fine, one of 8552 did not
-export function stretchExcused(k, body) {
-  const different = Array.isArray(k) && !k.every((v) => v === k[0]);
-  const rebuilt = body.kind === "group" || ["torus", "text"].includes(body.kind);
-  return different && rebuilt && body.tris >= FINE_MESH_TRIANGLES;
-}
-
 // What a person pastes to run the same chain again.
 export function replayCommand({ seed, ops, strict, project }) {
   return `${strict ? "FUZZ_STRICT=1 " : ""}FUZZ_SEED=${seed} FUZZ_OPS=${ops} npx playwright test test/fuzz.spec.mjs --project=${project}`;
 }
-
-// A cone's STL has 12 open edges at its apex (12 measured at every size). A body is excused that many for each cone it holds.
-export const CONE_OPEN_EDGES = 12;
-export const coneOpenExcused = (open, cones) => cones > 0 && open <= CONE_OPEN_EDGES * cones;
