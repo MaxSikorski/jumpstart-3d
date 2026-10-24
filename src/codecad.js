@@ -259,7 +259,7 @@ export function initCodeCad(app) {
         links,
         add,
         hints,
-        el("div", { class: "hint", id: "cc-trust", style: { padding: 0, marginTop: "10px" } }, el("b", {}, "Only run code you trust. "), "It runs as written in a background worker, which is not a sandbox: the code can use the network, this site's saved designs and caches in the browser, and start other workers. The time limit stops a loop that never ends; it does not limit memory. Nothing runs when a design is opened."),
+        el("div", { class: "hint", id: "cc-trust", style: { padding: 0, marginTop: "10px" } }, el("b", {}, "Only run code you trust. "), "It runs as written in a background worker that has no network, no saved browser data, no imports and no way to build code from text, but it is not a full sandbox: it can still use a lot of processor time and memory. The time limit stops a loop that never ends. Nothing runs when a design is opened."),
         err,
         el("div", { style: { display: "flex", gap: "8px", marginTop: "12px" } }, run, cancel, shut),
         state));

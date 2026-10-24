@@ -400,7 +400,7 @@ test("a design with Code CAD text is refused by Share link, which only carries p
 test("the dialog builds a body from its example, shows errors in place, and reopens the recipe", async () => {
   await fresh();
   await page.evaluate(() => window.__app.codeCad.open());
-  await expect(page.locator("#cc-trust")).toContainText("not a sandbox");
+  await expect(page.locator("#cc-trust")).toContainText("not a full sandbox");
   await expect(page.locator("#cc-code")).toHaveValue(/makeBox/);
   await page.selectOption("#cc-example", "1");
   await expect(page.locator("#cc-name")).toHaveValue("Plate");
@@ -576,4 +576,60 @@ test("scripts, the agent link and Run script reach Code CAD through JS3D", async
   await waitIdle(page);
   const list = await bodies(page);
   list.forEach((b) => near(b.volume, L_BRACKET));
+});
+
+// The temporary worker is locked down after the engine has loaded: each of these is code a user might type. It must end in a plain
+// error in the dialog, no body, and no request to anywhere but the app itself.
+const LOCKED = [
+  ["fetch", 'fetch("https://example.com"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /cannot use the network.*\(fetch\)/],
+  ["XMLHttpRequest", 'const x = new XMLHttpRequest(); x.open("GET", "https://example.com"); x.send(); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /cannot use the network.*\(XMLHttpRequest\)/],
+  ["indexedDB", 'indexedDB.open("x"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /browser storage.*\(indexedDB\)/],
+  ["WebSocket", 'new WebSocket("wss://example.com"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /\(WebSocket\)/],
+  ["import()", 'const m = await import("./x.js"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /cannot load other files \(import\)/],
+  ["import() with a comment", 'import /* hi */ ("https://example.com/x.js"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /cannot load other files \(import\)/],
+  ["function constructor", 'return (function () {}).constructor("return 1")();', /cannot build new code from text/],
+  ["async constructor", 'return (async () => {}).constructor("return 1")();', /cannot build new code from text/],
+  ["generator constructor", 'return Object.getPrototypeOf(function* () {}).constructor("yield 1")();', /cannot build new code from text/],
+  ["Function itself", 'return Function("return 1")();', /cannot build new code from text/],
+  ["Function with a parameter that runs code", 'return Function(["x = 1"], "return 1")();', /cannot build new code from text/],
+  ["Function made to look like the engine's own", 'return Function(["handle"], "return function (handle, methodName, destructorsRef, args) {\\n(args); return 7\\n}")();', /cannot build new code from text/],
+  ["eval", 'return eval("1");', /cannot build new code from text/],
+  ["setTimeout with text", 'setTimeout("1"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /cannot build new code from text/],
+  ["setInterval with text", 'setInterval("1", 10); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /cannot build new code from text/],
+  ["importScripts", 'self.importScripts("https://example.com/x.js"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /\(importScripts\)/],
+  ["Worker", 'new Worker("data:text/javascript,1"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /other workers.*\(Worker\)/],
+];
+for (const [name, code, message] of LOCKED) {
+  test(`locked down: ${name} ends in a plain error, with no body and no request outside the app`, async ({}, info) => {
+    await fresh();
+    const urls = [];
+    const note = (req) => urls.push(req.url());
+    page.context().on("request", note);
+    try {
+      await page.evaluate(() => window.__app.codeCad.open());
+      await page.fill("#cc-code", code);
+      await page.click("#cc-run");
+      await expect(page.locator("#cc-err")).toContainText(message, { timeout: 90_000 });
+      await expect(page.locator("#cc-run")).toBeEnabled();
+      await expect(page.locator(".modal-back.codecad")).toHaveCount(1);
+    } finally {
+      page.context().off("request", note);
+    }
+    await waitIdle(page);
+    expect(await bodies(page), "no body was added").toEqual([]);
+    const single = info.project.name.startsWith("single");
+    const origin = new URL(info.project.use.baseURL).origin;
+    const outside = urls.filter((u) => !/^(blob:|data:)/.test(u) && !(single ? u.startsWith("file:") : u.startsWith(origin + "/")));
+    expect(outside, "requests to other places").toEqual([]);
+  });
+}
+
+test("locked down: the code still builds after a refused one, and a normal example is unaffected", async () => {
+  await fresh();
+  const bad = await build({ code: 'fetch("https://example.com"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);' });
+  expect(bad.error).toMatch(/cannot use the network/);
+  // a fresh temporary worker each time: the lock is per job, and a function handler for setTimeout still works
+  const ok = await build({ code: 'setTimeout(() => {}, 0); const f = () => 1; f.constructor; return replicad.makeBox([0, 0, 0], [10, 10, 10]);' });
+  expect(ok.error).toBeUndefined();
+  near(await volumeOf(ok.id), 1000);
 });

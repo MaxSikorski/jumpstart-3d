@@ -335,8 +335,9 @@ upstream version stays easy to merge.
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
 - Code CAD: replicad code (a function body that gets `replicad` and `params` and returns one closed solid) builds in a
   temporary background engine and becomes an ordinary STEP body that keeps its code. Opening a design never runs the
-  code; press Update to run it again, for instance after a linked named parameter changed. The code is trusted, not
-  sandboxed: it can reach the internet, so run only code you trust. Scripts call `JS3D.codeCad`.
+  code; press Update to run it again, for instance after a linked named parameter changed. The code runs in a
+  locked-down worker (no network, no browser storage, no imports, no code built from text) but it is not a full
+  sandbox: it can use a lot of processor time and memory, so run only code you trust. Scripts call `JS3D.codeCad`.
 - Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
   right or left hand, with open ends or ends cut flat.
 - Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.

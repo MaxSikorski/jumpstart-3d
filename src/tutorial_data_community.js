@@ -772,7 +772,7 @@ export const COMMUNITY_TUTORIALS = [
       nameStep("Code Bracket", "Lopez, Maria, Code Bracket"),
       { title: "Build the example bracket", tool: "Export → Code CAD…", icon: "select", show: { sel: "#btn-codecad", via: "#btn-export" },
         how: ["Click the <b>Export</b> button (the down-arrow at the top right), then choose <b>Code CAD…</b>.", "The code box already holds an L bracket. Click <b>Build</b> and wait a few seconds."],
-        when: "The code makes one solid. It is added as an ordinary STEP body, and the code is kept with it. Only run code you trust: it is not sandboxed." },
+        when: "The code makes one solid. It is added as an ordinary STEP body, and the code is kept with it. Only run code you trust: it cannot reach the internet, but it is not a full sandbox." },
       { title: "Change a size and Update", tool: "Export → Code CAD…", icon: "select", show: { sel: "#btn-codecad", via: "#btn-export" },
         how: ["Click the bracket so it is selected, then choose <b>Code CAD…</b> again. Its code opens with an <b>Update</b> button.", "Change the 30 in <b>[60, 30, 4]</b> to 40 and click <b>Update</b>."],
         when: "Opening a design never runs its code. Update runs it again, and keeps the body's place and any later features." },
