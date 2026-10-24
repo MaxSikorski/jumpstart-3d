@@ -74,7 +74,7 @@ export function makeWorld(label) {
   const shimBin = join(scratch, "bin-shim");
   const ghConfig = join(scratch, "gh-config");
   for (const d of [home, bin, shimBin, ghConfig]) mkdirSync(d);
-  writeFileSync(join(home, ".gitconfig"), "[user]\n\tname = Piece Test\n\temail = piece@test.invalid\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n[advice]\n\tdetachedHead = false\n[pull]\n\trebase = false\n");
+  writeFileSync(join(home, ".gitconfig"), "[user]\n\tname = Piece Test\n\temail = piece@test.invalid\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n[gc]\n\tauto = 0\n[maintenance]\n\tauto = false\n[advice]\n\tdetachedHead = false\n[pull]\n\trebase = false\n");
   script(join(bin, "gh"), FAKE_GH);
   script(join(shimBin, "git"), gitShim(findGit()));
 
@@ -123,8 +123,13 @@ export function makeWorld(label) {
     mkdirSync(dir);
     const origin = join(dir, "origin.git");
     const root = join(dir, "jumpstart-3d");
+    // No background gc or maintenance in the template: git detaches one after a commit or push, and it would repack and prune objects while cpSync copies the template (ENOENT).
     g(dir, "init", "--bare", "-q", "-b", "main", origin);
+    g(origin, "config", "gc.auto", "0");
+    g(origin, "config", "maintenance.auto", "false");
     g(dir, "clone", "-q", origin, root);
+    g(root, "config", "gc.auto", "0");
+    g(root, "config", "maintenance.auto", "false");
     writeFileSync(join(root, "README.md"), "# scratch\n");
     writeFileSync(join(root, ".gitignore"), "test-results/\n*.log\nnode_modules/\n");
     g(root, "add", ".");

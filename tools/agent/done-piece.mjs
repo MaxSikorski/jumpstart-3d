@@ -33,8 +33,8 @@ const firstLine = (s) => s.split("\n").find((l) => l.trim())?.replace(/^(?:fatal
 const pushReason = (err) => (err.split("\n").map((l) => l.trim()).find((l) => /^(?:!\s*)?\[(?:remote )?rejected\]|^error:|^fatal:/.test(l)) ?? firstLine(err)).replace(/^(?:error|fatal): /, "");
 // Single-quotes a path or name for a command printed in a hint, so it can be pasted into a shell as it is.
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-// The ignored things a worktree may lose: the port claim, the node_modules link, test output, build output, logs. Anything else that is ignored (a PR_BODY.md, a local .claude/) might be someone's work.
-const EXPECTED_IGNORED = /^(?:\.js3d-port|node_modules|test-results|playwright-report|docs|dist)\/?$|(?:^|\/)[^/]*\.log$/;
+// The ignored things a worktree may lose: the port claim, node_modules (any depth, e.g. mcp/node_modules), test output, build output (docs, dist, and build.mjs's own build/), logs, macOS .DS_Store (any depth). Anything else that is ignored (a PR_BODY.md, a local .claude/) might be someone's work.
+const EXPECTED_IGNORED = /^(?:\.js3d-port|test-results|playwright-report|docs|dist|build)\/?$|(?:^|\/)node_modules\/?$|(?:^|\/)\.DS_Store$|(?:^|\/)[^/]*\.log$/;
 const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
 const short = (sha) => sha.slice(0, 7);
 
