@@ -1,8 +1,10 @@
-# JumpStart 3D v2.7.1: complete source code
+# JumpStart 3D v2.7.3: complete source code
 
-Everything needed to rebuild JumpStart 3D v2.7.1 (with the Mac / iPad / iPhone work, the open-source credits, and 38 step-by-step tutorials (two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
+Everything needed to rebuild JumpStart 3D v2.7.3 (with the Mac / iPad / iPhone work, the open-source credits, and 38 step-by-step tutorials (two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
 
-New in v2.7.1: a **Modern Sci-Fi** CosForge style (`modernSet()` in `app/src/cosparts.js`): 27 original hard-surface templates whose angular shapes come from preset form cages (`fp`, `helmForm`, `vChest`, `ridgeLimb`, `peakDome`), glowing light lines and emblems (the `glow` and `emblemGlow` details mark outside faces for the accent colour through `buildShell` in `app/src/cosmesh.js`), and an angled-eyes helmet opening.
+New in v2.7.3: round faces that the mesher drew wrongly (long triangles cutting across the part, seen as stray planes after an extrude, offset or cut) are now checked against the true surface and redrawn (`repairFaceMeshes` in `app/src/kernel.js`), and Pattern → Features picks features by clicking their faces on the model or in the timeline, with blue/orange outlines instead of selecting the whole body (`patternCmd` in `app/src/advanced.js`).
+
+From v2.7.1: a **Modern Sci-Fi** CosForge style (`modernSet()` in `app/src/cosparts.js`): 27 original hard-surface templates whose angular shapes come from preset form cages (`fp`, `helmForm`, `vChest`, `ridgeLimb`, `peakDome`), glowing light lines and emblems (the `glow` and `emblemGlow` details mark outside faces for the accent colour through `buildShell` in `app/src/cosmesh.js`), and an angled-eyes helmet opening.
 
 From v2.7: CosForge gains a **Form** step: a control cage over any part, like the form tools in CAD (`formD`, `cageUV` in `app/src/cosparts.js` blend each control point's 3D move across the part with Catmull-Rom, or straight when creased; the part's surface function is wrapped, so outlines, details, add-ons, cuts and joints all follow). The window side (`panelForm`, `drawCage`, `deform`, the arrow gizmo and picking in `app/src/cosforge.js`) has point, edge, face, row and column selection, drag arrows (X, Y, Z, along the surface) and a free-move ball, Pull out / Push in, Move, Scale, Rotate, Flatten, Make smooth, symmetry, soft selection, fewer/more points and subdivide. 26 more templates (almost 100), a **collar (gorget)** part that follows the shoulders up to the neck, and a lower-face mask. Tests: `tests/cf_form.cjs`, `tests/cftest.cjs` (now with form edits), `tests/cosforge-node.sh cf_pieces`.
 
@@ -28,7 +30,7 @@ From v2.1: easier text in Advanced. **3D text** (Create → Primitives → 3D te
 
 From v2.0: **3D Sketch** (`app/src/sketch3d.js`), the **Lathe** (`app/src/lathe.js`) and **Jump Brick Builder** (`app/src/bricks.js`, in Advanced → Simulate). The version number shown on the splash screen and in About comes from `app/src/version.js` (and the splash line in `app/src/index.html`).
 
-Building from this folder gives the same app as the released `jumpstart_3d_v2.7.1.htm`. The only differences are the size number used by the loading bar and the file labels in two license comments.
+Building from this folder gives the same app as the released `jumpstart_3d_v2.7.3.htm`. The only differences are the size number used by the loading bar and the file labels in two license comments.
 
 ## What's where
 

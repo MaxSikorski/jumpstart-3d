@@ -1565,6 +1565,33 @@ function asSolid(sh) {
   } catch (e) {}
   return null;
 }
+// A boolean (join, cut) between faces that touch or line up can leave loose faces or shells
+// beside the solid: thin sheets you can see but can't pick or delete. Keep only the solids.
+function solidsOnly(shape) {
+  try {
+    const T = OC.TopAbs_ShapeEnum;
+    const ex = new OC.TopExp_Explorer(shape.wrapped, T.TopAbs_FACE, T.TopAbs_SOLID);
+    const loose = ex.More();
+    ex.delete();
+    if (!loose) return shape;
+    const solids = [];
+    const es = new OC.TopExp_Explorer(shape.wrapped, T.TopAbs_SOLID, T.TopAbs_SHAPE);
+    for (; es.More(); es.Next()) solids.push(OC.TopoDS.Solid(es.Current()));
+    es.delete();
+    if (!solids.length) return shape;
+    let out;
+    if (solids.length === 1) out = R.cast(solids[0]);
+    else {
+      const b = new OC.TopoDS_Builder(), c = new OC.TopoDS_Compound();
+      b.MakeCompound(c);
+      for (const x of solids) b.Add(c, x);
+      b.delete();
+      out = R.cast(c);
+    }
+    shape.delete();
+    return out;
+  } catch (e) { return shape; }
+}
 function fixSolid(s) {
   // jumpstart-3d: the fixer and the progress range are freed on every path (they leaked when ShapeFix threw)
   let f, p;
@@ -2434,12 +2461,14 @@ const STRETCH_TRIANGLES = 4000;
 function facetedScale(shape, k, o) {
   const bb = bboxOf(shape);
   const diag = Math.hypot(...bb.size) || 1;
+  // jumpstart-3d: stretch preview cap + his round-face repair
   let lin = Math.max(0.01, diag * 0.0008), ang = 0.12, m;
   for (let i = 0; ; i++) {
     m = shape.mesh({ tolerance: lin, angularTolerance: ang });
     if (m.triangles.length / 3 <= STRETCH_TRIANGLES || i === 6) break;
     lin *= 1.6; ang = Math.min(0.6, ang * 1.6);
   }
+  try { repairFaceMeshes(shape, m, lin, ang); } catch (err) {}
   shape.delete();
   if (m.triangles.length / 3 > STRETCH_TRIANGLES * 2) throw new Error("This body can't be stretched unevenly. Scale it evenly instead (hold Shift while dragging a corner handle).");
   // the mesher gives every face its own copy of the corners on its edges: weld them, then split into pieces
@@ -2880,9 +2909,9 @@ export function evalNode(node) {
     // evaluate prefix (node without last mod) so editing the last feature is cheap
     const prefix = { ...node, mods: mods.slice(0, -1) };
     shape = evalNode(prefix);
-    shape = applyMod(shape, mods[mods.length - 1]);
+    shape = solidsOnly(applyMod(shape, mods[mods.length - 1]));
   } else {
-    shape = evalBase(node);
+    shape = solidsOnly(evalBase(node));
   }
   cachePut(key, shape);
   return shape;
@@ -2947,12 +2976,109 @@ function flipSlivers(m) {
     }
   }
 }
+// The mesher sometimes triangulates a round face wrongly (seen on a cylinder band left by an
+// offset or a boolean): long triangles cut straight across the part and show up as stray flat
+// "planes" that can't be selected away. Each round face's triangles are checked against the true
+// surface; a face that fails is repaired (ShapeFix_Face), meshed again on its own and swapped in.
+function surfaceDeviation(f) {
+  const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+  // jumpstart-3d: free the engine objects this makes (the surface kinds, their placement, point and direction); upstream left them for the garbage collector
+  const own = [ad], keep = (x) => { own.push(x); return x; };
+  try {
+    const t = f.geomType;
+    const V = (p) => { keep(p); return [p.X(), p.Y(), p.Z()]; };
+    if (t === "CYLINDRE") {
+      const cy = keep(ad.Cylinder()), pos = keep(cy.Position()), o = V(pos.Location()), a = V(pos.Direction()), r = cy.Radius();
+      return { r, dev: (p) => { const v = [p[0] - o[0], p[1] - o[1], p[2] - o[2]], d = v[0] * a[0] + v[1] * a[1] + v[2] * a[2]; return Math.abs(Math.hypot(v[0] - d * a[0], v[1] - d * a[1], v[2] - d * a[2]) - r); } };
+    }
+    if (t === "SPHERE") {
+      const sp = keep(ad.Sphere()), pos = keep(sp.Position()), o = V(pos.Location()), r = sp.Radius();
+      return { r, dev: (p) => Math.abs(Math.hypot(p[0] - o[0], p[1] - o[1], p[2] - o[2]) - r) };
+    }
+    if (t === "TORUS") {
+      const to = keep(ad.Torus()), pos = keep(to.Position()), o = V(pos.Location()), a = V(pos.Direction()), R1 = to.MajorRadius(), r = to.MinorRadius();
+      return { r, dev: (p) => { const v = [p[0] - o[0], p[1] - o[1], p[2] - o[2]], d = v[0] * a[0] + v[1] * a[1] + v[2] * a[2]; const q = Math.hypot(v[0] - d * a[0], v[1] - d * a[1], v[2] - d * a[2]); return Math.abs(Math.hypot(q - R1, d) - r); } };
+    }
+    return null;
+  } finally { for (const x of own) { try { x.delete(); } catch (err) {} } }
+}
+function badFaceTris(T, P, start, count, sd, tol) {
+  const lim = Math.max(0.5, 3 * tol, sd.r * 0.05);
+  let bad = 0;
+  for (let i = start; i < start + count; i += 3) {
+    const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3;
+    if (sd.dev([(P[a] + P[b] + P[c]) / 3, (P[a + 1] + P[b + 1] + P[c + 1]) / 3, (P[a + 2] + P[b + 2] + P[c + 2]) / 3]) > lim) bad++;
+  }
+  return bad;
+}
+function repairFaceMeshes(shape, m, tol, ang) {
+  const faces = shape.faces;
+  try {
+    if (faces.length !== m.faceGroups.length || faces.length > 3000) return 0;
+    const fixes = new Map();
+    faces.forEach((f, fi) => {
+      const t = f.geomType;
+      if (t !== "CYLINDRE" && t !== "SPHERE" && t !== "TORUS") return;
+      const g = m.faceGroups[fi];
+      let sd = null;
+      try { sd = surfaceDeviation(f); } catch (err) { return; }
+      if (!sd || !badFaceTris(m.triangles, m.vertices, g.start, g.count, sd, tol)) return;
+      if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("bad face mesh", fi, t, sd.r);
+      // repair this face and mesh it by itself
+      let nf = null;
+      try {
+        const fx = new OC.ShapeFix_Face();
+        try { // jumpstart-3d: fx is freed even when Perform throws
+          fx.Init_1 ? fx.Init_1(f.wrapped) : fx.Init(f.wrapped);
+          fx.Perform();
+          nf = R.cast(fx.Face());
+        } finally { fx.delete(); }
+        const fm = nf.mesh({ tolerance: tol, angularTolerance: ang });
+        if (fm.triangles.length && !badFaceTris(fm.triangles, fm.vertices, 0, fm.triangles.length, sd, tol)) fixes.set(fi, fm);
+      } catch (err) {} finally { if (nf) nf.delete(); }
+    });
+    if (!fixes.size) return 0;
+    const V = Array.from(m.vertices), N = Array.from(m.normals), Tn = [], groups = [];
+    m.faceGroups.forEach((g, fi) => {
+      const start = Tn.length, fm = fixes.get(fi);
+      if (!fm) { for (let i = g.start; i < g.start + g.count; i++) Tn.push(m.triangles[i]); }
+      else {
+        // keep the face's outward side: compare with the surface normals the mesher gave
+        let ox = 0, oy = 0, oz = 0;
+        for (let i = g.start; i < g.start + g.count; i++) { const k = m.triangles[i] * 3; ox += m.normals[k]; oy += m.normals[k + 1]; oz += m.normals[k + 2]; }
+        let nx = 0, ny = 0, nz = 0;
+        for (let k = 0; k < fm.normals.length; k += 3) { nx += fm.normals[k]; ny += fm.normals[k + 1]; nz += fm.normals[k + 2]; }
+        const flipN = ox * nx + oy * ny + oz * nz < 0 && Math.hypot(ox, oy, oz) > 1e-6;
+        // triangle winding must agree with the normals
+        const FT = fm.triangles, FP = fm.vertices, FN = fm.normals;
+        let wind = 0;
+        for (let i = 0; i < FT.length; i += 3) {
+          const a = FT[i] * 3, b = FT[i + 1] * 3, c = FT[i + 2] * 3;
+          const ux = FP[b] - FP[a], uy = FP[b + 1] - FP[a + 1], uz = FP[b + 2] - FP[a + 2], vx = FP[c] - FP[a], vy = FP[c + 1] - FP[a + 1], vz = FP[c + 2] - FP[a + 2];
+          wind += (uy * vz - uz * vy) * FN[a] + (uz * vx - ux * vz) * FN[a + 1] + (ux * vy - uy * vx) * FN[a + 2];
+        }
+        const flipT = (wind < 0) !== flipN;
+        const base = V.length / 3;
+        for (let k = 0; k < FP.length; k++) { V.push(FP[k]); N.push(flipN ? -FN[k] : FN[k]); }
+        for (let i = 0; i < FT.length; i += 3) {
+          if (flipT) Tn.push(base + FT[i], base + FT[i + 2], base + FT[i + 1]);
+          else Tn.push(base + FT[i], base + FT[i + 1], base + FT[i + 2]);
+        }
+      }
+      groups.push({ ...g, start, count: Tn.length - start });
+    });
+    m.vertices = V; m.normals = N; m.triangles = Tn; m.faceGroups = groups;
+    return fixes.size;
+  } finally { faces.forEach((f) => f.delete()); }
+}
+
 export function meshShape(shape, quality = 1) {
   const TT = [Date.now()], tick = () => TT.push(Date.now());
   const bb = bboxOf(shape);
   const diag = Math.hypot(...bb.size) || 1;
   const tol = Math.max(0.005, diag * 0.0006 / quality);
   const m = shape.mesh({ tolerance: tol, angularTolerance: 0.2 / quality });
+  try { repairFaceMeshes(shape, m, tol, 0.2 / quality); } catch (err) {}
   flipSlivers(m); // jumpstart-3d: a pointed cone's mesh has flat slivers at its tip; the STL writer drops them and opened the mesh
   tick();
   const e = shape.meshEdges({ tolerance: tol, angularTolerance: 0.2 / quality });
@@ -2990,18 +3116,22 @@ export function meshShape(shape, quality = 1) {
         info.c = f.center.toTuple();
         if (t === "SPHERE") {
           const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
-          try { const sp = ad.Sphere(); const L = sp.Position().Location(); info.r = sp.Radius(); info.o = [L.X(), L.Y(), L.Z()]; } finally { ad.delete(); }
+          // jumpstart-3d: free the surface, placement and point objects too (upstream left them for the garbage collector)
+          const own = [];
+          try { const sp = ad.Sphere(); own.push(sp); const ps = sp.Position(); own.push(ps); const L = ps.Location(); own.push(L); info.r = sp.Radius(); info.o = [L.X(), L.Y(), L.Z()]; } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
         }
         if (t === "CYLINDRE") {
           // axis, radius and which side the material is on (for threads)
           const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+          const own = []; // jumpstart-3d: free the surface, placement, point and direction objects too
           try {
             const cy = ad.Cylinder(), pos = cy.Position();
-            const P = (p) => [p.X(), p.Y(), p.Z()];
+            own.push(cy, pos);
+            const P = (p) => { own.push(p); return [p.X(), p.Y(), p.Z()]; };
             const reversed = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED;
             info.r = cy.Radius(); info.ax = P(pos.Direction()); info.o = P(pos.Location());
             info.ext = (pos.Direct() ? 1 : -1) * (reversed ? -1 : 1) > 0;
-          } finally { ad.delete(); }
+          } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
         }
       }
     } catch (err) {}

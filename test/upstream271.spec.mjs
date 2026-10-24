@@ -52,9 +52,9 @@ test.describe("version 2.7.1", () => {
     return { lo, hi };
   }, index);
 
-  test("the splash and About show version 2.7.1 with its notes", async () => {
-    expect(VERSION).toBe("2.7.1");
-    const label = `Version 2.7.1 · community build ${BUILD}`;
+  test("the splash and About show the version with the 2.7.1 and 2.6 notes", async () => {
+    expect(VERSION).toMatch(/^2\.7\./); // 2.7.3 and later keep these notes (upstream273.spec.mjs checks the newest)
+    const label = `Version ${VERSION} · community build ${BUILD}`;
     expect(await page.locator("#sp-ver").textContent()).toBe(label);
     await page.click("#btn-about");
     const about = page.locator(".modal", { hasText: "Created by J.Siwek" });

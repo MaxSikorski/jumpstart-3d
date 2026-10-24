@@ -4944,6 +4944,124 @@ export function initAdvanced(app) {
     }
     const chosenFeats = () => { const b = findBody(store.doc, st.fbody); return b ? featsOf(b).filter((m) => st.feats.includes(m.id)) : []; };
 
+    // ---------------- a feature's shape in the world, so it can be clicked on the model (like
+    // Fusion 360: click a face of the cut or boss to pick that feature) and outlined when picked
+    function featShape(b, m) {
+      const B = M4(b.m);
+      if (m.t === "hole") {
+        const r = (m.dia || 1) / 2;
+        const rmax = Math.max(r, m.kind === "cbore" ? (m.cbDia || 0) / 2 : 0, m.kind === "csink" ? (m.csDia || 0) / 2 : 0);
+        const through = m.through || !(m.depth > 0);
+        return { kind: "hole", B, spots: m.at && m.at.length ? m.at : [{ p: m.p, n: m.n }], r, rmax, depth: through ? null : m.depth + (m.tip ? r / Math.tan((59 * Math.PI) / 180) : 0) };
+      }
+      if (m.t === "emboss") return { kind: "emboss", B, p: m.p, n: m.n || [0, 0, 1], ext: Math.max(m.size || 5, ((m.size || 5) * String(m.str || "").length * 0.62) / 2 + 1), depth: m.depth || 1 };
+      const sk = findSketch(store.doc, m.tool.sketch);
+      if (!sk) return null;
+      const regs = regionsFor(sk), rs = [];
+      for (const ref of m.tool.profiles || []) {
+        let i = regs.findIndex((r) => r.key === ref.key && pointIn(r, ref.pt));
+        if (i < 0) i = regs.findIndex((r) => pointIn(r, ref.pt));
+        if (i >= 0 && !rs.includes(regs[i])) rs.push(regs[i]);
+      }
+      const W = B.clone().multiply(new THREE.Matrix4().fromArray(m.m || IDENTITY)).multiply(planeMatrix(sk.plane));
+      const t = m.tool;
+      let z0 = 0, z1 = 0;
+      if (t.t === "extrude") {
+        const d = t.dist || 0;
+        if (t.mode === "sym") { z0 = -Math.abs(d) / 2; z1 = -z0; }
+        else if (t.mode === "two") { z0 = -Math.abs(t.dist2 || 0); z1 = Math.abs(d); }
+        else { z0 = Math.min(0, d); z1 = Math.max(0, d); }
+      }
+      return { kind: t.t, W, Wi: W.clone().invert(), regs: rs, z0, z1 };
+    }
+    // distance from a 2D point to a profile's outline
+    const outlineDist = (r, q) => {
+      let best = Infinity;
+      for (const poly of [r.poly, ...(r.holePolys || [])]) for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[j], c = poly[i], dx = c[0] - a[0], dy = c[1] - a[1], l2 = dx * dx + dy * dy || 1e-12;
+        const f = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2));
+        best = Math.min(best, Math.hypot(a[0] + f * dx - q[0], a[1] + f * dy - q[1]));
+      }
+      return best;
+    };
+    // how far a clicked point is from lying on the feature's surface (Infinity: not on it)
+    function featScore(fs, P, tol) {
+      if (!fs) return Infinity;
+      if (fs.kind === "hole") {
+        const q = P.clone().applyMatrix4(fs.B.clone().invert());
+        let best = Infinity;
+        for (const s of fs.spots) {
+          const n = new THREE.Vector3(...s.n).normalize(), v = q.clone().sub(new THREE.Vector3(...s.p));
+          const along = v.dot(n), rad = v.clone().addScaledVector(n, -along).length();
+          if (along > tol || (fs.depth != null && along < -fs.depth - tol)) continue;
+          if (rad < fs.r - tol || rad > fs.rmax + tol) continue;
+          best = Math.min(best, fs.rmax > fs.r + tol ? 0 : Math.abs(rad - fs.r));
+        }
+        return best;
+      }
+      if (fs.kind === "emboss") {
+        const q = P.clone().applyMatrix4(fs.B.clone().invert());
+        const n = new THREE.Vector3(...fs.n).normalize(), v = q.clone().sub(new THREE.Vector3(...fs.p));
+        const h = v.dot(n), inPlane = v.clone().addScaledVector(n, -h).length();
+        return Math.abs(h) <= fs.depth + tol && inPlane <= fs.ext ? tol * 0.5 : Infinity;
+      }
+      if (fs.kind !== "extrude" || !fs.regs.length) return Infinity;
+      const q = P.clone().applyMatrix4(fs.Wi);
+      if (q.z < fs.z0 - tol || q.z > fs.z1 + tol) return Infinity;
+      let best = Infinity;
+      for (const r of fs.regs) {
+        const d = outlineDist(r, [q.x, q.y]), inside = pointIn(r, [q.x, q.y]);
+        if (!inside && d > tol) continue;
+        // on a side wall, or on the end cap (top of a boss, floor of a cut)
+        best = Math.min(best, d, inside ? Math.min(Math.abs(q.z - fs.z0), Math.abs(q.z - fs.z1)) : Infinity);
+      }
+      return best;
+    }
+    // the feature of body b under a clicked point, or null
+    function featAt(b, P) {
+      const tol = Math.max(0.15, vp.pixelSize(P) * 4);
+      let best = null, bs = Infinity;
+      featsOf(b).forEach((m) => { const s = featScore(featShape(b, m), P, tol); if (s <= tol && s <= bs) { bs = s; best = m; } });
+      return best;
+    }
+    // outline of a feature: its profiles at both ends with a few side lines, or its hole circles
+    function featLines(b, m) {
+      const fs = featShape(b, m), seg = [];
+      if (!fs) return seg;
+      const push = (a, c) => seg.push(a.x, a.y, a.z, c.x, c.y, c.z);
+      if (fs.kind === "hole" || fs.kind === "emboss") {
+        const list = fs.kind === "hole" ? fs.spots.map((s) => ({ p: s.p, n: s.n, r: fs.rmax, d: fs.depth == null ? Math.max(4, fs.r * 3) : fs.depth })) : [{ p: fs.p, n: fs.n, r: fs.ext, d: 0 }];
+        for (const s of list) {
+          const n = new THREE.Vector3(...s.n).normalize(), u = new THREE.Vector3(1, 0, 0);
+          if (Math.abs(u.dot(n)) > 0.9) u.set(0, 1, 0);
+          u.projectOnPlane(n).normalize();
+          const w = n.clone().cross(u), c0 = new THREE.Vector3(...s.p);
+          const ring = (off) => { const pts = []; for (let k = 0; k <= 40; k++) { const a = (k / 40) * Math.PI * 2; pts.push(c0.clone().addScaledVector(u, s.r * Math.cos(a)).addScaledVector(w, s.r * Math.sin(a)).addScaledVector(n, -off).applyMatrix4(fs.B)); } for (let k = 1; k < pts.length; k++) push(pts[k - 1], pts[k]); return pts; };
+          const top = ring(0);
+          if (s.d) { const bot = ring(s.d); for (let k = 0; k < 40; k += 10) push(top[k], bot[k]); }
+        }
+        return seg;
+      }
+      const zs = fs.kind === "extrude" ? [fs.z0, fs.z1] : [0];
+      for (const r of fs.regs) for (const poly of [r.poly, ...(r.holePolys || [])]) {
+        const at = (p, z) => new THREE.Vector3(p[0], p[1], z).applyMatrix4(fs.W);
+        for (const z of zs) for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) push(at(poly[j], z), at(poly[i], z));
+        if (zs.length > 1 && fs.z1 - fs.z0 > 1e-6) { const stp = Math.max(1, Math.floor(poly.length / 8)); for (let i = 0; i < poly.length; i += stp) push(at(poly[i], fs.z0), at(poly[i], fs.z1)); }
+      }
+      return seg;
+    }
+    let hoverFeat = null;
+    // the picked features are marked in the timeline as well
+    function markTimeline(off = false) {
+      const on = new Set(off || st.what !== "features" ? [] : st.feats);
+      for (const x of tl.querySelectorAll(".tl-item")) x.classList.toggle("pt-on", on.has(x.getAttribute("data-mod")));
+    }
+    function toggleFeat(bodyId, modId) {
+      if (st.fbody !== bodyId) { st.fbody = bodyId; st.feats = []; }
+      st.feats = st.feats.includes(modId) ? st.feats.filter((x) => x !== modId) : [...st.feats, modId];
+      changed();
+    }
+
     // ---------------- the path: sampled into a world polyline with arc-length
     function pathData() {
       if (!st.path) return null;
@@ -5167,7 +5285,7 @@ export function initAdvanced(app) {
       onDelete: editing ? () => deleteFeature(editing) : null, // jumpstart-3d: pattern
       hint: () => editing ? "Change the count, spacing or angle. The copies update in the model."
         : st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path. Connected curves are picked together."
-        : st.what === "features" ? (st.fbody ? "Tick the features to copy. Click another body to list its features." : "Click the body that has the features (cuts, bosses, holes, text).")
+        : st.what === "features" ? (st.fbody ? "Click a cut, boss, hole or text on the model, or in the timeline, to pick it (click again to unpick). You can also tick features in the list." : "Click a cut, boss, hole or text on the model, or in the timeline, to pick it.")
         : st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
       build(body) {
         if (!editing) body.append(row("Objects", seg([["bodies", "Bodies"], ["features", "Features"]], st.what, (v) => { // jumpstart-3d: pattern
@@ -5182,7 +5300,7 @@ export function initAdvanced(app) {
           const b = findBody(store.doc, st.fbody), list = featsOf(b);
           body.append(pickbox(!st.pickPath, b ? el("span", {}, el("b", {}, b.name), ` · ${st.feats.length} of ${list.length} feature${list.length === 1 ? "" : "s"}`) : "Click a body", null, () => { st.pickPath = false; def.render(); }));
           if (b && !list.length) body.append(el("div", { class: "hint", style: { padding: 0 } }, "This body has no features that can be copied. Cuts and bosses made by extruding a sketch, holes and embossed text can be patterned."));
-          if (list.length) body.append(el("div", { class: "pt-feats", id: "pt-feats" }, ...list.map((m) => el("label", { class: "check" },
+          if (list.length) body.append(el("div", { class: "pt-feats", id: "pt-feats" }, ...list.map((m) => el("label", { class: "check" + (st.feats.includes(m.id) ? " on" : ""), onmouseenter: () => { hoverFeat = { key: b.id + ":" + m.id, body: b.id, mod: m.id }; draw(); }, onmouseleave: () => { hoverFeat = null; draw(); } },
             el("input", { type: "checkbox", "data-mod": m.id, checked: st.feats.includes(m.id), onchange: (e) => { st.feats = e.target.checked ? [...st.feats, m.id] : st.feats.filter((x) => x !== m.id); changed(); } }), featLabel(m)))));
         }
         const types = seg([["rect", "Rectangular"], ["circ", "Circular"], ...(editing ? [] : [["path", "Path"]])], st.type, (v) => { st.type = v; if (v === "path" && !st.path) st.pickPath = true; changed(); }, "pt-type");
@@ -5226,12 +5344,33 @@ export function initAdvanced(app) {
         if (st.what === "bodies" && !editing) body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-join", checked: st.join, onchange: (e) => { st.join = e.target.checked; changed(); } }), "Join copies into one body")); // jumpstart-3d: pattern
         if (app.mode === "advanced" && st.type === "path") body.append(el("div", { class: "hint", style: { padding: 0 } }, "Path patterns are not editable yet: they make separate copies or fixed features.")); // jumpstart-3d: pattern
       },
-      start() { recenter(); scene.setSelected(st.ids); draw(); schedulePreview(def); },
-      cleanup() { scene.setSelected([]); clearOv(); },
+      start() { recenter(); scene.setSelected(st.what === "features" ? [] : st.ids); draw(); schedulePreview(def); },
+      afterTimeline: () => markTimeline(),
+      // Features: clicking a feature in the timeline picks it too (as in Fusion 360)
+      timelinePick(it) {
+        // jumpstart-3d: pattern. While a pattern is edited, only a feature pattern of the same body may pick (else OK would save a hole pattern or an empty feature list)
+        if (editing && !(st.what === "features" && it.body === editing.body)) { app.toast("Close the pattern to pick features from another body."); return; }
+        const b = it.body && findBody(store.doc, it.body), m = b && it.mod && featsOf(b).find((x) => x.id === it.mod);
+        if (!m) { app.toast("That timeline item can't be patterned as a feature. Cuts, bosses, holes and text can."); return; }
+        if (st.what !== "features") st.what = "features";
+        toggleFeat(b.id, m.id);
+      },
+      cleanup() { scene.setSelected([]); clearOv(); markTimeline(true); },
       handler: {
         hover(e) {
           if (st.type === "path" && st.pickPath) { const h = pickSketchCurve(e); vp.canvas.style.cursor = h ? "pointer" : "default"; scene.setHovered(null); return; }
-          const f = scene.pickFace(e); scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default";
+          const f = scene.pickFace(e);
+          if (st.what === "features") {
+            // the feature under the pointer is outlined (not the whole body)
+            const b = f && findBody(store.doc, f.body);
+            const m = b ? featAt(b, f.point) : null;
+            const k = m ? b.id + ":" + m.id : null;
+            if (k !== (hoverFeat && hoverFeat.key)) { hoverFeat = m ? { key: k, body: b.id, mod: m.id } : null; draw(); }
+            scene.setHovered(null);
+            vp.canvas.style.cursor = f ? "pointer" : "default";
+            return;
+          }
+          scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default";
         },
         down(e) {
           // the path: a sketch curve and the curves joined to it
@@ -5248,7 +5387,14 @@ export function initAdvanced(app) {
           if (editing) return true; // jumpstart-3d: pattern
           const f = scene.pickFace(e);
           if (!f || !findBody(store.doc, f.body)) return true; // copies in the preview aren't pickable
-          if (st.what === "features") { if (st.fbody !== f.body) { st.fbody = f.body; st.feats = []; changed(); } return true; }
+          if (st.what === "features") {
+            // a click on a face of a cut, boss, hole or text picks (or unpicks) that feature
+            const b = findBody(store.doc, f.body), m = featAt(b, f.point);
+            if (m) { toggleFeat(b.id, m.id); return true; }
+            if (st.fbody !== f.body) { st.fbody = f.body; st.feats = []; changed(); }
+            else app.toast(featsOf(b).length ? "That face isn't part of a feature that can be patterned. Click a face of a cut, boss, hole or text, or tick it in the list." : "This body has no features that can be patterned.");
+            return true;
+          }
           const i = st.ids.indexOf(f.body);
           if (i >= 0) st.ids.splice(i, 1); else st.ids.push(f.body);
           changed();
@@ -5259,6 +5405,15 @@ export function initAdvanced(app) {
     // the picked path, drawn bold, with a dot where each copy goes
     function draw() {
       clearOv();
+      if (st.what === "features") {
+        // picked features in blue, the one under the pointer in orange
+        const b = findBody(store.doc, st.fbody);
+        if (b) for (const m of chosenFeats()) { const sg = featLines(b, m); if (sg.length) { const o = thickLines(sg, 0x2f66c8, 2.6, false); o.renderOrder = 15; ov.add(o); } }
+        const hb = hoverFeat && findBody(store.doc, hoverFeat.body), hm = hb && featsOf(hb).find((x) => x.id === hoverFeat.mod);
+        if (hm) { const sg = featLines(hb, hm); if (sg.length) { const o = thickLines(sg, 0xe8a317, 2.6, false); o.renderOrder = 16; ov.add(o); } }
+        vp.request();
+      }
+      markTimeline();
       if (st.type !== "path") return;
       const pd = pathData();
       if (!pd) return;
@@ -5277,7 +5432,7 @@ export function initAdvanced(app) {
       if (rerender) def.render();
       const t = document.getElementById("pt-total");
       if (t) { const n = transforms().length + 1; t.textContent = `${n} instance${n === 1 ? "" : "s"} in total.`; }
-      scene.setSelected(st.what === "features" ? (st.fbody ? [st.fbody] : []) : st.ids);
+      scene.setSelected(st.what === "features" ? [] : st.ids);
       draw();
       schedulePreview(def);
       def.refreshOk();
@@ -5992,8 +6147,9 @@ export function initAdvanced(app) {
     if (!items.length) tl.append(el("span", { class: "empty" }, "Features appear here as you build. Double-click one to edit it."));
     for (const it of items) {
       const err = it.body && scene.errors.has(it.body);
-      const b = el("button", { class: "tl-item" + (err ? " err" : ""), title: `${it.label}${err ? " — " + scene.errors.get(it.body) : ""}\nDouble-click (or tap twice) to edit`, "aria-label": it.label, html: ICON[TL_ICON[it.kind]] || ICON.prim });
+      const b = el("button", { class: "tl-item" + (err ? " err" : ""), "data-mod": it.mod || "", title: `${it.label}${err ? " — " + scene.errors.get(it.body) : ""}\nDouble-click (or tap twice) to edit`, "aria-label": it.label, html: ICON[TL_ICON[it.kind]] || ICON.prim });
       b.onclick = () => {
+        if (app.command && app.command.timelinePick && it.mod) { app.command.timelinePick(it); return; }
         const key = it.mod || it.body || it.sketch;
         if (lastTl === key && performance.now() - lastTlT < 2500 && vp.touchMode) { lastTl = null; editItem(it); return; }
         lastTl = key; lastTlT = performance.now();
@@ -6004,6 +6160,7 @@ export function initAdvanced(app) {
       tl.append(b);
     }
     tl.scrollLeft = tl.scrollWidth;
+    if (app.command && app.command.afterTimeline) app.command.afterTimeline();
   }
 
   // ------------------------------------------------------------------ sketch palette
