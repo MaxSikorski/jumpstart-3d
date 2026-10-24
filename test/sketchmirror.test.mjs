@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mirrorEnts, reflect } from "../src/sketchmirror.js";
+import { sketchDof } from "../src/constraints.js";
 
 const near = (a, b, m) => assert.ok(Math.abs(a - b) < 1e-9, `${m || ""} ${a} vs ${b}`);
 const Y = { type: "line", a: [0, 0], b: [0, 1] }, X = { type: "line", a: [0, 0], b: [1, 0] }, O = { type: "point", p: [0, 0] };
@@ -84,7 +85,7 @@ test("constraints among the picked shapes are copied with the copy's ids; the re
   const idsOf = (r) => r.cons.map((c) => c.t + (c.k ? ":" + c.k : ""));
   // across the Y axis: horizontal/vertical ones are kept
   let r = mirrorEnts(sk, ids, Y);
-  assert.deepEqual(idsOf(r).sort(), ["dim:dia", "dim:dist", "dim:dist", "horizontal", "midpoint", "parallel", "perpendicular"]);
+  assert.deepEqual(idsOf(r).sort(), ["dim:ang", "dim:dia", "dim:dist", "dim:dist", "horizontal", "midpoint", "parallel", "perpendicular"]);
   const map = new Map(ids.map((id, i) => [id, r.ents[i].id]));
   assert.equal(r.ents.length, 5);
   const par = r.cons.find((c) => c.t === "parallel");
@@ -100,11 +101,11 @@ test("constraints among the picked shapes are copied with the copy's ids; the re
   assert.ok(r.cons.every((c) => c.id !== "k1" && c.id && !sk.cons.some((o) => o.id === c.id)), "new ids");
   // across an angled line: the horizontal constraint and the vertical-direction dimension would not hold
   r = mirrorEnts(sk, ids, tilt);
-  assert.deepEqual(idsOf(r).sort(), ["dim:dia", "dim:dist", "midpoint", "parallel", "perpendicular"]);
+  assert.deepEqual(idsOf(r).sort(), ["dim:ang", "dim:dia", "dim:dist", "midpoint", "parallel", "perpendicular"]);
   assert.equal(r.cons.find((c) => c.k === "dist").o, "a");
   // a point flip keeps horizontal and vertical
   r = mirrorEnts(sk, ids, O);
-  assert.equal(idsOf(r).length, 7);
+  assert.equal(idsOf(r).length, 8);
 });
 
 test("shapes that already lie on the line, or already have a mirror twin, are not doubled", () => {
@@ -123,4 +124,61 @@ test("the input sketch is not changed", () => {
   const before = JSON.stringify(sk);
   mirrorEnts(sk, ["e"], tilt);
   assert.equal(JSON.stringify(sk), before);
+});
+
+test("a half drawn over a construction outline is still mirrored; a real copy already there is reported as a twin", () => {
+  const sk = { pts: [{ id: "a", x: 10, y: 0 }, { id: "b", x: 10, y: 10 }, { id: "c", x: -10, y: 0 }, { id: "d", x: -10, y: 10 }],
+    ents: [{ id: "drawn", t: "line", a: "a", b: "b" }, { id: "guide", t: "line", a: "c", b: "d", cons: true }] };
+  const r = mirrorEnts(sk, ["drawn"], Y);
+  assert.equal(r.ents.length, 1, "the construction line at the mirror spot is no twin of a drawn line");
+  assert.equal(r.ents[0].cons, undefined);
+  assert.equal(r.skipped.twin, 0);
+  // a drawn line already there is a twin, and the mirror says so
+  const sk2 = { ...sk, ents: [sk.ents[0], { id: "real", t: "line", a: "c", b: "d" }] };
+  const r2 = mirrorEnts(sk2, ["drawn"], Y);
+  assert.equal(r2.ents.length, 0);
+  assert.equal(r2.skipped.twin, 1);
+  // and a construction line mirrors onto a construction line, not onto a drawn one
+  const r3 = mirrorEnts({ ...sk, ents: [{ ...sk.ents[0], cons: true }, { id: "real", t: "line", a: "c", b: "d" }] }, ["drawn"], Y);
+  assert.equal(r3.ents.length, 1);
+  assert.equal(r3.ents[0].cons, true);
+});
+
+test("a fully constrained rectangle on the axis is not over-constrained by its copy", () => {
+  const sk = { pts: [{ id: "p0", x: 0, y: 0 }, { id: "p1", x: 30, y: 0 }, { id: "p2", x: 30, y: 20 }, { id: "p3", x: 0, y: 20 }],
+    ents: [0, 1, 2, 3].map((i) => ({ id: "e" + i, t: "line", a: "p" + i, b: "p" + ((i + 1) % 4) })),
+    cons: [{ id: "k0", t: "origin", p: "p0" }, { id: "k1", t: "horizontal", e1: "e0" }, { id: "k2", t: "horizontal", e1: "e2" }, { id: "k3", t: "vertical", e1: "e1" }, { id: "k4", t: "vertical", e1: "e3" },
+      { id: "d1", t: "dim", k: "dist", p1: "p0", p2: "p1", o: "h", v: 30, off: [15, -4] }, { id: "d2", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20, off: [34, 10] }] };
+  assert.equal(sketchDof(sk).over, 0);
+  const r = mirrorEnts(sk, ["e0", "e1", "e2", "e3"], Y);
+  const whole = { pts: [...sk.pts, ...r.pts], ents: [...sk.ents, ...r.ents], cons: [...sk.cons, ...r.cons] };
+  assert.equal(sketchDof(whole).over, 0, "no copy that only repeats another");
+  assert.equal(sketchDof(whole).dof, 0);
+  assert.ok(r.cons.length >= 3, "the dimensions still come across");
+});
+
+test("a set that already holds a mirror pair adds no reversed duplicate constraint", () => {
+  const sk = { pts: [{ id: "a", x: 10, y: 0 }, { id: "b", x: 10, y: 10 }, { id: "c", x: -10, y: 0 }, { id: "d", x: -10, y: 10 }],
+    ents: [{ id: "L", t: "line", a: "a", b: "b" }, { id: "R", t: "line", a: "c", b: "d" }],
+    cons: [{ id: "k", t: "equal", e1: "R", e2: "L" }] };
+  const r = mirrorEnts(sk, ["L", "R"], Y); // each is the other's image
+  assert.equal(r.ents.length, 0);
+  assert.equal(r.cons.length, 0);
+  const r2 = mirrorEnts({ ...sk, cons: [{ id: "k", t: "equal", e1: "R", e2: "L" }] }, ["L", "R"], Y);
+  assert.equal(r2.cons.length, 0, "equal(L, R) is the same as equal(R, L)");
+});
+
+test("angle, point-to-line and line-to-line dimensions come across with the copies' ids", () => {
+  const sk = { pts: [{ id: "a", x: 10, y: 0 }, { id: "b", x: 30, y: 0 }, { id: "c", x: 10, y: 10 }, { id: "d", x: 30, y: 10 }, { id: "q", x: 20, y: 25 }, { id: "o", x: 12, y: 40 }],
+    ents: [{ id: "l1", t: "line", a: "a", b: "b" }, { id: "l2", t: "line", a: "c", b: "d" }, { id: "l3", t: "line", a: "a", b: "c" }, { id: "pt", t: "point", p: "q" }],
+    cons: [{ id: "g1", t: "dim", k: "ll", e1: "l1", e2: "l2", v: 10, off: [5, 5] }, { id: "g2", t: "dim", k: "pl", p: "q", e: "l1", v: 25, off: [20, 12] }, { id: "g3", t: "dim", k: "ang", e1: "l1", e2: "l3", v: 90, s1: 1, s2: 1, off: [14, 4] }] };
+  const r = mirrorEnts(sk, ["l1", "l2", "l3", "pt"], tilt);
+  const map = new Map(["l1", "l2", "l3", "pt"].map((id, i) => [id, r.ents[i].id]));
+  const by = (k) => r.cons.find((c) => c.k === k);
+  assert.deepEqual([by("ll").e1, by("ll").e2], [map.get("l1"), map.get("l2")]);
+  assert.equal(by("pl").e, map.get("l1"));
+  assert.equal(by("pl").p, r.ents[3].p);
+  assert.deepEqual([by("ang").e1, by("ang").e2], [map.get("l1"), map.get("l3")]);
+  assert.equal(by("ang").v, 90);
+  assert.deepEqual(by("pl").off.map((v) => +v.toFixed(9)), reflect([20, 12], tilt).map((v) => +v.toFixed(9)));
 });

@@ -273,8 +273,7 @@ test("constraints and dimensions among the shapes are copied: a fully constraine
   // nothing moved when the solver ran again, and the whole sketch is still fully constrained
   expect(after.pts.slice(0, 4)).toEqual(before.pts);
   expect(after.pts.filter((p) => p.x < 0).map((p) => [p.x, p.y]).sort((a, b) => a[1] - b[1])).toEqual([[-30, 0], [-30, 20]]);
-  await expect(page.locator("#sk-note")).toHaveText(/^Fully constrained/);
-  expect(await page.locator("#sk-note").textContent()).not.toMatch(/degree/);
+  await expect(page.locator("#sk-note")).toHaveText("Fully constrained"); // exactly: not the over-constrained warning, not "degrees of freedom left"
 });
 
 test("text is left out of a mirror, with a note; the other shapes are mirrored", async () => {

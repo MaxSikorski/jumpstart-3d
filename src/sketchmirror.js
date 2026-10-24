@@ -2,6 +2,7 @@
 // The maths (mirrorEnts) is pure data in, data out, so a node test can check it. The tool glue
 // below it (click, panel box, apply) is called from short marked blocks in sketcher.js, app.js and advanced.js.
 import { uid, el } from "./util.js";
+import { sketchDof } from "./constraints.js";
 
 const TOL = 1e-6; // same as the sketcher's point reuse
 const copy = (o) => JSON.parse(JSON.stringify(o));
@@ -41,7 +42,7 @@ export function mirrorEnts(sk, ids, axis) {
   };
   const sameList = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
   // is there already a shape exactly like n (a line also read backwards)?
-  const twin = (n, list) => list.find((o) => o.t === n.t && (
+  const twin = (n, list, cons) => list.find((o) => o.t === n.t && !!o.cons === !!cons && (
     n.t === "line" ? (o.a === n.a && o.b === n.b) || (o.a === n.b && o.b === n.a)
       : n.t === "circle" ? o.c === n.c && Math.abs(o.r - n.r) < TOL
         : n.t === "arc" ? o.c === n.c && o.a === n.a && o.b === n.b
@@ -50,7 +51,8 @@ export function mirrorEnts(sk, ids, axis) {
 
   const ents = [];
   const entMap = new Map(); // old entity id -> the entity that is its mirror image
-  const skipped = { text: 0, same: 0 };
+  const direct = new Set(); // images whose a -> b runs the way the original did (a twin found elsewhere may run backwards)
+  const skipped = { text: 0, same: 0, twin: 0 };
   for (const e of sk.ents) {
     if (!want.has(e.id)) continue;
     if (e.t === "text") { skipped.text++; continue; }
@@ -61,50 +63,69 @@ export function mirrorEnts(sk, ids, axis) {
     else if (e.t === "spline") n = { t: "spline", pts: e.pts.map(mp), closed: !!e.closed };
     else if (e.t === "point") n = { t: "point", p: mp(e.p) };
     else continue;
-    if (twin(n, [e])) { entMap.set(e.id, e.id); skipped.same++; continue; } // it lies on the mirror line
-    const other = twin(n, sk.ents.filter((o) => o !== e)) || twin(n, ents);
-    if (other) { entMap.set(e.id, other.id); skipped.same++; continue; }
+    if (twin(n, [e], e.cons)) { entMap.set(e.id, e.id); direct.add(e.id); skipped.same++; continue; } // it lies on the mirror line
+    const other = twin(n, sk.ents.filter((o) => o !== e), e.cons) || twin(n, ents, e.cons); // (a construction shape is no twin of a drawn one)
+    if (other) { entMap.set(e.id, other.id); skipped.twin++; continue; }
     const ne = { ...copy(e), ...n, id: uid("e") };
     delete ne.proj; // a projected edge becomes an ordinary copy
     if (!ne.cons) delete ne.cons;
     if (ne.t !== "spline") delete ne.closed;
     entMap.set(e.id, ne.id);
+    direct.add(ne.id);
     ents.push(ne);
   }
 
-  // constraints among the picked shapes, with the copies' ids; anything that would not stay true is left out
+  // constraints among the picked shapes, with the copies' ids; anything that would not stay true is left out.
+  // Dimensions go first, then the geometric ones, and a copy that would leave the sketch with more constraints
+  // than it can use (a repeat) is dropped, so a fully constrained sketch does not come out over-constrained.
   const hv = keepsHV(axis);
-  const cons = [];
-  const seen = new Set((sk.cons || []).map((c) => JSON.stringify(refsOf(c))));
-  for (const c of sk.cons || []) {
-    let nc = null;
-    const E = (id) => entMap.get(id), Pt = (id) => ptMap.get(id);
-    if (["parallel", "perpendicular", "equal", "tangent", "concentric"].includes(c.t)) {
-      if (E(c.e1) && E(c.e2)) nc = { ...copy(c), e1: E(c.e1), e2: E(c.e2) };
-    } else if (c.t === "midpoint" || c.t === "coincident") {
-      if (Pt(c.p) && E(c.e)) nc = { ...copy(c), p: Pt(c.p), e: E(c.e) };
-    } else if ((c.t === "horizontal" || c.t === "vertical") && hv) {
-      if (c.e1) { if (E(c.e1)) nc = { ...copy(c), e1: E(c.e1) }; }
-      else if (Pt(c.p1) && Pt(c.p2)) nc = { ...copy(c), p1: Pt(c.p1), p2: Pt(c.p2) };
-    } else if (c.t === "dim") {
-      if (c.k === "dist" && (c.o === "a" || hv) && Pt(c.p1) && Pt(c.p2)) nc = { ...copy(c), p1: Pt(c.p1), p2: Pt(c.p2) };
-      else if ((c.k === "dia" || c.k === "rad") && E(c.e1)) nc = { ...copy(c), e1: E(c.e1) };
-      if (nc) {
-        delete nc.name; // a parameter name belongs to one dimension
-        if (nc.off) nc.off = reflect(nc.off, axis);
-      }
+  const E = (id) => entMap.get(id), Pt = (id) => ptMap.get(id);
+  const make = (c) => {
+    if (["parallel", "perpendicular", "equal", "tangent", "concentric"].includes(c.t)) return E(c.e1) && E(c.e2) ? { ...copy(c), e1: E(c.e1), e2: E(c.e2) } : null;
+    if (c.t === "midpoint" || c.t === "coincident") return Pt(c.p) && E(c.e) ? { ...copy(c), p: Pt(c.p), e: E(c.e) } : null;
+    if ((c.t === "horizontal" || c.t === "vertical") && hv) {
+      if (c.e1) return E(c.e1) ? { ...copy(c), e1: E(c.e1) } : null;
+      return Pt(c.p1) && Pt(c.p2) ? { ...copy(c), p1: Pt(c.p1), p2: Pt(c.p2) } : null;
     }
+    if (c.t !== "dim") return null;
+    let nc = null;
+    if (c.k === "dist" && (c.o === "a" || hv) && Pt(c.p1) && Pt(c.p2)) nc = { ...copy(c), p1: Pt(c.p1), p2: Pt(c.p2) };
+    else if ((c.k === "dia" || c.k === "rad") && E(c.e1)) nc = { ...copy(c), e1: E(c.e1) };
+    else if (c.k === "pl" && Pt(c.p) && E(c.e)) nc = { ...copy(c), p: Pt(c.p), e: E(c.e) };
+    else if (c.k === "ll" && E(c.e1) && E(c.e2)) nc = { ...copy(c), e1: E(c.e1), e2: E(c.e2) };
+    else if (c.k === "ang" && direct.has(E(c.e1)) && direct.has(E(c.e2))) nc = { ...copy(c), e1: E(c.e1), e2: E(c.e2) };
+    if (nc) {
+      delete nc.name; // a parameter name belongs to one dimension
+      if (nc.off) nc.off = reflect(nc.off, axis);
+    }
+    return nc;
+  };
+  const all = sk.cons || [];
+  const order = [...all.filter((c) => c.t === "dim"), ...all.filter((c) => c.t !== "dim")];
+  const trial = { pts: [...sk.pts, ...pts], ents: [...sk.ents, ...ents], cons: [...all] };
+  const over0 = sketchDof(sk).over;
+  const floor = over0 >= 0 ? over0 : -Infinity;
+  const cons = [];
+  const seen = new Set(all.map((c) => JSON.stringify(refsOf(c))));
+  for (const c of order) {
+    const nc = make(c);
     if (!nc) continue;
     const key = JSON.stringify(refsOf(nc));
     if (seen.has(key)) continue; // it would repeat a constraint that is already there
+    trial.cons.push(nc);
+    if (sketchDof(trial).over < floor) { trial.cons.pop(); continue; }
     seen.add(key);
     nc.id = uid(c.t === "dim" ? "dm" : "k");
     cons.push(nc);
   }
   return { pts, ents, cons, skipped };
 }
+// what a constraint ties together, in an order that does not depend on which shape was named first
+const SYMMETRIC = ["parallel", "perpendicular", "equal", "tangent", "concentric", "horizontal", "vertical"];
 function refsOf(c) {
   const { id, v, expr, unit, off, name, ...rest } = c; // eslint-disable-line no-unused-vars
+  const swap = (a, b) => { if (rest[a] != null && rest[b] != null && String(rest[a]) > String(rest[b])) [rest[a], rest[b]] = [rest[b], rest[a]]; };
+  if (SYMMETRIC.includes(c.t) || (c.t === "dim" && (c.k === "dist" || c.k === "ll"))) { swap("e1", "e2"); swap("p1", "p2"); }
   return rest;
 }
 
@@ -139,6 +160,7 @@ export function click(s, raw) {
   s.sel.has(hit) ? s.sel.delete(hit) : s.sel.add(hit);
   s.redraw();
   s.app.onSketchSelection && s.app.onSketchSelection();
+  s.app.status && s.app.status();
   return true;
 }
 export const AXES = {
@@ -156,7 +178,7 @@ export function apply(s, axis) {
   const sk0 = s.sketch;
   const preview = mirrorEnts(sk0, ids, axis);
   if (!preview.ents.length) {
-    toast(preview.skipped.text ? TEXT_NOTE : "Nothing to mirror: those shapes already lie on the line.");
+    toast(preview.skipped.text ? TEXT_NOTE : preview.skipped.twin ? "Nothing to mirror: those shapes already have a mirror copy." : "Nothing to mirror: those shapes already lie on the line.");
     return false;
   }
   s.edit("Mirror", (sk) => {
@@ -175,7 +197,7 @@ export function apply(s, axis) {
 // the Mirror box in the sketch panel
 export function mirrorBox(s) {
   const n = picked(s).length, stage = s.mirrorStage;
-  const stageBtn = (id, key, label) => el("button", { id, "aria-pressed": stage === key ? "true" : "false", onclick: () => { s.mirrorStage = key; s.app.onSketchSelection && s.app.onSketchSelection(); } }, label);
+  const stageBtn = (id, key, label) => el("button", { id, "aria-pressed": stage === key ? "true" : "false", onclick: () => { s.mirrorStage = key; s.app.onSketchSelection && s.app.onSketchSelection(); s.app.status && s.app.status(); } }, label);
   const axisBtn = (id, label, axis, title) => el("button", { class: "btn", id, disabled: n ? null : "", title, onclick: () => apply(s, axis) }, label);
   return el("div", { id: "pal-mirror" },
     el("div", { class: "subhead" }, "Mirror"),
