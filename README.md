@@ -6,7 +6,7 @@ A free 3D CAD tool that runs in your web browser. No install, no account, no ser
 between Tinkercad and a real CAD program: drag shapes together in Beginner mode, or sketch,
 extrude, fillet and shell in Advanced mode.
 
-Created by **J.Siwek**, who publishes it under the MIT License. Find him at the
+Created by **J.Siwek**, who publishes his original under the MIT License. Find him at the
 [official site](https://classyapps.org/) (his own downloads), his
 [source repository on GitHub](https://github.com/classyapps2026/jumpstart3d) and his
 [video introducing 2.0](https://youtu.be/OmoVmYzoIsk).
@@ -557,9 +557,13 @@ The map of folders, the rules of thumb for changes and how to send a pull reques
 
 ## License
 
-JumpStart 3D is MIT licensed. The author released the source of version 2.0 under the MIT License
-(on his first official site, https://sites.google.com/view/jumpstart-3d-creator/home, and in his
-GitHub repository, https://github.com/classyapps2026/jumpstart3d). This repository's additions, by
-Max Sikorski and the community, use the same license. The author's repository has the app source
-but not the bundled libraries; this repository has both, so it builds on its own. The full text is
-in [LICENSE](LICENSE); credit, history and third-party licenses are in [NOTICE.md](NOTICE.md).
+From build 24 (v2.5.1-community.24) on, this project is licensed under the
+[GNU AGPL-3.0](LICENSE) (AGPL-3.0-only). In one sentence: you may use, change and share it, and
+anyone who runs a changed version for others, including as a website, must share their source
+under the same license.
+
+It is based on J.Siwek's JumpStart 3D, which is MIT licensed. His code stays MIT, and his license
+and copyright are kept in [LICENSES/MIT-jumpstart-3d-jsiwek.txt](LICENSES/MIT-jumpstart-3d-jsiwek.txt).
+Builds up to 23 were released under the earlier terms and keep them. Bundled libraries keep their
+own licenses ([THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)). Credit, history and details are
+in [NOTICE.md](NOTICE.md).
