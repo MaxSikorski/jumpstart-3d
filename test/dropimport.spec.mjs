@@ -34,6 +34,17 @@ async function modelFile(kind, name) {
   }
   return { name, type: TYPES[kind] || "", bytes: fileCache.get(kind) };
 }
+// A closed 20 x 10 x 5 mm STL, OBJ or 3MF now comes in at once. An STL under 6 mm is probably in inches, so it still opens the units dialog:
+// this is the same box made 25.4 times smaller; accepted as inches it is the usual 20 x 10 x 5 mm box. Used wherever a test needs a dialog.
+async function dialogFile(name) {
+  const bytes = await page.evaluate(async () => {
+    const id = window.JS3D.add("box", { size: [20 / 25.4, 10 / 25.4, 5 / 25.4], at: [40 / 25.4, 30 / 25.4, 25 / 25.4] });
+    const out = await window.JS3D.export("stl", { ids: [id] });
+    window.JS3D.remove(id);
+    return Array.from(out);
+  });
+  return { name, type: TYPES.stl, bytes };
+}
 const textFile = (name, text, type = "") => ({ name, type, bytes: Array.from(Buffer.from(text)) });
 
 async function fileDrag(files) {
@@ -127,15 +138,22 @@ test("a file drag is claimed, so the browser does not open the file", async () =
 });
 
 for (const mode of ["beginner", "advanced"]) {
-  for (const [kind, name, title] of [["stl", "Bracket.stl", "Import STL"], ["3mf", "Bracket.3MF", "Import 3MF"], ["obj", "Bracket.Obj", "Import OBJ"], ["step", "Bracket.STEP", null], ["step", "Bracket.stp", null]]) {
-    test(`${mode}: a dropped ${name} lands on the plate, selected`, async () => {
+  for (const [kind, name] of [["stl", "Bracket.stl"], ["3mf", "Bracket.3MF"], ["obj", "Bracket.Obj"], ["step", "Bracket.STEP"], ["step", "Bracket.stp"]]) {
+    test(`${mode}: a dropped ${name} lands on the plate, selected, with no dialog`, async () => {
       await fresh(mode);
       await drop([await modelFile(kind, name)], mode === "beginner" ? "#viewport" : ".topbar"); // anywhere on the page
-      if (title) await accept(title); // a mesh asks for its units first, like the Import button
       await waitIdle(page);
       expectOnPlate(await state(), /^Bracket/);
+      await expect(page.locator("#cmd")).toBeHidden(); // a closed mesh of known units comes in at once
     });
   }
+  test(`${mode}: a dropped STL under 6 mm still asks for its units, and inches make it the usual box`, async () => {
+    await fresh(mode);
+    await drop([await dialogFile("Tiny.stl")], mode === "beginner" ? "#viewport" : ".topbar");
+    await accept("Import STL");
+    await waitIdle(page);
+    expectOnPlate(await state(), /^Tiny/);
+  });
 }
 
 test("a view panned away still gets the model at the plate centre", async () => {
@@ -148,9 +166,9 @@ test("a view panned away still gets the model at the plate centre", async () => 
 
 test("several files at once: each one is imported, in order, one body each", async () => {
   await fresh("advanced");
-  await drop([await modelFile("step", "One.STEP"), await modelFile("stl", "Two.stl"), await modelFile("obj", "Three.obj"), await modelFile("step", "Four.stp")]);
-  await accept("Import STL", true); // the mesh files ask one after the other
-  await accept("Import OBJ");
+  await drop([await modelFile("step", "One.STEP"), await dialogFile("Two.stl"), await modelFile("obj", "Three.obj"), await modelFile("step", "Four.stp")]);
+  await accept("Import STL"); // the tiny STL asks for its units and the queue waits; the closed OBJ then comes in at once
+  await expect.poll(() => page.evaluate(() => window.__store.doc.bodies.length)).toBe(4);
   await waitIdle(page);
   const s = await state();
   expect(s.list.map((b) => b.name.replace(/ \d+$/, ""))).toEqual(["One", "Two", "Three", "Four"]);
@@ -194,7 +212,7 @@ test("a drop in a mode without Import says what to do and imports nothing", asyn
 
 test("a drop over a full-screen tool or an open dialog is refused with a reason", async () => {
   await fresh("beginner");
-  const [step, stl1, stl2] = [await modelFile("step", "Behind.step"), await modelFile("stl", "First.stl"), await modelFile("stl", "Second.stl")]; // made before the tool opens: they add and remove a box
+  const [step, stl1, stl2] = [await modelFile("step", "Behind.step"), await dialogFile("First.stl"), await dialogFile("Second.stl")]; // made before the tool opens: they add and remove a box
   await page.evaluate(() => window.__app.sketch3d.open());
   await expect(page.locator("body.s3d-on")).toHaveCount(1);
   await drop([step]);
@@ -248,7 +266,7 @@ for (const mode of ["beginner", "advanced"]) {
     const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click(mode === "beginner" ? "#bb-import" : "#ad-ins-model")]);
     const f = await modelFile("stl", "Picked.stl");
     await chooser.setFiles({ name: f.name, mimeType: f.type, buffer: Buffer.from(f.bytes) });
-    await accept("Import STL");
+    await expect(page.locator("#cmd")).toBeHidden(); // closed and in mm: no dialog
     await waitIdle(page);
     expectOnPlate(await state(), /^Picked/);
     // and a picker file of the wrong kind keeps its old message
@@ -355,7 +373,7 @@ test("the note stays while the drag is still over the page and goes when the las
 
 test("Cancel or Esc on a dialog stops the rest of the drop with one message, and the next drop works", async () => {
   await fresh("beginner");
-  const [a, b] = [await modelFile("stl", "Cancelled.stl"), await modelFile("stl", "Never.stl")];
+  const [a, b] = [await dialogFile("Cancelled.stl"), await dialogFile("Never.stl")];
   const step = await modelFile("step", "After.step");
   await drop([a, b, step]);
   await expect(page.locator("#cmd")).toContainText("Cancelled");
@@ -384,7 +402,7 @@ test("Cancel or Esc on a dialog stops the rest of the drop with one message, and
 
 test("Cancel on an SVG dialog (which started a sketch first) stops the rest of the drop too", async () => {
   await fresh("advanced");
-  const stl = await modelFile("stl", "Behind.stl");
+  const stl = await dialogFile("Behind.stl");
   await drop([textFile("Plate.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect x="0" y="0" width="20" height="10"/></svg>', "image/svg+xml"), stl]);
   await expect(page.locator("#cmd")).toContainText("Insert SVG");
   await page.locator("#cmd footer").getByRole("button", { name: "Cancel", exact: true }).click();

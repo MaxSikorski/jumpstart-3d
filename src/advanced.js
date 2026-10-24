@@ -20,6 +20,7 @@ import { renderImage, QUALITY, LIGHT_COLORS, LIGHT_TYPES, BACKGROUNDS } from "./
 import { LIB, TEX_CATS, TEXTURE_DEFAULTS, textureThumb, texByKey, registerImageTexture, bytesToB64 } from "./texture.js";
 import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
+import { importsAtOnce, showImportToast } from "./importtoast.js"; // jumpstart-3d: import units
 import { initMeasure } from "./measure.js";
 import { commitCombine, hasLaterKeepPiece } from "./combinesplit.js"; // jumpstart-3d: separate Combine pieces
 import { textBounds } from "./textgeo.js";
@@ -2278,7 +2279,12 @@ export function initAdvanced(app) {
         if (!big) { app.toast("Simplifying " + nt0.toLocaleString() + " triangles…"); await new Promise((r) => setTimeout(r, 60)); }
         ({ mesh, err } = simplify(mesh, MESH_LIMIT));
       }
-      importStlCmd(mesh, base, file.name, nt0, { ...res, err, bytes });
+      const info = { ...res, err, bytes };
+      // jumpstart-3d: import units. a closed mesh of known units comes in at once, with a note (size, repairs, unit buttons); the dialog stays for a real choice
+      if (importsAtOnce(mesh, info)) {
+        const bodyId = addImported({ kind: "mesh", bytes: packMesh(mesh), name: base, k: 1, plate: true });
+        showImportToast({ bodyId, fileName: file.name, mesh, ntOrig: nt0, info });
+      } else importStlCmd(mesh, base, file.name, nt0, info);
     } catch (e) { app.toast(e.message || "That file couldn't be read.", "err"); }
   }
   function addImported({ kind, bytes, name, k, plate }) { // jumpstart-3d: drop import. plate: put it at the plate centre (X 0, Y 0), not at the view target
