@@ -45,7 +45,7 @@ function light() {
   if (!template) {
     template = realpathSync(mkdtempSync(join(scratch, "template-")));
     const root = join(template, "repo");
-    // No background gc or maintenance in the template repos: git detaches one after a commit or push, and it repacks and prunes objects while cpSync below is copying them (ENOENT on origin.git/objects, CI run 40117474250).
+    // No background maintenance in the template repos: after a commit and on a push (receive-pack), git starts `git maintenance run --auto --detach`, which creates and deletes objects/maintenance.lock while cpSync below copies the template (ENOENT on origin.git/objects, CI run 40117474250).
     git(template, "init", "-q", "--bare", "-b", "main", "origin.git");
     git(join(template, "origin.git"), "config", "gc.auto", "0");
     git(join(template, "origin.git"), "config", "maintenance.auto", "false");

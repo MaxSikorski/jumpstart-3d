@@ -123,7 +123,7 @@ export function makeWorld(label) {
     mkdirSync(dir);
     const origin = join(dir, "origin.git");
     const root = join(dir, "jumpstart-3d");
-    // No background gc or maintenance in the template: git detaches one after a commit or push, and it would repack and prune objects while cpSync copies the template (ENOENT).
+    // No background maintenance in the template: after a commit and on a push (receive-pack), git starts `git maintenance run --auto --detach`, which creates and deletes objects/maintenance.lock while cpSync copies the template (ENOENT).
     g(dir, "init", "--bare", "-q", "-b", "main", origin);
     g(origin, "config", "gc.auto", "0");
     g(origin, "config", "maintenance.auto", "false");

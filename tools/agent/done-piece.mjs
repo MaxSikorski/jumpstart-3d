@@ -2,7 +2,7 @@
 // Steps (one line each): find the worktree of the branch; git fetch origin; the branch is merged (an ancestor of origin/main, or a merged pull request whose last commit is the
 // branch tip: a squash merge leaves the branch off main's history, and a merged PR of an older branch with the same name must not count); the worktree has no changed tracked
 // files and no new files git does not know (git ls-files --others --exclude-standard: a file never added is the one thing a merge cannot have saved, so it is refused, the first
-// five names listed); no ignored files beyond the expected ones (.js3d-port, node_modules, test-results/, playwright-report/, docs/, dist/, *.log: any other ignored name is refused the same way,
+// five names listed); no ignored files beyond the expected ones (.js3d-port, node_modules at any depth, test-results/, playwright-report/, docs/, dist/, build/, .DS_Store at any depth, *.log: any other ignored name is refused the same way,
 // since --force would remove it silently); git worktree remove --force; the local branch removed with update-ref -d on the checked commit; the remote branch (see below);
 // git pull --ff-only origin main in the main checkout (a WARN, not a FAIL, when that checkout is not on main or has changed tracked files).
 // The remote branch goes only when its own last commit (git ls-remote, not a possibly stale tracking ref) passes the same merged check, and with --force-with-lease on that commit, so

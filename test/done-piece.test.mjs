@@ -438,20 +438,27 @@ describe("done-piece", { concurrency: 8 }, () => {
     assert.ok(!repo.localBranches().includes("tidy"));
   });
 
-  it("lookalikes are still refused: a build-output folder, a .DS_Store-named folder's neighbour and a node_modules-like name", async () => {
+  it("lookalikes are still refused: builds/, a deep src/build/, .DS_Store.bak, a .DS_Store folder and my_node_modules/", async () => {
     const repo = world.makeRepo();
-    const folder = repo.addPiece("lookalike", { file: true });
+    const folder = repo.addPiece("lookalike", { file: true, push: false });
+    mkdirSync(join(folder, "src")); writeFileSync(join(folder, "src", "keep.txt"), "tracked\n"); // tracked, so src/ is not a "new" folder
+    g(folder, "add", "."); g(folder, "commit", "-q", "-m", "src"); g(folder, "push", "-q", "origin", "lookalike");
     repo.githubMerge("lookalike");
     const exclude = join(repo.root, ".git", "info", "exclude");
-    writeFileSync(exclude, readFileSync(exclude, "utf8") + "builds/\n.DS_Store.bak\nmy_node_modules/\n");
+    writeFileSync(exclude, readFileSync(exclude, "utf8") + "builds/\nsrc/build/\n.DS_Store.bak\n.DS_Store/\nmy_node_modules/\n");
     mkdirSync(join(folder, "builds"));
     writeFileSync(join(folder, "builds", "a.txt"), "x\n");
     writeFileSync(join(folder, ".DS_Store.bak"), "x\n");
     mkdirSync(join(folder, "my_node_modules"));
     writeFileSync(join(folder, "my_node_modules", "a.txt"), "x\n");
+    mkdirSync(join(folder, "src", "build")); // build/ is expected only at the top
+    writeFileSync(join(folder, "src", "build", "a.txt"), "x\n");
+    mkdirSync(join(folder, ".DS_Store")); // a folder, not the file
+    writeFileSync(join(folder, ".DS_Store", "a.txt"), "x\n");
     const r = await finish(repo, ["lookalike"]);
     assert.equal(r.code, 1, r.lines.join("\n"));
-    assert.match(r.lines.at(-2), /3 ignored item\(s\) .* are not on the expected list and would be lost: .*\.DS_Store\.bak.*builds\/.*my_node_modules\//);
+    assert.match(r.lines.at(-2), /^FAIL: 5 ignored item\(s\) /);
+    for (const name of [".DS_Store.bak", ".DS_Store/", "builds/", "my_node_modules/", "src/build/"]) assert.ok(r.lines.at(-2).includes(name), `${name} is named: ${r.lines.at(-2)}`);
     assertUntouched(repo, "lookalike", folder);
   });
 
