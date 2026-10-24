@@ -418,6 +418,50 @@ describe("done-piece", { concurrency: 8 }, () => {
     assert.equal(existsSync(folder), false);
   });
 
+  it("build/, .DS_Store at any depth and node_modules at any depth are expected ignored items: they go with the worktree", async () => {
+    const repo = world.makeRepo();
+    const folder = repo.addPiece("tidy", { file: true, push: false });
+    for (const d of ["mcp", "src/deep"]) { mkdirSync(join(folder, d), { recursive: true }); writeFileSync(join(folder, d, "keep.txt"), "tracked\n"); } // tracked files, so these folders are not "new" ones
+    g(folder, "add", "."); g(folder, "commit", "-q", "-m", "folders"); g(folder, "push", "-q", "origin", "tidy");
+    repo.githubMerge("tidy");
+    const exclude = join(repo.root, ".git", "info", "exclude");
+    writeFileSync(exclude, readFileSync(exclude, "utf8") + "build/\n.DS_Store\n");
+    mkdirSync(join(folder, "build"));
+    writeFileSync(join(folder, "build", "intermediate.js"), "x\n");
+    writeFileSync(join(folder, ".DS_Store"), "x\n");
+    mkdirSync(join(folder, "mcp", "node_modules"));
+    writeFileSync(join(folder, "mcp", "node_modules", "dep.js"), "x\n");
+    writeFileSync(join(folder, "src", "deep", ".DS_Store"), "x\n");
+    const r = await finish(repo, ["tidy"]);
+    assert.equal(r.code, 0, r.lines.join("\n"));
+    assert.equal(existsSync(folder), false);
+    assert.ok(!repo.localBranches().includes("tidy"));
+  });
+
+  it("lookalikes are still refused: builds/, a deep src/build/, .DS_Store.bak, a .DS_Store folder and my_node_modules/", async () => {
+    const repo = world.makeRepo();
+    const folder = repo.addPiece("lookalike", { file: true, push: false });
+    mkdirSync(join(folder, "src")); writeFileSync(join(folder, "src", "keep.txt"), "tracked\n"); // tracked, so src/ is not a "new" folder
+    g(folder, "add", "."); g(folder, "commit", "-q", "-m", "src"); g(folder, "push", "-q", "origin", "lookalike");
+    repo.githubMerge("lookalike");
+    const exclude = join(repo.root, ".git", "info", "exclude");
+    writeFileSync(exclude, readFileSync(exclude, "utf8") + "builds/\nsrc/build/\n.DS_Store.bak\n.DS_Store/\nmy_node_modules/\n");
+    mkdirSync(join(folder, "builds"));
+    writeFileSync(join(folder, "builds", "a.txt"), "x\n");
+    writeFileSync(join(folder, ".DS_Store.bak"), "x\n");
+    mkdirSync(join(folder, "my_node_modules"));
+    writeFileSync(join(folder, "my_node_modules", "a.txt"), "x\n");
+    mkdirSync(join(folder, "src", "build")); // build/ is expected only at the top
+    writeFileSync(join(folder, "src", "build", "a.txt"), "x\n");
+    mkdirSync(join(folder, ".DS_Store")); // a folder, not the file
+    writeFileSync(join(folder, ".DS_Store", "a.txt"), "x\n");
+    const r = await finish(repo, ["lookalike"]);
+    assert.equal(r.code, 1, r.lines.join("\n"));
+    assert.match(r.lines.at(-2), /^FAIL: 5 ignored item\(s\) /);
+    for (const name of [".DS_Store.bak", ".DS_Store/", "builds/", "my_node_modules/", "src/build/"]) assert.ok(r.lines.at(-2).includes(name), `${name} is named: ${r.lines.at(-2)}`);
+    assertUntouched(repo, "lookalike", folder);
+  });
+
   it("a branch whose worktree was already removed by hand is cleaned up as a branch", async () => {
     const repo = world.makeRepo();
     const folder = repo.addPiece("orphan");

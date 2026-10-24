@@ -17,7 +17,7 @@ const scratch = realpathSync(mkdtempSync(join(tmpdir(), "status-")));
 after(() => rmSync(scratch, { recursive: true, force: true }));
 const home = join(scratch, "home");
 mkdirSync(home);
-writeFileSync(join(scratch, "gitconfig"), "[user]\n\tname = Test Max\n\temail = max@example.test\n[init]\n\tdefaultBranch = main\n[protocol \"file\"]\n\tallow = always\n");
+writeFileSync(join(scratch, "gitconfig"), "[user]\n\tname = Test Max\n\temail = max@example.test\n[init]\n\tdefaultBranch = main\n[gc]\n\tauto = 0\n[maintenance]\n\tauto = false\n[protocol \"file\"]\n\tallow = always\n");
 Object.assign(process.env, { HOME: home, USERPROFILE: home, GIT_CONFIG_GLOBAL: join(scratch, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1", GH_CONFIG_DIR: join(scratch, "gh-empty"), TZ: "UTC" });
 delete process.env.GH_TOKEN;
 delete process.env.GITHUB_TOKEN;
@@ -45,9 +45,14 @@ function light() {
   if (!template) {
     template = realpathSync(mkdtempSync(join(scratch, "template-")));
     const root = join(template, "repo");
+    // No background maintenance in the template repos: after a commit and on a push (receive-pack), git starts `git maintenance run --auto --detach`, which creates and deletes objects/maintenance.lock while cpSync below copies the template (ENOENT on origin.git/objects, CI run 40117474250).
     git(template, "init", "-q", "--bare", "-b", "main", "origin.git");
+    git(join(template, "origin.git"), "config", "gc.auto", "0");
+    git(join(template, "origin.git"), "config", "maintenance.auto", "false");
     mkdirSync(root);
     git(root, "init", "-q", "-b", "main");
+    git(root, "config", "gc.auto", "0");
+    git(root, "config", "maintenance.auto", "false");
     git(root, "remote", "add", "origin", join(template, "origin.git"));
     commit(root, "base.txt", "0\n", "first");
     git(root, "tag", "v2.5.1-community.9");
