@@ -45,6 +45,7 @@ import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 import { initFineTurn } from "./fineturn.js"; // jumpstart-3d: fine rotation
 import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
 import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
+import { initDropImport } from "./dropimport.js"; // jumpstart-3d: drop import
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -232,6 +233,7 @@ app.voxel = initVoxel(app);
   $("unit-toggle").onclick = () => setUnit(getUnit() === "in" ? "mm" : "in");
   initFineTurn(app); // jumpstart-3d: fine rotation
   initPerfPanel(app); // jumpstart-3d: perf panel
+  initDropImport(app); // jumpstart-3d: drop import. a model file dropped anywhere on the page opens like the Import button
   // jumpstart-3d: the top bar wraps to two rows on a narrow screen; Chisel and the Lathe message start below its real height
   new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px")).observe(document.querySelector(".topbar"));
   onUnit(() => {
@@ -742,6 +744,7 @@ app.showAbout = function () {
         ["Export:", "STL, OBJ, 3MF and STEP: everything, or only the bodies you select. Sketches as DXF (one, or all) for laser cutters and other CAD."],
         ["Section analysis:", "in Advanced → Inspect, cut the view with a plane to see inside your design, with hatched cut faces. The design itself never changes."],
         ["Import:", "STL and 3MF meshes (repaired automatically) and STEP models in both modes, SVG and DXF drawings, and pictures to trace: drag their handles to scale, stretch and turn them, scale one from a length you know, or Auto trace a picture into outlines ready to extrude."],
+        ["Drop a file:", "in Beginner or Advanced, drag an STL, 3MF, OBJ, STEP, SVG or DXF file from your computer onto the page. It opens like the Import button, and a model lands on the build plate, selected."], // jumpstart-3d: drop import
         ["Mesh to STEP:", "in Advanced → Simulate, convert an STL or 3MF mesh into a STEP solid with real flat, round and curved faces, then open it in JumpStart 3D to edit it with CAD tools."],
         ["Saving:", "designs are kept in this browser. Save (or Ctrl+S) makes a new version each time: \"Lopez, Maria, Keychain v1\", v2, v3…, and STL and project files carry the same name and number. Optional Autosave keeps numbered backups (\"… autosave v1\", v2…) with crash recovery."]]),
       sec("Viewing", [
