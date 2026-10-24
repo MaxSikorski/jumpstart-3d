@@ -45,7 +45,7 @@ export const MAPPING = [
   { from: "LICENSES/", to: "LICENSES/", how: "merge", area: "licences", note: "Licence texts changed: compare with NOTICE.md and THIRD-PARTY-NOTICES.md." },
   { from: "THIRD-PARTY-NOTICES.md", to: "THIRD-PARTY-NOTICES.md", how: "merge", area: "licences", note: "Third-party notices changed." },
   { from: "README.md", to: "UPSTREAM-README.md", how: "merge", area: "docs", note: "The author's README changed; UPSTREAM-README.md follows it." },
-  { from: "LICENSE", to: null, how: "report", area: "licences", note: "The author's LICENSE changed. Ours covers repo tooling only: read NOTICE.md and decide by hand." },
+  { from: "LICENSE", to: null, how: "report", area: "licences", note: "The author's LICENSE changed. His is MIT and is kept in LICENSES/MIT-jumpstart-3d-jsiwek.txt; ours is AGPL-3.0: read NOTICE.md and decide by hand." },
   { from: "app/build.sh", to: null, how: "report", area: "build", note: "The author's build scripts changed; ours is build.mjs. Port any real change by hand." },
   { from: "app/dist.sh", to: null, how: "report", area: "build", note: "The author's build scripts changed; ours is build.mjs. Port any real change by hand." },
   { from: "app/standalone.py", to: null, how: "report", area: "build", note: "The author's build scripts changed; ours is build.mjs. Port any real change by hand." },

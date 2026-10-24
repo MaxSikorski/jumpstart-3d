@@ -8,3 +8,4 @@ node_modules/
 /playwright-report/
 /chat-bench-results/
 /lighthouse-report/
+/src/camworker.bundle.txt

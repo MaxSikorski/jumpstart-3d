@@ -12,7 +12,7 @@ program. Designs can be exported for 3D printing and for CNC machines.
 
 ## Credit
 
-JumpStart 3D was created by **J.Siwek**, who publishes it under the MIT License. Please credit him
+JumpStart 3D was created by **J.Siwek**, who publishes his original under the MIT License. Please credit him
 first.
 
 - Official site: https://classyapps.org/ (his own downloads)
@@ -26,7 +26,7 @@ online. It follows each new version of J.Siwek's release and adds its own featur
 ## Key facts
 
 - **Price:** free. No account needed. Optional support goes to the maintainer's hosting (see the README).
-- **Licence:** MIT, for both J.Siwek's code and the community additions.
+- **Licence:** AGPL-3.0 for the project from build 24 on; J.Siwek's original code stays MIT. Earlier builds keep their earlier terms.
 - **Runs in:** any current browser on Mac, Windows, Linux, Chromebook, iPad and iPhone.
 - **Offline:** after the first visit the website keeps a copy and works without internet. The
   single file needs no internet at all.
