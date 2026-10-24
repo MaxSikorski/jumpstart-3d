@@ -2301,11 +2301,25 @@ export function initAdvanced(app) {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
+        if (plate && v && v.data && store.doc.bodies.some((b) => b.id === bodyId)) frameIfOffScreen(bodyId); // jumpstart-3d: drop import
         if (err && store.doc.bodies.some((b) => b.id === bodyId)) app.toast(`Couldn't build ${name}: ${err}`, "err"); // jumpstart-3d: drop import. a failed build used to show only in the status line
         if (v && v.data && Date.now() - t0 > 2500) app.toast(name + " is ready.");
       } else if (Date.now() - t0 > 1500 && !told) { told = true; app.toast("Preparing " + name + "… larger models can take up to a minute."); }
     }, 500);
     return bodyId;
+  }
+  // jumpstart-3d: drop import. A file import lands at the plate centre; a view that is zoomed in or panned away would not show it, so frame it then.
+  // A body that is already fully in view leaves the camera alone.
+  function frameIfOffScreen(id) {
+    const box = scene.bodyTightBox(id);
+    if (!box || box.isEmpty()) return;
+    vp.updateCamera(); // the camera as the view says it is now, not as the last frame drew it
+    vp.camera.updateMatrixWorld(true);
+    const out = [0, 1, 2, 3, 4, 5, 6, 7].some((i) => {
+      const [x, y, z] = vp.project(new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
+      return !(x >= 0 && x <= vp.w && y >= 0 && y <= vp.h && z > -1 && z < 1);
+    });
+    if (out) vp.fit(box);
   }
   function importStlCmd(mesh, name, fileName, ntOrig, info = {}) {
     const b = meshBounds(mesh);
