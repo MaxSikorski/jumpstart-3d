@@ -763,6 +763,22 @@ export const COMMUNITY_TUTORIALS = [
       saveStep(), exportStep(),
     ],
   },
+  {
+    id: "c4-code-cad", mode: "advanced", level: "Proficient", minutes: "6-8", item: "Code Bracket",
+    title: "Build a part from code",
+    blurb: "Write a few lines of replicad code, build a bracket from it, then change a size and press Update.",
+    learn: ["Code CAD", "Build", "Update", "STEP body"],
+    steps: [
+      nameStep("Code Bracket", "Lopez, Maria, Code Bracket"),
+      { title: "Build the example bracket", tool: "Export → Code CAD…", icon: "select", show: { sel: "#btn-codecad", via: "#btn-export" },
+        how: ["Click the <b>Export</b> button (the down-arrow at the top right), then choose <b>Code CAD…</b>.", "The code box already holds an L bracket. Click <b>Build</b> and wait a few seconds."],
+        when: "The code makes one solid. It is added as an ordinary STEP body, and the code is kept with it. Only run code you trust: it cannot reach the internet, but it is not a full sandbox." },
+      { title: "Change a size and Update", tool: "Export → Code CAD…", icon: "select", show: { sel: "#btn-codecad", via: "#btn-export" },
+        how: ["Click the bracket so it is selected, then choose <b>Code CAD…</b> again. Its code opens with an <b>Update</b> button.", "Change the 30 in <b>[60, 30, 4]</b> to 40 and click <b>Update</b>."],
+        when: "Opening a design never runs its code. Update runs it again, and keeps the body's place and any later features." },
+      saveStep(), exportStep(),
+    ],
+  },
   // Batch 2 (Outcome 6): shape tiles and cutters, turn and snap controls, the top bar, screen toggles, sketch constraints.
   {
     id: "c4-roofs", mode: "beginner", level: "Easy", minutes: "7-9", item: "Roof Samples",
