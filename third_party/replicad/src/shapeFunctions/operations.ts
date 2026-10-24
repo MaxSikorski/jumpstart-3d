@@ -291,7 +291,7 @@ function withoutLooseEdges<B extends BooleanBuilder>(
       if (!judged()) return false;
       const want = volume(first);
       if (!inRange(want) || (kind === "common" && vanished(want))) return true;
-      return spline() && (noOverlap(want) || !isValid(first));
+      return noOverlap(want) || (spline() && !isValid(first));
     };
     if (suspect()) {
       const found = rebuild([1e-6, 1e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2], (got, fuzzy) => {
