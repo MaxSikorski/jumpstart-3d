@@ -137,6 +137,7 @@ test("clicking a shown sketch in the viewport picks it, and dragging it on the g
   const at = (x, y) => run(([x, y]) => { const v = __app.vp; const V = v.camera.position.constructor; const q = v.project(new V(x, y, 0)); const b = v.canvas.getBoundingClientRect(); return [b.left + q[0], b.top + q[1]]; }, [x, y]);
   await openMove();
   await expect(page.locator(".picklist")).toContainText("Click bodies or a sketch");
+  await page.locator("#mv-drag button", { hasText: "Free on ground" }).click(); // Free in 3D is the default; this test is about the ground drag (#163)
   const [x0, y0] = await at(10, 10), [x1, y1] = await at(20, 10);
   await page.mouse.move(x0, y0);
   await page.mouse.down();

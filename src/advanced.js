@@ -4399,7 +4399,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ Move / Copy
   function moveCmd(opts = {}) {
     // rot: the turn so far (about the selection center), shown as X/Y/Z angles
-    const st = { ids: app.sel.filter((id) => !app.isLocked(id)), d: [0, 0, 0], rot: new THREE.Quaternion(), copy: false, drag: opts.drag || "ground", center: new THREE.Vector3() };
+    const st = { ids: app.sel.filter((id) => !app.isLocked(id)), d: [0, 0, 0], rot: new THREE.Quaternion(), copy: false, drag: opts.drag || "screen", center: new THREE.Vector3() }; // jumpstart-3d: Free in 3D is the default drag (#163)
     if (st.ids.length < app.sel.length) app.toast("Locked bodies stay where they are.");
     // jumpstart-3d: sketch move. Move/Copy takes one sketch or bodies, never both: an extrude would move twice.
     // A sketch moves by changing its plane; the curves stay as drawn and the extrudes made from it follow.
@@ -4503,7 +4503,7 @@ export function initAdvanced(app) {
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
         if (store.doc.sketches.length) body.append(row("Sketch", el("select", { class: "num", id: "mv-sketch", onchange: (e) => { st.sketch = e.target.value || null; if (st.sketch) st.ids = []; changed(); } },
           el("option", { value: "" }, "…or pick a sketch"), ...store.doc.sketches.map((k) => el("option", { value: k.id, selected: st.sketch === k.id }, k.name || "Sketch"))), "mv-sketch"));
-        body.append(row("Drag shape", seg([["ground", "Free on ground"], ["screen", "Free in 3D"]], st.drag, (v) => { st.drag = v; def.render(); }, "mv-drag")));
+        body.append(row("Drag shape", seg([["screen", "Free in 3D"], ["ground", "Free on ground"]], st.drag, (v) => { st.drag = v; def.render(); app.status(); }, "mv-drag"))); // jumpstart-3d: Free in 3D first (#163); the hint follows the choice
         body.append(row("Ring turn", snapSwitch())); // jumpstart-3d: rotation access
         body.append(el("div", { class: "subhead" }, "Move by (" + getUnit() + ")"));
         const r3 = el("div", { class: "row3" });
