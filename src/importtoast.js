@@ -2,10 +2,11 @@
 // "Import STL/3MF/OBJ" dialog. This file decides that, and shows the note that follows: the file name, the size, what was repaired, and three
 // small buttons (mm, cm, in) that read the file's numbers as another unit. The buttons rescale the body as ONE undo step; the body stays
 // centred and resting on the plate by itself (the kernel centres every imported mesh on the origin). The dialog stays for an open mesh,
-// shared edges (non-manifold) and an STL under 6 mm, where there is a real choice. Each import has its own note; they stack.
+// shared edges (non-manifold) and an STL or OBJ under 6 mm (neither carries units), where there is a real choice. Each import has its own note; they stack.
 import { el } from "./util.js";
 import { store, findBody } from "./store.js";
-import { getUnit, showLen } from "./units.js";
+import { getUnit, showLen, withUnit } from "./units.js";
+import { deleteBodies } from "./ops.js";
 import { meshBounds } from "./meshimport.js";
 
 const SHOW_MS = 10000;
@@ -27,7 +28,7 @@ const CSS = `
 export function importsAtOnce(mesh, info) {
   const rep = info.report || {};
   if (rep.open || rep.nonManifold) return false;
-  if (info.format === "STL" && !info.unitFromFile && Math.max(...meshBounds(mesh).size) < 6) return false;
+  if (!info.unitFromFile && Math.max(...meshBounds(mesh).size) < 6) return false;
   return true;
 }
 
@@ -42,18 +43,22 @@ function repairs(rep) {
 }
 
 // bodyId: the body addImported just made (k 1: the mesh is in mm, 3MF numbers already turned into mm).
-export function showImportToast({ bodyId, fileName, mesh, ntOrig, info }) {
+// frame(id): puts the camera on the body when it is out of view (advanced.js frameIfOffScreen), called when a unit change has been rebuilt.
+export function showImportToast({ app, bodyId, fileName, mesh, ntOrig, info, frame }) {
   const body0 = findBody(store.doc, bodyId);
   if (!body0 || body0.node.t !== "mesh") return;
   const asset = body0.node.asset;
   const fileMM = info.unitFromFile ? FILE_UNIT_MM[info.unitFromFile] || 1 : 1; // mm per unit the file's numbers are in
   const size = meshBounds(mesh).size;
   const nt = mesh.I.length / 3;
-  const extras = [];
   const fixed = repairs(info.report || {});
-  if (fixed.length) extras.push("repaired: " + fixed.join(", "));
-  if (ntOrig > nt) extras.push(`simplified from ${ntOrig.toLocaleString()} triangles`);
-  if (info.parts > 1) extras.push(`${info.parts} parts`);
+  const extrasAt = (k) => {
+    const out = [];
+    if (fixed.length) out.push("repaired: " + fixed.join(", "));
+    if (ntOrig > nt) out.push(`simplified from ${ntOrig.toLocaleString()} triangles, largest change about ${withUnit((info.err || 0) * k, 2)}`);
+    if (info.parts > 1) out.push(`${info.parts} parts`);
+    return out;
+  };
 
   if (!document.getElementById("imp-toast-css")) {
     const style = el("style", { id: "imp-toast-css" });
@@ -62,21 +67,33 @@ export function showImportToast({ bodyId, fileName, mesh, ntOrig, info }) {
   }
   const text = el("div", { class: "imp-toast-text" });
   const buttons = UNITS.map((u) => el("button", { type: "button", "data-unit": u, title: `The file's numbers are ${TITLES[u].toLowerCase()}. Click if the size looks wrong.`, onclick: () => choose(u) }, u));
-  const toast = el("div", { class: "toast imp-toast" }, text, el("div", { class: "imp-units", role: "group", "aria-label": "File units" }, el("span", {}, "File units"), ...buttons));
-  let timer = 0, off = null;
+  // a closed STL or 3MF can be turned into smooth CAD faces by the Mesh to STEP helper: the dialog used to offer it
+  const toStep = info.bytes && info.format !== "OBJ" && app.meshstep
+    ? el("button", { type: "button", class: "imp-step", title: "Turn the mesh into smooth, editable CAD faces (planes, cylinders, fillets) with the Mesh to STEP Helper", onclick: convert }, "CAD faces…")
+    : null;
+  const toast = el("div", { class: "toast imp-toast" }, text, el("div", { class: "imp-units", role: "group", "aria-label": "File units" }, el("span", {}, "File units"), ...buttons, ...(toStep ? [toStep] : [])));
+  let timer = 0, off = null, hold = false;
+  const knownK = new Set([1]); // the scales this note itself set; any other scale means something else resized the body
 
-  const bodyNow = () => { const b = findBody(store.doc, bodyId); return b && b.node.t === "mesh" && b.node.asset === asset ? b : null; };
+  // the body as this note knows it: still the plain imported mesh, with no feature or resize added on top, at a scale the note set
+  const bodyNow = () => {
+    const b = findBody(store.doc, bodyId);
+    return b && b.node.t === "mesh" && b.node.asset === asset && !(b.node.mods && b.node.mods.length) && knownK.has(b.node.k || 1) ? b : null;
+  };
   const kNow = () => (bodyNow().node.k || 1);
   function close() { clearTimeout(timer); if (off) off(); toast.remove(); }
-  function arm() { clearTimeout(timer); timer = setTimeout(close, SHOW_MS); }
+  function arm() { clearTimeout(timer); if (!hold) timer = setTimeout(close, SHOW_MS); }
   function refresh() {
     if (!bodyNow()) { close(); return; } // undone, deleted or merged into something else: the buttons no longer have a body
     const k = kNow();
-    text.textContent = `Imported ${fileName}: ${size.map((v) => showLen(v * k, 1)).join(" × ")} ${getUnit()}` + (extras.length ? " · " + extras.join(" · ") : "");
+    const extras = extrasAt(k);
+    const msg = `Imported ${fileName}: ${size.map((v) => showLen(v * k, 1)).join(" × ")} ${getUnit()}` + (extras.length ? " · " + extras.join(" · ") : "");
+    if (text.textContent !== msg) text.textContent = msg; // the toast area is a live region: say it again only when it changed
     for (const b of buttons) b.setAttribute("aria-pressed", String(Math.abs(MM_PER[b.dataset.unit] / fileMM - k) < 1e-9));
   }
   function choose(u) {
     const k = MM_PER[u] / fileMM;
+    knownK.add(k);
     store.update((doc) => {
       const b = findBody(doc, bodyId);
       if (!b || b.node.t !== "mesh" || b.node.asset !== asset || Math.abs((b.node.k || 1) - k) < 1e-9) return false;
@@ -84,8 +101,30 @@ export function showImportToast({ bodyId, fileName, mesh, ntOrig, info }) {
     }, "File units: " + u);
     refresh();
     arm();
+    if (frame) whenBuilt(() => frame(bodyId));
   }
-  off = store.on((kind) => { if (kind === "load") close(); else refresh(); });
+  // wait for the rebuild of the rescaled body, then run fn once
+  function whenBuilt(fn) {
+    const t0 = Date.now();
+    const poll = setInterval(() => {
+      if (!findBody(store.doc, bodyId) || Date.now() - t0 > 60000) { clearInterval(poll); return; }
+      const v = app.scene.views.get(bodyId);
+      if (v && v.data && !app.scene.busy()) { clearInterval(poll); fn(); }
+    }, 300);
+  }
+  function convert() {
+    deleteBodies([bodyId], "Convert " + fileName + " to CAD faces"); // one undo step brings the body back
+    if (app.sel.includes(bodyId)) app.select(app.sel.filter((id) => id !== bodyId));
+    close();
+    app.meshstep.open({ bytes: info.bytes, name: fileName });
+  }
+  const pause = () => { hold = true; clearTimeout(timer); };
+  const resume = () => { hold = false; arm(); };
+  toast.addEventListener("pointerenter", pause);
+  toast.addEventListener("pointerleave", resume);
+  toast.addEventListener("focusin", (e) => { if (e.target.matches(":focus-visible")) pause(); }); // a keyboard user; a mouse click leaves the button focused
+  toast.addEventListener("focusout", (e) => { if (!toast.contains(e.relatedTarget)) resume(); });
+  off = store.on((kind) => { if (kind === "preview") return; if (kind === "load") close(); else refresh(); });
   refresh();
   document.getElementById("toasts").append(toast);
   arm();

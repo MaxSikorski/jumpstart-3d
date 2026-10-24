@@ -39,10 +39,21 @@ for (const mode of ["beginner", "advanced"]) {
         buffer: Buffer.from(readFileSync(path, "utf8")
           .replace(/\b20\b/g, "5").replace(/\r?\n/g, eol === "CRLF" ? "\r\n" : "\n")),
       } : path);
-      // a closed OBJ comes in at once (no dialog), with a note that shows its size and the mm / cm / in buttons
-      await expect(page.locator("#toasts .imp-toast")).toContainText(`Imported ${fixture}: ${size} × ${size} × ${size} mm`);
-      await expect(page.locator("#toasts .imp-toast [data-unit=mm]")).toHaveAttribute("aria-pressed", "true");
-      await expect(page.locator("#cmd")).toBeHidden();
+      if (size === 5) {
+        // an OBJ carries no units and this one is under 6 mm: the units are in doubt, so the dialog asks (millimetres by default)
+        await expect(page.locator("#cmd")).toContainText("Import OBJ");
+        await expect(page.locator("#cmd")).toContainText("12 triangles");
+        await expect(page.locator("#cmd")).toContainText("Closed solid");
+        await expect(page.locator("#imp-tostep")).toHaveCount(0);
+        await expect(page.locator("#imp-unit").getByRole("button", { name: "mm", exact: true })).toBeVisible();
+        await page.click("#cmd-ok");
+        await expect(page.locator("#cmd")).toBeHidden();
+      } else {
+        // a closed OBJ of normal size comes in at once (no dialog), with a note that shows its size and the mm / cm / in buttons
+        await expect(page.locator("#toasts .imp-toast")).toContainText(`Imported ${fixture}: ${size} × ${size} × ${size} mm`);
+        await expect(page.locator("#toasts .imp-toast [data-unit=mm]")).toHaveAttribute("aria-pressed", "true");
+        await expect(page.locator("#cmd")).toBeHidden();
+      }
       await expect.poll(() => page.evaluate(() => window.__store.doc.bodies.length)).toBe(1);
       await waitIdle(page);
       const list = await page.evaluate(() => window.JS3D.list());

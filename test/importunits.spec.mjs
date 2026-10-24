@@ -52,6 +52,26 @@ function threeMF(unit, w, d, h) { // the numbers are in `unit`, so a 2 x 3 x 1 b
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="${unit}" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices>${v.map((p) => `<vertex x="${p[0]}" y="${p[1]}" z="${p[2]}"/>`).join("")}</vertices><triangles>${boxTriangles().map((t) => `<triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("")}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
   return storedZip([{ name: "3D/3dmodel.model", data: xml }]);
 }
+// two separate boxes in one 3MF (two build items, the second 40 units along x): the import is one body with 2 parts
+function threeMFTwoParts(unit, w, d, h, gap) {
+  const v = corners(w, d, h);
+  const obj = (id) => `<object id="${id}" type="model"><mesh><vertices>${v.map((p) => `<vertex x="${p[0]}" y="${p[1]}" z="${p[2]}"/>`).join("")}</vertices><triangles>${boxTriangles().map((t) => `<triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("")}</triangles></mesh></object>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="${unit}" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>${obj(1)}${obj(2)}</resources><build><item objectid="1"/><item objectid="2" transform="1 0 0 0 1 0 0 0 1 ${gap} 0 0"/></build></model>`;
+  return storedZip([{ name: "3D/3dmodel.model", data: xml }]);
+}
+// a closed box whose six faces are each n x n squares, as a binary STL: 12 n^2 triangles (more than the 20,000 the editor keeps when n = 42)
+function stlFinBox(w, d, h, n) {
+  const v = corners(w, d, h), tris = [];
+  const at = (q, i, j) => { const [a, b, c, e] = q.map((k) => v[k]); const s = i / n, t = j / n; return [0, 1, 2].map((x) => (a[x] * (1 - s) + b[x] * s) * (1 - t) + (e[x] * (1 - s) + c[x] * s) * t); };
+  for (const q of QUADS) for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const p = [at(q, i, j), at(q, i + 1, j), at(q, i + 1, j + 1), at(q, i, j + 1)];
+    tris.push([p[0], p[1], p[2]], [p[0], p[2], p[3]]);
+  }
+  const buf = Buffer.alloc(84 + 50 * tris.length);
+  buf.writeUInt32LE(tris.length, 80);
+  tris.forEach((t, i) => t.forEach((p, k) => p.forEach((x, a) => buf.writeFloatLE(x, 84 + 50 * i + 12 + 12 * k + 4 * a))));
+  return buf;
+}
 const file = (name, buffer, mimeType = "") => ({ name, mimeType, buffer });
 
 // ---- helpers
@@ -266,4 +286,149 @@ test("on a phone-width screen the note fits and its buttons can be tapped", asyn
   } finally {
     await page.setViewportSize(wide);
   }
+});
+
+test("redo brings a unit change back after undo", async () => {
+  await fresh();
+  await pick(file("Redo.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Redo.stl");
+  await expect(note).toBeVisible();
+  await unitBtn(note, "in").click();
+  await waitIdle(page);
+  await page.evaluate(() => window.JS3D.undo());
+  await waitIdle(page);
+  sizeIs((await bodies())[0], [20, 10, 5]);
+  await page.evaluate(() => window.JS3D.redo());
+  await waitIdle(page);
+  sizeIs((await bodies())[0], [508, 254, 127], 1);
+  await expect(note).toContainText(/508(\.0)? × 254(\.0)? × 127(\.0)? mm/);
+  await expect(unitBtn(note, "in")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a 3MF with two parts says so and a unit change scales both", async () => {
+  await fresh();
+  await pick(file("Pair.3mf", threeMFTwoParts("millimeter", 20, 10, 5, 40), "model/3mf"));
+  const note = noteFor("Pair.3mf");
+  await expect(note).toContainText("2 parts");
+  await expect(note).toContainText(/60(\.0)? × 10(\.0)? × 5(\.0)? mm/);
+  await waitIdle(page);
+  sizeIs((await bodies())[0], [60, 10, 5]);
+  await unitBtn(note, "cm").click();
+  await waitIdle(page);
+  const list = await bodies();
+  expect(list).toHaveLength(1);
+  sizeIs(list[0], [600, 100, 50], 1);
+  expect(list[0].min[2]).toBeCloseTo(0, 3);
+});
+
+test("a mesh over the editing limit says it was simplified, with the largest change", async () => {
+  await fresh();
+  await pick(file("Fine.stl", stlFinBox(20, 10, 5, 42), "model/stl")); // 21,168 triangles
+  const note = noteFor("Fine.stl");
+  await expect(note).toBeVisible({ timeout: 60_000 });
+  await expect(dialog()).toBeHidden();
+  await expect(note).toContainText(/simplified from 21.168 triangles, largest change about [\d.]+ mm/);
+  await waitIdle(page);
+  sizeIs((await bodies())[0], [20, 10, 5]);
+});
+
+test("an OBJ under 6 mm opens the dialog too, since an OBJ carries no units", async () => {
+  await fresh();
+  const obj = "v 0 0 0\nv 4 0 0\nv 4 4 0\nv 0 4 0\nv 0 0 4\nv 4 0 4\nv 4 4 4\nv 0 4 4\nf 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n";
+  await pick(file("Small.obj", Buffer.from(obj), "model/obj"));
+  await expect(dialog()).toContainText("Import OBJ");
+  await expect(page.locator("#toasts .imp-toast")).toHaveCount(0);
+  await page.locator("#cmd footer").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog()).toBeHidden();
+});
+
+test("the note stays while the pointer is over it, and goes about 10 s after the pointer leaves", async () => {
+  await fresh();
+  await pick(file("Hover.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Hover.stl");
+  await expect(note).toBeVisible();
+  await note.hover();
+  await page.waitForTimeout(11_000);
+  await expect(note).toBeVisible(); // longer than the 10 s, but in use
+  await unitBtn(note, "cm").click(); // a click while hovering does not start the countdown either
+  await page.waitForTimeout(500);
+  await expect(note).toBeVisible();
+  await page.mouse.move(700, 300);
+  await expect(note).toBeVisible();
+  await expect(note).toBeHidden({ timeout: 13_000 });
+});
+
+test("the live region is not rewritten by drag previews or events that change nothing", async () => {
+  await fresh();
+  await pick(file("Live.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Live.stl");
+  await expect(note).toBeVisible();
+  await waitIdle(page);
+  const changes = await page.evaluate(async () => {
+    const t = document.querySelector("#toasts .imp-toast");
+    let n = 0;
+    const mo = new MutationObserver((m) => { n += m.length; });
+    mo.observe(t, { subtree: true, childList: true, characterData: true });
+    for (let i = 0; i < 5; i++) window.__store.emit("preview");
+    window.__store.emit("change"); // same size as before: the text is not set again
+    await new Promise((r) => setTimeout(r, 100));
+    mo.disconnect();
+    return n;
+  });
+  expect(changes).toBe(0);
+});
+
+test("CAD faces… hands the file to the Mesh to STEP helper, takes the body away as one undo step, and undo brings it back", async () => {
+  await fresh();
+  await pick(file("Faces.stl", stlBox(20, 10, 5), "model/stl"));
+  const note = noteFor("Faces.stl");
+  await expect(note).toBeVisible();
+  await waitIdle(page);
+  const depth = await undoDepth();
+  await note.getByRole("button", { name: "CAD faces…" }).click();
+  await expect(page.locator(".flexigen.meshstep")).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => { try { return document.querySelector(".meshstep iframe").contentDocument.body.innerText; } catch (e) { return ""; } }), { timeout: 30_000 }).toContain("Faces.stl"); // the helper opened the file
+  await expect(note).toBeHidden();
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(0);
+  expect(await undoDepth()).toBe(depth + 1);
+  await page.evaluate(() => { window.__JS3D_STEP_CLOSE__(); window.JS3D.undo(); });
+  await waitIdle(page);
+  const list = await bodies();
+  expect(list).toHaveLength(1);
+  sizeIs(list[0], [20, 10, 5]);
+});
+
+test("an OBJ's note has no CAD faces button (the helper cannot read OBJ)", async () => {
+  await fresh();
+  const obj = "v 0 0 0\nv 20 0 0\nv 20 20 0\nv 0 20 0\nv 0 0 20\nv 20 0 20\nv 20 20 20\nv 0 20 20\nf 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n";
+  await pick(file("Big.obj", Buffer.from(obj), "model/obj"));
+  const note = noteFor("Big.obj");
+  await expect(note).toBeVisible();
+  await expect(note.getByRole("button", { name: "CAD faces…" })).toHaveCount(0);
+});
+
+test("the note closes once the body is resized or given a feature, since its size and buttons would be wrong", async () => {
+  await fresh();
+  await pick(file("Edit.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Edit.stl");
+  await expect(note).toBeVisible();
+  await waitIdle(page);
+  await page.evaluate(() => window.JS3D.scale([window.JS3D.list()[0].id], 2));
+  await expect(note).toBeHidden();
+});
+
+test("after a unit change the camera is put on the body when it has grown out of view", async () => {
+  await fresh();
+  await pick(file("Frame.stl", stlBox(20, 10, 5)));
+  const note = noteFor("Frame.stl");
+  await expect(note).toBeVisible();
+  await waitIdle(page);
+  await unitBtn(note, "in").click();
+  const inView = () => page.evaluate(() => {
+    const vp = window.__app.vp, box = window.__app.scene.bodyTightBox(window.JS3D.list()[0].id), V = box.min.constructor;
+    vp.updateCamera(); vp.camera.updateMatrixWorld(true);
+    return [0, 1, 2, 3, 4, 5, 6, 7].map((i) => vp.project(new V(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z)))
+      .every(([x, y, z]) => x >= 0 && x <= vp.w && y >= 0 && y <= vp.h && z > -1 && z < 1);
+  });
+  await expect.poll(inView, { timeout: 20_000 }).toBe(true);
 });

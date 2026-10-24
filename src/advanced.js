@@ -2283,7 +2283,7 @@ export function initAdvanced(app) {
       // jumpstart-3d: import units. a closed mesh of known units comes in at once, with a note (size, repairs, unit buttons); the dialog stays for a real choice
       if (importsAtOnce(mesh, info)) {
         const bodyId = addImported({ kind: "mesh", bytes: packMesh(mesh), name: base, k: 1, plate: true });
-        showImportToast({ bodyId, fileName: file.name, mesh, ntOrig: nt0, info });
+        showImportToast({ app, bodyId, fileName: file.name, mesh, ntOrig: nt0, info, frame: frameIfOffScreen });
       } else importStlCmd(mesh, base, file.name, nt0, info);
     } catch (e) { app.toast(e.message || "That file couldn't be read.", "err"); }
   }
