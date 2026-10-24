@@ -113,9 +113,9 @@ export class KernelClient {
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
     // send small batches so the screen updates progressively
-    // heavy parts (imported meshes, 3D Sketch tubes along free curves) go one at a time, each with
+    // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
-    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
+    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
     const batch = [];
     for (const [k, it] of this.queue) {
       const alone = (b) => heavy(b) || this.solo.has(b.key); // jumpstart-3d: a retried body also goes alone

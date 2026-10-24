@@ -6,7 +6,7 @@ A free 3D CAD tool that runs in your web browser. No install, no account, no ser
 between Tinkercad and a real CAD program: drag shapes together in Beginner mode, or sketch,
 extrude, fillet and shell in Advanced mode.
 
-Created by **J.Siwek**, who publishes it under the MIT License. Find him at the
+Created by **J.Siwek**, who publishes his original under the MIT License. Find him at the
 [official site](https://classyapps.org/) (his own downloads), his
 [source repository on GitHub](https://github.com/classyapps2026/jumpstart3d) and his
 [video introducing 2.0](https://youtu.be/OmoVmYzoIsk).
@@ -20,6 +20,14 @@ See [NOTICE.md](NOTICE.md) for credit and licensing.
 **[Open it](https://maxsikorski.github.io/jumpstart-3d/)** ·
 **[Download the single file](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)** ·
 **[Use it with an AI agent](#use-it-with-an-ai-agent)**
+
+<h3 align="center">Love it? Help keep it free.</h3>
+<p align="center">JumpStart 3D is free, with no ads and no account. Your support pays for the hosting and the hours behind every new build.</p>
+<p align="center">
+  <a href="https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08"><img src=".github/assets/support-once.svg" alt="Support once, any amount" width="340"></a>
+  <a href="https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09"><img src=".github/assets/support-monthly.svg" alt="Support monthly" width="340"></a>
+</p>
+<p align="center">Prefer GitHub? <a href="https://github.com/sponsors/MaxSikorski">Sponsor on GitHub</a> (one-time or monthly).</p>
 
 ## Contents
 
@@ -96,9 +104,10 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has seventy-five step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: forty-four from J.Siwek and thirty-one added by this community build for the
-toolbar buttons that had none.
+JumpStart 3D has ninety step-by-step tutorials with animations, behind the **Tutorials** button
+in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
+toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
+a tour of the top bar, how the model looks on screen and sketch constraints.
 
 ### Add yours
 
@@ -118,10 +127,19 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   a feature timeline, driven by a real CAD kernel (OpenCascade).
 - **3D Sketch** for tubes and pipes, **Lathe**, **Jump Brick Builder**, and **Chisel** for
   clay-style sculpting with Puppet Animator.
-- **Architechies** (new in 2.2): floor plans, walls, doors, windows and roofs, sent to Beginner or
-  Advanced as editable shapes.
+- **Architect** (new in 2.2, called Architechies until 2.4): floor plans, walls, doors, windows and
+  roofs, sent to Beginner or Advanced as editable shapes, scaled to fit the build plate. 2.4 and 2.5
+  add a landscape (hills, ponds, streams, 22 kinds of ground, 39 plants), weather and moving water,
+  a rain, river or sea flood test that shows whether water gets into the house, finishes (colours,
+  textures, face patterns), round-log and square-log walls, floor plans saved as PDF, SVG or DXF,
+  and export of the house with its landscape.
 - **CAM Studio** (new in 2.3): plan and simulate CNC router, mill or laser cuts and save G-code.
-  Sending it to a machine over USB asks the browser's own permission first.
+  Sending it to a machine over USB asks the browser's own permission first. 2.5 adds a 4th axis
+  (rotary) for round parts, with G-code that has A moves. 2.5.1 (J.Siwek) brings 48 machine
+  profiles (7 with a rotary axis; your own machines can have a rotary axis and a tool changer),
+  Fanuc-style and Haas-style G-code (program number, G54, tool length offsets), more materials
+  and bits, and toolpaths, G-code and the cutting simulation made in a background worker so the
+  window never freezes.
 - **FlexiGen** for print-in-place articulated figures, and **Mesh to STEP** to turn STL or 3MF
   meshes into editable solids.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
@@ -286,13 +304,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the guide, and
 ## Support the project
 
 JumpStart 3D is free and stays free. If it saves you time, you can chip in towards the
-maintainer's hosting and coffee. Both are Stripe payment links; no account needed. The About
-dialog also has a Support button.
+maintainer's hosting and coffee. The About dialog also has a Support button.
 
-- One-time, any amount: https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
-- Monthly: https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
+- GitHub Sponsors (monthly or one-time, with a GitHub account): https://github.com/sponsors/MaxSikorski
+- One-time, any amount (Stripe, no account needed): https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08
+- Monthly (Stripe, no account needed): https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09
 
-This supports the community build only; the original author is credited in the app's About dialog
+This supports Max's work on this project only; the original author is credited in the app's About dialog
 and in NOTICE.md.
 
 ## What this repository adds on top of the original
@@ -308,9 +326,9 @@ upstream version stays easy to merge.
 - Hole patterns: rows, staggered rows or a circle of round, square, hex or slot holes on a flat
   face. Round holes can be plain, counterbored, countersunk or tapped; square, hex and slot holes
   are cut through the part or to a depth.
-- Gears: spur gears, straight bevel gears and racks from a module and a tooth count, with a print
-  clearance and an optional bore and keyway. Helical gears are not built yet, and to change a gear's
-  teeth you undo and make it again.
+- Gears: spur gears, helical gears (12 to 30 teeth, 5 to 30 degrees, right or left hand), straight
+  bevel gears and racks from a module and a tooth count, with a print clearance and an optional
+  bore and keyway (spur gears). To change a gear's teeth you undo and make it again.
 - Name plates: a plate sized to one line of text, with the letters raised in a second colour or
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
@@ -321,7 +339,7 @@ upstream version stays easy to merge.
   sandboxed: it can reach the internet, so run only code you trust. Scripts call `JS3D.codeCad`.
 - Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
   right or left hand, with open ends or ends cut flat.
-- Thirty-one more tutorials, for the toolbar buttons that had none.
+- Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.
 
 ### Editing
 
@@ -364,7 +382,7 @@ upstream version stays easy to merge.
 - Share link: puts a small design in a web address, which you copy and send. Nothing is uploaded,
   the receiver is asked before it opens, and it opens as a new design, never over theirs. The link
   holds the whole design, unencrypted, so anyone with it can open a copy. It is capped at 4096
-  characters, and designs made in Chisel or Architechies, or with joints, need a project file
+  characters, and designs made in Chisel or Architect, or with joints, need a project file
   instead.
 - Report a problem: opens a bug report on GitHub with the app details filled in, never your
   design. The app sends nothing; you press the link and then Create on GitHub.
@@ -557,9 +575,13 @@ The map of folders, the rules of thumb for changes and how to send a pull reques
 
 ## License
 
-JumpStart 3D is MIT licensed. The author released the source of version 2.0 under the MIT License
-(on his first official site, https://sites.google.com/view/jumpstart-3d-creator/home, and in his
-GitHub repository, https://github.com/classyapps2026/jumpstart3d). This repository's additions, by
-Max Sikorski and the community, use the same license. The author's repository has the app source
-but not the bundled libraries; this repository has both, so it builds on its own. The full text is
-in [LICENSE](LICENSE); credit, history and third-party licenses are in [NOTICE.md](NOTICE.md).
+From build 24 (v2.5.1-community.24) on, this project is licensed under the
+[GNU AGPL-3.0](LICENSE) (AGPL-3.0-only). In one sentence: you may use, change and share it, and
+anyone who runs a changed version for others, including as a website, must share their source
+under the same license.
+
+It is based on J.Siwek's JumpStart 3D, which is MIT licensed. His code stays MIT, and his license
+and copyright are kept in [LICENSES/MIT-jumpstart-3d-jsiwek.txt](LICENSES/MIT-jumpstart-3d-jsiwek.txt).
+Builds up to 23 were released under the earlier terms and keep them. Bundled libraries keep their
+own licenses ([THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)). Credit, history and details are
+in [NOTICE.md](NOTICE.md).

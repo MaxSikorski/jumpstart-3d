@@ -10,7 +10,7 @@
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
-//              gear({kind, module, teeth, width, mate, base, bore, keyway, clear, at, name}) -> id   a spur gear, bevel gear or rack
+//              gear({kind, module, teeth, width, angle, hand, mate, base, bore, keyway, clear, at, name}) -> id   a spur, helical (angle 5-30, hand right/left, 12-30 teeth), bevel gear or rack
 //              namePlate({text, font, size, style, depth, thickness, margin, shape, holes, holeDia, color, textColor, at, name}) -> {plate, textBody, size}   a plate sized to one line of text, raised or cut in
 //              codeCad({code, bindings, name, bodyId}) -> id   build one solid from replicad code in a temporary worker; a STEP body that keeps its code (bodyId: update that body)
 //              knurl({diameter, length, grooves, depth, bore, boreSize, at, name}) -> id   a knurled knob: a cylinder with straight V grooves and an optional round, hex or D bore
@@ -166,7 +166,7 @@ export function initBridge(app) {
     if (opts.width !== undefined && !(typeof opts.width === "number" && opts.width >= 1 && opts.width <= 8192)) throw new Error("width must be a number of pixels between 1 and 8192");
     await ready();
     if (opts.fit) {
-      const box = app.mode === "arch" ? app.arch.box() : app.scene.allBox(); // Architechies hides the bodies: frame the building
+      const box = app.mode === "arch" ? app.arch.box() : app.scene.allBox(); // Architect hides the bodies: frame the building
       app.vp.fit(box.isEmpty() ? null : box);
       for (let i = 0; app.vp.anim && i < 60; i++) await sleep(50);
       if (app.vp.anim) app.vp.stepAnim(app.vp.anim.t0 + app.vp.anim.ms); // a hidden tab runs no animation frames: jump to the end
@@ -386,7 +386,7 @@ export function initBridge(app) {
     fit: () => app.fit(),
     mode: () => app.mode,
     setMode(mode) {
-      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architechies)');
+      if (mode !== "beginner" && mode !== "advanced" && mode !== "arch") throw new Error('mode must be "beginner", "advanced" or "arch" (Architect)');
       if (app.mode === mode) return;
       app.setMode(mode);
       if (store.doc.mode !== mode) { store.doc.mode = mode; app.projects.changed(); }
