@@ -2772,22 +2772,29 @@ function solidFromMesh(V, I, k = 1) {
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("mesh build ms: faces", T.faces - T.t0, "solid", T.solid - T.faces, "unify", T.unify - T.solid);
   return shape;
 }
+// jumpstart-3d: plain words for a STEP file that cannot be used
+const STEP_UNREADABLE = "Could not read this STEP file (it may be damaged or not a STEP file).";
+const STEP_NO_SHAPES = "This STEP file has no solids or surfaces in it, so there is nothing to import.";
 function buildStepAsset(node) {
   const bytes = assetBytes(node);
   const name = "import_" + Math.random().toString(36).slice(2);
   OC.FS.writeFile("/" + name, bytes);
   const reader = new OC.STEPControl_Reader();
   try {
-    if (!reader.ReadFile(name)) throw new Error("This STEP file couldn't be read");
+    // jumpstart-3d: this engine returns the read status as an enum value, never a plain false, so `!ReadFile(name)` could not fire and a damaged or non-STEP file showed "This shape has not type, it is null"
+    if (reader.ReadFile(name) !== OC.IFSelect_ReturnStatus.IFSelect_RetDone) throw new Error(STEP_UNREADABLE);
     reader.TransferRoots();
-    let shape = R.cast(reader.OneShape());
-    // one solid when the file has several
+    const whole = reader.OneShape();
+    if (whole.IsNull()) { whole.delete(); throw new Error(STEP_NO_SHAPES); }
+    let shape = R.cast(whole);
+    if (isEmptyShape(shape)) { shape.delete(); throw new Error(STEP_NO_SHAPES); }
     const solids = [];
     const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
     for (; ex.More(); ex.Next()) solids.push(R.cast(OC.TopoDS.Solid(ex.Current())));
     ex.delete();
     if (solids.length === 1) { shape.delete(); shape = solids[0]; }
-    else if (solids.length > 1) { let acc = solids[0]; for (const x of solids.slice(1)) { const f = acc.fuse(x); acc.delete(); x.delete(); acc = f; } shape.delete(); shape = acc; }
+    // jumpstart-3d: the solids stay side by side in one compound. Fusing them one after another melted touching parts into one solid and took 45 s for 200 parts (makeCompound frees the solids it is given)
+    else if (solids.length > 1) { shape.delete(); shape = R.makeCompound(solids); }
     if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
     return shape;
   } finally {
