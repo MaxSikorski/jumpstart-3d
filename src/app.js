@@ -931,6 +931,7 @@ app.sketchHint = function () {
     point: "Click to place a point (holes can use sketch points).",
     trim: "Click a segment to cut it back to the nearest intersections.",
     dim: "Sketch dimension: click a line, circle or arc (or two points or lines for a distance or angle), click again to place it, then type the value. Double-click a dimension to change it.",
+    mirror: app.sketcher.mirrorHint(), // jumpstart-3d: sketch mirror
     select: "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
   }[t] || "";
 };
@@ -1075,6 +1076,7 @@ function onKey(e) {
     if (!mod && e.shiftKey && k === "t") { app.sketcher.setTool("text"); return; }
     if (!mod && map[k]) { app.sketcher.setTool(map[k]); return; }
     if (!mod && k === "x") { app.sketcher.toggleConstruction(); return; }
+    if (!mod && !e.shiftKey && k === "m") { app.sketcher.setTool("mirror"); return; } // jumpstart-3d: sketch mirror
     if (k === "f" && e.shiftKey) { app.fit(); return; }
     return;
   }

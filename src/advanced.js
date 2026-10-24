@@ -11,6 +11,7 @@ import { SKETCH_TOOLS, normalizeSketch, arcFrom3, addImportedCurves } from "./sk
 import { parseSVG, parseDXF, curvesBounds } from "./importers.js";
 import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, exprOf, exprsOf, paramsToCsv, parseParamsCsv, importParams, PARAM_ERROR } from "./params.js";
 import { sketchDof } from "./constraints.js"; // jumpstart-3d: parameters
+import { mirrorBox } from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
 import { traceImage, curvesFor } from "./trace.js";
 import { subjectMask, inflate, maskBox } from "./puffy.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
@@ -5614,7 +5615,7 @@ export function initAdvanced(app) {
       group("Constrain", "sketch", [
         { id: "sk-constraints", label: "Constraints", title: "Keep lines horizontal, parallel, tangent, equal… (select shapes first, or pick after choosing)", icon: "constraints", pressed: !!cTool, dropdown: Object.keys(CICON).map((k) => ({ id: "sk-c-" + k, label: SKETCH_TOOLS["c-" + k].label.replace(" constraint", ""), icon: CICON[k], on: tool === "c-" + k, fn: () => sketcher.setTool("c-" + k) })) },
       ]);
-      group("Modify", "sketch", [t("trim"), t("dim"), { id: "sk-cons", label: "Construction", title: "Toggle construction (X)", icon: "construction", fn: () => sketcher.toggleConstruction() }, t("select")]);
+      group("Modify", "sketch", [t("trim"), t("dim"), { id: "sk-cons", label: "Construction", title: "Toggle construction (X)", icon: "construction", fn: () => sketcher.toggleConstruction() }, t("mirror"), t("select")]); // jumpstart-3d: sketch mirror (the Mirror button)
       group("Finish", "sketch", [{ id: "sk-extrude", label: "Extrude", title: "Extrude this sketch now, without finishing it first (E)", icon: "extrude", fn: () => app.quickExtrude() }, { id: "sk-finish", label: "Finish sketch", icon: "finish", cls: "finish", fn: () => app.exitSketch() }]);
       ribbon.append(el("div", { class: "note", id: "sk-note" }, "Profiles shade blue when closed.")); // jumpstart-3d: parameters (the id; showDofNote fills it)
       showDofNote(); // jumpstart-3d: parameters
@@ -6015,6 +6016,7 @@ export function initAdvanced(app) {
     const body = el("div", { class: "body" });
     body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pal-snap", checked: sketcher.snapOn, onchange: (e) => { sketcher.snapOn = e.target.checked; } }), (sketcher.snapOn ? "Snap to grid points (" + withUnit(sketcher.gridSpacing(), 3) + " at this zoom)" : "Snap to grid points")));
     if (sketcher.tool === "select") body.append(el("div", { class: "hint", id: "pal-select-hint", style: { padding: "2px 0 6px" } }, "Editing: click a line, circle or arc to type its size (it becomes a dimension). Drag shapes to move them. Double-click a dimension to change it."));
+    if (sketcher.tool === "mirror") body.append(mirrorBox(sketcher)); // jumpstart-3d: sketch mirror
     if (["rect", "rect3", "rectc"].includes(sketcher.tool)) body.append(row("Rectangle", seg([["rect", "2-point"], ["rect3", "3-point"], ["rectc", "Center"]], sketcher.tool, (v) => sketcher.setTool(v), "pal-rect")));
     if (sk && sk.image) {
       const im = sk.image;
@@ -6098,7 +6100,7 @@ export function initAdvanced(app) {
       }
     } else if (ids.length > 1) body.append(el("div", { class: "hint", style: { padding: 0 } }, `${ids.length} items selected.`));
     if (ids.length) body.append(el("button", { class: "btn danger", onclick: () => sketcher.deleteSelection() }, "Delete selected"));
-    if (!["select", "trim", "dim"].includes(sketcher.tool)) body.append(el("button", { class: "btn", id: "pal-stop", onclick: () => { sketcher.done(); app.status(); } }, "Stop drawing (Esc)"));
+    if (!["select", "trim", "dim", "mirror"].includes(sketcher.tool)) body.append(el("button", { class: "btn", id: "pal-stop", onclick: () => { sketcher.done(); app.status(); } }, "Stop drawing (Esc)")); // jumpstart-3d: sketch mirror (it has its own Cancel)
     if (sk) body.append(el("div", { class: "hint", style: { padding: 0 } }, `${regionsFor(sk).length} closed profile${regionsFor(sk).length === 1 ? "" : "s"}.`));
     palette.append(body);
     palette.append(el("footer", {}, el("button", { class: "btn", id: "pal-extrude", title: "Go straight to Extrude (E)", onclick: () => app.quickExtrude() }, "Extrude (E)"), el("button", { class: "btn primary", id: "pal-finish", onclick: () => app.exitSketch() }, "Finish sketch")));

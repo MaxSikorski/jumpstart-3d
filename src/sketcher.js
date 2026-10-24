@@ -12,6 +12,7 @@ import { getUnit } from "./units.js";
 import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
 import { buildDim, dimGraphics, measureDim } from "./dims.js";
 import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
+import * as sketchMirror from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
 
 const DEG = Math.PI / 180;
 import { theme } from "./theme.js";
@@ -41,6 +42,7 @@ export const SKETCH_TOOLS = {
   trim: { label: "Trim", key: "T", fields: [] },
   dim: { label: "Sketch dimension", key: "D", fields: [] },
   select: { label: "Select", key: "S", fields: [] },
+  mirror: { label: "Mirror", key: "M", fields: [] }, // jumpstart-3d: sketch mirror
   ...Object.fromEntries(Object.entries(CONSTRAINTS).map(([k, c]) => ["c-" + k, { label: c.label + " constraint", fields: [], constraint: k }])),
 };
 
@@ -163,6 +165,7 @@ export class Sketcher {
     if (this.tool === "spline" && this.state && t !== "spline") this.finishSpline(); // keep a spline in progress
     if (t === "rect" || t === "rect3" || t === "rectc") this.rectMode = t;
     this.tool = t;
+    if (t === "mirror") sketchMirror.begin(this); // jumpstart-3d: sketch mirror
     this.state = null;
     this.cpicks = [];
     this.dimPicks = []; this.dimPreview = null;
@@ -445,6 +448,7 @@ export class Sketcher {
     if (t === "trim") { this.doTrim(raw); return true; }
     if (t === "dim") { this.dimClick(raw, e); return true; }
     if (t.startsWith("c-")) { this.constraintPick(this.pickEnt(raw)); return true; }
+    if (t === "mirror") return sketchMirror.click(this, raw); // jumpstart-3d: sketch mirror
     const s = this.snap(raw, this.state && this.state.anchor);
     this.click(s, e);
     return true;
@@ -456,6 +460,7 @@ export class Sketcher {
     this.cursorPx = this.vp.local(e);
     this.rawCursor = raw;
     if (this.drag) return this.dragMove(raw, e);
+    if (this.tool === "mirror") return sketchMirror.hover(this, raw); // jumpstart-3d: sketch mirror
     if (this.tool === "select" || this.tool === "trim" || this.tool === "dim" || this.tool.startsWith("c-")) {
       this.hover = this.pickEnt(raw);
       this.cursor = null;
@@ -682,10 +687,13 @@ export class Sketcher {
     if (this.dimPicks && this.dimPicks.length) { this.dimPicks = []; this.dimPreview = null; this.redraw(); return true; }
     if (this.state && this.tool === "spline") { this.finishSpline(); return true; }
     if (this.state) { this.done(); return true; }
+    if (this.tool === "mirror") { this.setTool("select"); return true; } // jumpstart-3d: sketch mirror (Esc cancels, the picked shapes stay)
     if (this.sel.size) { this.sel.clear(); this.redraw(); this.app.onSketchSelection && this.app.onSketchSelection(); return true; }
     if (this.tool !== "select") { this.setTool("select"); return true; }
     return false;
   }
+
+  mirrorHint() { return sketchMirror.hint(this); } // jumpstart-3d: sketch mirror
 
   // typed value overrides for the second point
   applyTyped(p) {
