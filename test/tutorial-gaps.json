@@ -19,20 +19,8 @@
       "bb-sketch3d"
     ],
     "top bar": [
-      "btn-about",
-      "btn-autosave",
       "btn-chat",
-      "btn-full",
-      "btn-keys",
-      "btn-projects",
-      "btn-tutorials",
-      "mode-advanced",
       "mode-arch"
-    ],
-    "Beginner shape strip": [
-      "dock-help-btn",
-      "dock-next",
-      "dock-prev"
     ],
     "top bar menus": [
       "btn-plate",
@@ -62,22 +50,13 @@
     ],
     "Beginner hole tiles": [
       "hole-tile:arrow",
-      "hole-tile:capsule",
-      "hole-tile:cone",
       "hole-tile:heart",
       "hole-tile:hemisphere",
       "hole-tile:pyramid",
       "hole-tile:roof",
       "hole-tile:roundroof",
-      "hole-tile:sphere",
       "hole-tile:tube",
       "hole-tile:wedge"
-    ],
-    "view buttons": [
-      "nav-appear",
-      "nav-light",
-      "nav-media",
-      "nav-sketches"
     ],
     "Advanced 3D print sim toolbar": [
       "ps-r-auto",
@@ -104,14 +83,8 @@
       "sk-arcc",
       "sk-c-coincident",
       "sk-c-concentric",
-      "sk-c-equal",
-      "sk-c-horizontal",
       "sk-c-midpoint",
-      "sk-c-parallel",
-      "sk-c-perpendicular",
       "sk-c-tangent",
-      "sk-c-vertical",
-      "sk-constraints",
       "sk-ins-dxf",
       "sk-ins-img",
       "sk-ins-svg",
@@ -120,25 +93,12 @@
       "sk-spline",
       "sk-text"
     ],
-    "snap controls": [
-      "snap-more",
-      "snap-toggle",
-      "turn-back",
-      "turn-minus",
-      "turn-plus",
-      "unit-toggle"
-    ],
     "Beginner shape tiles": [
       "tile:arrow",
       "tile:capsule",
       "tile:gem",
       "tile:heart",
-      "tile:hemisphere",
       "tile:paraboloid",
-      "tile:pyramid",
-      "tile:roof",
-      "tile:roundroof",
-      "tile:sphere",
       "tile:spring"
     ],
     "Architect toolbar": [

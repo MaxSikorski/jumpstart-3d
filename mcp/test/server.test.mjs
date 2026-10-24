@@ -217,10 +217,10 @@ test("add_gear makes a 20-tooth spur gear, refuses a kind the schema does not li
   assert.equal(gear.name, "Spur gear 20 teeth m2");
   assert.equal(gear.error, null);
   assert.ok(gear.volume > Math.PI * 17.5 ** 2 * 6 && gear.volume < Math.PI * 22 ** 2 * 6, "volume " + gear.volume);
-  // the tool's schema lists the four kinds, so the server's own validation answers before the page does (its wording is the SDK's, so only the value is checked)
+  // the tool's schema lists the four kinds, so the server's own validation answers before the page does (its wording is the SDK's and zod 4 names the listed options and the field, not the rejected value, so that is what is checked)
   const bad = await call(s.client, "add_gear", { kind: "worm", module: 2, teeth: 20 });
   assert.equal(bad.isError, true);
-  assert.match(bad.content[0].text, /worm/);
+  assert.match(bad.content[0].text, /spur.*helical.*bevel.*rack.* at kind/);
   // helical forwards angle and hand
   await call(s.client, "new_design");
   data(await call(s.client, "add_gear", { kind: "helical", module: 2, teeth: 20, angle: 15, hand: "left" }));
@@ -228,7 +228,7 @@ test("add_gear makes a 20-tooth spur gear, refuses a kind the schema does not li
   assert.equal(data(await call(s.client, "list_bodies"))[0].name, "Helical gear 20 teeth m2");
   const badHand = await call(s.client, "add_gear", { kind: "helical", module: 2, teeth: 20, hand: "up" });
   assert.equal(badHand.isError, true);
-  assert.match(badHand.content[0].text, /up/);
+  assert.match(badHand.content[0].text, /right.*left.* at hand/);
   const bad2 = await call(s.client, "add_gear", { module: 11, teeth: 20 });
   assert.equal(bad2.isError, true);
   assert.match(bad2.content[0].text, /^module must be a number from 0\.3 to 10 \(mm\)/);
@@ -248,7 +248,7 @@ test("add_name_plate makes a plate and its raised letters, refuses a style the s
   assert.ok(Math.abs(bodies[1].volume / 166.2 - 1) < 0.01, "text volume " + bodies[1].volume);
   const bad = await call(s.client, "add_name_plate", { text: "Max", style: "inlay" });
   assert.equal(bad.isError, true);
-  assert.match(bad.content[0].text, /inlay/);
+  assert.match(bad.content[0].text, /raised.*cut.* at style/);
   const bad2 = await call(s.client, "add_name_plate", { text: "A\nB" });
   assert.equal(bad2.isError, true);
   assert.match(bad2.content[0].text, /^text must be one line/);
@@ -265,7 +265,7 @@ test("add_knurl makes a knurled knob, refuses a bore the schema does not list an
   assert.ok(Math.abs(bodies[0].volume / 4168.9 - 1) < 0.01, "knob volume " + bodies[0].volume);
   const bad = await call(s.client, "add_knurl", { bore: "square" });
   assert.equal(bad.isError, true);
-  assert.match(bad.content[0].text, /square/);
+  assert.match(bad.content[0].text, /none.*round.*hex.* at bore/);
   const bad2 = await call(s.client, "add_knurl", { grooves: 60, bore: "round", boreSize: 17 });
   assert.equal(bad2.isError, true);
   assert.match(bad2.content[0].text, /^boreSize must be a number from 1 to 16\.952 mm/);

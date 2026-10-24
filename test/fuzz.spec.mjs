@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { boot, loadDoc, newDoc, watchErrors, quarantine } from "./helpers.mjs";
 import {
-  makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, stretchExcused, replayCommand, coneOpenExcused,
+  makeRng, readStl, meshReport, readThreeMf, readStep, meshMatches, replayCommand,
 } from "./fuzz-checks.mjs";
 
 const OPS = +(process.env.FUZZ_OPS || 18);
@@ -28,7 +28,6 @@ const REL = 1e-3; // booleans are checked against each other with this slack; th
 const near = (a, b, rel = REL, abs = 0.01) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= abs + rel * Math.max(Math.abs(a), Math.abs(b));
 
 class Fail extends Error {}
-class Stall extends Fail {} // the kernel's watchdog gave up on a build (src/kernelClient.js)
 const check = (ok, what) => { if (!ok) throw new Fail(what); };
 // Known open problems of the kernel are noted, not failed, so a long run goes on and finds new things. Each one is
 // listed in test/README.md with its smallest case, and each is excused only for the case that was shown, never wider.
@@ -36,11 +35,7 @@ const check = (ok, what) => { if (!ok) throw new Fail(what); };
 const findings = [];
 const soft = (ok, what) => { if (ok) return; if (process.env.FUZZ_STRICT) throw new Fail(what); findings.push(what); };
 const EMPTY_MSG = "Nothing is left: these shapes don't overlap, or the holes cut all of it away.";
-const NOTE_STRETCH = 'JS3D.scale with different factors on a body the kernel rebuilds from a fine mesh (over 4000 triangles) is accepted, then the body shows "can\'t be stretched unevenly"';
 const noteCurved = (kinds) => `booleans with a sphere, hemisphere or capsule can disagree with each other, or give a negative volume (seen with ${kinds})`;
-const NOTE_STALL = "joining several shapes that include a torus can stall the geometry engine for 25 s (\"This shape stalled the geometry engine\")";
-const NOTE_CONE = "the STL of a cone is not watertight: its edges near the apex are cut differently on the two sides of the seam";
-const NOTE_FLAT_CAPSULE = "a capsule flatter than it is wide (height under depth, for example 36 by 12 by 6) is built wrongly: its mesh is open and holds a third of its volume";
 // Shapes the kernel's booleans get wrong in the cases we know of; every other kind (a group of them included) is strict.
 const CURVED_BOOLEAN = new Set(["sphere", "hemisphere", "capsule"]); // a torus left the list when the split-loop faces were fixed
 // A stretch that is not the same shape stretched (a capsule's ends stay round, a tube's wall keeps its thickness)
@@ -57,20 +52,14 @@ test.afterEach(async () => { await page.close(); });
 const snapshot = () => page.evaluate(() => {
   const kindsOf = (n, out) => {
     out.add(n.t === "prim" ? n.kind : n.t);
-    if (n.kind === "capsule") { // a capsule flatter than it is wide (its stretch included) is built wrongly by the kernel (test/README.md)
-      const k = (n.mods || []).filter((m) => m.t === "scale").reduce((p, m) => [p[0] * m.k[1], p[1] * m.k[2]], [1, 1]);
-      if (n.p.h * k[1] < n.p.d * k[0] - 1e-9) out.add("capsule-flat");
-    }
     for (const c of n.children || []) kindsOf(c.node, out);
     for (const m of n.mods || []) if (m.tool) kindsOf(m.tool, out);
     return out;
   };
-  const countCones = (n) => (n.t === "prim" && n.kind === "cone" ? 1 : 0)
-    + (n.children || []).reduce((c, x) => c + countCones(x.node), 0) + (n.mods || []).reduce((c, m) => c + (m.tool ? countCones(m.tool) : 0), 0);
   return JS3D.list().map((b) => {
     const v = __app.scene.views.get(b.id), node = JS3D.get(b.id).node;
     return {
-      ...b, mods: (node.mods || []).length, cones: countCones(node), kinds: [...kindsOf(node, new Set())].sort(),
+      ...b, mods: (node.mods || []).length, kinds: [...kindsOf(node, new Set())].sort(),
       solids: v && v.data ? v.data.solidCount : null, nonSolid: !!(v && v.data && v.data.hasNonSolidFaces),
       tris: v && v.data ? v.data.triangles.length / 3 : 0,
     };
@@ -183,7 +172,7 @@ function chooseStep(rng, cur, depth) {
 // redo steps that were there are put back). The Group button and Combine must give the same solids as the bridge's one body.
 const probe = async (ids, how) => {
   const out = await probeRaw(ids, how);
-  if (/stalled the geometry engine/.test(out.error || "")) throw new Stall(`${how} of ${ids.length} bodies: ${out.error}`);
+  if (/stalled the geometry engine/.test(out.error || "")) throw new Fail(`${how} of ${ids.length} bodies: ${out.error}`);
   return out;
 };
 const probeRaw = (ids, how) => page.evaluate(async ([ids, how]) => {
@@ -286,18 +275,9 @@ async function runStep(step, cur, log = []) {
       if (step.op === "resize") await page.evaluate(([id, size]) => JS3D.resize(id, size), [ids[0], step.size]);
       await ready(); after = await snapshot();
       const stretched = after.filter((b) => ids.includes(b.id) && /can't be stretched unevenly/.test(b.error || ""));
-      if (step.op === "scale" && stretched.length) {
-        // The call went through and the body then failed to build. Excused only for what is known (see stretchExcused);
-        // the way out is undo, and it must work.
-        for (const b of stretched) {
-          const was = picked.find((p) => p.id === b.id);
-          check(stretchExcused(step.k, was), `scale ${JSON.stringify(step.k)}: ${b.name} says it can't be stretched unevenly, but it is not a body
-            the kernel rebuilds from a fine mesh (${was.kind}, ${was.mods} features, ${was.tris} triangles)`);
-        }
-        soft(false, NOTE_STRETCH);
-        await page.evaluate(() => { JS3D.undo(); __store.redoStack = []; });
-        await ready(); sameList(await snapshot(), cur, "undo after a failed stretch");
-        return { ...skip("stretch failed, undone"), clearedRedo: true };
+      for (const b of stretched) {
+        const was = picked.find((p) => p.id === b.id);
+        check(false, `scale ${JSON.stringify(step.k)}: ${b.name} says it can't be stretched unevenly (${was.kind}, ${was.mods} features, ${was.tris} triangles)`);
       }
       check(after.length === cur.length, `${step.op}: body count changed`);
       untouched(after, ids, step.op);
@@ -515,15 +495,14 @@ async function exportCheck(kind, solids) {
     check(!one.threw, `STL of ${b.name} failed: ${one.threw}`);
     const rep = meshReport(readStl(Buffer.from(one.b64, "base64")));
     check(rep.triangles > 0, `STL of ${b.name} has no triangles`);
-    const flat = b.kinds.includes("capsule-flat"), flawed = (b.kind === "group" || b.mods > 0) && b.kinds.some((k) => CURVED_BOOLEAN.has(k));
+    const flawed = (b.kind === "group" || b.mods > 0) && b.kinds.some((k) => CURVED_BOOLEAN.has(k));
     if (rep.open) {
-      const coneOnly = coneOpenExcused(rep.open, b.cones);
-      const why = flat ? NOTE_FLAT_CAPSULE : coneOnly ? NOTE_CONE : flawed ? noteCurved(b.kinds) : null;
-      check(why, `STL of ${b.name} (${b.kinds}, ${b.cones} cones) is not closed: ${rep.open} edges have no partner`);
+      const why = flawed ? noteCurved(b.kinds) : null;
+      check(why, `STL of ${b.name} (${b.kinds}) is not closed: ${rep.open} edges have no partner`);
       soft(false, why);
     }
     if (!meshMatches(rep.volume, b.volume, b.kinds)) {
-      const why = flat ? NOTE_FLAT_CAPSULE : flawed ? noteCurved(b.kinds) : null;
+      const why = flawed ? noteCurved(b.kinds) : null;
       check(why, `STL of ${b.name} (${b.kinds}) encloses ${rep.volume.toFixed(3)} mm3, the kernel says ${b.volume} (${b.solids} solids)`);
       soft(false, why);
     } else check(rep.volume > 0, `STL of ${b.name} has volume ${rep.volume}: the faces point inward`);
@@ -544,7 +523,7 @@ async function exportCheck(kind, solids) {
   check(new Set(m.items.map((x) => x.objectid)).size === m.items.length, `3MF builds the same object twice: ${m.items.map((x) => x.objectid)}`);
   check(m.objects.size === m.items.length, `3MF has ${m.objects.size} objects and ${m.items.length} build items`);
   m.items.forEach((x) => {
-    // an object is excused from being closed only when it is a body whose own STL is open (the known cone seam and the like)
+    // an object is excused from being closed only when it is a body whose own STL is open (the noted curved booleans)
     const knownOpen = each.some((e) => e.open > 0 && near(x.placed, e.volume, 2e-3, 0.05));
     if (!knownOpen) check(x.mesh.open === 0, `3MF object ${x.objectid} is not closed: ${x.mesh.open} edges have no partner`);
     check(x.placed > 0 || each.some((e) => e.volume <= 0), `3MF object ${x.objectid} placed with volume ${x.placed}`);
@@ -587,13 +566,7 @@ for (const seed of SEEDS) {
         before = await page.evaluate(() => JSON.stringify(JS3D.save()));
         const step = chooseStep(rng, cur, dBefore);
         log.push(step); show(n, step);
-        let result;
-        try { result = await runStep(step, cur, log); } catch (e) {
-          // a stall is excused only where it was seen: a build that involves a torus (the probe has already undone itself)
-          if (!(e instanceof Stall && (step.pick || []).some((i) => cur[i].kinds.includes("torus")))) throw e;
-          soft(false, NOTE_STALL);
-          result = { after: cur, skipped: "kernel stalled" };
-        }
+        const result = await runStep(step, cur, log);
         const { after, undoRedo, mid, skipped, clearedRedo } = result;
         if (skipped) { // the step did nothing, so the design must be exactly as it was
           sameList(await snapshot(), cur, "a refused step changed the design");

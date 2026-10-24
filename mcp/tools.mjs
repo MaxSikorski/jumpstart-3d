@@ -18,7 +18,7 @@ const callLong = caller({ timeoutMs: 600_000 }); // exports, pictures and script
 // (Gemini family, small local servers) reject both.
 const ids = () => z.union([z.string(), z.array(z.string()).min(1)]).describe("A body id, or a list of ids (see list_bodies)");
 const vec3 = () => z.array(z.number()).length(3);
-const size = () => z.union([z.array(z.number()).length(3), z.record(z.union([z.number(), z.string()]))])
+const size = () => z.union([z.array(z.number()).length(3), z.record(z.string(), z.union([z.number(), z.string()]))])
   .describe("Shape size in mm: [w, d, h] or an object such as {w, d, h}. Other kinds have other keys (see list_kinds for each kind's defaults).");
 const exportKind = z.enum(["stl", "obj", "3mf", "glb", "step", "json"]);
 

@@ -22,11 +22,14 @@ export function initProjects(app) {
   const $ = (id) => document.getElementById(id);
   let db = null, userId = null, downloads = null;
   let remoteOk = false;
-  let dirty = false;
-  let opened = { id: null, at: 0 }; // jumpstart-3d: designs storage. which design is open and the `_updated` of the copy it was read from or last saved as
+  let dirty = false, editedAt = 0; // jumpstart-3d: editedAt: when the last edit was made (the closing tab tells projstore.js, so an older delete cannot be mistaken for a later one)
+  let opened = { id: null, at: 0, rev: undefined }; // jumpstart-3d: designs storage. which design is open and the `_updated` and `rev` (list entry, see projstore.js) of the copy it was read from or last saved as
+  let revs = 0;
   // jumpstart-3d: designs storage. Designs and the list live in projstore.js (IndexedDB, or localStorage where that fails);
   // the version counters and the last-open id stay in localStorage because they are read synchronously.
   const ps = openProjectStore();
+  ps.onKept((name) => app.toast(`Saved your edits. Kept "${name}" in Your designs.`)); // jumpstart-3d: another tab's version was displaced by a save; it is kept under this name
+  const revOf = async (id) => { try { const e = await ps.entry(id); return (e && e.rev) || undefined; } catch (e) { return undefined; } }; // read before the document: a save in between then shows up as a conflict, never hides one
   const mirror = initFolder({ ps, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t) }); // jumpstart-3d: copies in a folder
   const remote = initRemote({ ps, thumbnail, toast: (m, k) => app.toast(m, k), fileSafe: (t) => fileSafe(t), open: (id) => open(id) }); // jumpstart-3d: remote
   let saving = 0, started = false, openGate;
@@ -98,7 +101,7 @@ export function initProjects(app) {
   }
   function record(noThumb) { // jumpstart-3d: designs storage. what a save stores: id, the document string, the list entry (the tab closing skips the thumbnail)
     const doc = store.doc, updated = Date.now();
-    return [doc.id, JSON.stringify({ ...doc, _updated: updated }), { id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated, thumb: noThumb ? null : thumbnail() }];
+    return [doc.id, JSON.stringify({ ...doc, _updated: updated }), { id: doc.id, name: doc.name, ver: doc.ver || 0, mode: doc.mode, updated, rev: ps.tab + ":" + ++revs, thumb: noThumb ? null : thumbnail() }];
   }
   async function saveRemote(doc, thumb, updated) {
     if (!remoteOk) return false;
@@ -121,8 +124,8 @@ export function initProjects(app) {
       const r = record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
       dirty = false;
-      // the last argument is read when the write runs: the stamp these edits started from (see idbPut in projstore.js)
-      if (await ps.put(r[0], r[1], r[2], () => (opened.id === r[0] ? opened.at : null))) { if (store.doc.id === r[0]) opened = { id: r[0], at: r[2].updated }; if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
+      // the last argument is read when the write runs: what these edits started from (see `displaced` in projstore.js)
+      if (await ps.put(r[0], r[1], r[2], () => (opened.id === r[0] ? opened : null))) { if (store.doc.id === r[0]) opened = { id: r[0], at: r[2].updated, rev: r[2].rev }; if (r[0] !== unproven) ls.set(LS_PREF + ".last", r[0]); updated = r[2].updated; mirror.soon(); } // jumpstart-3d: copies in a folder (soon: not awaited)
       else dirty = true; // not stored: the next edit tries again, and closing the tab still keeps a rescue copy
     } finally { saving--; }
     let any = !!updated;
@@ -144,11 +147,14 @@ export function initProjects(app) {
   // that failed meanwhile (localStorage full) was never retried.
   ps.onSwitch(async () => {
     let cur = null;
+    const rev = await revOf(store.doc.id);
     try { cur = JSON.parse(await ps.get(store.doc.id)); } catch (e) {}
     const newer = cur && opened.id === store.doc.id && (cur._updated || 0) > opened.at;
-    if (dirty || saving) saveSoon(); // edits on an older copy are safe: the write keeps a newer stored copy as "(before fallback)" first
+    // this tab saved the design on localStorage, IndexedDB holds another version and the copy did not keep ours: do not open the other one over it; the write keeps it as "(before fallback)"
+    const mine = newer && opened.rev && opened.rev.startsWith(ps.tab + ":") && rev !== opened.rev && !ps.fallbackKept(opened.id);
+    if (dirty || saving || mine) saveSoon(); // edits on an older copy are safe: the write keeps a newer stored copy as "(before fallback)" first
     else if (newer) {
-      opened = { id: cur.id, at: cur._updated };
+      opened = { id: cur.id, at: cur._updated, rev };
       delete cur._updated;
       app.select([]); if (app.command) app.command.cancel(); app.exitSketch();
       store.load(cur);
@@ -239,9 +245,10 @@ export function initProjects(app) {
 
   // ---------------------------------------------------------------- open / new
   async function open(id) {
+    const rev = await revOf(id);
     const d = await loadDoc(id);
     if (!d) { app.toast("That design couldn't be found.", "err"); return false; }
-    opened = { id, at: d._updated || 0 };
+    opened = { id, at: d._updated || 0, rev };
     delete d._updated;
     app.select([]);
     if (app.command) app.command.cancel();
@@ -278,7 +285,7 @@ export function initProjects(app) {
     const id = uid("d"), now = Date.now(), doc = { ...structuredClone(shared), id, created: now, ver: 0 };
     delete doc._updated;
     if (!await ps.put(id, JSON.stringify({ ...doc, _updated: now }), { id, name: doc.name, ver: 0, mode: doc.mode, updated: now, thumb: null })) return "storage";
-    if (store.doc !== open0 || loads !== gen) { await ps.del(id); return "stale"; }
+    if (store.doc !== open0 || loads !== gen) { await ps.del(id, { marker: false }); return "stale"; }
     app.select([]);
     if (app.command) app.command.cancel();
     app.exitSketch();
@@ -302,6 +309,7 @@ export function initProjects(app) {
 
   // ---------------------------------------------------------------- designs modal
   async function openModal() {
+    const opener = document.activeElement; // jumpstart-3d: focus goes back here when the dialog closes
     const back = el("div", { class: "modal-back", onclick: (e) => { if (e.target === back) close(); } });
     const grid = el("div", { class: "projgrid" }, el("div", { class: "empty" }, "Loading…"));
     const where = (remoteOk ? "Designs are saved to your account and in this browser." : "Designs are saved in this browser. Export a project file to keep a copy elsewhere, or back up every design into one file below.") + " Each design opens in the mode you last used it in; switch any time with the Beginner / Advanced buttons.";
@@ -314,8 +322,9 @@ export function initProjects(app) {
           el("button", { class: "btn", id: "btn-restore-folder", title: "Add the designs from the project files in a folder; nothing here is deleted or overwritten", onclick: () => folderPick.click() }, "Restore from a folder…")), grid));
     back.append(modal);
     document.body.append(back);
-    const close = () => back.remove();
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    const close = () => { back.remove(); try { if (opener && opener !== document.body && opener.isConnected) opener.focus(); } catch (e) {} };
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }); // jumpstart-3d: stopped here, so the same Escape does not also clear the selection or change the tool (as the share-link dialog does)
+    modal.querySelector(".xbtn").focus(); // jumpstart-3d: focus inside so Escape closes it, as in About and Shortcuts
     remote.tabs(modal.querySelector(".mbody"), close); // jumpstart-3d: remote
     await saveNow();
     const fr = await mirror.row(); if (fr) grid.before(fr); // jumpstart-3d: copies in a folder
@@ -743,7 +752,7 @@ export function initProjects(app) {
   });
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened.at : null); } }); // jumpstart-3d: designs storage (putNow starts its writes before this returns; nothing is awaited)
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null, editedAt); } }); // jumpstart-3d: designs storage (putNow starts its writes before this returns; nothing is awaited)
 
   return {
     // a finished render (PNG) goes through the same save path as models
@@ -758,8 +767,9 @@ export function initProjects(app) {
     async start() {
       const capP = capabilities();
       const last = ls.get(LS_PREF + ".last");
+      const lastRev = last ? await revOf(last) : undefined;
       let doc = last ? await getDoc(last) : null; // jumpstart-3d: designs storage
-      if (doc) { opened = { id: doc.id, at: doc._updated || 0 }; delete doc._updated; store.load(doc); setState("Saved in this browser"); }
+      if (doc) { opened = { id: doc.id, at: doc._updated || 0, rev: lastRev }; delete doc._updated; store.load(doc); setState("Saved in this browser"); }
       else {
         // wait briefly for account storage so returning users get their last design
         await Promise.race([capP, new Promise((r) => setTimeout(r, 2500))]);
@@ -791,7 +801,7 @@ export function initProjects(app) {
         } catch (e) {}
       });
     },
-    changed() { dirty = true; setState("Unsaved changes"); saveSoon(); rec.touch(); },
+    changed() { dirty = true; editedAt = Date.now(); setState("Unsaved changes"); saveSoon(); rec.touch(); },
     saveNow,
     saveVersion,
     versionName,

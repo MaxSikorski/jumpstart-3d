@@ -271,3 +271,26 @@ test("two tori joined where their lowest circles cross export a closed 3MF", asy
   expect(m.items[0].mesh.open, "3MF edges with no partner").toBe(0);
   near(m.items[0].placed, g.volume, 0.01);
 });
+
+// An oval sphere (20 by 30 by 10) and an oval cylinder (10 by 14 by 12) at x = 5: OpenCascade missed their overlap, so the join
+// lost the sphere (volume of the cylinder only), their intersect said "Nothing is left" and the cuts came out too big (one
+// of them not even a valid solid). Fuzzy values 1e-6 to 1e-4 repeat the mistake, so the build retries with looser ones when
+// the volumes do not fit (third_party/replicad operations.ts). The overlap is 850.09 mm3 by a grid integral over the cylinder's section.
+test("an oval sphere and an oval cylinder that overlap join, intersect and cut right", async () => {
+  const OVERLAP = 850.09, SPHERE = (4 / 3) * Math.PI * 10 * 15 * 5, CYLINDER = Math.PI * 5 * 7 * 12;
+  const volumes = {};
+  for (const [name, order, op] of [["intersect", [0, 1], "intersect"], ["cutAB", [0, 1], "cut"], ["cutBA", [1, 0], "cut"], ["join", [0, 1], undefined], ["joinBA", [1, 0], undefined]]) {
+    const { ids } = await parts([["sphere", { size: { w: 20, d: 30, h: 10 } }], ["cylinder", { size: { w: 10, d: 14, h: 12 }, at: [5, 0, 0] }]]);
+    const g = await run(([ids, op]) => { const g = JS3D.group(ids, op ? { op } : {}); return JS3D.ready(90000).then(() => g); }, [order.map((i) => ids[i]), op]);
+    const [e] = await entries();
+    expect(e.id).toBe(g);
+    expect(e.error, name).toBeNull();
+    volumes[name] = e.volume;
+  }
+  near(volumes.intersect, OVERLAP, 0.01);
+  near(volumes.join, SPHERE + CYLINDER - volumes.intersect, 0.01);
+  near(volumes.joinBA, volumes.join, 0.001);
+  near(volumes.cutAB, SPHERE - volumes.intersect, 0.01);
+  near(volumes.cutBA, CYLINDER - volumes.intersect, 0.01);
+  await noObjectText();
+});

@@ -1,0 +1,9 @@
+[
+  {"conclusion":"","databaseId":101,"headBranch":"main","headSha":"MAINSHA","status":"in_progress","workflowName":"test"},
+  {"conclusion":"","databaseId":102,"headBranch":"main","headSha":"MAINSHA","status":"queued","workflowName":"codeql"},
+  {"conclusion":"failure","databaseId":40047654784,"headBranch":"main","headSha":"0123456789abcdef0123456789abcdef01234567","status":"completed","workflowName":"nightly"},
+  {"conclusion":"success","databaseId":103,"headBranch":"check-map","headSha":"1111111111111111111111111111111111111111","status":"completed","workflowName":"test"},
+  {"conclusion":"success","databaseId":104,"headBranch":"main","headSha":"2222222222222222222222222222222222222222","status":"completed","workflowName":"test"},
+  {"conclusion":"success","databaseId":105,"headBranch":"main","headSha":"2222222222222222222222222222222222222222","status":"completed","workflowName":"codeql"},
+  {"conclusion":"success","databaseId":106,"headBranch":"main","headSha":"3333333333333333333333333333333333333333","status":"completed","workflowName":"nightly"}
+]
