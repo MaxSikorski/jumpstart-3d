@@ -380,7 +380,7 @@ test("every spec the alias table names exists in test/, and every module it name
   const named = ALIAS.flatMap(([, names]) => names);
   assert.deepEqual([...new Set(named)].sort(), [...want].sort(), "the table and this test's cases agree");
   for (const n of named) assert.ok(existsSync(join(repo, "test", `${n}.spec.mjs`)), `test/${n}.spec.mjs`);
-  for (const [src] of ALIAS_CASES.filter(([s]) => !/\/(?:arch|cam)\.js$/.test(s))) assert.ok(existsSync(join(repo, src)), src);
+  for (const [src] of ALIAS_CASES) assert.ok(existsSync(join(repo, src)), src);
   for (const [src] of ALIAS_CASES) assert.ok(ALIAS.some(([rx]) => rx.test(src)), `${src} is matched by a row`);
 });
 

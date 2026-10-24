@@ -65,7 +65,7 @@ export const ALIAS = [
   [/^src\/printsim\.js$/, ["printerpreview", "paint3mf"]],
   [/^src\/chat(?:providers|tools)\.js$/, ["chat"]],
   [/^src\/recovery\.js$/, ["storage-chaos"]],
-  [/^src\/(?:arch|cam)[^/]*\.js$/, ["upstream25"]],
+  [/^src\/(?:arch(?:flood|land|plan|weather)?|cam(?:core|worker)?)\.js$/, ["upstream25"]],
   [/^src\/projects\.js$/, ["storage", "storage-chaos", "backup", "restorefolder"]],
   [/^src\/projstore\.js$/, ["storage", "storage-chaos"]],
 ];
