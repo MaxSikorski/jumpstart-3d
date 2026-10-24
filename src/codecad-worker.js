@@ -2,10 +2,13 @@
 // by src/codecadclient.js), checks that it made one closed solid, writes it as STEP and proves the app can read that STEP
 // back through the same step-body path the design will use. The temporary worker is thrown away afterwards, so code that
 // misuses the engine cannot damage the design's own worker.
-// Locked down (lockDown below, once, after the engine has loaded and before the first user code): no network (fetch, XMLHttpRequest,
-// WebSocket, EventSource, WebTransport, sendBeacon), no browser storage (indexedDB, caches, navigator.storage), no other workers or
-// scripts (Worker, SharedWorker, BroadcastChannel, importScripts, import()), and no code built from text (Function and its async and
-// generator relatives, eval, setTimeout or setInterval with a string). That closes the doors the code could use; it is not a proof.
+// Locked down (lockDown below, once, after the engine has loaded and before the first user code): every global name and every navigator
+// property that is not on a short allowlist (JavaScript's own built-ins, WebAssembly, text and byte helpers, timers, messaging) is hidden,
+// so there is no network (fetch, XMLHttpRequest, WebSocket, FontFace...), no browser storage, no other workers or scripts, and the word
+// import cannot appear in the code at all. No code can be built from text either (Function and its async and generator relatives, eval,
+// setTimeout or setInterval with a string). That closes the doors the code could use; it is not a proof.
+// Do not keep real references to fetch, XMLHttpRequest and friends at module load anywhere in the worker bundle: the engine glue looks
+// them up (and _emval_get_global reads globalThis[name]) when it needs them, and the lock only works while that stays so.
 // Still NOT a sandbox guarantee: the code can use all the CPU and memory it likes (the timeout and Cancel on the page side stop a
 // runaway worker, they do not limit it), and it can post any message (self.postMessage). The page never trusts the answer: it
 // builds the STEP bytes again in the design's own worker before using them (src/codecad.js). Everything here is a friendly early check.
@@ -13,15 +16,23 @@ import * as replicad from "replicad";
 import { errorText } from "./kernel.js";
 
 const NO_CODE = "Code CAD cannot build new code from text.";
-const NO_IMPORT = "Code CAD code cannot load other files (import). Everything it needs is in replicad.";
+const NO_IMPORT = 'Code CAD code cannot load other files (import), so the word "import" cannot appear in it, not even in a comment. Everything it needs is in replicad.';
 const makeFn = Function; // our own use (compiling the user's text); the global Function is replaced by lockDown()
-// What the code must not reach. Each is hidden on the global object (and on its prototypes, where the browser keeps it).
-const BLOCKED_GLOBALS = ["fetch", "Request", "XMLHttpRequest", "WebSocket", "WebSocketStream", "EventSource", "WebTransport", "RTCPeerConnection",
-  "importScripts", "Worker", "SharedWorker", "BroadcastChannel", "indexedDB", "IDBFactory", "caches", "CacheStorage", "open",
-  "webkitRequestFileSystem", "webkitRequestFileSystemSync", "requestFileSystemSync"];
-const BLOCKED_NAVIGATOR = ["sendBeacon", "storage", "serviceWorker"];
-// import( ... ) and import.meta, also with a comment between the word and the bracket or dot
-const IMPORT_USE = /\bimport\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*[(.]/;
+// The only global names left visible (every other own name on the global object and on its prototypes is hidden by lockDown): JavaScript's
+// own built-ins, WebAssembly, and the few web helpers the engine and a replicad run use. The engine's own needs were found by running the
+// Code CAD tests: a name was added only when a test showed the engine needed it (see the commit message).
+const ALLOWED_GLOBALS = new Set(("Object Function Array Number parseFloat parseInt Infinity NaN undefined Boolean String Symbol Date Promise RegExp " +
+  "Error AggregateError EvalError RangeError ReferenceError SyntaxError TypeError URIError globalThis JSON Math Intl ArrayBuffer SharedArrayBuffer " +
+  "Atomics Uint8Array Int8Array Uint16Array Int16Array Uint32Array Int32Array Float16Array Float32Array Float64Array Uint8ClampedArray " +
+  "BigUint64Array BigInt64Array DataView Map BigInt Set WeakMap WeakSet WeakRef FinalizationRegistry Proxy Reflect Iterator " +
+  "decodeURI decodeURIComponent encodeURI encodeURIComponent escape unescape eval isFinite isNaN WebAssembly console " +
+  "TextDecoder TextEncoder Blob URL performance navigator self close postMessage onmessage onmessageerror " +
+  "addEventListener removeEventListener dispatchEvent queueMicrotask structuredClone setTimeout clearTimeout setInterval clearInterval").split(" "));
+// What stays on navigator: harmless facts the engine glue may read. Everything else (storage, storageBuckets, serviceWorker, sendBeacon, locks...) is hidden.
+const ALLOWED_NAVIGATOR = new Set("hardwareConcurrency userAgent platform language languages".split(" "));
+// import in any form: dynamic import(), import.meta, in code or in a comment. Comments are not parsed (a line comment can end at \r, U+2028
+// or U+2029, and function bodies take <!-- comments), so the word alone is refused.
+const IMPORT_USE = /\bimport\b/;
 
 // The geometry engine (emscripten embind, third_party/replicad-opencascadejs) builds two kinds of small functions from text, the second
 // one lazily, while geometry runs: the wrapper around each C++ method (craftInvokerFunction) and the caller for each C++-to-JS call
@@ -55,11 +66,15 @@ function engineFunction(args) {
 let locked = false;
 let lookedAt = ""; // the last blocked name the code touched, so an error like "x is not a function" can say what was not allowed
 
-function hide(obj, name) {
-  for (let o = obj; o; o = Object.getPrototypeOf(o)) {
-    if (!Object.prototype.hasOwnProperty.call(o, name)) continue;
-    try { Object.defineProperty(o, name, { get() { lookedAt = name; return undefined; }, set() {}, configurable: false }); }
-    catch (e) { try { delete o[name]; } catch (e2) {} }
+// hides every own name of obj and of its prototypes (up to Object.prototype) that is not in `allowed`: the name reads as undefined,
+// cannot be set or redefined, and remembers that the code looked at it
+function hideAllExcept(obj, allowed) {
+  for (let o = obj; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+    for (const name of Object.getOwnPropertyNames(o)) {
+      if (allowed.has(name)) continue;
+      try { Object.defineProperty(o, name, { get() { lookedAt = name; return undefined; }, set() {}, configurable: false }); }
+      catch (e) { try { delete o[name]; } catch (e2) {} }
+    }
   }
 }
 function pin(obj, name, value) {
@@ -89,8 +104,9 @@ function lockDown() {
       return real.call(self, handler, ...rest);
     });
   }
-  for (const name of BLOCKED_GLOBALS) hide(self, name);
-  if (self.navigator) for (const name of BLOCKED_NAVIGATOR) hide(self.navigator, name);
+  const nav = self.navigator;
+  hideAllExcept(self, ALLOWED_GLOBALS);
+  if (nav) hideAllExcept(nav, ALLOWED_NAVIGATOR);
 }
 
 const WRONG_TYPE = "The code must return one solid, not a drawing, sketch, face, line, list or nothing. Extrude or revolve a sketch to make a solid.";
@@ -119,7 +135,7 @@ export async function runCodeCad({ code, params }) {
   try { result = fn(replicad, Object.freeze({ ...params })); }
   catch (e) {
     const m = errorText(e);
-    if (lookedAt) throw new Error(`The code stopped with an error: Code CAD code cannot use the network, browser storage or other workers (${lookedAt}). Everything it needs is in replicad. (${m})`);
+    if (lookedAt) throw new Error(`The code stopped with an error: Code CAD code cannot use the network, browser storage, other workers or other browser features (${lookedAt}). Everything it needs is in replicad. (${m})`);
     throw new Error("The code stopped with an error: " + (/^(Standard_|BRep|StdFail)/.test(m) ? `the geometry engine refused a step (${m}). Check for sizes of zero or less.` : m));
   }
 
