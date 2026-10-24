@@ -37,7 +37,7 @@ online. It follows each new version of J.Siwek's release and adds its own featur
   - **Advanced:** sketches, extrude, revolve, loft, sweep, fillet, chamfer, shell, patterns and a
     feature timeline, using the OpenCascade CAD kernel.
   - **Chisel:** clay-style sculpting with a puppet animator.
-  - **Architechies** (new in 2.2): floor plans, walls, doors, windows and roofs, sent to Beginner
+  - **Architect** (new in 2.2): floor plans, walls, doors, windows and roofs, sent to Beginner
     or Advanced as editable shapes.
   - **CAM Studio** (new in 2.3): plan and simulate CNC router, mill or laser cuts, and save G-code.
 - **Export formats:** STL, 3MF, STEP and DXF. Chisel also exports OBJ. glTF (.glb) and OBJ export
@@ -95,7 +95,7 @@ Wanted, not yet in the repository (to be added as PNG files):
 - Beginner mode with a few grouped shapes and a hole.
 - Advanced mode with a sketch, an extrude and the feature timeline.
 - Chisel sculpting with the puppet animator.
-- An Architechies floor plan.
+- An Architect floor plan.
 - CAM Studio with a simulated toolpath.
 - The print simulator showing overhang shading.
 - The Your designs dialog with backup and server options.

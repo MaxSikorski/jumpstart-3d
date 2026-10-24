@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { TUTORIALS as BASE_TUTORIALS } from "./tutorial_data.js";
 import { MORE } from "./tutorial_data_more.js";
 import { ARCH_TUTORIALS } from "./tutorial_arch.js";
+import { landArrays, GROUND, PLANTS } from "./archland.js";
 // jumpstart-3d: register community lessons without changing the author's data.
 import { COMMUNITY_TUTORIALS } from "./tutorial_data_community.js";
 const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...ARCH_TUTORIALS, ...COMMUNITY_TUTORIALS];
@@ -82,7 +83,7 @@ export function initTutorials(app) {
     rAt: (w, f) => w.rowMax[Math.max(0, Math.min(w.N - 1, Math.round(f * (w.N - 1))))],
     roundness(w) { let n = 0; for (let i = 0; i < w.N; i++) { let lo = Infinity, hi = 0; for (let j = 0; j < 96; j++) { const r = w.r[i * 96 + j]; lo = Math.min(lo, r); hi = Math.max(hi, r); } if (hi - lo < 0.3) n++; } return n / w.N; },
     saved: () => !!cur && app.projects.version() > cur.startVer,
-    // Architechies: the building in the design (all sizes in mm)
+    // Architect: the building in the design (all sizes in mm)
     arch: () => store.doc.arch || { levels: [], walls: [], openings: [], roofs: [], slabs: [] },
     archLevel: (n = 1) => (T.arch().levels[n - 1] || {}).id,
     archWalls: (n = 1) => T.arch().walls.filter((w) => w.lvl === T.archLevel(n)),
@@ -109,6 +110,18 @@ export function initTutorials(app) {
     archRoofs: () => T.arch().roofs.length,
     archSlab: () => T.arch().slabs.length > 0,
     archSent: () => T.bodies().some((b) => b.arch),
+    archLogs: (kind) => { const ws = T.archWalls(); return ws.length >= 4 && ws.every((w) => w.log && (!kind || w.log === kind)); },
+    archLand: () => !!T.arch().land,
+    archLandArr: () => { const L = T.arch().land; return L ? landArrays(L) : null; },
+    archLandRange(min) { const r = T.archLandArr(); if (!r) return false; let lo = Infinity, hi = -Infinity; for (const v of r.h) { lo = Math.min(lo, v); hi = Math.max(hi, v); } return hi - lo >= min && hi > 200; },
+    archLandWater() { const r = T.archLandArr(); return !!r && r.w.some((v) => !isNaN(v)); },
+    archPainted(ids) { const r = T.archLandArr(); if (!r) return false; const want = new Set(ids.map((id) => GROUND.findIndex((g) => g.id === id)).filter((i) => i >= 0)); let n = 0; for (const v of r.m) if (want.has(v)) n++; return n >= 6; },
+    archPlants(which) { const L = T.arch().land; if (!L) return 0; return L.plants.filter((p) => !which || (Array.isArray(which) ? which.includes(p.k) : (PLANTS.find((q) => q.id === p.k) || {}).cat === which)).length; },
+    archWeather: () => !!(app.arch && app.arch.weather && app.arch.weather.on && app.arch.weather.kind !== "clear"),
+    archFloodDone: (mode) => { const F = app.arch && app.arch.state.flood; return !!(F && F.result && !F.running && (!mode || F.mode === mode)); },
+    archFloodDry: () => { const F = app.arch && app.arch.state.flood; return !!(F && F.result && !F.running && F.mode === "rain" && !F.result.flooded && !F.result.doors.some((d) => d.over > 0)); },
+    archFloorRaised: () => T.arch().levels.some((l) => l.elev > 100),
+    archFinished: (k) => (k === "wall" ? T.archWalls() : k === "roof" ? T.arch().roofs : T.arch().slabs).filter((q) => q.fin && q.fin.tex).length,
     archUnitsPicked: () => !!(app.arch && app.arch.state.unitsPicked),
     archPlanSeen: () => !!(app.arch && app.arch.state.planSeen),
     archSelWall: () => !!(app.arch && app.arch.state.sel && app.arch.state.sel.k === "wall"),
@@ -141,7 +154,7 @@ export function initTutorials(app) {
           doneN ? el("div", { class: "tut-prog" }, doneN >= t.steps.length ? "✓ Finished before" : `${doneN} of ${t.steps.length} steps done`) : null));
       }
     };
-    for (const [m, label] of [["beginner", "Beginner"], ["advanced", "Advanced"], ["arch", "Architechies"]]) tabs.append(el("button", { "data-m": m, id: "tut-tab-" + m, onclick: () => show(m) }, label));
+    for (const [m, label] of [["beginner", "Beginner"], ["advanced", "Advanced"], ["arch", "Architect"]]) tabs.append(el("button", { "data-m": m, id: "tut-tab-" + m, onclick: () => show(m) }, label));
     const modal = el("div", { class: "modal tut-modal", role: "dialog", "aria-label": "Tutorials" },
       el("header", {}, el("h2", {}, "Tutorials"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
       el("div", { class: "mbody" },
@@ -243,6 +256,9 @@ export function initTutorials(app) {
     const { tut, i } = cur, step = tut.steps[i], n = tut.steps.length;
     const doneN = cur.done.size, isDone = cur.done.has(i);
     panel.classList.toggle("mini", !!cur.mini);
+    // jumpstart-3d: on a phone the small panel sits at the top of the 3D view, clear of the shapes in the middle that the step asks you to tap; the open panel goes back where it was
+    if (innerWidth < 700 && cur.mini) { if (cur.openTop == null) cur.openTop = panel.style.top; panel.style.top = (document.getElementById("viewport").getBoundingClientRect().top + 6) + "px"; }
+    else if (cur.openTop != null) { panel.style.top = cur.openTop; cur.openTop = null; } // also when the phone is turned wide while the panel is small
     panel.innerHTML = "";
     const head = el("div", { class: "tut-head" },
       el("span", { class: "tut-level " + tut.level.toLowerCase() }, tut.level),
