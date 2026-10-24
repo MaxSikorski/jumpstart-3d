@@ -291,8 +291,8 @@ test("select, mode, fit and history", async () => {
   expect(await run(() => { JS3D.select([]); return JS3D.selection(); })).toEqual([]);
   expect(await run(() => JS3D.mode())).toBe("beginner");
   expect(await run(() => { JS3D.setMode("advanced"); return [JS3D.mode(), __store.doc.mode]; })).toEqual(["advanced", "advanced"]);
-  expect(await run(() => { JS3D.setMode("arch"); return [JS3D.mode(), __store.doc.mode, __app.arch.active]; })).toEqual(["arch", "arch", true]); // Architechies
-  // a fit picture in Architechies frames the building (the hidden bodies are not in it): the view ends up centred above the ground, far back
+  expect(await run(() => { JS3D.setMode("arch"); return [JS3D.mode(), __store.doc.mode, __app.arch.active]; })).toEqual(["arch", "arch", true]); // Architect
+  // a fit picture in Architect frames the building (the hidden bodies are not in it): the view ends up centred above the ground, far back
   const png = bytes(await run(() => JS3D.screenshot({ fit: true })));
   expect([...png.subarray(0, 4)]).toEqual(PNG);
   const view = await run(() => ({ z: __app.vp.view.target.z, dist: __app.vp.view.dist }));

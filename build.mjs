@@ -38,9 +38,16 @@ const common = { bundle: true, minify: true, legalComments: "eof", target: "es20
 const wasm = join(src, "occt-gz.wasm");
 const wasmSize = statSync(wasm).size; // the loading bar's total
 
+// jumpstart-3d: CAM Studio's worker (src/camworker.js) must be built from the current camworker.js and camcore.js. The author's dist.sh writes it to src/camworker.bundle.txt first; we bundle it in memory and hand it to the app as that import, so a stale file in src/ can never win (it is gitignored).
+const { outputFiles: [camWorker] } = await build({ ...common, entryPoints: [join(src, "camworker.js")], format: "iife", legalComments: "none", write: false });
+const camWorkerPlugin = { name: "camworker", setup(b) {
+  b.onResolve({ filter: /camworker\.bundle\.txt$/ }, () => ({ path: "camworker.bundle.txt", namespace: "camworker" }));
+  b.onLoad({ filter: /.*/, namespace: "camworker" }, () => ({ contents: camWorker.text, loader: "text" }));
+} };
+
 rmSync(out, { recursive: true, force: true });
 await build({ ...common, entryPoints: [join(src, "app.js")], format: "esm", outfile: join(out, "app.js"),
-  loader: { ".html": "text" }, define: { __WASM_PARTS__: JSON.stringify([{ url: "occt-gz.wasm", gz: true, size: wasmSize }]) } });
+  plugins: [camWorkerPlugin], loader: { ".html": "text" }, define: { __WASM_PARTS__: JSON.stringify([{ url: "occt-gz.wasm", gz: true, size: wasmSize }]) } });
 await build({ ...common, entryPoints: [join(src, "worker.js")], format: "esm", outfile: join(out, "worker.js"), external: ["node:*"] });
 await build({ ...common, entryPoints: [join(src, "worker.js")], format: "iife", outfile: join(out, "worker.iife.js"), external: ["node:*"],
   logOverride: { "empty-import-meta": "silent" } }); // the loader's import.meta.url is never used in the single file

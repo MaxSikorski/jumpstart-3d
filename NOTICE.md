@@ -1,5 +1,26 @@
 # Notice
 
+## License in one place
+
+From **build 24** (v2.5.1-community.24) on, this project as a whole, meaning Max
+Sikorski's additions and the combined work, is under the **GNU Affero General
+Public License v3.0 only** (AGPL-3.0-only). The full text is in
+[LICENSE](LICENSE).
+
+It is based on **JumpStart 3D by J.Siwek**, who publishes his code under the
+MIT License. His code stays MIT. His license text and copyright lines are kept
+in [LICENSES/MIT-jumpstart-3d-jsiwek.txt](LICENSES/MIT-jumpstart-3d-jsiwek.txt),
+and his credit stays in the app's About dialog.
+
+Builds up to and including 23 were released under the earlier terms (this
+repository's tooling and additions under MIT, and his app code under MIT). Those
+copies keep those terms.
+
+The bundled libraries and fonts keep their own licenses (see "Third-party
+software" below).
+
+## Credit
+
 JumpStart 3D was created by **J.Siwek**. His own versions up to 1.93.8 said so
 in the About dialog; this community build keeps that line.
 
@@ -20,7 +41,7 @@ them, kept it working, added a reproducible build and a test suite, opened
 GitHub Discussions, helps moderate r/Jumpstart3D and spreads the word about
 the app. Our additions are listed in [README.md](README.md).
 
-## License
+## What the author said about his license
 
 Since version 2.0 (October 2026) the author publishes the full source code
 under the MIT License. The official JumpStart 3D site
@@ -30,17 +51,10 @@ free to use it, study it, change it and share it." His GitHub repository
 carries the same MIT text, and in his 2.0 video he says the same: it is open
 source under MIT, "do what you want with it".
 
-This repository is a community fork. It tracks his releases and adds its own
-work (listed in [README.md](README.md)) under the same license. The
-[LICENSE](LICENSE) file carries the author's two copyright lines ("JumpStart
-3D contributors" from his source zip, "classyapps2026" from his GitHub
-repository) and one for this repository's additions by Max Sikorski and the
-community. The single-file build has no LICENSE file beside it, so
-`src/index.html` starts with a short license comment that travels with it.
-
-The author's one request, at the end of his 2.0 video: if you download it
-and modify it, share it with others. It is a wish, not a license condition,
-and this repository does exactly that.
+This is why his code stays MIT inside this AGPL project: MIT allows it to be
+combined into a work released under the AGPL. The single-file build has no
+LICENSE file beside it, so `src/index.html` starts with a short license
+comment that travels with it.
 
 ## History
 

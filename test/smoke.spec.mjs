@@ -1368,10 +1368,10 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
     return out;
   });
   expect(r.steps).toBeGreaterThanOrEqual(7);
-  expect(r.count).toBe(75);
-  expect(r.beginner).toBe(29);
-  expect(r.adv).toBe(40);
-  expect(r.arch).toBe(6);
+  expect(r.count).toBe(89);
+  expect(r.beginner).toBe(34);
+  expect(r.adv).toBe(42);
+  expect(r.arch).toBe(13);
   expect(r.level).toBe("Proficient");
   expect(r.item).toBe("Bracket");
   expect(r.empty.slice(0, 6)).toEqual([false, false, false, false, false, false]);
@@ -1390,15 +1390,15 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   expect((await bodies(page))[0].volume).toBeCloseTo(80 * 40 * 8, 0);
 });
 
-test("About keeps the author's tutorial count (forty-four); the app lists seventy-five; About lists what the community build adds", async () => {
+test("About keeps the author's tutorial count (fifty-one); the app lists eighty-nine; About lists what the community build adds", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
   // J.Siwek's text counts his own tutorials and is not ours to change; the community lessons are on top of it
-  await expect(about).toContainText("forty-four step-by-step projects (nineteen in Beginner, twenty in Advanced, five in Architechies");
+  await expect(about).toContainText("fifty-one step-by-step projects (nineteen in Beginner, twenty in Advanced, twelve in Architect");
   expect(await page.evaluate(() => {
     const list = window.__app.tutorials.list;
     return [list.length, ...["beginner", "advanced", "arch"].map((mode) => list.filter((t) => t.mode === mode).length)];
-  })).toEqual([75, 29, 40, 6]);
+  })).toEqual([89, 34, 42, 13]);
   await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
