@@ -3,6 +3,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { boot, watchErrors, loadDoc, exportBytes, quarantine } from "./helpers.mjs";
+import { readStl, meshReport } from "./fuzz-checks.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -151,6 +152,38 @@ test("the Thread print offset tool tightens a bolt but leaves a tap cutter as it
   const child = await run((g) => JS3D.get(g).node.children.filter((c) => c.hole).map((c) => c.node.mods[0].clear), tapped);
   expect(child).toEqual([0]);
   expect(await volumeOf(tapped)).toBe(tappedBefore);
+});
+
+// With both ends free the thread's far cut plane sits at length + pitch from where the helix starts: when length / pitch ends in .5
+// that plane used to land exactly on a break between two helix edges and the boolean left sliver triangles there.
+// quarantined: Firefox stalls on threaded shapes
+test("threads whose length is a whole number of pitches plus a half: tapped M5 through 6 mm, M6 rod 24.5 mm; closed STL, no stray volume", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
+  const stl = async () => meshReport(readStl(Buffer.from(await run(() => JS3D.export("stl")))));
+  await fresh();
+  const plate = await run(async () => {
+    const box = JS3D.add("box", { size: { w: 20, d: 20, h: 6 } });
+    const cut = JS3D.fastener({ type: "cutter", size: "M5", length: 6 }); // 6 / 0.8 = 7.5 pitches
+    return JS3D.group([box, cut], { name: "Tapped plate" });
+  });
+  const tapped = await volumeOf(plate);
+  expect(tapped).toBeGreaterThan(2400 - Math.PI * 2.5 * 2.5 * 6); // less is removed than a full 5 mm bore
+  expect(tapped).toBeLessThan(2400 - Math.PI * 2.1 * 2.1 * 6); // and more than the root circle
+  let m = await stl();
+  expect(m.open, "open edges in the tapped plate").toBe(0);
+  expect(Math.abs(m.volume - tapped) / tapped).toBeLessThan(0.01);
+  await fresh();
+  const rod = await run(() => JS3D.fastener({ type: "rod", size: "M6", length: 24.5 })); // 24.5 / 1 = 24.5 pitches
+  const v = await volumeOf(rod);
+  expect(v).toBeGreaterThan(Math.PI * 2.46 * 2.46 * 24.5);
+  expect(v).toBeLessThan(Math.PI * 3 * 3 * 24.5);
+  m = await stl();
+  expect(m.open, "open edges in the rod").toBe(0);
+  expect(Math.abs(m.volume - v) / v).toBeLessThan(0.01);
+  // a quarter pitch longer lands on no break either way: about the same rod, plus a quarter turn of thread
+  await fresh();
+  const longer = await volumeOf(await run(() => JS3D.fastener({ type: "rod", size: "M6", length: 24.75 })));
+  expect(Math.abs(longer - v) / v).toBeLessThan(0.02);
 });
 
 test("the turns guard: a hint at 64 turns, a refusal at 160, and the same refusal from the bridge", async () => {

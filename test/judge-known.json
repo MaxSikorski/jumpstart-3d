@@ -1,7 +1,1 @@
-{
-  "fasteners.stl": {
-    "match": "self-intersection longer than 0.01 mm",
-    "defect": "a 0.9 mm self-crossing in the thread mesh of one of the four fasteners (facets 2155, 2246, 2151 and 12433 of its component)",
-    "followUp": "investigate the thread mesh (follow-up PR)"
-  }
-}
+{}
