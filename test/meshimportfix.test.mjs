@@ -2,7 +2,8 @@
 // flat only to ~1e-5 mm, so on Max's Raspberry Pi lid 546 of 2,953 faces were invalid and a join with faces exactly flush came out
 // open (137 open edges, 2,084 non-manifold) with a volume the guard accepted: no retry, no error. solidFromMesh now runs the
 // kernel's fixSolid after the merge (kernel.js, "mesh import fix"). This loads the real kernel (as booleanretry.test.mjs does).
-// The lid (test/fixtures/pi-lid.stl, 466 KB) is not in the public repo yet: its tests skip, saying so, while it is missing.
+// The lid (test/fixtures/pi-lid.stl, 466 KB) is not in the public repo yet: its tests skip, saying so, while it is missing; a generated
+// sphere carries the same check in CI.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -133,4 +134,34 @@ test("a noisy cube still imports as one solid of six valid faces", async () => {
   assert.equal(faces(cube).length, 6, "the triangles of each side merge into one face");
   assert.equal(invalidFaces(cube), 0, "faces BRepCheck calls invalid");
   assert.ok(Math.abs(R.measureVolume(cube) - 1000) < 0.01, `the cube is ${R.measureVolume(cube)} mm3`);
+});
+
+// Runs in CI without the lid: a 32 x 32 UV sphere (1,984 triangles, float32 binary STL). Its triangles merge into faces that are
+// invalid before the fix (536 of them), so a revert of the fix fails here.
+test("an imported sphere has only valid faces and a cut through it stays closed", async () => {
+  const nu = 32, nv = 32, r = 10, V = [];
+  for (let j = 0; j <= nv; j++) for (let i = 0; i < nu; i++) {
+    const th = (Math.PI * j) / nv, ph = (2 * Math.PI * i) / nu;
+    V.push([r * Math.sin(th) * Math.cos(ph), r * Math.sin(th) * Math.sin(ph), r * Math.cos(th)].map((x) => +x.toFixed(7)));
+  }
+  const top = 0, bottom = nv * nu, id = (i, j) => (j === 0 ? top : j === nv ? bottom : j * nu + (i % nu)), tris = [];
+  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+    const a = id(i, j), b = id(i + 1, j), c = id(i + 1, j + 1), d = id(i, j + 1);
+    if (j > 0) tris.push([a, d, b]);
+    if (j < nv - 1) tris.push([b, d, c]);
+  }
+  assert.equal(tris.length, 1984);
+  const stl = Buffer.alloc(84 + tris.length * 50);
+  stl.writeUInt32LE(tris.length, 80);
+  tris.forEach((t, k) => t.forEach((v, c) => V[v].forEach((x, axis) => stl.writeFloatLE(x, 84 + k * 50 + 12 + c * 12 + axis * 4))));
+  const sphere = evalNode(await importMesh("sphere", stl, "sphere.stl"));
+  assert.equal(count(sphere, T.TopAbs_SOLID), 1, "one solid");
+  assert.equal(invalidFaces(sphere), 0, "faces BRepCheck calls invalid (536 without the fix)");
+  assert.ok(Math.abs(R.measureVolume(sphere) - 4 / 3 * Math.PI * r ** 3) < 150, `the sphere is ${R.measureVolume(sphere)} mm3`);
+  const cut = sphere.clone().cut(R.makeBox([-3, -3, -3], [3, 3, 20]));
+  const m = checkMesh(cut);
+  assert.equal(m.open, 0, "open edges after the cut");
+  assert.equal(m.nonManifold, 0, "non-manifold edges after the cut");
+  assert.equal(count(cut, T.TopAbs_SOLID), 1, "one solid after the cut");
+  assert.ok(R.measureVolume(cut) < R.measureVolume(sphere) - 100, "the cut took the box's share off");
 });
