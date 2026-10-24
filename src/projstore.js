@@ -115,6 +115,8 @@ function displaced(stored, ent, entry, docString, base, own) {
   else hit = stamp(stored) > base.at;
   return hit && !sameDesign(stored, docString);
 }
+// A save clears only a deletion marker that is not newer than the edit: another tab's Delete may have committed right after it.
+const clearGone = (id, at) => { if (!(+ls.get(GONE + id) > at)) ls.del(GONE + id); };
 const baseOf = (b, id) => { b = typeof b === "function" ? b() : b; return b == null ? { at: seen.get(id) || 0, weak: true } : typeof b === "object" ? b : { at: +b || 0, weak: true }; };
 
 // The stored copy is read in the SAME transaction: if someone else saved it since (see `displaced`), it is kept first as
@@ -140,7 +142,7 @@ function idbPut(db, id, docString, entry, base, { suffix = OTHER, own, rescue } 
     };
     d.onsuccess = go; e.onsuccess = go; if (r) r.onsuccess = go;
     return committed(tx).then((ok) => {
-      if (ok) { seen.set(id, entry.updated || 0); ls.del(GONE + id); if (!meta) { try { db.transaction("meta", "readwrite").objectStore("meta").delete(GONE + id); } catch (e2) {} } }
+      if (ok) { seen.set(id, entry.updated || 0); clearGone(id, entry.updated || 0); if (!meta) { try { const m = db.transaction("meta", "readwrite").objectStore("meta"), g = m.get(GONE + id); g.onsuccess = () => { if (!(+g.result > (entry.updated || 0))) m.delete(GONE + id); }; } catch (e2) {} } }
       if (ok && kept && suffix === OTHER) tell(kept);
       return ok;
     });
@@ -345,7 +347,7 @@ function localPut(id, docString, entry, base, own) {
   if (!ls.set(LS_DOC + id, docString)) { undo(); return false; }
   const listed = c && index.some((p) => p.id === c[0]);
   const next = [{ ...entry, id }, ...(c && !listed ? [c[2]] : []), ...index.filter((p) => p.id !== id)];
-  if (ls.set(LS_INDEX, JSON.stringify(next))) { seen.set(id, entry.updated || 0); ls.del(GONE + id); if (c) tell(c[2].name); return true; }
+  if (ls.set(LS_INDEX, JSON.stringify(next))) { seen.set(id, entry.updated || 0); clearGone(id, entry.updated || 0); if (c) tell(c[2].name); return true; }
   // a document with no list entry would be invisible: put back what was there
   undo();
   return false;
