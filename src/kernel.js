@@ -2793,7 +2793,9 @@ function fuseSolids(solids) {
       solids.forEach((x) => x.delete());
       return fused;
     }
-  } catch (e) { /* the loop below builds it, or reports the same trouble */ }
+  } catch (e) { // jumpstart-3d: a crashed or out-of-memory engine cannot be trusted for the loop either (as operations.ts rebuild() does)
+    if (e instanceof WebAssembly.RuntimeError || e instanceof RangeError) throw e;
+    /* the loop below builds it, or reports the same trouble */ }
   finally { builder.delete(); args.delete(); tools.delete(); }
   let acc = solids[0]; for (const x of solids.slice(1)) { const f = acc.fuse(x); acc.delete(); x.delete(); acc = f; }
   return acc;
