@@ -126,7 +126,11 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   and export of the house with its landscape.
 - **CAM Studio** (new in 2.3): plan and simulate CNC router, mill or laser cuts and save G-code.
   Sending it to a machine over USB asks the browser's own permission first. 2.5 adds a 4th axis
-  (rotary) for round parts, with G-code that has A moves.
+  (rotary) for round parts, with G-code that has A moves. 2.5.1 (J.Siwek) brings 48 machine
+  profiles (7 with a rotary axis; your own machines can have a rotary axis and a tool changer),
+  Fanuc-style and Haas-style G-code (program number, G54, tool length offsets), more materials
+  and bits, and toolpaths, G-code and the cutting simulation made in a background worker so the
+  window never freezes.
 - **FlexiGen** for print-in-place articulated figures, and **Mesh to STEP** to turn STL or 3MF
   meshes into editable solids.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to

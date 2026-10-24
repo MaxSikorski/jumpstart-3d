@@ -7,10 +7,11 @@ import { store, findBody } from "./store.js";
 import { el } from "./util.js";
 import { isInch } from "./units.js";
 import { ICON } from "./icons.js";
-import { MACHINES, MATERIALS, TOOLS, POSTS, feedsSpeeds, buildProgram, programStats, toGcode, StockSim, RotarySim, workOrigin, moveLen } from "./camcore.js";
+import CAM_WORKER_SRC from "./camworker.bundle.txt";
+import { MACHINES, MACHINE_GROUPS, MATERIALS, TOOLS, POSTS, feedsSpeeds, buildProgram, programStats, toGcode, StockSim, RotarySim, workOrigin, moveLen } from "./camcore.js";
 
 const IN = 25.4;
-const MAT_COL = { pine: "#e3c08f", oak: "#c49a6c", ply: "#dcbc8c", mdf: "#b98f63", acrylic: "#cfe6f2", hdpe: "#f1f1ec", foam: "#e9e2c2", wax: "#4c8fd6", alu: "#c3c8cf", brass: "#d5b14e", card: "#c9a678" };
+const MAT_COL = { delrin: "#f2f0ea", pc: "#d7e9f3", g10: "#3a3f44", copper: "#c8794a", alu7075: "#bfc5cc", steel: "#9aa1a8", steel4140: "#8f979f", stainless: "#c9ced3", castiron: "#6f757b", titanium: "#a8a39a", pine: "#e3c08f", oak: "#c49a6c", ply: "#dcbc8c", mdf: "#b98f63", acrylic: "#cfe6f2", hdpe: "#f1f1ec", foam: "#e9e2c2", wax: "#4c8fd6", alu: "#c3c8cf", brass: "#d5b14e", card: "#c9a678" };
 const OP_COL = { rrough: 0xe8a317, rfinish: 0x1f8f5a, rough: 0xe8a317, face: 0x9a7cc7, finish: 0x1f8f5a, cutout: 0x2f6fd0, lasercut: 0xd9534f, engrave: 0x8a4f2f };
 const OP_NAMES = { rrough: "Rotary roughing", rfinish: "Rotary finishing", rough: "Roughing", face: "Facing", finish: "Finishing", cutout: "Cutout", lasercut: "Laser cut", engrave: "Laser engrave" };
 const QUALITY = { draft: { res: 0.5, so: 0.2, tol: 0.05, name: "Draft (fast)" }, normal: { res: 0.3, so: 0.12, tol: 0.03, name: "Normal" }, fine: { res: 0.2, so: 0.07, tol: 0.015, name: "Fine (slow, smooth)" } };
@@ -124,6 +125,7 @@ export function initCam(app) {
   function close() {
     if (!ui) return;
     stopPlay();
+    if (camW) { try { camW.terminate(); } catch (e) {} camW = null; wBusy = false; }
     cancelAnimationFrame(ui.raf);
     removeEventListener("keydown", ui.onKey, true);
     ui.ro.disconnect();
@@ -195,6 +197,7 @@ export function initCam(app) {
   function loop() {
     if (!ui) return;
     ui.raf = requestAnimationFrame(loop);
+    if (ui.pendingT !== null && ui.pendingT !== undefined && !ui.playing) { runTo(ui.pendingT, 25); if (ui.pendingT === null) renderSide(); }
     stepPlay();
     if (!ui.dirty) return;
     ui.dirty = false;
@@ -234,13 +237,21 @@ export function initCam(app) {
     b.replaceChildren(
       el("div", { class: "s3d-title" }, el("b", {}, "CAM Studio"), el("small", { class: "bk-dim" }, "Cutting simulator")),
       grp("Mode", seg("cam-level", [["basic", "Basic", "A few choices; the numbers are worked out for you"], ["pro", "Pro", "Every operation and setting"]], s.level, (v) => { if (v === "pro" && !s.ops) s.ops = basicOps(); set("level", v); })),
-      grp("Machine", sel("cam-machine", machines().map((m) => [m.id, m.name]), s.machine, (v) => set("machine", v), "Machine")),
+      grp("Machine", machineSelect(s.machine, (v) => set("machine", v))),
       grp("Material", sel("cam-material", MATERIALS.filter((m) => mach().kind !== "laser" || m.laser).map((m) => [m.id, m.name]), s.material, (v) => set("material", v), "Material")),
       el("span", { class: "s3d-sp" }),
       grp("", el("button", { class: "btn", id: "cam-export", onclick: () => exportDialog() }, "Save G-code"), el("button", { class: "btn", id: "cam-send", onclick: () => sendDialog() }, "Send to machine"), el("button", { class: "btn", id: "cam-close", onclick: () => close() }, "Close")),
     );
   }
 
+  // the machine list, grouped (hobby to industrial), with your own machines last
+  function machineSelect(cur, on) {
+    const e = el("select", { class: "num", id: "cam-machine", "aria-label": "Machine" });
+    const groups = [...MACHINE_GROUPS.map((g) => [g, MACHINES.filter((m) => m.group === g)]), ["Your machines", lib().machines]];
+    for (const [g, list] of groups) if (list.length) e.append(el("optgroup", { label: g }, ...list.map((m) => el("option", { value: m.id, selected: m.id === cur }, m.name))));
+    e.onchange = () => on(e.value);
+    return e;
+  }
   // ------------------------------------------------------------ side panel
   function renderSide() {
     const s = ui.s, sd = ui.side, M = mach(), laser = M.kind === "laser";
@@ -270,9 +281,9 @@ export function initCam(app) {
       sd.append(el("small", {}, "Feeds and speeds (worked out for you)"), t);
     } else proSide(sd);
     // results
-    const r = ui.result;
+    const r = ui.working ? null : ui.result;
     sd.append(el("small", {}, "Result"));
-    if (!r) sd.append(el("p", { class: "bk-dim", id: "cam-stats" }, "Working…"));
+    if (!r) sd.append(el("p", { class: "bk-dim cam-working", id: "cam-stats" }, "Working… (you can keep changing settings)"));
     else {
       sd.append(el("p", { class: "bk-dim", id: "cam-stats" }, `About ${fmtTime(r.stats.seconds)} on the machine · ${(r.stats.cut / 1000).toFixed(1)} m of cutting · ${r.lines.toLocaleString()} lines of G-code`));
       const M2 = mach(), st = r.job.stock, fits = r.job.rotary ? true : st.x1 - st.x0 <= M2.x && st.y1 - st.y0 <= M2.y && st.zTop - st.zBot <= M2.z;
@@ -413,7 +424,7 @@ export function initCam(app) {
     return back;
   }
   function machineDialog() {
-    const M = { ...mach(), id: "c" + Date.now().toString(36), name: "My machine" };
+    const M = { ...mach(), id: "c" + Date.now().toString(36), name: "My machine", group: "Your machines" };
     const f = (label, k, unitMm) => el("label", {}, label, numInput(unitMm && isInch() ? +(M[k] / IN).toFixed(3) : M[k], (v) => { M[k] = unitMm && isInch() ? v * IN : v; }, "cm-" + k));
     const name = el("input", { class: "num", id: "cm-name", value: M.name }); name.addEventListener("keydown", (e) => e.stopPropagation());
     const back = modal("New machine profile",
@@ -423,6 +434,8 @@ export function initCam(app) {
         el("div", { class: "cam-grid" }, f("Work area X" + (isInch() ? " (in)" : " (mm)"), "x", true), f("Y", "y", true), f("Z", "z", true), f("Max spindle RPM (laser: max S)", "rpmMax"), f("Min RPM", "rpmMin"), f("Max feed (mm/min)", "feedMax"), f("Rapid (mm/min)", "rapid")),
         row("Controller", sel("cm-post", Object.entries(POSTS).map(([k, p]) => [k, p.name + " · " + p.note]), M.post, (v) => { M.post = v; }, "Controller")),
         row("Units", sel("cm-units", [["mm", "Millimetres"], ["in", "Inches"]], M.units, (v) => { M.units = v; }, "Units")),
+        el("label", { class: "check" }, el("input", { type: "checkbox", id: "cm-rotary", checked: !!M.rotary, onchange: (e) => { M.rotary = e.target.checked ? { maxD: 100, maxL: 400 } : undefined; } }), "It has a 4th (rotary, A) axis"),
+        el("label", { class: "check" }, el("input", { type: "checkbox", id: "cm-atc", checked: !!M.toolChange, onchange: (e) => { M.toolChange = e.target.checked; } }), "It has an automatic tool changer"),
         el("div", { class: "cam-row2" }, el("button", { class: "btn primary", id: "cm-save", onclick: () => { M.name = name.value || "My machine"; const L = lib(); L.machines.push(M); setPref("lib", L); back.remove(); set("machine", M.id); } }, "Save machine"))));
   }
   function toolDialog() {
@@ -439,34 +452,77 @@ export function initCam(app) {
 
   // ------------------------------------------------------------ making toolpaths
   let genTimer = 0;
+  // the toolpaths, G-code and whole simulation are made in a worker, so the window stays responsive;
+  // a newer request cancels an older one
+  let camW = null, jobId = 0, wBusy = false;
+  function camWorker() {
+    if (!camW) {
+      try { camW = new Worker(URL.createObjectURL(new Blob([CAM_WORKER_SRC], { type: "text/javascript" }))); camW.onmessage = (e) => onWorker(e.data); camW.onerror = (e) => { console.warn("CAM worker", e.message); }; }
+      catch (e) { camW = false; }
+    }
+    return camW;
+  }
+  function setStatus(t) { const st = ui && ui.side.querySelector("#cam-stats"); if (st) st.textContent = t; }
   function generate() {
     clearTimeout(genTimer);
     genTimer = setTimeout(() => {
       if (!ui) return;
       stopPlay();
-      const job = makeJob();
-      let prog;
       if (ui.s.level === "pro" && !ui.s.ops) ui.s.ops = basicOps();
-      try { prog = buildProgram(job, job.rotary ? rotModel().tris : ui.tris); } catch (e) { app.toast("Couldn't make the toolpaths: " + e.message, "err"); return; }
-      const M = mach(), post = ui.s.post || M.post;
-      const gcode = toGcode(prog, job, M, { post, units: ui.s.units || M.units, title: store.doc.name || "JumpStart 3D job" });
-      ui.result = { job, prog, stats: programStats(prog, M), gcode, lines: gcode.split("\n").length - 1, post };
-      // the moves in order, with their times, for playback
-      const segs = []; let prev = null, t = 0;
-      for (const { op, moves } of prog.ops) for (const m of moves) {
-        if (prev) { const d = moveLen(prev, m, prog.rotary), dt = m.g === 0 ? (d / (M.rapid || 3000)) * 60 : (d / Math.max(1, m.f || 100)) * 60; segs.push({ a: prev, b: m, op, t0: t, t1: t + dt }); t += dt; }
-        prev = m;
+      const job = makeJob(), M = mach(), post = ui.s.post || M.post;
+      const tris = job.rotary ? rotModel().tris : ui.tris;
+      const id = ++jobId, msg = { id, job, tris: tris.slice(), mach: M, post, units: ui.s.units || M.units, title: store.doc.name || "JumpStart 3D job" };
+      ui.pending = { id, job, post };
+      ui.done = false; ui.working = true;
+      setStatus("Making the toolpaths…");
+      const w = camWorker();
+      if (w) {
+        // a request still running is dropped: start a fresh worker
+        if (wBusy) { try { camW.terminate(); } catch (e) {} camW = null; camWorker(); }
+        wBusy = true;
+        camW.postMessage(msg, [msg.tris.buffer]);
+      } else {
+        // no workers here: do it on the page (a moment later, so the window can update first)
+        setTimeout(() => {
+          try {
+            const prog = buildProgram(job, tris), gcode = toGcode(prog, job, M, { post, units: msg.units, title: msg.title });
+            onWorker({ id, ok: true, prog, gcode, stats: programStats(prog, M), sim: null });
+          } catch (e) { onWorker({ id, ok: false, error: e.message }); }
+        }, 30);
       }
-      ui.segs = segs; ui.total = t;
-      setupRotary(job);
-      resetSim();
-      drawPaths(); drawBed();
-      renderSide(); renderPlay();
-      // quick look at the finished result: run the whole simulation now
-      runTo(ui.total);
-      ui.done = true;
-      renderSide();
-    }, 120);
+    }, 150);
+  }
+  function onWorker(d) {
+    if (!ui || !ui.pending || d.id !== ui.pending.id) return;
+    if (d.phase) { setStatus(d.phase === "paths" ? "Making the toolpaths…" : `Simulating the cut… ${Math.round(d.done * 100)}%`); return; }
+    wBusy = false; ui.working = false;
+    if (!d.ok) { app.toast("Couldn't make the toolpaths: " + d.error, "err"); setStatus("Couldn't make the toolpaths."); return; }
+    const { job, post } = ui.pending, M = mach(), prog = d.prog;
+    ui.result = { job, prog, stats: d.stats, gcode: d.gcode, lines: d.gcode.split("\n").length - 1, post };
+    ui.final = d.sim;
+    // the moves in order, with their times, for playback
+    const segs = []; let prev = null, t = 0;
+    for (const { op, moves } of prog.ops) for (const m of moves) {
+      if (prev) { const dd = moveLen(prev, m, prog.rotary), dt = m.g === 0 ? (dd / (M.rapid || 3000)) * 60 : (dd / Math.max(1, m.f || 100)) * 60; segs.push({ a: prev, b: m, op, t0: t, t1: t + dt }); t += dt; }
+      prev = m;
+    }
+    ui.segs = segs; ui.total = t;
+    setupRotary(job);
+    resetSim();
+    drawPaths(); drawBed();
+    renderPlay();
+    // show the finished part straight away
+    if (ui.final) showFinal(); else runTo(ui.total, 40);
+    ui.done = !ui.pendingT;
+    renderSide();
+  }
+  // the finished part, from the worker's simulation (no need to cut it all again here)
+  function showFinal() {
+    const F = ui.final, sim = ui.sim;
+    if (sim.rotary) sim.rho.set(F.rho); else { sim.h.set(F.h); sim.burn.set(F.burn); }
+    Object.assign(sim, { removed: F.removed, rapidHits: F.rapidHits, tooDeep: F.tooDeep });
+    ui.si = ui.segs.length; ui.t = ui.total; ui.done = true; ui.pendingT = null;
+    updateStockMesh(); placeTool(null, null); updatePlay(); ui.dirty = true;
   }
   function resetSim() {
     const r = ui.result;
@@ -474,10 +530,16 @@ export function initCam(app) {
     ui.si = 0; ui.t = 0; ui.done = false;
     buildStockMesh();
   }
-  function runTo(t) {
+  // budget: at most this many ms now; the rest carries on over the next frames
+  function runTo(t, budget = 30) {
+    if (ui.final && t >= ui.total - 1e-9 && ui.si < ui.segs.length) { if (ui.t > 0 || ui.si > 0) { rebuildSegs(); resetSim(); } showFinal(); return; }
     if (t < ui.t) resetSim();
-    const sim = ui.sim, segs = ui.segs;
-    while (ui.si < segs.length && segs[ui.si].t1 <= t) { const s = segs[ui.si]; sim.move(s.a, s.b, s.op.tool, s.b.g, s.b.s); ui.si++; }
+    const sim = ui.sim, segs = ui.segs, t0 = performance.now();
+    ui.pendingT = null;
+    while (ui.si < segs.length && segs[ui.si].t1 <= t) {
+      const s = segs[ui.si]; sim.move(s.a, s.b, s.op.tool, s.b.g, s.b.s); ui.si++;
+      if (performance.now() - t0 > budget) { ui.pendingT = t; t = ui.si < segs.length ? segs[ui.si].t0 : t; break; }
+    }
     let pos = ui.si < segs.length ? segs[ui.si].a : segs.length ? segs[segs.length - 1].b : null;
     if (ui.si < segs.length) {
       const s = segs[ui.si], f = (t - s.t0) / Math.max(1e-9, s.t1 - s.t0);
@@ -489,12 +551,13 @@ export function initCam(app) {
     placeTool(pos, ui.si < segs.length ? segs[ui.si].op.tool : null);
     if (ui.t >= ui.total - 1e-9) { ui.done = true; }
     updatePlay();
+    if (ui.pendingT !== null) setStatus("Simulating…");
     ui.dirty = true;
   }
   // ------------------------------------------------------------ playback
   function togglePlay() { if (ui.playing) stopPlay(); else { if (ui.t >= ui.total - 1e-6) { rebuildSegs(); resetSim(); } ui.playing = true; ui.last = performance.now(); renderPlay(); } }
   function stopPlay() { if (ui) { ui.playing = false; } }
-  function rebuildSegs() { /* the partial-move bookkeeping changes segments: rebuild them */ const r = ui.result; const M = mach(); const segs = []; let prev = null, t = 0; for (const { op, moves } of r.prog.ops) for (const m of moves) { if (prev) { const d = Math.hypot(m.x - prev.x, m.y - prev.y, m.z - prev.z), dt = m.g === 0 ? (d / (M.rapid || 3000)) * 60 : (d / Math.max(1, m.f || 100)) * 60; segs.push({ a: prev, b: m, op, t0: t, t1: t + dt }); t += dt; } prev = m; } ui.segs = segs; ui.total = t; }
+  function rebuildSegs() { /* the partial-move bookkeeping changes segments: rebuild them */ const r = ui.result; const M = mach(); const segs = []; let prev = null, t = 0; for (const { op, moves } of r.prog.ops) for (const m of moves) { if (prev) { const d = moveLen(prev, m, r.prog.rotary), dt = m.g === 0 ? (d / (M.rapid || 3000)) * 60 : (d / Math.max(1, m.f || 100)) * 60; segs.push({ a: prev, b: m, op, t0: t, t1: t + dt }); t += dt; } prev = m; } ui.segs = segs; ui.total = t; }
   function stepPlay() {
     if (!ui || !ui.playing || !ui.segs) return;
     const now = performance.now(), dt = Math.min(0.1, (now - ui.last) / 1000); ui.last = now;
