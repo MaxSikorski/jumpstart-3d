@@ -19,7 +19,13 @@ suite runs on GitHub Actions: the smoke and golden specs gate every pull request
 
 ## How CI runs it
 
-The merge gate (`.github/workflows/test.yml`) is small on purpose: it builds both outputs, then runs the smoke spec and the golden exports on each, and takes about 3 minutes. Everything slower runs every night (see below). The jobs:
+The merge gate (`.github/workflows/test.yml`) is small on purpose: it builds both outputs, then runs the smoke spec and the golden exports on each, and takes about 3 minutes, plus the specs a pull request adds or changes. Everything slower runs every night (see below). The full suite runs three ways:
+
+- **Merge gate** (`test.yml`, every pull request): both builds, smoke, golden, plus the changed specs.
+- **Nightly** (`nightly.yml`, 07:00 UTC): everything, Firefox and WebKit too, the chat judge and the long fuzz.
+- **Release** (`/ship`): the full `npm test` once on macOS before a build goes out.
+
+The gate's jobs:
 
 - `changes` looks at what a pull request touched. If every changed file is a Markdown file in the repository root (`README.md`, `NOTICE.md`, `CHANGELOG.md` and so on), only the MCP tests run (they read the README), and the pull request is done in about a minute. The lane is only for pull requests into `main` (a pull request into another branch always runs the whole gate, so a green check that came from that branch stays a full run when the pull request is later retargeted to `main`). Anything else, an empty list, a deleted or renamed non-Markdown file, a push to `main` or a manual run means the full gate; a git error fails the job and so the whole run. It uses plain `git` and no extra actions.
 - `gate (site, smoke)`, `gate (site, golden)`, `gate (single, smoke)` and `gate (single, golden)`, side by side: `npm test -- test/<spec>.spec.mjs --project=<build>`. `pretest` builds both outputs and runs the Node unit tests first. The single file from the `single` job is uploaded as `jumpstart-3d-single-file` when it passed (14 days), so someone who reported an issue can try a pull request's file before a release exists. A failed job uploads `gate-report-<build>-<spec>`.
@@ -136,6 +142,21 @@ The config sets `serviceWorkers: "block"` for every spec, because a service work
 - `chatjudge.spec.mjs`: the chat geometry scorer, on both builds: five scripted mock plans drive the real panel and a Node judge scores the geometry; see [Chat geometry benchmark](#chat-geometry-benchmark).
 - `fuzz.spec.mjs` (with `fuzz-checks.mjs`): random but repeatable chains of edits through the bridge, checked after every step; see [The fuzzer](#the-fuzzer). Four fixed seeds by default, on both builds.
 - `mcp/test/` (run with `npm run test:mcp`, after a build; it builds `docs/` first): `server.test.mjs` starts `mcp/server.mjs` over stdio with the MCP SDK's client in headless mode on `docs/` (no tool's input schema has a `$ref` or a tuple, a block of 24000 mm³, an 800 pixel PNG, `screenshot` with a `path` writes a PNG of the asked width and answers with text, an STL on disk, save then load keeps the STL hash, the demo script, errors with the page's message, `--help`); `tab.test.mjs` connects a Playwright page to the server's WebSocket (any free port) and checks that tools edit that page, that a second tab is refused while the first is live and connects after it has gone, that a session stays with its tab (a lost tab is an error after 5 seconds, never a headless browser) and ignores a tab that arrives once it is headless, that other sites' `Origin` headers are refused, that the https site's origin works (routed to `docs/`, with Playwright's `local-network-access` permission granted), and that a taken port is reported; `server.test.mjs` also covers bad `JS3D_WS_PORT`/`JS3D_MODE` values and the static server's answer to a broken address. These suites use free ports, so they can run beside `npm test`. `cli.test.mjs` spawns `mcp/cli.mjs` (run prints the demo's summary with `sameShape: true`, export writes an STL whose triangle count matches its size, shot `--width 400` writes a 400 pixel PNG, status prints the versions, bad usage exits 1 or 2 with nothing on stdout); `plugin.test.mjs` checks that `plugin.json`, `.mcp.json`, the marketplace file and the skill's frontmatter agree, that `skills/jumpstart-3d/SKILL.md` at the repository root is byte-identical to `mcp/skills/jumpstart-3d/SKILL.md` (edit one, copy it over the other; the test fails when they differ), that the one-line setup prompt is the same text in both READMEs and the About dialog (`src/app.js`), that `mcp/AGENT-SETUP.md` stays within 140 lines, and that every Chromium install line in the docs names the pinned Playwright version; `chat.test.mjs` compares the tools the in-app chat offers (`src/chattools.js`) with this server's list: same names in the same order, same descriptions and parameter names for all but the six that differ on purpose (`status`, `screenshot`, `export_file`, `save_project`, `load_project`, `run_script`), and no `anyOf`, `oneOf`, `$ref`, `default` or `additionalProperties` in the chat's schemas; `install.test.mjs` copies `mcp/` to a scratch folder, runs `npm ci --ignore-scripts` there as Claude Code does, and starts the copy's server (it needs the npm registry or a warm npm cache). `mcp/` has its own `package.json` and lockfile: run `npm ci` inside it once before `npm run test:mcp`; the root `npm ci` does not install it.
+- `assolid.test.mjs` (node test, loads the real OpenCascade engine): `asSolid` in `kernel.js` hands back the very object it was given when that is already a solid. It once compared a class name that the minifier renames, so in the built app it made a leaking copy; the test bundles `kernel.js` with the build's minify settings to catch that.
+- `kernelshapes.spec.mjs`: kernel fixes the random-edit fuzzer found, seen from the user's side, on both builds: oval spheres no longer corrupt the engine, text or a torus stretched unevenly still builds, a cone's STL is closed at the tip, and capsules that are not round build in seconds with exact volume.
+- `knurl.spec.mjs`: the Knurled knob dialog and `JS3D.knurl`, on both builds. The volume matches a formula written in the spec (grooved outline minus a round, hex or D bore), tip count equals groove count, the knob sits where `at` says, bad input is refused, and the golden design is four true solids in a STEP file.
+- `spring.spec.mjs`: the Spring dialog and `JS3D.spring`, on both builds. The pitch is solved in the spec by Newton's method as an independent check on volume, bounds and turns for open and flat-cut ends; hand (right or left) and the flat end planes are checked too.
+- `menuscroll.spec.mjs`: the long theme menu (theme, performance, mesh detail, printer, AI agent) stays inside a short window and scrolls to its last row; in a tall window it needs no scrollbar.
+- `perfpanel.spec.mjs`: the hidden rebuild-times panel (Ctrl+Alt+P or `?perf`), on both builds. Closed, it adds no DOM, style or recorder; open, it lists the last rebuild body by body, slowest first, with Copy and Close; a stalled batch is retried and shown.
+- `printerpreview.spec.mjs`: Settings › Printer plate… and overhang shading, on both builds, through the real dialog: every named printer sets the plate's X × Y, the choice survives a reload, parts outside the area are named and not moved, and shading changes nothing in the design (same STL, transforms and undo history).
+- `printerpreview.test.mjs` (node test, real three.js, no browser; in `pretest`): the overhang overlay's life cycle in `printerpreview.js`: it only reads the body's mesh, shades only steep undersides, drops a stale result, cleans up after itself, and a large mesh waits for "Analyse this mesh".
+- `overhang.test.mjs` (node test, no browser; in `pretest`): the overhang rule in `overhang.js` on known triangles: the 30, 45 and 60 degree limits, turned, scaled and mirrored bodies, degenerate triangles, and long meshes worked in chunks.
+- `printerpresets.test.mjs` (node test, no browser; in `pretest`): the printer list and the saved plate choice in `printerpresets.js`: the named printers and their sizes (MK4 is a rectangle, X1E is not claimed), unverified rows stay marked, and a junk saved choice is cleaned.
+- `objimport.test.mjs` (node test, no browser): OBJ line continuations (`\`) with LF and CRLF line ends: a continued vertex or face reads as one, a continued cube imports closed, and an error names its first physical line.
+- `lighthouse.test.mjs` (node test): the loading check's maths in `tools/lighthouse.mjs`: medians, limits (at the limit passes, one step over fails), refusing missing or untrustworthy results, and building a baseline only from clean runs of one Lighthouse and one Chromium.
+- `nightly-issue.test.mjs` (node test): `tools/nightly-issue.mjs`: which failing specs are listed, when the single "Nightly failures" issue opens (blocking jobs only; Firefox, WebKit, a skipped job and the not-yet-blocking Lighthouse do not open it alone).
+- `judge.test.mjs` (node test, no browser): the export judge's own logic in `tools/judge-exports.mjs`: world-volume maths, manifest checks, PrusaSlicer and FreeCAD output parsing, and that a failing tool cannot be hidden. See "Slicer and STEP judge".
+- `judge.integration.test.mjs` (node test, CI only): the pinned FreeCAD and PrusaSlicer accept closed control models and reject damaged ones, so a judge that passes everything would be caught.
 - `golden.spec.mjs`: every design in `projects/` is loaded, exported as STL,
   OBJ, 3MF and STEP (and DXF when it has sketches) through the real menu, and the bytes are hashed against
   `golden.json` (the STEP file is cleaned first: the time it was written and the
@@ -282,8 +303,8 @@ runs every check and prints a `MEASURED` line per file and a
 `JUDGE_SOLIDS_MEASURED` object to copy, but fails those STEP files. STEP
 volume must be within **0.5% relative** of the sum of visible non-hole
 bodies' golden volumes multiplied by their absolute outer-matrix
-determinants; there is no absolute floor or per-design exception (all 36 are
-within 0.01%). Mesh volume is not compared to B-rep volume.
+determinants; there is no absolute floor or per-design exception (all 36 designs in that run were
+within 0.01%; `test/projects` has 42 designs now). Mesh volume is not compared to B-rep volume.
 
 Two softenings keep the judge honest about what is a print problem. When
 FreeCAD says `isSolid=false` but every edge closes exactly and the slicer
@@ -320,7 +341,7 @@ loose shell, malformed files, and zero-status missing G-code. Expected
 failures must match their specific reasons; missing tools fail this suite
 rather than skip it.
 
-Measured on `ubuntu-24.04` (runner image 20261012.334.1), 36 designs, 216
+Measured on `ubuntu-24.04` (runner image 20261012.334.1), 36 designs (42 now), 216
 files (144 slices, 72 STEP imports): install 27 s (apt libraries 11 s,
 PrusaSlicer 3 s, FreeCAD 12 s), unit tests 2 s, native controls 2 s, judge
 113 s (the one FreeCAD batch for all 216 files 28 s, then the slices). That is
