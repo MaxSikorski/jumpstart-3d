@@ -21,6 +21,14 @@ See [NOTICE.md](NOTICE.md) for credit and licensing.
 **[Download the single file](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)** ·
 **[Use it with an AI agent](#use-it-with-an-ai-agent)**
 
+<h3 align="center">Love it? Help keep it free.</h3>
+<p align="center">JumpStart 3D is free, with no ads and no account. Your support pays for the hosting and the hours behind every new build.</p>
+<p align="center">
+  <a href="https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08"><img src=".github/assets/support-once.svg" alt="Support once, any amount" width="340"></a>
+  <a href="https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09"><img src=".github/assets/support-monthly.svg" alt="Support monthly" width="340"></a>
+</p>
+<p align="center">Prefer GitHub? <a href="https://github.com/sponsors/MaxSikorski">Sponsor on GitHub</a> (one-time or monthly).</p>
+
 ## Contents
 
 - [Get started](#get-started)
