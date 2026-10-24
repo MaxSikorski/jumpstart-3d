@@ -1429,10 +1429,11 @@ export class Sketcher {
     // dimensions (only while this sketch is being edited)
     const dimSegs = [];
     if (this.active) this.drawDims(px, dimSegs);
-    mk(dimSegs, C.dim, { w: 1.4 });
-    if (dimSegs.preview) mk(dimSegs.preview, C.preview, { w: 1.6 });
-    mk(segs.line, C.line, { w: 2.5 }); mk(segs.cons, C.cons, { dashed: true }); mk(segs.proj, C.proj, { w: 1.8 });
-    mk(segs.sel, C.sel, { w: 3.5 }); mk(segs.hover, C.hover, { w: 3.5 }); mk(segs.preview, C.preview, { w: 2.5 });
+    // thin lines, so small and narrow profiles stay easy to see and click
+    mk(dimSegs, C.dim, { w: 1.1 });
+    if (dimSegs.preview) mk(dimSegs.preview, C.preview, { w: 1.2 });
+    mk(segs.line, C.line, { w: 1.5 }); mk(segs.cons, C.cons, { dashed: true }); mk(segs.proj, C.proj, { w: 1.2 });
+    mk(segs.sel, C.sel, { w: 2.4 }); mk(segs.hover, C.hover, { w: 2.4 }); mk(segs.preview, C.preview, { w: 1.5 });
     // points
     const pp = [], ps = [];
     for (const p of sk.pts) (this.sel.has("pt:" + p.id) || this.hover === "pt:" + p.id ? ps : pp).push(p.x, p.y, 0);

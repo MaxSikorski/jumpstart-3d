@@ -9,7 +9,7 @@
 import { test, expect } from "@playwright/test";
 import { watchErrors, waitIdle, bodies, stlTriangles } from "./helpers.mjs";
 
-const BUDGET = { usable: 5_000, ready: 18_000, stl: 25_000, bytes: 9_300_000 };
+const BUDGET = { usable: 5_000, ready: 18_000, stl: 25_000, bytes: 9_320_000 }; // 9_300_000 until J.Siwek 2.7.3 (his round-face repair and pattern picking added about 3.6 KB on the wire)
 
 const STARTUP = ["/", "/app.js", "/worker.js", "/occt-gz.wasm"];
 

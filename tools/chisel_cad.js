@@ -564,7 +564,7 @@ const CAD = (() => {
   }
   function hideFields() { if (sk.fields) { sk.fields.box.remove(); sk.fields = null; } }
   // ---- what the sketch looks like
-  function lineObj(P, color, closed = true, opacity = 1, w = 2.5) {
+  function lineObj(P, color, closed = true, opacity = 1, w = 1.5) {
     const pts = P.map((q) => toW(q[0], q[1]));
     if (w) { const seg = []; for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) seg.push(pts[i], pts[(i + 1) % pts.length]); return thick(seg, color, w); }
     const g = new THREE.BufferGeometry().setFromPoints(closed ? [...pts, pts[0]] : pts);

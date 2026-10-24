@@ -660,6 +660,13 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.7.3", [
+        ["No more stray planes:", "fixed flat \"planes\" that could appear across a model after an extrude, offset or cut and couldn't be removed. They were a drawing fault on some round faces (a cylinder band, for example), not part of the solid; those faces are now checked and redrawn correctly, on screen and in exports. Files that showed them look right as soon as they are opened."],
+        ["Pattern features, like Fusion 360:", "with Objects set to Features, click a face of a cut, boss, hole or text on the model to pick that feature (click again to unpick), or click it in the timeline. The whole body is no longer selected: picked features are outlined in blue and marked in the timeline, and the feature under the pointer is outlined in orange. Ticking features in the list still works."],
+      ]),
+      sec("New in version 2.7.2", [
+        ["Thinner sketch lines:", "sketch lines are now about half as thick, in the sketch editor and on the model, so small or narrow profiles are easier to see and click when you extrude, revolve or pick a profile. Selected and highlighted lines stay a little bolder."],
+      ]),
       sec("New in version 2.7.1", [
         ["Modern Sci-Fi armor:", "a new CosForge style with 27 original templates to build from: Vanguard, Interceptor, Sentinel, Strike Team and Flight helmets, a Night Watch cowl and a visor mask; Vanguard, Hex Core and Tactical chest pieces; back plates and a Jet Pack Mk II; pauldrons, arm guards, bracers, a Pulse Gauntlet and hand plates; thigh plates, knees, greaves, boots and toe caps; a collar, belt, hip plates and an Energy Shield. Add the whole Vanguard set at once."],
         ["Sharper shapes:", "the new templates start with angled form cages (keeled chests, jutting jaws, ridged limbs) that you can keep reshaping in the Form step."],
