@@ -382,6 +382,22 @@ test("Cancel or Esc on a dialog stops the rest of the drop with one message, and
   expectOnPlate(await state(), /^Cancelled/);
 });
 
+test("Cancel on an SVG dialog (which started a sketch first) stops the rest of the drop too", async () => {
+  await fresh("advanced");
+  const stl = await modelFile("stl", "Behind.stl");
+  await drop([textFile("Plate.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect x="0" y="0" width="20" height="10"/></svg>', "image/svg+xml"), stl]);
+  await expect(page.locator("#cmd")).toContainText("Insert SVG");
+  await page.locator("#cmd footer").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(toast("1 file not opened.")).toBeVisible();
+  await page.waitForTimeout(700); // long enough for the next file's dialog to open if the queue went on
+  await expect(page.locator("#cmd")).toBeHidden();
+  expect((await state()).bodies).toBe(0);
+  await drop([stl]); // and the next drop works
+  await accept("Import STL");
+  await waitIdle(page);
+  expectOnPlate(await state(), /^Behind/);
+});
+
 test("if importing stops being possible while files are being opened, the rest are not opened and one message says so", async () => {
   await fresh("beginner");
   const [one, two] = [await modelFile("step", "First.step"), await modelFile("step", "Second.step")];
@@ -432,6 +448,12 @@ test("FlexiGen's frame refuses a dropped file; the Mesh to STEP helper keeps its
   frame = await frameOf(".meshstep"); dt = await fileIn(frame);
   await claim(frame, dt, "dragenter"); // the helper takes the whole window as its drop zone: it prevents the drag itself, and the app stays out of it
   await expect(page.locator("#drop-overlay")).toBeHidden();
+  // the helper is never given the app's handlers: a dragstart inside it does not mark the page "dragging from inside", so a file drag over the page still shows the note
+  await frame.evaluate(() => document.body.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true })));
+  const outer = await fileDrag([textFile("notes.txt", "x")]);
+  await page.dispatchEvent("body", "dragenter", { dataTransfer: outer });
+  await expect(page.locator("#drop-overlay")).toBeVisible();
+  await page.dispatchEvent("body", "dragleave", { dataTransfer: outer });
   await page.evaluate(() => { document.querySelector(".meshstep")?.remove(); });
 });
 

@@ -73,8 +73,8 @@ export function initDropImport(app) {
     try {
       for (let i = 0; i < wanted.length; i++) {
         if (i > 0 && reason(true)) { notOpened(wanted.length - i); return; } // the mode or a dialog changed while the earlier files were opening
-        const before = lastEdit();
         await A.openModelFile(wanted[i]);
+        const before = lastEdit(); // after the file is handed over: an SVG or DXF dropped outside a sketch starts one (an undo entry) before its dialog opens
         // a mesh, SVG or DXF opens a dialog (units, size); the next file waits until it is closed
         const dlg = app.command;
         if (dlg) {
@@ -129,18 +129,22 @@ export function initDropImport(app) {
     w.addEventListener("dragstart", onStart);
     w.addEventListener("dragend", onEnd);
     w.addEventListener("mousemove", onMove, true);
+    w.addEventListener("pointerdown", onMove, true); // a press comes before a drag starts, so it can only clear a stale flag
   }
   attach(window);
+  window.addEventListener("blur", onMove); // the page lost the focus: any drag it knew about is over
   window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) { hide(); e.stopPropagation(); } }, true);
 
-  // Chisel's sculpt area and the FlexiGen / Mesh to STEP helpers are frames of their own: a file dropped there would be opened by the browser.
+  // Chisel's sculpt area and the FlexiGen helper are frames of their own: a file dropped there would be opened by the browser.
+  // The Mesh to STEP helper (also a .flexigen box, with .meshstep) takes the whole window as its drop zone and is left alone.
+  const FRAMES = "#chisel-host, .flexigen:not(.meshstep)";
   const adopt = (ifr) => {
     const go = () => { try { if (ifr.contentWindow && ifr.contentWindow.document) attach(ifr.contentWindow); } catch (e) {} }; // same listeners again are ignored
     ifr.addEventListener("load", go);
     go();
   };
-  const adoptIn = (n) => { if (n.nodeType === 1 && n.matches("#chisel-host, .flexigen")) n.querySelectorAll("iframe").forEach(adopt); };
-  document.querySelectorAll("#chisel-host, .flexigen").forEach(adoptIn);
+  const adoptIn = (n) => { if (n.nodeType === 1 && n.matches(FRAMES)) n.querySelectorAll("iframe").forEach(adopt); };
+  document.querySelectorAll(FRAMES).forEach(adoptIn);
   new MutationObserver((muts) => { for (const m of muts) m.addedNodes.forEach(adoptIn); }).observe(document.body, { childList: true });
 
   return { overlay };
