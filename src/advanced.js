@@ -5661,6 +5661,9 @@ export function initAdvanced(app) {
       group("Voxels", "", [
         { id: "sim-voxel", label: "Voxel Studio", title: "Turn the selected objects (or all) into cubes you can paint face by face, then export STL or 3MF or add them to the design (your design is not changed until you add it)", icon: "voxel", fn: () => app.voxel.open() },
       ]);
+      group("Cosplay", "", [
+        { id: "sim-cosforge", label: "CosForge", title: "Design cosplay costumes: a mannequin from your measurements, themed parts to shape, sculpt and fit, then cut into printable pieces with joints (opens in its own window)", icon: "cosforge", fn: () => app.cosforge.open() },
+      ]);
       group("Flexi", "", [
         { id: "sim-flexigen", label: "FlexiGen", title: "Turn one object into a print-in-place articulated flexi model (your design is not changed)", icon: "flexigen", fn: () => flexiGenCmd() },
       ]);

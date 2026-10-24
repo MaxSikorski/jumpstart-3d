@@ -1,16 +1,18 @@
 // CAM Studio's worker: makes the toolpaths, the G-code and the whole cutting simulation away from
 // the page, so the window never freezes while it works. Built into one script (camworker.bundle.txt)
 // that the app starts from a Blob, so it works from the single-file app too.
-import { buildProgram, programStats, toGcode, StockSim, RotarySim } from "./camcore.js";
+import { buildProgram, programStats, toGcode, StockSim, RotarySim, onProgress } from "./camcore.js";
 
 self.onmessage = (e) => {
   const { id, job, tris, mach, post, units, title } = e.data;
   try {
-    self.postMessage({ id, phase: "paths" });
+    self.postMessage({ id, phase: "paths", done: 0 });
+    onProgress((f) => self.postMessage({ id, phase: "paths", done: f }));
     const prog = buildProgram(job, tris);
+    onProgress(null);
     const gcode = toGcode(prog, job, mach, { post, units, title });
     const stats = programStats(prog, mach);
-    const sim = job.rotary ? new RotarySim(job, Math.max(0.3, job.res)) : new StockSim(job, job.res);
+    const sim = job.rotary ? new RotarySim(job, Math.max(0.5, job.res)) : new StockSim(job, job.res);
     let total = 0; for (const o of prog.ops) total += o.moves.length;
     let prev = null, n = 0, last = 0;
     for (const { op, moves } of prog.ops) for (const m of moves) {

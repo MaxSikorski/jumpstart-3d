@@ -17,6 +17,7 @@ export const ICON = {
   sphere: S('<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="8" ry="3"/>'),
   torus: S('<ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="11.5" rx="3.5" ry="1.6"/>'),
   cone: S('<path d="M12 3 5 18M12 3l7 15"/><ellipse cx="12" cy="18" rx="7" ry="2.6"/>'),
+  cosforge: S('<path d="M7 3.5c1.2 1.3 3 2 5 2s3.8-.7 5-2l3.5 3-2.5 3.5-1.5-1V20.5h-9V9l-1.5 1L3.5 6.5z"/><path d="M9.5 12h5M12 9.5v5" stroke="#1f4fa8"/>'),
   flexigen: S('<rect x="2.5" y="9" width="5" height="6" rx="2"/><rect x="9.5" y="8" width="5" height="8" rx="2"/><rect x="16.5" y="9" width="5" height="6" rx="2"/><circle cx="8.5" cy="12" r="1" fill="currentColor"/><circle cx="15.5" cy="12" r="1" fill="currentColor"/>'),
   render: S('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3.2"/><path d="M8.5 3.5h7"/><path d="M17.5 8.5h.01"/>'),
   appearance: S('<path d="M5 13.5 12.5 6l5.5 5.5L10.5 19z"/><path d="M12.5 6 10 3.5"/><path d="M18 11.5h1.2c.8 0 1.3.9.9 1.6l-.8 1.4"/><path d="M20 17.5c0 1-.7 1.8-1.5 1.8s-1.5-.8-1.5-1.8 1.5-3 1.5-3 1.5 2 1.5 3z" fill="currentColor"/>'),

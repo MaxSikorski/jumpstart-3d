@@ -369,6 +369,7 @@ export function initTutorials(app) {
     if (!t) { if (loud) app.toast(step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
     spot = t;
     t.classList.add("tut-spot");
+    try { t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now) scrolls into view before the pop-up points at it
     const r = t.getBoundingClientRect();
     const via = step.show.via && t.matches(step.show.via);
     bubble = el("div", { class: "tut-bubble", id: "tut-bubble", role: "status" },

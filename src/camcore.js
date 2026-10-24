@@ -8,6 +8,10 @@
 // All sizes are millimetres, Z up, in the design's own coordinates.
 
 export const EMPTY = -1e9;
+// progress reporting (the worker listens): fn(fraction 0..1)
+let progressFn = null, progressAt = 0;
+export function onProgress(fn) { progressFn = fn; }
+function progress(f) { if (!progressFn) return; const n = Date.now(); if (n - progressAt > 150 || f >= 1) { progressAt = n; progressFn(Math.max(0, Math.min(1, f))); } }
 const IN = 25.4;
 
 // ------------------------------------------------------------------ libraries
@@ -197,9 +201,11 @@ export function toolKernel(tool, res) {
   return { di: Int32Array.from(di), dj: Int32Array.from(dj), off: Float32Array.from(off), n };
 }
 // the lowest the tool can go at each cell without cutting into the model (drop-cutter)
+let dropBase = 0, dropSpan = 0;
 export function dropMap(hm, kern, floor) {
   const { nx, ny, h } = hm, out = new Float32Array(nx * ny), K = kern.di.length;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    if (i === 0 && (j & 7) === 0) progress(dropBase + (j / ny) * dropSpan);
     let z = floor;
     for (let k = 0; k < K; k++) {
       const ii = i + kern.di[k], jj = j + kern.dj[k];
@@ -467,8 +473,10 @@ export function buildProgram(job, tris) {
   const hm = heightMap(tris, box, job.res);
   const ops = [], warnings = [];
   const drops = new Map();
+  const live = job.ops.filter((o) => o.enabled !== false);
   for (const op of job.ops) {
     if (op.enabled === false) continue;
+    const oi = live.indexOf(op); dropBase = oi / live.length; dropSpan = 1 / live.length; progress(dropBase);
     const key = JSON.stringify([op.tool.type, op.tool.d, op.tool.cr, op.tool.angle, op.tool.tip]);
     const D = () => { if (!drops.has(key)) drops.set(key, dropMap(hm, toolKernel(op.tool, job.res), job.floor)); return drops.get(key); };
     let moves = [];
@@ -656,25 +664,36 @@ function rotaryLine(rel, ang, tool, job, kernCache) {
   const hm = heightMap(t, { x0: R.mx0 - rT, x1: R.mx1 + rT, y0: -rT, y1: rT }, res);
   const key = JSON.stringify([tool.type, tool.d, tool.cr, tool.angle, tool.tip]);
   if (!kernCache.has(key)) kernCache.set(key, toolKernel(tool, res));
-  const D = dropMap(hm, kernCache.get(key), R.core || 0);
-  const j0 = Math.round((0 - hm.y0) / res), out = [];
-  for (let i = 0; i < hm.nx; i++) { const x = hm.x0 + i * res; if (x < R.mx0 - 1e-6 || x > R.mx1 + 1e-6) continue; out.push([x, D[j0 * hm.nx + i]]); }
+  // only the line right under the tool's center is needed
+  const kern = kernCache.get(key), K = kern.di.length, j0 = Math.round((0 - hm.y0) / res), out = [], { nx, ny, h } = hm, floor = R.core || 0;
+  for (let i = 0; i < nx; i++) {
+    const x = hm.x0 + i * res; if (x < R.mx0 - 1e-6 || x > R.mx1 + 1e-6) continue;
+    let z = floor;
+    for (let k = 0; k < K; k++) {
+      const ii = i + kern.di[k], jj = j0 + kern.dj[k];
+      if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+      const v = h[jj * nx + ii]; if (v === EMPTY) continue;
+      const q = v - kern.off[k]; if (q > z) z = q;
+    }
+    out.push([x, z]);
+  }
   return out;
 }
 function buildRotary(job, tris) {
   const R = job.rotary, rel = new Float32Array(tris.length);
   for (let i = 0; i < tris.length; i += 3) { rel[i] = tris[i]; rel[i + 1] = tris[i + 1] - R.yc; rel[i + 2] = tris[i + 2] - R.zc; }
   const kc = new Map(), ops = [], warnings = [];
-  const clear = R.R + 5, deg = (r) => (r * 180) / Math.PI;
+  const clear = R.R + 5, deg = (r) => (r * 180) / Math.PI, liveOps = job.ops.filter((o) => o.enabled !== false), nOps = Math.max(1, liveOps.length);
   for (const op of job.ops) {
     if (op.enabled === false) continue;
+    const oi = liveOps.indexOf(op);
     const t = op.tool, m = [], at = { x: null, z: null, a: null };
     const mv = (g, x, r, a, f) => { m.push({ g, x, y: R.yc, z: R.zc + r, a: +a.toFixed(4), ...(g ? { f } : {}) }); at.x = x; at.z = r; at.a = a; };
     const up = () => { if (at.x !== null && at.z < clear - 1e-6) mv(0, at.x, clear, at.a); };
     if (op.type === "rrough") {
       // flat layers inward from the outside; along X at each angle, cutting where the part is lower
       const so = Math.max(job.res, t.d * op.stepover), nA = Math.max(8, Math.ceil((2 * Math.PI * R.R) / so)), sd = Math.max(0.05, op.stepdown), leave = op.leave || 0;
-      const lines = []; for (let k = 0; k < nA; k++) { const a = (2 * Math.PI * k) / nA; lines.push({ a, pts: rotaryLine(rel, a, t, job, kc) }); }
+      const lines = []; for (let k = 0; k < nA; k++) { const a = (2 * Math.PI * k) / nA; lines.push({ a, pts: rotaryLine(rel, a, t, job, kc) }); progress((oi + (k / nA) * 0.5) / nOps); }
       let lo = Infinity; for (const L of lines) for (const p of L.pts) lo = Math.min(lo, p[1] + leave);
       const rs = []; for (let r = R.R - sd; r > lo + 1e-6; r -= sd) rs.push(r); rs.push(Math.max(lo, R.core || 0));
       let flip = false, prevR = R.R;
@@ -699,6 +718,7 @@ function buildRotary(job, tris) {
       const so = Math.max(job.res * 0.5, t.d * op.stepover), nA = Math.max(12, Math.ceil((2 * Math.PI * rMax) / so));
       let flip = false;
       for (let k = 0; k <= nA; k++) {
+        progress((oi + k / nA) / nOps);
         const a = (2 * Math.PI * k) / nA, pts = rotaryLine(rel, a, t, job, kc).map((p) => [p[0], Math.max(R.core || 0, p[1]), 0]);
         if (!pts.length) continue;
         let line = simplify(pts, op.tol || 0.03);
@@ -731,11 +751,11 @@ export class RotarySim {
     this.removed = 0; this.rapidHits = 0; this.tooDeep = 0; this.kern = new Map();
     this.rotary = true;
   }
-  kernel(tool) { const k = JSON.stringify([tool.type, tool.d, tool.cr, tool.angle, tool.tip]); if (!this.kern.has(k)) this.kern.set(k, toolKernel(tool, this.res * 0.75)); return this.kern.get(k); }
+  kernel(tool) { const k = JSON.stringify([tool.type, tool.d, tool.cr, tool.angle, tool.tip]); if (!this.kern.has(k)) this.kern.set(k, toolKernel(tool, this.res)); return this.kern.get(k); }
   move(a, b, tool, g) {
     const K = this.kernel(tool), r0 = a.z - this.zc, r1 = b.z - this.zc, A0 = ((a.a || 0) * Math.PI) / 180, A1 = ((b.a ?? a.a ?? 0) * Math.PI) / 180;
     const L = Math.hypot(b.x - a.x, r1 - r0, Math.max(r0, r1) * (A1 - A0)), n = Math.max(1, Math.ceil(L / (this.res * 0.6)));
-    const { nx, na, rho, res } = this, kr = res * 0.75, da = (2 * Math.PI) / na, flute = tool.len || 1e9;
+    const { nx, na, rho, res } = this, kr = res, da = (2 * Math.PI) / na, flute = tool.len || 1e9;
     let hit = false;
     for (let s = 0; s <= n; s++) {
       const f = s / n, x = a.x + (b.x - a.x) * f, r = r0 + (r1 - r0) * f, A = A0 + (A1 - A0) * f;

@@ -13,6 +13,7 @@
       "ad-sweep"
     ],
     "Beginner toolbar": [
+      "bb-cosforge",
       "bb-extrude",
       "bb-import",
       "bb-sketch",
@@ -70,6 +71,7 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
+      "sim-cosforge",
       "sim-drive",
       "sim-joint",
       "sim-motion",
