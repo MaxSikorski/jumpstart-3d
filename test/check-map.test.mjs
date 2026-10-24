@@ -4,7 +4,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,18 @@ function run(args, { home: h = home, cwd } = {}) {
   const r = spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf8", cwd, env: { ...process.env, HOME: h, USERPROFILE: h } });
   return { lines: r.stdout.trimEnd().split("\n"), stderr: r.stderr, code: r.status };
 }
+// A scratch repo from { "relative/path": "text" }.
+function makeRepo(files) {
+  const root = folder();
+  for (const [rel, text] of Object.entries(files)) {
+    mkdirSync(join(root, rel, ".."), { recursive: true });
+    writeFileSync(join(root, rel), text);
+  }
+  return root;
+}
+const failLines = (r) => r.lines.filter((l) => l.startsWith("FAIL"));
+// Claude Code names a project's folder after its path with every character that is not a letter or digit turned into -.
+const slug = (root) => root.replace(/[^a-zA-Z0-9]/g, "-");
 const withMemory = (root) => ["--root", root, "--memory-dir", join(root, "memory")];
 
 // A scratch repo for the rules about bare file names, slashes that are not paths, and upper/lower case.
@@ -153,10 +165,10 @@ test("a repo without AGENTS.md, guides or memory is skipped line by line, not fa
   assert.equal(r.code, 0);
 });
 
-// A home folder with ~/.claude/projects/<root with every / as ->/memory/ holding the named notes, and the home-only skill.
+// A home folder with ~/.claude/projects/<slug of root>/memory/ holding the named notes, and the home-only skill.
 function homeFor(root, notes) {
   const h = folder();
-  const memory = join(h, ".claude", "projects", root.replaceAll("/", "-"), "memory");
+  const memory = join(h, ".claude", "projects", slug(root), "memory");
   mkdirSync(memory, { recursive: true });
   for (const n of notes) writeFileSync(join(memory, `${n}.md`), `# ${n}\n`);
   mkdirSync(join(h, ".claude", "skills", "home-skill"), { recursive: true });
@@ -164,10 +176,10 @@ function homeFor(root, notes) {
   return h;
 }
 
-test("the memory folder defaults to ~/.claude/projects/<root with / as ->/memory, and a missing name is shown with ~", () => {
+test("the memory folder defaults to ~/.claude/projects/<root with every non-alphanumeric as ->/memory, and a missing name is shown with ~", () => {
   const h = homeFor(clean, ["real-note"]);
   const r = run(["--root", clean], { home: h });
-  const where = `~/.claude/projects/${clean.replaceAll("/", "-")}/memory/other-note.md`;
+  const where = `~/.claude/projects/${slug(clean)}/memory/other-note.md`;
   assert.deepEqual(r.lines, [
     "OK paths (8 checked)",
     "OK skills (2)",
@@ -218,4 +230,121 @@ test("a bare name found nowhere (or only in node_modules, .git, or docs, dist an
   ]);
   assert.equal(r.lines.at(-1), "check-map: 14 problem(s)");
   assert.equal(r.code, 1);
+});
+
+test("the memory folder name turns dots and underscores into - too (a root with a dot in its path)", () => {
+  const root = join(folder(), "my.repo_x");
+  cpSync(clean, root, { recursive: true });
+  const r = run(["--root", root], { home: homeFor(root, ["real-note", "other-note"]) });
+  assert.deepEqual(r.lines, CLEAN);
+  assert.equal(r.code, 0);
+});
+
+test("bare names are not found in junk copies: folders the root .gitignore lists, a nested worktree (a folder with its own .git), and test/fixtures", () => {
+  const root = makeRepo({
+    ".gitignore": "/ignored-out/\nnode_modules/\n# a comment\n*.log\n/not-a-folder.html\n!keep/\n",
+    "ignored-out/only-in-ignored-out.js": "//\n",
+    "wt/copy/.git": "gitdir: elsewhere\n",
+    "wt/copy/only-in-worktree.js": "//\n",
+    "test/fixtures/only-in-fixtures.js": "//\n",
+    "real/only-in-real.js": "//\n",
+    "build/only-in-build.js": "//\n", // not listed by this .gitignore, so it counts
+    "AGENTS.md": "# Junk\n\n- Found: `only-in-real.js`, `only-in-build.js`.\n- Not found: `only-in-ignored-out.js`, `only-in-worktree.js`, `only-in-fixtures.js`.\n",
+  });
+  const r = run(["--root", root]);
+  assert.deepEqual(failLines(r), ["only-in-ignored-out.js", "only-in-worktree.js", "only-in-fixtures.js"].map((t) => `FAIL: AGENTS.md:4 path \`${t}\` not found → fix the path or create it`));
+  assert.equal(r.lines.at(-1), "check-map: 3 problem(s)");
+});
+
+test("without a .gitignore the build and report folders are skipped", () => {
+  const folders = ["build", "playwright-report", "chat-bench-results", "lighthouse-report"];
+  const root = makeRepo({
+    ...Object.fromEntries(folders.map((f) => [`${f}/only-in-${f}.js`, "//\n"])),
+    "AGENTS.md": `# Junk\n\n- Not found: ${folders.map((f) => `\`only-in-${f}.js\``).join(", ")}.\n`,
+  });
+  const r = run(["--root", root]);
+  assert.deepEqual(failLines(r), folders.map((f) => `FAIL: AGENTS.md:3 path \`only-in-${f}.js\` not found → fix the path or create it`));
+});
+
+test("a citation with a line, a line range, an anchor or a leading @ points at the file", () => {
+  const root = makeRepo({
+    "AGENTS.md": "# Root\n",
+    "src/app.js": "//\n",
+    "test/README.md": "# Tests\n",
+    "cite.md": "# Cite\n\n- Good: `@AGENTS.md`, `src/app.js:10-20`, `src/app.js:10:5`, `src/app.js#L10`, `test/README.md#slicer-and-step-judge`, `src/app.js:12,`.\n",
+    "cite-bad.md": "# Cite\n\n- Bad: `src/nope.js#L3`, `@missing.md`, `src/nope.js:4-6`.\n",
+  });
+  const good = run(["--root", root, "cite.md"]);
+  assert.equal(good.lines[0], "OK paths (6 checked)");
+  assert.equal(good.code, 0);
+  assert.deepEqual(failLines(run(["--root", root, "cite-bad.md"])), [
+    "FAIL: cite-bad.md:3 path `src/nope.js` not found → fix the path or create it",
+    "FAIL: cite-bad.md:3 path `missing.md` not found → fix the path or create it",
+    "FAIL: cite-bad.md:3 path `src/nope.js` not found → fix the path or create it",
+  ]);
+});
+
+test("a skill can be a .claude/commands/<name>.md file in the repo or the home folder, or a built-in command; /tmp and the like are not skills", () => {
+  const root = makeRepo({
+    ".claude/skills/in-root/SKILL.md": "# s\n",
+    ".claude/commands/cmd-root.md": "# c\n",
+    "found.md": "# Found\n\n- Found: `/in-root`, `/cmd-root`, `/cmd-home`, `/skill-home`; built in: `/help`, `/security-review`, `/reload-plugins`.\n- Folders: `/tmp`, `/usr`, `/etc`, `/var`, `/opt`, `/bin`, `/dev`.\n",
+    "missing.md": "# Missing\n\n- Missing: `/nope-skill`, `/helpful`.\n",
+  });
+  const h = makeRepo({ ".claude/commands/cmd-home.md": "# c\n", ".claude/skills/skill-home/SKILL.md": "# s\n" });
+  assert.deepEqual(run(["--root", root, "found.md"], { home: h }).lines.filter((l) => l.includes("skill")), ["OK skills (7)"]);
+  assert.deepEqual(failLines(run(["--root", root, "missing.md"], { home: h })), [
+    "FAIL: missing.md:3 skill /nope-skill not found → .claude/skills/nope-skill/SKILL.md",
+    "FAIL: missing.md:3 skill /helpful not found → .claude/skills/helpful/SKILL.md",
+  ]);
+});
+
+test("a sentence inside a fenced block is not a duplicate; the same sentence in prose still is", () => {
+  const fence = ["```", "Run this long command line twice, once in each file, to see no warning.", "```"];
+  const root = makeRepo({
+    "a.md": ["# A", "", "Prose that belongs only to file a, and is long enough to count.", "", ...fence, ""].join("\n"),
+    "b.md": ["# B", "", "Prose that belongs only to file b, and is long enough to count.", "", ...fence, ""].join("\n"),
+    "c.md": "# C\n\nRun this long command line twice, once in each file, to see no warning.\n",
+    "d.md": "# D\n\nRun this long command line twice, once in each file, to see no warning.\n",
+  });
+  assert.equal(run(["--root", root, "--strict", "a.md", "b.md"]).lines.find((l) => l.includes("duplicates")), "OK duplicates (2 sentences)");
+  assert.equal(run(["--root", root, "a.md", "c.md"]).lines.find((l) => l.startsWith("WARN")), undefined); // fenced in one file, prose in the other
+  assert.equal(run(["--root", root, "c.md", "d.md"]).lines.find((l) => l.startsWith("WARN")), "WARN: duplicate sentence in c.md:3 and d.md:3: \"Run this long command line twice, once in each file, to see …\"");
+});
+
+test("more file types count as paths, a leading dot is a path, and a domain is not (unless it is a folder in the repo)", () => {
+  const root = makeRepo({
+    "site.io/exists.txt": "x\n",
+    "AGENTS.md": [
+      "# Types",
+      "",
+      "- Missing: `.cluade/guide`, `old.py`, `style.css`, `conf.ini`, `page.htm`, `mod.cjs`, `logo.svg`, `pyproject.toml`.",
+      "- Not paths: `github.com/owner/repo`, `docs.example.org/page.md`, `example.dev/a/b`.",
+      "- A folder that looks like a domain: `site.io/`, `site.io/missing.md`.",
+      "",
+    ].join("\n"),
+  });
+  const r = run(["--root", root]);
+  assert.deepEqual(failLines(r), [
+    ...[".cluade/guide", "old.py", "style.css", "conf.ini", "page.htm", "mod.cjs", "logo.svg", "pyproject.toml"].map((t) => `FAIL: AGENTS.md:3 path \`${t}\` not found → fix the path or create it`),
+    "FAIL: AGENTS.md:5 path `site.io/missing.md` not found → fix the path or create it",
+  ]);
+  assert.equal(r.lines.at(-1), "check-map: 9 problem(s)");
+});
+
+test("a link to nothing with a trailing / is not found, with no stack trace", () => {
+  const root = makeRepo({ "AGENTS.md": "# Links\n\n- A broken link: `broken/`.\n" });
+  symlinkSync(join(root, "nowhere"), join(root, "broken"));
+  const r = run(["--root", root]);
+  assert.equal(r.stderr, "");
+  assert.deepEqual(failLines(r), ["FAIL: AGENTS.md:3 path `broken/` not found → fix the path or create it"]);
+  assert.equal(r.code, 1);
+});
+
+test("a memory 'name' that starts with ~ or / is a path, not a name", () => {
+  const root = makeRepo({ "AGENTS.md": "# Memory\n\n- See memory `~/.claude/projects/x/memory/` and memory `/tmp/y`, and Memory `real-note`.\n" });
+  const memory = makeRepo({ "real-note.md": "# n\n" });
+  const r = run(["--root", root, "--memory-dir", memory]);
+  assert.equal(r.lines.find((l) => l.includes("memory names")), "OK memory names (1)");
+  assert.equal(r.code, 0);
 });
