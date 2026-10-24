@@ -1229,6 +1229,26 @@ for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: t
   });
 }
 
+// A save clears the deletion marker only if it is not newer than the edit: another tab's Delete that committed right after the save keeps its marker.
+for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: true }]]) {
+  scenario(`a save of an edit older than the deletion marker leaves the marker, a later edit clears it (${label})`, async (w) => {
+    const D = "t_chaos_d";
+    const page = await openPage(w, cfg);
+    await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
+    expect(await page.evaluate(async (id) => window.__app.projects._store.del(id), D), "deleted").toBe(true);
+    const doc = step(w, D, "again", 5).doc;
+    const save = (at) => page.evaluate(async ({ doc, at }) => { const s = window.__app.projects._store; return s.put(doc.id, JSON.stringify({ ...doc, _updated: at }), { id: doc.id, name: doc.name, ver: 0, mode: doc.mode, updated: at, thumb: null }); }, { doc, at });
+    const marked = async () => { const x = await marker(page, D); return x.ls !== null || x.idb !== null; };
+    expect(await marked(), "the delete left a marker").toBe(true);
+    expect(await save(Date.now() - 60_000), "the older edit is saved").toBe(true);
+    await page.waitForTimeout(300); // the marker is cleared (or not) by a small transaction after the save
+    expect(await marked(), "the marker of the later delete stays").toBe(true);
+    expect(await save(Date.now() + 1000), "a later edit is saved").toBe(true);
+    await expect.poll(marked, { message: "and clears the marker" }).toBe(false);
+    await closeClean(page);
+  });
+}
+
 // An ordinary save must not wait for a transaction that holds the `meta` store: the tab closing writes its rescue copy there and cannot
 // afford to queue behind a save in progress (only a rescue replay locks it).
 scenario("an ordinary save does not wait for a transaction on the meta store (IndexedDB)", async (w) => {
