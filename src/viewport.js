@@ -151,7 +151,7 @@ export class Viewport {
       fragmentShader: GRID_FS,
       transparent: true,
       depthWrite: false,
-      // jumpstart-3d: the grid is drawn after solids (transparent pass); pushing it back lets a face lying on z = 0, such as an Architect floor, win
+      // jumpstart-3d: the grid is drawn after solids (transparent pass); pushing it back lets a face lying on z = 0, such as an Architect floor, win (solids carry their own offset of 1, scene.js, so they also win over the grid at z = 0)
       polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
       side: THREE.DoubleSide,
       extensions: { derivatives: true },
