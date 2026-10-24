@@ -1,6 +1,7 @@
 {
   "name": "jumpstart-3d",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
