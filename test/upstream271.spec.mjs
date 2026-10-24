@@ -221,6 +221,29 @@ test.describe("version 2.7.1", () => {
     await closeCosForge();
   });
 
+  test("the page API refuses to edit or replace the design while CosForge is open, and works once it is closed", async () => {
+    await loadDoc(page, newDoc("Upstream 2.7.1 api", "advanced", { bodies: [body("b1", "Block", prim("box", { w: 20, d: 20, h: 10, r: 0, c: 0 }))] }));
+    await openFromAdvanced();
+    const snap = () => cf(() => JSON.stringify(window.JS3D.list().map((e) => [e.id, e.name])));
+    const before = await snap();
+    const tries = await cf(() => {
+      const out = {};
+      for (const [k, fn] of [["newDesign", () => window.JS3D.newDesign("beginner")], ["add", () => window.JS3D.add("box")]]) {
+        try { fn(); out[k] = "allowed"; } catch (e) { out[k] = e.message; }
+      }
+      return out;
+    });
+    expect(tries).toEqual({ newDesign: "close CosForge first", add: "close CosForge first" });
+    expect(await snap()).toBe(before);
+    expect(await cf(() => window.__store.doc.name)).toBe("Upstream 2.7.1 api");
+    await closeCosForge();
+    await cf(() => window.JS3D.add("box"));
+    await waitIdle(page);
+    expect((await cf(() => window.JS3D.list())).length).toBe(2);
+    await cf(() => window.JS3D.newDesign("advanced"));
+    expect(await cf(() => window.JS3D.list().length)).toBe(0);
+  });
+
   test("CAM Studio still opens and makes G-code from a part", async () => {
     await loadDoc(page, newDoc("Upstream 2.7.1 cam", "advanced", { bodies: [body("b1", "Block", prim("box", { w: 40, d: 30, h: 10, r: 0, c: 0 }))] }));
     await waitIdle(page);
