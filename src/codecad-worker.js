@@ -63,7 +63,7 @@ function engineFunction(args) {
   return ENGINE_BODIES.some((re) => re.test(args[1])) ? { names: names.join(","), body: args[1] } : null;
 }
 
-let locked = false;
+let locked = false, lockFailure = null;
 let lookedAt = ""; // the last blocked name the code touched, so an error like "x is not a function" can say what was not allowed
 
 // hides every own name of obj and of its prototypes (up to Object.prototype) that is not in `allowed`: the name reads as undefined,
@@ -77,14 +77,33 @@ function hideAllExcept(obj, allowed) {
     }
   }
 }
+// Fails closed: the first name that is not allowed and still reads as an object or function (a getter that throws counts as hidden), or "".
+// A plain number or string cannot do anything, and the browser has a few it will not let anyone remove (TEMPORARY and PERSISTENT).
+function stillVisible(obj, allowed) {
+  for (let o = obj; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+    for (const name of Object.getOwnPropertyNames(o)) {
+      if (allowed.has(name)) continue;
+      try {
+        const v = Reflect.get(o, name, obj);
+        if (v !== null && (typeof v === "object" || typeof v === "function")) return name;
+      } catch (e) { /* hidden */ }
+    }
+  }
+  return "";
+}
 function pin(obj, name, value) {
   Object.defineProperty(obj, name, { value, writable: false, configurable: false });
 }
 
 // Once per temporary worker: after the engine has loaded (loading it needs fetch) and before the first user code.
 function lockDown() {
+  if (lockFailure) throw lockFailure;
   if (locked) return;
+  try { lockNow(); }
+  catch (e) { lockFailure = e; throw e; } // half locked is not locked: no code runs in this worker
   locked = true;
+}
+function lockNow() {
   const blocked = function (...args) {
     const shape = engineFunction(args);
     if (!shape) throw new Error(NO_CODE);
@@ -107,6 +126,9 @@ function lockDown() {
   const nav = self.navigator;
   hideAllExcept(self, ALLOWED_GLOBALS);
   if (nav) hideAllExcept(nav, ALLOWED_NAVIGATOR);
+  const open = stillVisible(self, ALLOWED_GLOBALS) || (nav ? stillVisible(nav, ALLOWED_NAVIGATOR) : "");
+  lookedAt = "";
+  if (open) throw new Error(`Code CAD could not lock the worker (${open}); the code was not run.`);
 }
 
 const WRONG_TYPE = "The code must return one solid, not a drawing, sketch, face, line, list or nothing. Extrude or revolve a sketch to make a solid.";

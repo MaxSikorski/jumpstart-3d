@@ -608,6 +608,8 @@ const LOCKED = [
   ["importScripts", 'self.importScripts("https://example.com/x.js"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /\(importScripts\)/],
   ["Worker", 'new Worker("data:text/javascript,1"); return replicad.makeBox([0, 0, 0], [10, 10, 10]);', /other workers.*\(Worker\)/],
 ];
+const ALLOWED_GLOBALS = ("Object Function Array Number parseFloat parseInt Infinity NaN undefined Boolean String Symbol Date Promise RegExp Error AggregateError EvalError RangeError ReferenceError SyntaxError TypeError URIError globalThis JSON Math Intl ArrayBuffer SharedArrayBuffer Atomics Uint8Array Int8Array Uint16Array Int16Array Uint32Array Int32Array Float16Array Float32Array Float64Array Uint8ClampedArray BigUint64Array BigInt64Array DataView Map BigInt Set WeakMap WeakSet WeakRef FinalizationRegistry Proxy Reflect Iterator decodeURI decodeURIComponent encodeURI encodeURIComponent escape unescape eval isFinite isNaN WebAssembly console TextDecoder TextEncoder Blob URL performance navigator self close postMessage onmessage onmessageerror addEventListener removeEventListener dispatchEvent queueMicrotask structuredClone setTimeout clearTimeout setInterval clearInterval").split(" ");
+const ALLOWED_NAVIGATOR = "hardwareConcurrency userAgent platform language languages".split(" ");
 for (const [name, code, message] of LOCKED) {
   test(`locked down: ${name} ends in a plain error, with no body and no request outside the app`, async ({}, info) => {
     await fresh();
@@ -641,4 +643,25 @@ test("locked down: the code still builds after a refused one, and a normal examp
   const ok = await build({ code: 'setTimeout(() => {}, 0); const f = () => 1; f.constructor; return replicad.makeBox([0, 0, 0], [10, 10, 10]);' });
   expect(ok.error).toBeUndefined();
   near(await volumeOf(ok.id), 1000);
+});
+
+test("locked down: the code itself finds no global or navigator name that is not allowed and still reachable", async () => {
+  await fresh();
+  // the same walk the lock does, run from inside the user's code; the names are the allowlist in src/codecad-worker.js
+  const code = `
+    const globalsOk = new Set(${JSON.stringify(ALLOWED_GLOBALS)}), navOk = new Set(${JSON.stringify(ALLOWED_NAVIGATOR)});
+    const open = [];
+    for (const [root, ok, label] of [[self, globalsOk, ""], [self.navigator, navOk, "navigator."]]) {
+      for (let o = root; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+        for (const n of Object.getOwnPropertyNames(o)) {
+          if (ok.has(n)) continue;
+          try { const v = Reflect.get(o, n, root); if (v !== null && (typeof v === "object" || typeof v === "function")) open.push(label + n); } catch (e) {}
+        }
+      }
+    }
+    if (open.length) throw new Error("still readable: " + open.join(", "));
+    return replicad.makeBox([0, 0, 0], [10, 10, 10]);`;
+  const r = await build({ code });
+  expect(r.error).toBeUndefined();
+  near(await volumeOf(r.id), 1000);
 });
