@@ -1,12 +1,14 @@
 // The piece starter (tools/agent/new-piece.mjs): a worktree on a new --no-track branch from a fresh origin/main, a verified empty upstream, the node_modules link, and a free test port.
 // Every test runs on scratch repos (a local bare "origin" and a main checkout) with HOME, GH_CONFIG_DIR and PATH pointed at scratch folders (see piece-helpers.mjs),
-// so nothing reaches GitHub, the real ~/.gitconfig or this repo. Ports (8805, 8815 ... 8895, each needing p, p+1 and p+2 free): the tool is told nothing, so the tests look at what is free on this machine first.
+// so nothing reaches GitHub, the real ~/.gitconfig or this repo. The choice of the port itself is tested in ports.test.mjs; here only that new-piece uses it (8805, 8815 ... 8895),
+// writes the claim ports.mjs reads, and makes nothing when no port is free.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BASES, firstFreeBase, hold, makeWorld } from "./piece-helpers.mjs";
+import { claimedPorts, freePort } from "../tools/agent/ports.mjs";
+import { BASES, hold, makeWorld } from "./piece-helpers.mjs";
 
 const TOOL = fileURLToPath(new URL("../tools/agent/new-piece.mjs", import.meta.url));
 const world = makeWorld("new-piece");
@@ -78,6 +80,7 @@ test("without --root it works on the repo the script lives in", () => {
   const copy = join(repo.root, "tools", "agent");
   mkdirSync(copy, { recursive: true });
   writeFileSync(join(copy, "new-piece.mjs"), readFileSync(TOOL));
+  writeFileSync(join(copy, "ports.mjs"), readFileSync(fileURLToPath(new URL("../tools/agent/ports.mjs", import.meta.url)))); // the tool imports it from its own folder
   g(repo.root, "add", ".");
   g(repo.root, "commit", "-q", "-m", "tool");
   const r = world.run(join(copy, "new-piece.mjs"), ["viaroot"], { cwd: join(repo.dir) });
@@ -173,42 +176,23 @@ test("a branch that tracks origin/main is caught by the upstream check (a git th
   assert.equal(g(repo.root, "rev-parse", "--abbrev-ref", "leaky@{upstream}"), "origin/main", "the shim really made a tracking branch");
 });
 
-test("the port: a port in use anywhere in the block of three (p, p+1, p+2) takes the block; p+3 does not", async () => {
-  for (const offset of [0, 1, 2, 3]) {
-    const repo = world.makeRepo();
-    const base = await firstFreeBase();
-    const busy = await hold(base + offset);
-    try {
-      const r = start(repo, ["one"]);
-      assert.equal(r.code, 0, r.lines.join("\n"));
-      if (offset < 3) assert.ok(portOf(r) > base, `something listens on ${base + offset}, so ${base} is skipped (got ${portOf(r)})`);
-      else assert.equal(portOf(r), base, `something listens on ${base + 3}, which is outside the block of ${base}`);
-    } finally { await busy.close(); }
-    if (offset < 3) {
-      // With the listener gone the block is free again, and a new piece gets it (the first piece's file claims another block).
-      const again = start(repo, ["two"]);
-      assert.equal(again.code, 0, again.lines.join("\n"));
-      assert.equal(portOf(again), base);
-    }
-  }
-});
-
-test("the port: a block that another worktree claims in its .js3d-port (or the root does) is skipped, even with nothing listening", () => {
+test("the port claim: new-piece writes the port as a number on the first line of .js3d-port, and the shared freePort skips what it claimed", async () => {
   const repo = world.makeRepo();
   const first = portOf(start(repo, ["a"]));
   const second = portOf(start(repo, ["b"]));
   assert.notEqual(second, first, "the second piece does not reuse the first piece's port");
-  assert.equal(second > first, true);
-  assert.equal(readFileSync(join(repo.sibling("b"), ".js3d-port"), "utf8"), `${second}\n`);
-  // The main checkout may claim a port too, even one that is not on the grid: second + 11 lies inside the block of second + 10 and takes it.
-  writeFileSync(join(repo.root, ".js3d-port"), `${second + 11}\n`);
-  const third = portOf(start(repo, ["c"]));
-  assert.ok(![first, second, second + 10].includes(third) && Math.abs(third - (second + 11)) > 2, `third port ${third} avoids the blocks of ${first}, ${second} and the root's ${second + 11}`);
-  // Removing a piece (as done-piece does) frees its port.
+  assert.ok(second > first);
+  for (const [name, port] of [["a", first], ["b", second]]) {
+    const claim = readFileSync(join(repo.sibling(name), ".js3d-port"), "utf8");
+    assert.equal(claim, `${port}\n`);
+    assert.equal(claimedPorts([repo.sibling(name)]).has(port), true, "ports.mjs reads the claim back");
+  }
+  const next = await freePort({ root: repo.root });
+  assert.ok(next > second, `freePort answers ${next}, past both claimed blocks (${first}, ${second})`);
+  // Removing a piece (as done-piece does) takes its claim with it.
   rmSync(repo.sibling("a"), { recursive: true, force: true });
   g(repo.root, "worktree", "prune");
-  const again = portOf(start(repo, ["d"]));
-  assert.equal(again, first);
+  assert.equal(portOf(start(repo, ["c"])), first);
 });
 
 test("the port: when no block is free the run stops before anything is made", async () => {

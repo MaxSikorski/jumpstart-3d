@@ -148,17 +148,6 @@ function listen(port) {
 }
 const close = (server) => new Promise((done) => server.close(done));
 
-// The first base whose p, p+1 and p+2 can all be listened on right now: the test's own answer to what the tool should pick.
-export async function firstFreeBase() {
-  for (const base of BASES) {
-    const held = [];
-    for (let i = 0; i < 3; i++) { const s = await listen(base + i); if (s) held.push(s); else break; }
-    await Promise.all(held.map(close));
-    if (held.length === 3) return base;
-  }
-  throw new Error("no free block of three ports from 8805 to 8897 on this machine");
-}
-
 // Listens on each port that is free (ports already taken by something else are skipped) and returns { held: [ports], close() }.
 export async function hold(...ports) {
   const servers = [];

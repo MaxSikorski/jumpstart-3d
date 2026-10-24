@@ -1,0 +1,13 @@
+p38943
+fcwd
+n/Users/dev/Projects/jumpstart-3d-chaos-b
+f1
+n/private/tmp/scratch/chaos-b/4a.log
+p41002
+fcwd
+n/Users/dev/Projects/jumpstart-3d-codecad
+f1
+n->0x4f2e1d7d3b6c2a91
+p41100
+fcwd
+n/Users/dev/Projects/jumpstart-3d

@@ -5,20 +5,18 @@
 // (a branch that tracks origin/main once made a Desktop push land on main); node_modules is linked from the root (skipped when the root has none); the port is written to
 // <folder>/.js3d-port and that file name is added to the repo's info/exclude (git shares it with every worktree), so it never shows up in git status.
 // The folder is a sibling of the root: <root-folder-name>-<name>, e.g. ../jumpstart-3d-<name>. The branch is <name> unless --branch says otherwise.
-// The port is JS3D_PORT for the Playwright run: the first of 8805, 8815, ... 8895 (testing.md: "a free port from 8805") whose p, p+1 and p+2 all refuse a connect on 127.0.0.1
-// (playwright.config.mjs serves the site on p and the mobile gzip build on p+2; p+1 stays free for the single-file preview) and that no worktree of this repo, the root included,
-// already claims in its .js3d-port.
+// The port is JS3D_PORT for the Playwright run, chosen by freePort in ports.mjs (the shared test-port convention: 8805, 8815 ... 8895, with p, p+1 and p+2 all unanswered on
+// 127.0.0.1 and not claimed in the .js3d-port of any worktree of this repo, the root included). The claim file holds the port as a number on its first line.
 // Last line: `new-piece: OK <folder> (branch <branch>, JS3D_PORT=<port>)`, or `new-piece: 1 problem(s)` after a FAIL (exit 1). A bad command line exits 2.
 // Run it from the main checkout: `node tools/agent/new-piece.mjs <name>`; --root points at a different checkout. Argument-list spawns only (no shell); git speaks English and never asks.
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
-import net from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { PORT_FILE, PORT_FIRST, PORT_LAST, PORT_SPAN, PORT_STEP, freePort } from "./ports.mjs";
 
 const USAGE = "usage: node tools/agent/new-piece.mjs <name> [--branch <branch>] [--root <repo>]  (worktree ../<repo-folder>-<name> on a new branch, default <name>, cut from origin/main, no upstream)";
-const PORT_FILE = ".js3d-port";
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 // Runs git with an argument list. Never throws; { ok, out, err } with trimmed text.
@@ -33,48 +31,6 @@ function worktreePaths(root) {
   const r = git(["worktree", "list", "--porcelain"], root);
   return r.ok ? r.out.split("\n").filter((l) => l.startsWith("worktree ")).map((l) => l.slice("worktree ".length)) : [root];
 }
-
-// ---- Port choice -----------------------------------------------------------------------------------------------------------------------------------
-// One small section on purpose: pickPort(root) can later be swapped for a shared tools/agent/ports.mjs. It answers a base port for JS3D_PORT, or null when none is free.
-export const PORT_FIRST = 8805;
-export const PORT_LAST = 8895;
-export const PORT_STEP = 10;
-export const PORT_SPAN = 3; // p, p+1 and p+2: the site server, the single-file preview and the mobile gzip server
-
-// True when something accepts a connection on the port (or does not answer at all); false only when the connection is refused.
-export function isListening(port, host = "127.0.0.1") {
-  return new Promise((done) => {
-    const socket = net.connect({ port, host });
-    const finish = (busy) => { socket.destroy(); done(busy); };
-    socket.setTimeout(500);
-    socket.once("connect", () => finish(true));
-    socket.once("timeout", () => finish(true));
-    socket.once("error", (e) => finish(e.code !== "ECONNREFUSED"));
-  });
-}
-
-// The ports written in the .js3d-port of every worktree of the repo (the root included).
-function claimedPorts(root) {
-  const claimed = [];
-  for (const wt of worktreePaths(root)) {
-    try { const n = Number.parseInt(readFileSync(join(wt, PORT_FILE), "utf8"), 10); if (Number.isInteger(n)) claimed.push(n); } catch { /* no claim here */ }
-  }
-  return claimed;
-}
-
-// The first base port from PORT_FIRST to PORT_LAST (every PORT_STEP) whose whole block, base .. base + PORT_SPAN - 1, is unclaimed and not listening; null when there is none.
-// A claim on any port inside a candidate's block (a claim of 8806 blocks 8805) takes the whole block.
-export async function pickPort(root) {
-  const claimed = claimedPorts(root);
-  for (let base = PORT_FIRST; base <= PORT_LAST; base += PORT_STEP) {
-    if (claimed.some((c) => c > base - PORT_SPAN && c < base + PORT_SPAN)) continue;
-    let free = true;
-    for (let p = base; p < base + PORT_SPAN && free; p++) if (await isListening(p)) free = false;
-    if (free) return base;
-  }
-  return null;
-}
-// ---- End of port choice ----------------------------------------------------------------------------------------------------------------------------
 
 // Adds .js3d-port to the repo's info/exclude (once). `git rev-parse --git-path` answers for the worktree it is run in; for info/exclude that is the shared file.
 function excludePortFile(folder) {
@@ -135,7 +91,7 @@ export async function newPiece({ name, branch = name, root, say = console.log })
   say(`OK names free (branch ${branch}, folder ${folder})`);
 
   // 4. A free test port, chosen now so that a full house leaves nothing half made
-  const port = await pickPort(root);
+  const port = await freePort({ root });
   if (port === null) return stop(`no free test port: each block of ${PORT_SPAN} ports from ${PORT_FIRST}, ${PORT_FIRST + PORT_STEP} ... ${PORT_LAST} has a port in use or claimed`, "finish an old piece with node tools/agent/done-piece.mjs <branch> or stop a test server, then run it again");
   say(`OK port ${port} (${port}-${port + PORT_SPAN - 1} are not in use and no worktree claims them)`);
 
