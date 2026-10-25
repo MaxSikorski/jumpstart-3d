@@ -4,6 +4,7 @@ import * as R from "replicad";
 import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: the round-face-safe merge after a boolean (exported for the STEP import)
 import { fontBytes } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
+import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
 
 let OC = null;
 export async function initKernel(opencascade, wasmBinary) {
@@ -1040,6 +1041,13 @@ function applyMod(shape, mod) {
     case "keeppiece": {
       const pieces = solidPieces(shape);
       shape.delete();
+      if (mod.sole && pieces.length !== mod.count) {
+        // jumpstart-3d: a lone kept piece (the rest were near-empty films): keep the significant solids, whatever the count is now
+        let keep = pieces.filter(p => !isNearEmpty(Math.abs(safeVolume(p)), (() => { try { return R.measureArea(p); } catch (e) { return 0; } })()));
+        if (!keep.length) keep = pieces;
+        pieces.forEach(p => { if (!keep.includes(p)) p.delete(); });
+        return keep.length === 1 ? keep[0] : R.makeCompound(keep);
+      }
       if (pieces.length !== mod.count || !Number.isInteger(mod.piece) || mod.piece < 0 || mod.piece >= pieces.length) {
         pieces.forEach(p => p.delete());
         throw new Error(`Keep piece ${mod.piece + 1}: expected ${mod.count} separate solids, found ${pieces.length}. Undo the upstream change or recreate Combine/Group.`);
@@ -3255,6 +3263,7 @@ export function buildBodies(bodies, quality = 1) {
       if (mesh.solidCount > 1 && mesh.solidCount <= 256) { // not for huge multi-solid bodies: every build would pay for it
         const pieces = solidPieces(shape);
         mesh.solidVolumes = pieces.map(p => Math.abs(safeVolume(p)));
+        mesh.solidAreas = pieces.map(p => { try { return R.measureArea(p); } catch (e) { return 0; } });
         pieces.forEach(p => p.delete());
       }
       const faces = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_FACE, OC.TopAbs_ShapeEnum.TopAbs_SOLID);

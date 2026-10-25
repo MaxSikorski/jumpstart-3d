@@ -11,7 +11,7 @@ let runtime;
 async function getRuntime() {
   if (!runtime) runtime = (async () => {
     const bundle = await build({
-      stdin: { contents: 'export { initKernel, buildBodies } from "./src/kernel.js"; export { commitCombine } from "./src/combinesplit.js"; export { store, newDoc, bodyKey, resolveNode } from "./src/store.js"; export { groupBodiesInDoc } from "./src/ops.js";', resolveDir: root },
+      stdin: { contents: 'export { initKernel, buildBodies } from "./src/kernel.js"; export { commitCombine } from "./src/combinesplit.js"; export { store, newDoc, bodyKey, resolveNode } from "./src/store.js"; export { groupBodiesInDoc, ungroupBody } from "./src/ops.js";', resolveDir: root },
       bundle: true, write: false, format: "esm", platform: "node",
       alias: {
         replicad: root + "third_party/replicad/src/index.ts",
@@ -184,5 +184,45 @@ test("real kernel: a film beside two real pieces is dropped and the real pieces 
     const slice = tool => ({ t: "bool", src: "combine", op: "cut", tool: group([tool]) });
     const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push(slice(cutter(22, 1e-6)), slice(cutter(22, 9))); return "target"; }, "Combine", { target: "target", op: "cut" });
     assert.equal(ids.length, 2); assert.deepEqual(volumes(h.results()), [2800, 3600]);
+  } finally { h.off(); }
+});
+test("real kernel: a thin real shim (0.05 mm, large area) is kept as its own body", async () => {
+  const tool = cutter(22, 0.05); tool.hole = true;
+  const h = await setup([body("target", box()), tool], "beginner");
+  try {
+    const ids = await h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+    assert.equal(ids.length, 2); assert.deepEqual(h.results().map(m => Math.round(m.volume * 10) / 10), [20, 7180]);
+  } finally { h.off(); }
+});
+test("real kernel: a small real pin (1 x 1 x 2 mm) beside a 190 mm block is kept as its own body", async () => {
+  const h = await setup([body("target", box(200, 200, 200))]);
+  try {
+    const ids = await h.commitCombine(h.app, doc => {
+      doc.bodies[0].node.mods.push({ t: "bool", src: "combine", op: "intersect", tool: group([body("big", box(190, 190, 190)), body("pin", box(1, 1, 2), moved(98))]) });
+      return "target";
+    }, "Combine", { target: "target", op: "intersect" });
+    assert.equal(ids.length, 2); assert.deepEqual(volumes(h.results()), [2, 6859000]);
+  } finally { h.off(); }
+});
+test("real kernel: a film under a 200 x 200 base is dropped even though its volume is not tiny", async () => {
+  const h = await setup([body("target", box(200, 200, 20))]);
+  try {
+    const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push({ t: "bool", src: "combine", op: "cut", tool: group([body("c", box(220, 220, 2), moved(0, 0, 1e-6))]) }); return "target"; }, "Combine", { target: "target", op: "cut" });
+    assert.equal(ids.length, 1); assert.equal(h.results()[0].solidCount, 1); assert.deepEqual(volumes(h.results()), [720000]);
+  } finally { h.off(); }
+});
+test("real kernel: Ungroup after a film was dropped works, and editing the cutter so the film is gone still builds", async () => {
+  const mk = async () => { const tool = cutter(22, 1e-6); tool.hole = true; return setup([body("target", box()), tool], "beginner"); };
+  const h = await mk();
+  try {
+    await h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+    const mod = h.store.doc.bodies[0].node.mods[0];
+    assert.equal(mod.t, "keeppiece"); assert.equal(mod.sole, true);
+    // the cutter now sits on the floor: no film, one solid; the sole selector passes it through
+    h.store.update(doc => { doc.bodies[0].node.children.find(c => c.hole).m[14] = 0; }, "Move cutter");
+    assert.deepEqual(volumes(h.results()), [7200]);
+    const ids = h.ungroupBody(h.store.doc.bodies[0].id);
+    assert.equal(ids.length, 2); assert.equal(h.store.doc.bodies.length, 2);
+    assert.deepEqual(h.store.doc.bodies.map(b => b.node.mods || []), [[], []]);
   } finally { h.off(); }
 });

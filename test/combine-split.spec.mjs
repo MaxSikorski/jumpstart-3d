@@ -99,6 +99,28 @@ for (const mode of ["advanced", "beginner"]) {
     expect(zMin).toBeGreaterThan(2);
   });
 }
+test("Beginner: Ungroup works after a film was dropped from a Group cut", async () => {
+  const doc = fixture("beginner", 22, 1e-6); doc.bodies[1].hole = true;
+  await loadDoc(page, doc);
+  await run(() => JS3D.select(["target", "cutter"]));
+  await page.click("#bb-group"); await waitIdle(page);
+  await expectVolumes([7200]);
+  await page.click("#bb-ungroup"); await waitIdle(page);
+  expect(await run(() => JS3D.doc().bodies.length)).toBe(2);
+  await expect(page.locator("#toasts")).not.toContainText("keeps one piece");
+});
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on a Combine/Cut (app or runner-speed finding, see the PR notes)
+test("Advanced: deleting a Combine that dropped a film restores the inputs", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on this Combine/Cut build");
+  await loadDoc(page, fixture("advanced", 22, 1e-6)); await combine("advanced");
+  await expectVolumes([7200]);
+  await page.locator('.tl-item[aria-label*="Combine"]').first().dblclick();
+  await page.locator("#cmd").getByRole("button", { name: "Delete", exact: true }).click();
+  await waitIdle(page);
+  const got = await bodies(page);
+  expect(got.map(b => b.volume).sort((a, b) => a - b)).toEqual([968, 8000]);
+  expect(await run(() => JS3D.doc().bodies.map(b => (b.node.mods || []).length))).toEqual([0, 0]);
+});
 test("Advanced: Keep tools preserves the cutter beside the two pieces", async () => {
   await loadDoc(page, fixture("advanced")); await combine("advanced", "Cut", true);
   await expectVolumes([3600, 3600, 968]);
