@@ -3251,6 +3251,12 @@ export function buildBodies(bodies, quality = 1) {
       mesh.solidCount = 0;
       try { for (; ex.More(); ex.Next()) mesh.solidCount++; }
       finally { ex.delete(); }
+      // jumpstart-3d: volume of each solid, in keeppiece order, so Combine/Group can drop near-empty pieces (combinesplit.js)
+      if (mesh.solidCount > 1 && mesh.solidCount <= 256) { // not for huge multi-solid bodies: every build would pay for it
+        const pieces = solidPieces(shape);
+        mesh.solidVolumes = pieces.map(p => Math.abs(safeVolume(p)));
+        pieces.forEach(p => p.delete());
+      }
       const faces = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_FACE, OC.TopAbs_ShapeEnum.TopAbs_SOLID);
       try { mesh.hasNonSolidFaces = faces.More(); }
       finally { faces.delete(); }

@@ -7,6 +7,16 @@ export function shouldSplitCombine({ op, beforeCount, afterCount, hasNonSolidFac
   return isGroup ? hasHoles : beforeCount === 1 && (op === "cut" || op === "intersect");
 }
 
+// Indexes of the solids worth keeping as bodies: a cut can leave a film or sliver of almost no volume next to the real part.
+// Smaller than 1e-3 mm3, or than 1e-6 of the largest piece, is dropped. If nothing qualifies, every piece stays.
+export function significantPieces(volumes, count) {
+  const all = Array.from({ length: count }, (_, i) => i);
+  if (!Array.isArray(volumes) || volumes.length !== count) return all;
+  const floor = Math.max(1e-3, 1e-6 * Math.max(...volumes));
+  const keep = all.filter(i => volumes[i] >= floor);
+  return keep.length ? keep : all;
+}
+
 export function hasLaterKeepPiece(mods = [], modId) {
   const index = mods.findIndex(m => m.id === modId && m.src === "combine");
   return index >= 0 && mods.slice(index + 1).some(m => m.t === "keeppiece");
@@ -65,16 +75,17 @@ export async function commitCombine(app, prepare, label, { target, op } = {}) {
       hasNonSolidFaces: builtResult.mesh.hasNonSolidFaces || before?.hasNonSolidFaces })) {
       const whole = clone(result), names = new Set(proposed.bodies.map(b => b.name));
       let suffix = 1;
-      for (let i = 0; i < count; i++) {
-        const piece = i === 0 ? result : clone(whole);
-        if (i > 0) {
+      const keep = significantPieces(builtResult.mesh.solidVolumes, count);
+      keep.forEach((i, n) => {
+        const piece = n === 0 ? result : clone(whole);
+        if (n > 0) {
           piece.id = uid("b"); piece.seq = nextSeq(proposed);
           do { piece.name = `${whole.name} (split${suffix === 1 ? "" : " " + suffix})`; suffix++; } while (names.has(piece.name));
           names.add(piece.name); proposed.bodies.push(piece); ids.push(piece.id);
         }
         piece.node.mods = piece.node.mods || [];
         piece.node.mods.push({ id: uid("f"), seq: nextSeq(proposed), t: "keeppiece", piece: i, count });
-      }
+      });
       // The validated compound fixes every selector index. Build outputs normally after
       // committing; waiting for all their meshes at once would exceed the bounded cache.
     }

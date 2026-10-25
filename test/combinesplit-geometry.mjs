@@ -159,3 +159,30 @@ test("real kernel: Intersect splits new pieces and keeps left/right identity acr
     assertLeftRight();
   } finally { h.off(); }
 });
+// A cutter that stops 1e-6 mm above the floor leaves a film far below any printable size next to the real block.
+test("real kernel: Group cut that leaves a near-empty film gives one body with one solid", async () => {
+  const tool = cutter(22, 1e-6); tool.hole = true;
+  const h = await setup([body("target", box()), tool], "beginner");
+  try {
+    const ids = await h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+    assert.equal(ids.length, 1); assert.equal(h.store.doc.bodies.length, 1);
+    assert.equal(h.results()[0].solidCount, 1);
+    assert.deepEqual(volumes(h.results()), [7200]);
+    assert.equal(h.store.undoStack.length, 1);
+  } finally { h.off(); }
+});
+test("real kernel: Combine cut that leaves a near-empty film keeps only the real piece", async () => {
+  const h = await setup([body("target", box())]);
+  try {
+    const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push(cutMod(22, 1e-6)); return "target"; }, "Combine", { target: "target", op: "cut" });
+    assert.equal(ids.length, 1); assert.equal(h.results()[0].solidCount, 1); assert.deepEqual(volumes(h.results()), [7200]);
+  } finally { h.off(); }
+});
+test("real kernel: a film beside two real pieces is dropped and the real pieces stay separate bodies", async () => {
+  const h = await setup([body("target", box())]);
+  try {
+    const slice = tool => ({ t: "bool", src: "combine", op: "cut", tool: group([tool]) });
+    const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push(slice(cutter(22, 1e-6)), slice(cutter(22, 9))); return "target"; }, "Combine", { target: "target", op: "cut" });
+    assert.equal(ids.length, 2); assert.deepEqual(volumes(h.results()), [2800, 3600]);
+  } finally { h.off(); }
+});
