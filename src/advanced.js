@@ -5714,7 +5714,11 @@ export function initAdvanced(app) {
     store.update((doc) => {
       const b = findBody(doc, it.body);
       const gone = b.node.mods.find((m) => m.id === it.mod);
-      b.node.mods = b.node.mods.filter((m) => m.id !== it.mod && !(gone && gone.src === "combine" && m.t === "keeppiece" && m.sole)); // jumpstart-3d: a sole keep-piece goes with its Combine
+      // jumpstart-3d: the sole keep-piece that follows this Combine (before the next Combine) goes with it
+      const at = b.node.mods.findIndex((m) => m.id === it.mod);
+      let soleAt = -1;
+      if (gone && gone.src === "combine") for (let i = at + 1; i < b.node.mods.length && b.node.mods[i].src !== "combine"; i++) if (b.node.mods[i].t === "keeppiece" && b.node.mods[i].sole) { soleAt = i; break; }
+      b.node.mods = b.node.mods.filter((m, i) => i !== at && i !== soleAt);
       // deleting a Combine brings back the tool bodies it used up
       if (gone && gone.src === "combine" && gone.tools) for (const t of gone.tools) if (!findBody(doc, t.id)) doc.bodies.push(clone(t));
     }, "Delete feature");

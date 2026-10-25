@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { isNearEmpty } from "../src/pieces.js";
 import opencascade from "../third_party/replicad-opencascadejs/dist/replicad_single.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -225,4 +226,8 @@ test("real kernel: Ungroup after a film was dropped works, and editing the cutte
     assert.equal(ids.length, 2); assert.equal(h.store.doc.bodies.length, 2);
     assert.deepEqual(h.store.doc.bodies.map(b => b.node.mods || []), [[], []]);
   } finally { h.off(); }
+});
+test("an unmeasurable piece (NaN volume or area) is kept, not dropped as near-empty", () => {
+  assert.equal(isNearEmpty(NaN, 10), false); assert.equal(isNearEmpty(5, NaN), false);
+  assert.equal(isNearEmpty(4e-4, 400), true); assert.equal(isNearEmpty(20, 800), false); assert.equal(isNearEmpty(1e-7, 0), true);
 });
