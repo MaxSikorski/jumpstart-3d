@@ -261,7 +261,7 @@ export function initBeginner(app) {
   function ungroup() {
     const ids = [];
     for (const b of app.selected()) if (b.node.t === "group") {
-      const mods = b.node.mods || [];
+      const mods = (b.node.mods || []).filter(m => !(m.t === "keeppiece" && m.sole)); // jumpstart-3d: a sole keep-piece (films dropped by Group) does not block Ungroup
       if (mods.length && !(mods.length === 1 && mods[0].t === "scale")) { app.toast(mods.some(m => m.t === "keeppiece") ? "This body keeps one piece of a group. Undo Group to restore the original shapes." : "This group has features (fillets, holes) from Advanced mode. Remove them first to ungroup.", "err"); continue; } // jumpstart-3d: split groups
       const got = ungroupBody(b.id);
       if (!got.length && mods.length) { app.toast("This group was stretched at an angle, so it can't be split back into shapes.", "err"); continue; }

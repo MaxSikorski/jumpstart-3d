@@ -31,6 +31,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `report.js` | Report a problem (prefilled GitHub issue link) |
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
 | `combinesplit.js` | Group and Combine leave one body per new piece |
+| `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |

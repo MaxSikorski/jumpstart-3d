@@ -1,15 +1,25 @@
 // jumpstart-3d: keep editable pieces only when a cut creates new disconnected solids.
 import { store, findBody, nextSeq } from "./store.js";
 import { clone, uid } from "./util.js";
+import { isNearEmpty } from "./pieces.js";
 
 export function shouldSplitCombine({ op, beforeCount, afterCount, hasNonSolidFaces = false, isGroup = false, hasHoles = false }) {
   if (hasNonSolidFaces || !Number.isInteger(beforeCount) || beforeCount < 1 || !Number.isInteger(afterCount) || afterCount <= beforeCount) return false;
   return isGroup ? hasHoles : beforeCount === 1 && (op === "cut" || op === "intersect");
 }
 
+// Indexes of the solids worth keeping as bodies: a cut can leave a film or sliver of almost no thickness next to the real part
+// (see pieces.js). If nothing qualifies or the measurements are missing, every piece stays.
+export function significantPieces(volumes, areas, count) {
+  const all = Array.from({ length: count }, (_, i) => i);
+  if (!Array.isArray(volumes) || volumes.length !== count || !Array.isArray(areas) || areas.length !== count) return all;
+  const keep = all.filter(i => !isNearEmpty(volumes[i], areas[i]));
+  return keep.length ? keep : all;
+}
+
 export function hasLaterKeepPiece(mods = [], modId) {
   const index = mods.findIndex(m => m.id === modId && m.src === "combine");
-  return index >= 0 && mods.slice(index + 1).some(m => m.t === "keeppiece");
+  return index >= 0 && mods.slice(index + 1).some(m => m.t === "keeppiece" && !m.sole);
 }
 
 export async function commitCombine(app, prepare, label, { target, op } = {}) {
@@ -65,16 +75,17 @@ export async function commitCombine(app, prepare, label, { target, op } = {}) {
       hasNonSolidFaces: builtResult.mesh.hasNonSolidFaces || before?.hasNonSolidFaces })) {
       const whole = clone(result), names = new Set(proposed.bodies.map(b => b.name));
       let suffix = 1;
-      for (let i = 0; i < count; i++) {
-        const piece = i === 0 ? result : clone(whole);
-        if (i > 0) {
+      const keep = significantPieces(builtResult.mesh.solidVolumes, builtResult.mesh.solidAreas, count);
+      keep.forEach((i, n) => {
+        const piece = n === 0 ? result : clone(whole);
+        if (n > 0) {
           piece.id = uid("b"); piece.seq = nextSeq(proposed);
           do { piece.name = `${whole.name} (split${suffix === 1 ? "" : " " + suffix})`; suffix++; } while (names.has(piece.name));
           names.add(piece.name); proposed.bodies.push(piece); ids.push(piece.id);
         }
         piece.node.mods = piece.node.mods || [];
-        piece.node.mods.push({ id: uid("f"), seq: nextSeq(proposed), t: "keeppiece", piece: i, count });
-      }
+        piece.node.mods.push({ id: uid("f"), seq: nextSeq(proposed), t: "keeppiece", piece: i, count, ...(keep.length === 1 && count > 1 ? { sole: true } : {}) });
+      });
       // The validated compound fixes every selector index. Build outputs normally after
       // committing; waiting for all their meshes at once would exceed the bounded cache.
     }

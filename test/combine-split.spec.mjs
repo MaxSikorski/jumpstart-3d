@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, loadDoc, newDoc, body, prim, IDENTITY, waitIdle, bodies, watchErrors, quarantine } from "./helpers.mjs";
+import { boot, loadDoc, newDoc, body, prim, IDENTITY, waitIdle, bodies, watchErrors, quarantine, exportBytes, stlTriangles } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -11,7 +11,7 @@ test.afterEach(() => { expect(errors).toEqual([]); });
 const run = (fn, arg) => page.evaluate(fn, arg);
 const translated = (x, y, z) => { const m = IDENTITY.slice(); m.splice(12, 3, x, y, z); return m; };
 const box = (id, w, d, h, m = IDENTITY) => body(id, id === "target" ? "Block" : id, prim("box", { w, d, h }), m);
-const fixture = (mode, width = 22) => newDoc("Combine pieces", mode, { bodies: [box("target", 20, 20, 20), box("cutter", width, 22, 2, translated(0, 0, 9))] });
+const fixture = (mode, width = 22, z = 9) => newDoc("Combine pieces", mode, { bodies: [box("target", 20, 20, 20), box("cutter", width, 22, 2, translated(0, 0, z))] });
 async function combine(mode, op = "Cut", keep = false) {
   if (mode === "beginner") {
     await run(() => JS3D.select(["cutter"]));
@@ -85,6 +85,42 @@ for (const mode of ["advanced", "beginner"]) {
   });
 }
 
+// A cutter 1e-6 mm above the floor leaves a film of 4e-4 mm3 under the real block; it must not become a stray body (the Pi-lid run showed one).
+for (const mode of ["advanced", "beginner"]) {
+  test(`${mode}: a cut that leaves a near-empty film gives one body, one solid, one exported solid`, async () => {
+    await loadDoc(page, fixture(mode, 22, 1e-6)); await combine(mode);
+    await expectVolumes([7200]);
+    const only = await run(() => ({ n: JS3D.doc().bodies.length, solids: __app.scene.views.get(__store.doc.bodies[0].id).data.solidCount, name: JS3D.doc().bodies[0].name }));
+    expect(only).toEqual({ n: 1, solids: 1, name: mode === "advanced" ? "Block" : "Group 1" });
+    const { bytes } = await exportBytes(page, "stl");
+    const tris = stlTriangles(bytes);
+    let zMin = Infinity;
+    for (let i = 0; i < tris; i++) for (let v = 0; v < 3; v++) zMin = Math.min(zMin, bytes.readFloatLE(84 + i * 50 + 12 + v * 12 + 8));
+    expect(zMin).toBeGreaterThan(2);
+  });
+}
+test("Beginner: Ungroup works after a film was dropped from a Group cut", async () => {
+  const doc = fixture("beginner", 22, 1e-6); doc.bodies[1].hole = true;
+  await loadDoc(page, doc);
+  await run(() => JS3D.select(["target", "cutter"]));
+  await page.click("#bb-group"); await waitIdle(page);
+  await expectVolumes([7200]);
+  await page.click("#bb-ungroup"); await waitIdle(page);
+  expect(await run(() => JS3D.doc().bodies.length)).toBe(2);
+  await expect(page.locator("#toasts")).not.toContainText("keeps one piece");
+});
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on a Combine/Cut (app or runner-speed finding, see the PR notes)
+test("Advanced: deleting a Combine that dropped a film restores the inputs", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on this Combine/Cut build");
+  await loadDoc(page, fixture("advanced", 22, 1e-6)); await combine("advanced");
+  await expectVolumes([7200]);
+  await page.locator('.tl-item[aria-label*="Combine"]').first().dblclick();
+  await page.locator("#cmd").getByRole("button", { name: "Delete", exact: true }).click();
+  await waitIdle(page);
+  const got = await bodies(page);
+  expect(got.map(b => b.volume).sort((a, b) => a - b)).toEqual([968, 8000]);
+  expect(await run(() => JS3D.doc().bodies.map(b => (b.node.mods || []).length))).toEqual([0, 0]);
+});
 test("Advanced: Keep tools preserves the cutter beside the two pieces", async () => {
   await loadDoc(page, fixture("advanced")); await combine("advanced", "Cut", true);
   await expectVolumes([3600, 3600, 968]);
