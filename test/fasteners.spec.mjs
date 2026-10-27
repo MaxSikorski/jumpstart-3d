@@ -125,7 +125,7 @@ test("a tap cutter is a hole: grouped with a block it cuts a threaded hole, and 
   const body = await run((id) => JS3D.get(id), id);
   expect(body.hole).toBe(true);
   expect(body.node.mods[0].clear).toBe(0);
-  expect(body.node.p.w).toBeCloseTo(8.4, 3); // the radius grows by the offset (0.2), the diameter by 0.4
+  expect(body.node.p.w).toBeCloseTo(8.375, 3); // the radius grows by the offset, at most 0.15 pitch (0.1875), so the diameter by 0.375
 });
 
 test("the Thread print offset tool tightens a bolt but leaves a tap cutter as it was made", async () => {

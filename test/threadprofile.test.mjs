@@ -33,8 +33,8 @@ async function getRuntime() {
 }
 
 // the same bolt and nut the Fastener dialog builds (src/fasteners.js partBody): [width across flats, head height, nut width, nut height]
-const HEX = { M3: [5.5, 2, 5.5, 2.4], M5: [8, 3.5, 8, 4.7], M8: [13, 5.3, 13, 6.8] };
-const PITCH = { M3: 0.5, M5: 0.8, M8: 1.25 };
+const HEX = { "M2.5": [5, 1.7, 5, 2], M3: [5.5, 2, 5.5, 2.4], M5: [8, 3.5, 8, 4.7], M8: [13, 5.3, 13, 6.8] };
+const PITCH = { "M2.5": 0.45, M3: 0.5, M5: 0.8, M8: 1.25 };
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const hexPrism = (af, h) => { const w = +((af * 2) / Math.sqrt(3)).toFixed(3); return { t: "prim", kind: "prism", p: { w, d: w, h, sides: 6, r: 0, c: 0 }, mods: [] }; };
 const cylinder = (dia, h) => ({ t: "prim", kind: "cylinder", p: { w: dia, d: dia, h, r: 0, c: 0 }, mods: [] });
@@ -154,15 +154,35 @@ test("print offset: the M3 nut no longer falls through at -0.2 (it did: bolt maj
   for (const [key, c] of [["M3", -0.2], ["M5", -0.1], ["M8", -0.1]]) {
     const p = PITCH[key], H = 0.866025 * p;
     const m = await measure(key, c, key === "M3"); // boolean (THREAD_BOOLEAN=1): M3 only
-    assert.ok(m.gap > 0.02, `${key} at ${c}: the nut has no room (radial gap ${m.gap.toFixed(4)} mm)`);
+    // the offset s of each part is capped (bolt 0.07 pitch: its crest flat P/8 is nearly gone; nut 0.15 pitch), as kernel.js threadGroove says
+    const sb = Math.min(Math.abs(c), 0.07 * p), sn = Math.min(Math.abs(c), 0.15 * p), d2 = +key.slice(1) - 0.649519 * p;
+    // the crest of one part meets the root of the other, so the smallest radial gap is about the nut's s
+    assert.ok(m.gap > 0.8 * sn, `${key} at ${c}: the nut has no room (radial gap ${m.gap.toFixed(4)} mm, wanted over ${(0.8 * sn).toFixed(4)})`);
     if (m.overlap !== null) assert.ok(m.overlap < 0.05, `${key} at ${c}: overlap ${m.overlap.toFixed(3)} mm3`);
     // the bolt's crest still reaches past the nut's crest by at least 90 percent of the 5H/8 engagement
     assert.ok(m.engagement >= 0.9 * 5 * H / 8, `${key} at ${c}: engagement ${m.engagement.toFixed(3)} mm, wanted at least ${(0.9 * 5 * H / 8).toFixed(3)}`);
     assert.ok(m.bolt.major > m.nut.minor, `${key} at ${c}: the bolt (${m.bolt.major.toFixed(3)}) falls through the nut (${m.nut.minor.toFixed(3)})`);
-    // the clearance shows in the flanks: the bolt's pitch diameter shrinks and the nut's grows, each by at least s (the offset, at most 0.2 pitch)
-    // (the groove is kept under 0.98 pitch wide, so on a fine pitch a big offset thins the bolt's tooth rather than moving the flank further)
-    const s = Math.min(Math.abs(c), 0.2 * p), d2 = +key.slice(1) - 0.649519 * p;
-    assert.ok(m.bolt.pitchDia < d2 - s, `${key} at ${c}: bolt pitch diameter ${m.bolt.pitchDia.toFixed(3)} (ISO ${d2.toFixed(3)})`);
-    assert.ok(m.nut.pitchDia > d2 + s, `${key} at ${c}: nut pitch diameter ${m.nut.pitchDia.toFixed(3)} (ISO ${d2.toFixed(3)})`);
+    // the flanks move by s: the pitch diameter of the bolt shrinks and the nut's grows by about 2 s each (the section reads the bolt up to 0.03 fat at offset None)
+    assert.ok(m.bolt.pitchDia < d2 + 0.03 - 1.9 * sb, `${key} at ${c}: bolt pitch diameter ${m.bolt.pitchDia.toFixed(3)} (ISO ${d2.toFixed(3)}, s ${sb})`);
+    assert.ok(m.nut.pitchDia > d2 - 0.03 + 1.9 * sn, `${key} at ${c}: nut pitch diameter ${m.nut.pitchDia.toFixed(3)} (ISO ${d2.toFixed(3)}, s ${sn})`);
+  }
+});
+
+// no sliver edges: the groove must not leave a tooth top or a flat narrower than about 0.01 mm (the offset caps keep it so), and every part is a valid solid
+test("no sliver edges: M2.5, M3 and M5 bolt and nut at offsets 0, -0.1 and -0.2 are valid and their shortest edge is at least 0.009 mm", { timeout: 600000 }, async () => {
+  const { R, evalNode } = await getRuntime(), OC = R.getOC();
+  for (const key of ["M2.5", "M3", "M5"]) {
+    for (const c of [0, -0.1, -0.2]) {
+      for (const kind of ["bolt", "nut"]) {
+        const s = evalNode((kind === "bolt" ? bolt(key, c) : nut(key, c)).node);
+        const an = new OC.BRepCheck_Analyzer(s.wrapped, true, false), valid = an.IsValid_2 ? an.IsValid_2() : an.IsValid();
+        an.delete();
+        let minEdge = 1e9;
+        for (const e of s.edges) { minEdge = Math.min(minEdge, R.measureLength(e)); e.delete(); }
+        s.delete();
+        assert.ok(valid, `${key} ${kind} at ${c} is not a valid solid`);
+        assert.ok(minEdge >= 0.009, `${key} ${kind} at ${c}: shortest edge ${minEdge.toFixed(5)} mm (the old kernel's was 0.014)`);
+      }
+    }
   }
 });

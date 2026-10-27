@@ -2866,7 +2866,7 @@ export function initAdvanced(app) {
       ok() { commit(def, "Thread print offset"); app.toast(st.clear ? `Print offset ${offsetLabel(st.clear)} applied to ${st.scope === "sel" ? nSel : nAll} thread${(st.scope === "sel" ? nSel : nAll) === 1 ? "" : "s"}.` : "Print offset removed."); },
       hint: () => "Loosens printed threads so bolts and nuts screw together. Outside threads get thinner and inside threads get wider.",
       build(body) {
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, getUnit() === "in" ? "Moves every thread surface into the material by this much, so printed parts fit. −0.008 in (0.2 mm) suits most printers; use more if threads bind." : "Moves every thread surface into the material by this much, so printed parts fit. −0.2 mm suits most printers; use more if threads bind."));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, getUnit() === "in" ? "Moves the thread flanks into the material by this much (the crest stays the same), so printed parts fit. −0.004 in (0.1 mm) is a good start; use more if threads bind." : "Moves the thread flanks into the material by this much (the crest stays the same), so printed parts fit. −0.1 mm is a good start; use more if threads bind.")); // jumpstart-3d: ISO thread profile
         body.append(row("Offset", offsetSelect(st.clear, (v) => { st.clear = v; def.render(); }, "to-clear"), "to-clear"));
         body.append(row("Apply to", seg([["all", `All threads (${nAll})`], ["sel", `Selected objects (${nSel})`]], st.scope, (v) => { if (v === "sel" && !selIds.length) { app.toast("Select objects first, then open this again."); return; } st.scope = v; def.render(); }, "to-scope")));
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "to-new", checked: st.forNew, onchange: (e) => { st.forNew = e.target.checked; } }), "Also use for new threads"));
@@ -2927,7 +2927,7 @@ export function initAdvanced(app) {
         body.append(row("Start", seg([[false, "Open end"], [true, "Other end"]], st.flip, (v) => { st.flip = v; refresh(); }, "th-flip")));
         body.append(row("Hand", seg([[false, "Right"], [true, "Left"]], st.left, (v) => { st.left = v; refresh(); }, "th-hand")));
         body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; refresh(); }, "th-clear"), "th-clear"));
-        if (st.clear && Math.abs(st.clear) > 0.2 * st.pitch + 1e-9) body.append(el("div", { class: "hint", style: { padding: 0 } }, `This pitch allows at most −${withUnit(0.2 * st.pitch, 3)}; that is used.`)); // jumpstart-3d: ISO thread profile (cap 0.2 pitch)
+        if (st.clear && Math.abs(st.clear) > 0.07 * st.pitch + 1e-9) body.append(el("div", { class: "hint", style: { padding: 0 } }, `This pitch allows at most −${withUnit(0.07 * st.pitch, 3)} on a bolt and −${withUnit(0.15 * st.pitch, 3)} in a hole; that is used.`)); // jumpstart-3d: ISO thread profile (caps 0.07 pitch on a bolt, 0.15 in a hole)
       },
       start() {
         // a selected body with one round face picked from it is common; otherwise wait for a click

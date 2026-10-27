@@ -98,7 +98,7 @@ function partBody(doc, r) {
     // round (a thinner cutter would make a tighter hole), so the cutter is built wider and its thread has no offset. The kernel puts a
     // nut's flanks s (the offset) further out, and the flanks of the plain ISO profile on a rod grown by s in radius sit just there, so
     // the radius grows by s (the diameter by 2s).
-    const grow = type === "cutter" ? 2 * Math.min(Math.abs(clear), 0.2 * p) : 0;
+    const grow = type === "cutter" ? 2 * Math.min(Math.abs(clear), 0.15 * p) : 0;
     const node = cylinder(+(d + grow).toFixed(4), L);
     node.mods.push(thread(L / 2, type === "cutter" ? 0 : clear));
     body.node = node;

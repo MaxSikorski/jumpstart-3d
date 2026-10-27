@@ -1263,14 +1263,7 @@ function applyMod(shape, mod) {
       return out;
     }
     case "thread": {
-      const { groove, clipped, crest } = threadGroove(shape, mod);
-      // the print offset's crest relief first (a plain ring), then the helical groove
-      if (crest) {
-        const relieved = cutAll(shape, [crest]);
-        crest.delete();
-        if (relieved && safeVolume(relieved) > 1e-9) { shape.delete(); shape = relieved; }
-        else if (relieved) relieved.delete();
-      }
+      const { groove, clipped } = threadGroove(shape, mod);
       const v0 = safeVolume(shape);
       // a cut must remove material; anything else is a broken boolean
       const good = (r) => { if (!r) return false; const v = safeVolume(r); return v > 1e-9 && v < v0 - 1e-6; };
@@ -2375,8 +2368,8 @@ function threadGroove(shape, mod) {
   // Bolt: groove from the major radius, 7P/16 half-wide there (crest flat P/8), root flat P/12 half-wide at 17H/24 depth (d3).
   // Nut: groove from the minor radius D1/2, 3P/8 half-wide there (crest flat P/4), root flat P/16 half-wide at 5H/8 depth (major).
   // The print offset is the radial clearance s of this part: both flanks and the root move s into the material (the groove is s
-  // deeper and its flanks sit s * tan30 wider at the same radius), capped at 0.2P. The crest keeps its ISO size (no ring cut).
-  const c = Math.min(Math.abs(mod.clear || 0), 0.2 * p);
+  // deeper and its flanks sit s * tan30 wider at the same radius), capped at 0.07P on a bolt (its crest flat P/8 is gone at 0.108P) and 0.15P on a nut (crest flat P/4 less 2 s tan30). The crest keeps its ISO size (no ring cut).
+  const c = Math.min(Math.abs(mod.clear || 0), (external ? 0.07 : 0.15) * p); // 0.07 P: the bolt keeps a crest flat of 0.044 P (no sliver edges); 0.15 P: the nut keeps one of 0.077 P
   const H = 0.8660254 * p, sgn = external ? 1 : -1, over = 0.12 * p;
   const tan30 = Math.tan(Math.PI / 6);
   const hR = (external ? 17 * H / 24 : 5 * H / 8) + c; // groove depth
@@ -2386,7 +2379,8 @@ function threadGroove(shape, mod) {
   // a big offset on a fine pitch would make neighbouring turns of the groove overlap: keep the groove a little narrower than the pitch
   const wMax = 0.49 * p;
   if (w > wMax) {
-    const rk = r - sgn * (w0 - wMax) / tan30;
+    let rk = r - sgn * (w0 - wMax) / tan30;
+    if (!external && Math.abs(rk - r) < 0.01 * p) rk = r; // a nut's groove corner a hair off the bore would leave a sliver edge
     pts = [[rRoot, wRoot], [rk, wMax], [outR, wMax], [outR, -wMax], [rk, -wMax], [rRoot, -wRoot]];
   }
   // end jumpstart-3d
@@ -2417,10 +2411,7 @@ function threadGroove(shape, mod) {
     clip.delete();
     return c;
   };
-  // jumpstart-3d: ISO thread profile: no crest ring any more (the offset is in the groove), so there is never a crest cut
-  const crest = null;
-  // end jumpstart-3d
-  return { groove, clipped, crest };
+  return { groove, clipped };
 }
 // cut many tools in one boolean (no result simplification: it is slow on threads)
 function cutAll(shape, tools) {
