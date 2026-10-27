@@ -793,12 +793,12 @@ export class Sketcher {
     const sk0 = drawing && this.app.onShapeClosed ? findSketch(store.doc, id) : null;
     const before = sk0 ? { loops: new Set(userLoops(sk0).map((l) => l.key)), regs: new Set(regionsFor(sk0).map((r) => r.key)) } : null;
     // jumpstart-3d: sketch solver. A constraint or dimension edit that leaves the sketch unsolvable is refused: nothing changes and a toast names the clash.
-    // One that only repeats others is kept, with a warning. (A sketch that already clashed before the edit is not held to this.)
+    // One that only repeats others is kept, with a warning. A sketch that already clashed before the edit may keep its old clash, but no new one.
     const guarded = /^(?!Delete).*constraint$|^(Dimension|Edit dimension)$/.test(label);
     let refused = false, note = null;
     store.update((doc) => {
       const sk = findSketch(doc, id);
-      const was = guarded ? { pre: solveSketch(JSON.parse(JSON.stringify(sk))), cons: new Map((sk.cons || []).map((c) => [c.id, conKey(c)])) } : null;
+      const was = guarded ? { pre: solveSketch(JSON.parse(JSON.stringify({ pts: sk.pts, ents: sk.ents, cons: sk.cons || [] }))), cons: new Map((sk.cons || []).map((c) => [c.id, conKey(c)])) } : null;
       const oldPts = drawing ? new Set(sk.pts.map((q) => q.id)) : null, oldEnts = drawing ? new Set(sk.ents.map((e) => e.id)) : null;
       fn(sk);
       if (drawing) autoConstrain(sk, oldPts, oldEnts);
@@ -806,10 +806,13 @@ export class Sketcher {
       const st = solveSketch(sk, this.keepPts || new Set());
       normalizeSketch(sk);
       if (guarded) {
-        if (!st.ok && was.pre.ok) { refused = true; note = clashNote(sk, st.conflicting, was.cons); return false; }
+        if (!st.ok && (was.pre.ok || st.conflicting.some((cid) => !was.pre.conflicting.includes(cid)))) { refused = true; note = clashNote(sk, st.conflicting, was.cons); return false; }
         const fresh = st.redundant.filter((cid) => !was.pre.redundant.includes(cid));
-        if (fresh.length) note = `That ${conName(sk.cons.find((c) => c.id === fresh[0]))} repeats what the other constraints already hold, so it adds nothing. It is kept.`;
-        else if (!st.ok) note = "The sketch still has constraints that conflict: " + conNames(sk, st.conflicting) + ".";
+        const added = sk.cons.find((c) => !was.cons.has(c.id));
+        if (fresh.length) {
+          const c = sk.cons.find((k) => k.id === (added && fresh.includes(added.id) ? added.id : fresh[0]));
+          note = added && c.id === added.id ? `That ${conName(c)} repeats what the other constraints already hold, so it adds nothing. It is kept.` : `After that, the ${conName(c)} constraint repeats what the others hold, so it adds nothing. It is kept.`; // (a point merge adds no constraint of its own)
+        } else if (!st.ok) note = "The sketch still has constraints that conflict: " + conNames(sk, st.conflicting) + ".";
       }
     }, label);
     if (note && this.app.toast) this.app.toast(note);
@@ -825,7 +828,7 @@ export class Sketcher {
         if (fresh.length || regs.some((r) => !before.regs.has(r.key))) this.app.onShapeClosed(id, fresh);
       }
     }
-    return { refused }; // jumpstart-3d: sketch solver
+    return { refused, toasted: !!note }; // jumpstart-3d: sketch solver
   }
 
   // ------------------------------------------------------------ select & drag
@@ -944,10 +947,10 @@ export class Sketcher {
         if (!(v > 0)) { this.app.toast && this.app.toast("Use a size above 0."); return; }
         const did = "dm" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const expr = isFinite(parseLength(text, getUnit())) ? {} : { expr: text.trim(), ...(getUnit() !== "mm" && { unit: getUnit() }) }; // jumpstart-3d: parameters
-        const { refused } = this.edit("Dimension", (s2) => { s2.cons = s2.cons || []; s2.cons.push({ id: did, ...d, v, ...expr }); }); // jumpstart-3d: sketch solver (a clash is refused with its own toast)
+        const { refused, toasted } = this.edit("Dimension", (s2) => { s2.cons = s2.cons || []; s2.cons.push({ id: did, ...d, v, ...expr }); }); // jumpstart-3d: sketch solver (a clash has its own toast)
         this.redraw();
         const now = this.sketch && (this.sketch.cons || []).find((x) => x.id === did);
-        if (!refused && now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that size: other dimensions or constraints are holding it.");
+        if (!refused && !toasted && now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that size: other dimensions or constraints are holding it.");
       },
     });
   }
@@ -1147,10 +1150,10 @@ export class Sketcher {
       onOk: (v, text) => {
         if (!(v > 0) || (isAng && v >= 180)) { this.app.toast && this.app.toast(isAng ? "Use an angle between 0° and 180°." : "Use a size above 0."); return; }
         const plain = isFinite(parseLength(text, unit));
-        const { refused } = this.edit("Edit dimension", (s2) => { const k = (s2.cons || []).find((x) => x.id === id); if (k) { k.v = v; delete k.unit; if (plain) delete k.expr; else { k.expr = text.trim(); if (unit !== "mm") k.unit = unit; } } }); // jumpstart-3d: sketch solver (a clash is refused with its own toast)
+        const { refused, toasted } = this.edit("Edit dimension", (s2) => { const k = (s2.cons || []).find((x) => x.id === id); if (k) { k.v = v; delete k.unit; if (plain) delete k.expr; else { k.expr = text.trim(); if (unit !== "mm") k.unit = unit; } } }); // jumpstart-3d: sketch solver (a clash has its own toast)
         this.redraw();
         const now = this.sketch && (this.sketch.cons || []).find((x) => x.id === id);
-        if (!refused && now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that value: other dimensions or constraints are holding it.");
+        if (!refused && !toasted && now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that value: other dimensions or constraints are holding it.");
       },
     });
   }

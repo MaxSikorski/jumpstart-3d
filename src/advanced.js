@@ -5996,7 +5996,7 @@ export function initAdvanced(app) {
     dofCache.set(key, out);
     return out;
   };
-  const REPEATS = (n) => `${n} more constraint${n === 1 ? "" : "s"} than needed (${n === 1 ? "it repeats" : "they repeat"} the others)`;
+  const REPEATS = (n) => `${n} more constraint${n === 1 ? "" : "s"} than needed (${n === 1 ? "it repeats or clashes with" : "they repeat or clash with"} the others)`;
   const dofText = (r) => (r.dof ? `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left` : "Fully constrained") + (r.redundant ? "; " + REPEATS(r.redundant) : "");
   // the sketch ribbon's note while editing: the proof line, kept current by refresh()
   function showDofNote() {

@@ -1187,7 +1187,7 @@ test("Sketch proof: the Browser shows a check on a fully constrained sketch and 
   // too many constraints: the check stays, with a warning in its title
   await page.evaluate(() => window.__store.update((d) => { d.sketches[0].cons.push({ id: "d2", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }, { id: "x3", t: "dim", k: "dist", p1: "p0", p2: "p3", o: "v", v: 20 }); }, "Add dimensions"));
   await expect(sketchDofs()).toHaveText("✓");
-  await expect(sketchDofs()).toHaveAttribute("title", "Fully constrained; 2 more constraints than needed (they repeat the others)");
+  await expect(sketchDofs()).toHaveAttribute("title", "Fully constrained; 2 more constraints than needed (they repeat or clash with the others)");
   // a design with no sketches shows nothing
   await loadDoc(page, box20());
   await expect(sketchDofs()).toHaveCount(0);
