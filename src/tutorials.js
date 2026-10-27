@@ -46,6 +46,7 @@ export function initTutorials(app) {
       return { min: b.min, max: b.max, center: b.getCenter(new THREE.Vector3()), size: b.getSize(new THREE.Vector3()) };
     },
     groups: () => T.bodies().filter((b) => b.node.t === "group"),
+    volume: (id) => { const v = app.scene.views.get(id); return v && v.data && !v.pending ? v.data.volume : null; }, // jumpstart-3d: a lesson check can ask how much material a body has left (browser test F7)
     childKinds(g) { const out = []; walk(g.node, (n) => { if (n.t === "prim") out.push(n.kind); }); return out; },
     countHoles(g) { let n = 0; const go = (node) => { for (const c of node.children || []) { if (c.hole) n++; go(c.node); } }; go(g.node); return n; },
     hasHole: (g) => T.countHoles(g) > 0,
@@ -163,7 +164,7 @@ export function initTutorials(app) {
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
         tabs, list));
     back.append(modal);
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
     document.body.append(back);
     show(want);
     modal.querySelector(".xbtn").focus();
@@ -318,7 +319,7 @@ export function initTutorials(app) {
       el("button", { class: "btn", id: "tut-back", disabled: i === 0, onclick: () => go(i - 1) }, "← Back"),
       el("label", { class: "check tut-mark" }, el("input", { type: "checkbox", id: "tut-check", checked: isDone, onchange: (e) => { if (e.target.checked) cur.done.add(i); else cur.done.delete(i); save(); render(); } }), "I did this"),
       i < n - 1
-        ? el("button", { class: "btn primary" + (isDone ? " ready" : ""), id: "tut-next", onclick: () => { cur.done.add(i); go(i + 1); } }, "Next →")
+        ? el("button", { class: "btn primary" + (isDone ? " ready" : ""), id: "tut-next", onclick: () => { /* jumpstart-3d: a strict step only moves on once its check passes (F7); "I did this" overrides */ if (step.strict && !cur.done.has(i) && !passes(step)) { app.toast(step.strict, "err"); return; } cur.done.add(i); go(i + 1); } }, "Next →")
         : el("button", { class: "btn primary" + (isDone ? " ready" : ""), id: "tut-next", onclick: () => finish() }, "Finish ✓")));
     // the checklist of every step
     const list = el("ol", { class: "tut-list", id: "tut-list" });

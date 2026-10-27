@@ -29,14 +29,17 @@
   "beginner-peg-block.json": 3,
   "codecad.json": 1,
   "fasteners.json": 4,
+  "gears-helical.json": 2,
   "gears.json": 3,
   "holepattern-shapes.json": 1,
   "holepattern.json": 1,
   "import-step.json": 1,
   "import-stl-mesh.json": 1,
+  "knurl.json": 4,
   "nameplate.json": 5,
   "painted-cube.json": 1,
   "parametric-beginner.json": 1,
   "parametric-features.json": 1,
-  "parametric-plate.json": 1
+  "parametric-plate.json": 1,
+  "spring.json": 4
 }
