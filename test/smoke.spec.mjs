@@ -1137,32 +1137,35 @@ const toastWith = (text) => page.locator("#toasts .toast", { hasText: text });
 const clearToasts = () => page.evaluate(() => document.querySelectorAll("#toasts .toast").forEach((t) => t.remove())); // an older toast must not satisfy a later check
 const sketchDofs = () => page.locator("#browser .sk-dof");
 
-test("Sketch proof: sketchDof counts variables minus equations", async () => {
+test("Sketch proof: sketchDof counts degrees of freedom by the rank of the constraints", async () => {
   const { sketchDof } = await import("../src/constraints.js");
   const pt = (id, x, y) => ({ id, x, y });
-  expect(sketchDof({ pts: [], ents: [], cons: [] })).toEqual({ free: 0, dof: 0, over: 0 });
+  // (jumpstart-3d: sketch solver) free = unknowns, rank = how many the constraints pin down, dof = free - rank, redundant = equations that repeat others
+  expect(sketchDof({ pts: [], ents: [], cons: [] })).toEqual({ free: 0, rank: 0, dof: 0, redundant: 0 });
   // a lone circle: center 2 + radius 1; a diameter dimension and an origin pin close it
   const circle = { pts: [pt("c", 0, 0)], ents: [{ id: "e1", t: "circle", c: "c", r: 5 }], cons: [] };
-  expect(sketchDof(circle)).toEqual({ free: 3, dof: 3, over: 3 });
+  expect(sketchDof(circle)).toEqual({ free: 3, rank: 0, dof: 3, redundant: 0 });
   circle.cons = [{ id: "k1", t: "origin", p: "c" }, { id: "k2", t: "dim", k: "dia", e1: "e1", v: 10 }];
-  expect(sketchDof(circle)).toEqual({ free: 3, dof: 0, over: 0 });
+  expect(sketchDof(circle)).toEqual({ free: 3, rank: 3, dof: 0, redundant: 0 });
   // an arc has 5 (its end sits on its circle); a projected line adds nothing
   const arc = { pts: [pt("c", 0, 0), pt("a", 5, 0), pt("b", 0, 5), pt("q", 9, 9), pt("r", 9, 0)], ents: [{ id: "e1", t: "arc", c: "c", a: "a", b: "b" }, { id: "e2", t: "line", a: "q", b: "r", proj: true }], cons: [] };
-  expect(sketchDof(arc)).toEqual({ free: 5, dof: 5, over: 5 });
-  // a dimension with no value yet (v below 0) is not an equation; dof never goes below 0
-  expect(sketchDof({ ...circle, cons: [{ id: "k2", t: "dim", k: "dia", e1: "e1", v: -1 }] })).toEqual({ free: 3, dof: 3, over: 3 });
-  expect(sketchDof({ ...circle, cons: [{ id: "k1", t: "origin", p: "c" }, { id: "k2", t: "origin", p: "c" }, { id: "k3", t: "equal" }] })).toEqual({ free: 3, dof: 0, over: -2 });
+  expect(sketchDof(arc)).toEqual({ free: 5, rank: 0, dof: 5, redundant: 0 });
+  // a dimension with no value yet (v below 0) is not an equation
+  expect(sketchDof({ ...circle, cons: [{ id: "k2", t: "dim", k: "dia", e1: "e1", v: -1 }] })).toMatchObject({ free: 3, dof: 3, redundant: 0 });
+  // the same pin twice repeats itself (2 equations); a constraint with no shape to act on is no equation
+  expect(sketchDof({ ...circle, cons: [{ id: "k1", t: "origin", p: "c" }, { id: "k2", t: "origin", p: "c" }, { id: "k3", t: "equal" }] })).toEqual({ free: 3, rank: 2, dof: 1, redundant: 2 });
   // a rectangle: 8 variables; origin 2 + four horizontal/vertical + the width = 7, so one is left
   const rect = { pts: [pt("p0", 0, 0), pt("p1", 40, 0), pt("p2", 40, 20), pt("p3", 0, 20)], ents: [["e0", "p0", "p1"], ["e1", "p1", "p2"], ["e2", "p2", "p3"], ["e3", "p3", "p0"]].map(([id, a, b]) => ({ id, t: "line", a, b })),
     cons: [{ id: "k0", t: "origin", p: "p0" }, { id: "k1", t: "horizontal", e1: "e0" }, { id: "k2", t: "vertical", e1: "e1" }, { id: "k3", t: "horizontal", e1: "e2" }, { id: "k4", t: "vertical", e1: "e3" }, { id: "k5", t: "dim", k: "dist", p1: "p0", p2: "p1", o: "h", v: 40 }] };
-  expect(sketchDof(rect)).toEqual({ free: 8, dof: 1, over: 1 });
+  expect(sketchDof(rect)).toEqual({ free: 8, rank: 7, dof: 1, redundant: 0 });
   // a perpendicular between two edges that are already horizontal and vertical repeats them: it must not close the last freedom
-  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "perpendicular", e1: "e0", e2: "e1" }] })).toEqual({ free: 8, dof: 1, over: 1 });
-  // a real second constraint does (a horizontal given as two points counts as the edge's own)
-  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }] })).toEqual({ free: 8, dof: 0, over: 0 });
-  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }, { id: "k7", t: "dim", k: "dist", p1: "p0", p2: "p3", o: "v", v: 20 }] })).toEqual({ free: 8, dof: 0, over: -1 });
-  const twoPoint = { ...rect, cons: [{ id: "k1", t: "horizontal", p1: "p0", p2: "p1" }, { id: "k2", t: "vertical", e1: "e1" }, { id: "k3", t: "parallel", e1: "e0", e2: "e1" }] };
-  expect(sketchDof(twoPoint).over).toBe(8 - 2); // e0 and e1 each carry a constraint of their own: the parallel adds nothing
+  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "perpendicular", e1: "e0", e2: "e1" }] })).toEqual({ free: 8, rank: 7, dof: 1, redundant: 1 });
+  // a real second constraint does
+  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }] })).toEqual({ free: 8, rank: 8, dof: 0, redundant: 0 });
+  expect(sketchDof({ ...rect, cons: [...rect.cons, { id: "k6", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }, { id: "k7", t: "dim", k: "dist", p1: "p0", p2: "p3", o: "v", v: 20 }] })).toEqual({ free: 8, rank: 8, dof: 0, redundant: 1 });
+  // two edges that are each horizontal already (one given as two points) are parallel for free
+  const twoPoint = { ...rect, cons: [{ id: "k1", t: "horizontal", p1: "p0", p2: "p1" }, { id: "k2", t: "horizontal", e1: "e2" }, { id: "k3", t: "parallel", e1: "e0", e2: "e2" }] };
+  expect(sketchDof(twoPoint)).toEqual({ free: 8, rank: 2, dof: 6, redundant: 1 });
 });
 
 test("Sketch proof: the Browser shows a check on a fully constrained sketch and '1 free' when a dimension goes", async () => {
@@ -1184,7 +1187,7 @@ test("Sketch proof: the Browser shows a check on a fully constrained sketch and 
   // too many constraints: the check stays, with a warning in its title
   await page.evaluate(() => window.__store.update((d) => { d.sketches[0].cons.push({ id: "d2", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20 }, { id: "x3", t: "dim", k: "dist", p1: "p0", p2: "p3", o: "v", v: 20 }); }, "Add dimensions"));
   await expect(sketchDofs()).toHaveText("✓");
-  await expect(sketchDofs()).toHaveAttribute("title", "Fully constrained by count; 1 more constraint than needed, some may fight");
+  await expect(sketchDofs()).toHaveAttribute("title", "Fully constrained; 2 more constraints than needed (they repeat the others)");
   // a design with no sketches shows nothing
   await loadDoc(page, box20());
   await expect(sketchDofs()).toHaveCount(0);

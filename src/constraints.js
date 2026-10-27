@@ -317,6 +317,15 @@ function jacobian(ts, vars, loc, ncol) {
   }
   return J;
 }
+// the terms that share unknowns, grouped (a term with no free unknown is in no group); each group is solved and counted on its own
+function groupTerms(terms, nvars) {
+  const parent = Array.from({ length: nvars }, (_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  for (const t of terms) for (let j = 1; j < t.vars.length; j++) parent[find(t.vars[j])] = find(t.vars[0]);
+  const groups = new Map();
+  for (const t of terms) if (t.vars.length) { const g = find(t.vars[0]); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(t); }
+  return [...groups.values()];
+}
 // solve the terms of one connected group: the smallest move that takes every row to zero (Levenberg-Marquardt)
 function lmGroup(ts, vars) {
   const loc = new Map(), vs = [];
@@ -368,12 +377,7 @@ export function solveSketch(sk, keep = new Set()) {
   const vars = bindVars(sk, terms, P, fixed, false);
   const start = vars.map((v) => v.o[v.k]);
   // only the groups of constraints that are off are touched: a group that already holds stays exactly where it is
-  const parent = vars.map((_, i) => i);
-  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  for (const t of terms) for (let j = 1; j < t.vars.length; j++) parent[find(t.vars[j])] = find(t.vars[0]);
-  const groups = new Map();
-  for (const t of terms) if (t.vars.length) { const g = find(t.vars[0]); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(t); }
-  for (const ts of groups.values()) if (worstOf(rowsOf(ts)) > SOLVE_TOL) lmGroup(ts, vars);
+  for (const ts of groupTerms(terms, vars.length)) if (worstOf(rowsOf(ts)) > SOLVE_TOL) lmGroup(ts, vars);
   // a result that is not a real shape (a NaN, a circle shrunk to nothing) is thrown away
   if (vars.some((v, i) => !isFinite(v.o[v.k]) || (v.k === "r" && !(v.o.r > 1e-6)))) vars.forEach((v, i) => { v.o[v.k] = start[i]; });
   let worst = 0;
@@ -398,30 +402,48 @@ function analyze(sk) {
   for (const e of sk.ents) if (e.proj) for (const id of entIds(e)) fixed.add(id);
   const { terms, P } = buildTerms(sk, false);
   const vars = bindVars(sk, terms, P, fixed, true);
-  const basis = [];
-  const gain = (row) => { // does this row add a direction the basis does not have yet?
-    const n0 = Math.hypot(...row);
-    if (!(n0 > 1e-9)) return false;
-    let w = row.map((x) => x / n0);
-    for (let pass = 0; pass < 2; pass++) for (const b of basis) { let d = 0; for (let i = 0; i < w.length; i++) d += w[i] * b[i]; w = w.map((x, i) => x - d * b[i]); }
-    const m = Math.hypot(...w);
-    if (!(m > RANK_TOL)) return false;
-    basis.push(w.map((x) => x / m));
-    return true;
-  };
-  const loc = new Map(vars.map((_, i) => [i, i]));
-  let arcs = 0, rows = 0;
-  const repeated = [], seen = new Set();
-  for (const t of terms) {
-    const J = jacobian([t], vars, loc, vars.length);
-    let g = false;
-    for (const row of J) if (gain(Array.from(row))) g = true;
-    if (!t.c) { if (g) arcs++; continue; }
-    rows += t.n;
-    if (!g && !seen.has(t.c.id)) { seen.add(t.c.id); repeated.push(t.c.id); }
+  let arcs = 0, rank = 0, rows = 0;
+  const repeated = new Set();
+  for (const t of terms) if (t.c) { rows += t.n; if (!t.vars.length) repeated.add(t.c); }
+  for (const ts of groupTerms(terms, vars.length)) {
+    const loc = new Map(), basis = [];
+    for (const t of ts) for (const j of t.vars) if (!loc.has(j)) loc.set(j, loc.size);
+    for (const t of ts) { // arcs come first in the list: their rows are counted before the constraints'
+      let g = false;
+      for (const row of jacobian([t], vars, loc, loc.size)) if (adds(row, basis)) { g = true; if (t.c) rank++; else arcs++; }
+      if (t.c && !g) repeated.add(t.c);
+    }
   }
-  const rank = basis.length - arcs;
-  return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - basis.length), redundant: rows - rank, repeated };
+  return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - arcs - rank), redundant: rows - rank, repeated: sk.cons.filter((c) => repeated.has(c)).map((c) => c.id) };
+}
+// does this row point somewhere the basis does not reach yet? (it is then added to the basis, as a unit vector)
+function adds(row, basis) {
+  const n0 = Math.hypot(...row);
+  if (!(n0 > 1e-9)) return false;
+  let w = Array.from(row, (x) => x / n0);
+  for (let pass = 0; pass < 2; pass++) for (const b of basis) { let d = 0; for (let i = 0; i < w.length; i++) d += w[i] * b[i]; w = w.map((x, i) => x - d * b[i]); }
+  const m = Math.hypot(...w);
+  if (!(m > RANK_TOL)) return false;
+  basis.push(w.map((x) => x / m));
+  return true;
+}
+
+// plain-English names for the toasts that say a constraint clashes or repeats (the edit in sketcher.js uses them)
+const DIM_NAMES = { dist: "length", pl: "distance", ll: "distance", dia: "diameter", rad: "radius", ang: "angle" };
+export const conName = (c) => (c.t === "dim" ? DIM_NAMES[c.k] || "dimension" : c.t === "origin" ? "origin" : CONSTRAINTS[c.t] ? CONSTRAINTS[c.t].label.toLowerCase() : c.t);
+const andList = (a) => (a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]);
+const namesOf = (cons) => andList([...new Set(cons.map(conName))]);
+export const conNames = (sk, ids) => namesOf(sk.cons.filter((c) => ids.includes(c.id)));
+export const conKey = (c) => JSON.stringify({ ...c, sg: undefined }); // a constraint as it was saved, without the angle sign a solve may add
+// why an edit was refused: ids = the constraints that no longer hold; was = Map(constraint id -> its JSON before the edit), to tell which one was just added or changed
+export function clashNote(sk, ids, was) {
+  const bad = sk.cons.filter((c) => ids.includes(c.id));
+  const mine = bad.find((c) => was.get(c.id) !== conKey(c));
+  const others = bad.filter((c) => c !== mine);
+  if (!mine) return "Those constraints conflict: " + namesOf(bad) + "; nothing changed.";
+  if (!others.length) return `That ${conName(mine)} can't be reached with the shapes it holds; nothing changed.`;
+  const names = [...new Set(others.map(conName))];
+  return `That ${conName(mine)} conflicts with the ${andList(names)} constraint${names.length > 1 ? "s" : ""}; nothing changed.`;
 }
 // end jumpstart-3d
 
