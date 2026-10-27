@@ -95,10 +95,10 @@ function partBody(doc, r) {
     body.node = node;
   } else {
     // a rod; a cutter is a rod marked as a hole. A bolt's print offset thins the thread, which loosens it. A hole works the other way
-    // round (a thinner cutter would make a tighter hole), so the cutter is built wider and its thread has no offset. The kernel moves a
-    // thread face by the offset square to the face; widening the radius by c moves a 60 degree flank only c / 2 that way, so the radius
-    // grows by 2c (the diameter by 4c) to match the move a nut gets.
-    const grow = type === "cutter" ? 4 * Math.min(Math.abs(clear), 0.3 * p) : 0;
+    // round (a thinner cutter would make a tighter hole), so the cutter is built wider and its thread has no offset. The kernel puts a
+    // nut's flanks s (the offset) further out, and the flanks of the plain ISO profile on a rod grown by s in radius sit just there, so
+    // the radius grows by s (the diameter by 2s).
+    const grow = type === "cutter" ? 2 * Math.min(Math.abs(clear), 0.15 * p) : 0;
     const node = cylinder(+(d + grow).toFixed(4), L);
     node.mods.push(thread(L / 2, type === "cutter" ? 0 : clear));
     body.node = node;
@@ -155,6 +155,8 @@ export function initFasteners(app, { openCmd, commit, row, seg, offsetSelect, ST
         if (st.type !== "nut") body.append(row("Length", app.numField({ value: st.length, id: "fa-len", len: true, min: 3 * pitch(), step: 1, onCommit: (v) => { st.length = v; def.render(); } }), "fa-len"));
         body.append(row("Hand", seg([[false, "Right"], [true, "Left"]], st.left, (v) => { st.left = v; def.render(); }, "fa-hand")));
         body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; def.render(); }, "fa-clear"), "fa-clear"));
+        const cap = offsetSelect.note(st.clear, pitch(), st.type === "bolt" || st.type === "rod" ? "bolt" : "nut", isMetric(st.size) ? st.size : "");
+        if (cap) note(cap);
         const [af, k, nutAf, m] = HEX[diaKey(st.size)];
         if (st.type === "bolt") note(`Hex head ${withUnit(af, 3)} across flats, ${withUnit(k, 3)} high; the length is measured under the head.`);
         else if (st.type === "nut") note(`Hex nut ${withUnit(nutAf, 3)} across flats, ${withUnit(m, 3)} thick.`);
