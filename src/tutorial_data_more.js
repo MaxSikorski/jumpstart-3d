@@ -49,7 +49,8 @@ export const MORE = [
         title: "Group it", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["Press <b>Ctrl+A</b> to select everything, then click <b>Group</b>."],
         when: "Group joins the letters to the bookmark and cuts the hole.",
-        check: (t) => groupWith(t, (g) => t.hasHole(g) && t.childKinds(g).includes("text")),
+        check: (t) => groupWith(t, (g) => t.cuts(g) && t.childKinds(g).includes("text")), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       { title: "Pick a color", tool: "Color", icon: "appearance", show: { sel: "#inspector .colors" }, how: ["Click a color in the panel on the right."], when: "Tip: pause the print at the 2 mm layer and swap filament for two-color letters." },
       saveStep(), exportStep(),
@@ -125,7 +126,8 @@ export const MORE = [
         title: "Group it", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["With all three selected, click <b>Group</b>. Orbit the view: a thin star wall on a flat frame."],
         when: "The wall is about 3 mm: thin enough to cut, thick enough to print.",
-        check: (t) => groupWith(t, (g) => t.hasHole(g) && t.childKinds(g).filter((k) => k === "star").length >= 3),
+        check: (t) => groupWith(t, (g) => t.cuts(g) && t.childKinds(g).filter((k) => k === "star").length >= 3), // jumpstart-3d: overlapping solids keep the hole check if no joined volume is available
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       saveStep(), exportStep(),
     ],
@@ -211,7 +213,8 @@ export const MORE = [
         title: "Group the tray first", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["Press <b>Ctrl+A</b>, then <b>Group</b>."],
         when: "A hole cuts every solid in its group. Grouping now means the dividers you add next won't be cut away.",
-        check: (t) => groupWith(t, (g) => t.hasHole(g)),
+        check: (t) => groupWith(t, (g) => t.cuts(g)), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "A long divider", tool: "Box", icon: "box", show: { tile: "box" },
@@ -353,7 +356,8 @@ export const MORE = [
         title: "Group the tray", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["Press <b>Ctrl+A</b>, then <b>Group</b>."],
         when: "Group now, so the hole won't cut away the walls you add next.",
-        check: (t) => groupWith(t, (g) => t.hasHole(g)),
+        check: (t) => groupWith(t, (g) => t.cuts(g)), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "The first wall", tool: "Box", icon: "box", show: { tile: "box" },
@@ -399,7 +403,8 @@ export const MORE = [
         title: "Hollow the box", tool: "Holes → Box", icon: "holeToggle", show: { tile: "box", hole: true }, anim: "holeBox",
         how: ["Add a <b>Box</b> hole: <b>Width 74</b>, <b>Depth 54</b>, <b>Height 40</b>, at <b>Z (bottom) 3</b>.", "Select both and <b>Group</b>."],
         when: "Walls 3 mm. The opening is 74 × 54: remember that number.",
-        check: (t) => groupWith(t, (g) => t.prim("box", true).length >= 0 && t.hasHole(g) && (() => { const s = sz(t, g); return t.near(s.x, 80, 1) && t.near(s.z, 40, 1); })()),
+        check: (t) => groupWith(t, (g) => t.prim("box", true).length >= 0 && t.cuts(g) && (() => { const s = sz(t, g); return t.near(s.x, 80, 1) && t.near(s.z, 40, 1); })()), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "The lid", tool: "Box", icon: "box", show: { tile: "box" },
@@ -417,7 +422,8 @@ export const MORE = [
         title: "Make the lip a ring", tool: "Holes → Box + Group", icon: "holeToggle", show: { tile: "box", hole: true }, anim: "holeBox",
         how: ["Add a <b>Box</b> hole: <b>Width 69.2</b>, <b>Depth 49.2</b>, <b>Height 6</b>, at <b>X 100</b>, <b>Y 0</b>, <b>Z (bottom) 3</b>.", "Select the lip and this hole (click one, Shift+click the other) and <b>Group</b>."],
         when: "A 2 mm ring is lighter than a solid block and flexes a little for a snug fit.",
-        check: (t) => groupWith(t, (g) => t.hasHole(g) && (() => { const s = sz(t, g); return t.near(s.x, 73.2, 0.6) && t.near(s.z, 6, 0.6); })()),
+        check: (t) => groupWith(t, (g) => t.cuts(g) && (() => { const s = sz(t, g); return t.near(s.x, 73.2, 0.6) && t.near(s.z, 6, 0.6); })()), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "Join the lip to the lid", tool: "Group", icon: "group", show: { sel: "#bb-group" },
@@ -480,7 +486,8 @@ export const MORE = [
         title: "Group the lid", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["Select the lid and the dip (click, Shift+click), then <b>Group</b>."],
         when: "Two parts, printed side by side. Slide the lid in from the open end.",
-        check: (t) => t.groups().filter((g) => t.hasHole(g)).length >= 2,
+        check: (t) => t.groups().filter((g) => t.cuts(g)).length >= 2, // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       saveStep(), exportStep(),
     ],
