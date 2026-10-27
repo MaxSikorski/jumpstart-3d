@@ -330,3 +330,33 @@ test("a slot (two arcs and two lines): horizontal and four tangents give no repe
   const d = sketchDof(sk);
   assert.deepEqual([d.dof, d.redundant], [0, 0]);
 });
+
+// a guard on speed: the count runs on every redraw and a drag solves on every mouse move, so a long sketch must stay quick.
+// (Generous limits, the best of three runs; they catch a slide back to seconds, not milliseconds.)
+function chain(nl) { // a zig-zag of nl lines sharing ends, each horizontal or vertical with a length, the first point on the origin: one connected group, fully constrained
+  const pts = [], ents = [], cons = [{ id: "o", t: "origin", p: "p0" }];
+  let x = 0, y = 0;
+  for (let i = 0; i <= nl; i++) { pts.push({ id: "p" + i, x: x + (i ? 0.3 * Math.sin(i) : 0), y: y + (i ? 0.3 * Math.cos(i) : 0) }); if (i % 2 === 0) x += 10; else y += 10; }
+  for (let i = 0; i < nl; i++) {
+    ents.push({ id: "e" + i, t: "line", a: "p" + i, b: "p" + (i + 1) });
+    cons.push({ id: "h" + i, t: i % 2 ? "vertical" : "horizontal", e1: "e" + i }, { id: "d" + i, t: "dim", k: "dist", p1: "p" + i, p2: "p" + (i + 1), o: "a", v: 10 });
+  }
+  return { pts, ents, cons };
+}
+const best = (fn) => { let b = Infinity; for (let i = 0; i < 3; i++) { const t = performance.now(); fn(); b = Math.min(b, performance.now() - t); } return b; };
+test("speed: counting the freedoms of a 100-line sketch takes under half a second, and a drag that nothing can satisfy under 0.3 s a frame", () => {
+  const sk = chain(100);
+  assert.ok(solveSketch(sk, new Set()).ok);
+  assert.equal(sketchDof(sk).dof, 0);
+  const count = best(() => sketchDof(sk));
+  assert.ok(count < 500, "sketchDof took " + count.toFixed(0) + " ms");
+  // dragging the last point of a fully constrained chain is a position nothing can satisfy
+  const drag = best(() => { const s = JSON.parse(JSON.stringify(sk)); const p = s.pts[s.pts.length - 1]; p.x += 3; p.y += 2; solveSketch(s, new Set([p.id])); });
+  assert.ok(drag < 300, "a drag frame took " + drag.toFixed(0) + " ms");
+  // a drag that can be satisfied still follows the mouse
+  const free = chain(100); free.cons = free.cons.filter((c) => c.t !== "dim");
+  const s = JSON.parse(JSON.stringify(free)); const mid = s.pts[50]; mid.x += 3; mid.y += 2;
+  const st = solveSketch(s, new Set([mid.id]));
+  assert.ok(st.ok);
+  assert.deepEqual([mid.x, mid.y].map((v) => +v.toFixed(9)), [free.pts[50].x + 3, free.pts[50].y + 2].map((v) => +v.toFixed(9)));
+});

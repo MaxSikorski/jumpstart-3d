@@ -23,6 +23,7 @@ const OK_TOL = 1e-6; // a sketch counts as solved when its worst row is below th
 const FD_STEP = 1e-6; // finite-difference step for the Jacobian
 const RANK_TOL = 1e-5; // a row adds a degree of constraint only if this much of it (as a fraction of its own length) is new
 const MAX_ITER = 100;
+const DRAG_ITER = 20; // ...and while dragging
 
 // every constraint as { c, n, f, deps }: f() = its n rows, read from the live points; deps = the point ids and circle shapes they depend on.
 // Choices made from the geometry as it is now (which side a distance is measured on, the sign of an angle) are fixed here, once per solve.
@@ -166,23 +167,31 @@ function groupTerms(terms, nvars) {
   return [...groups.values()];
 }
 // solve the terms of one connected group: the smallest move that takes every row to zero (Levenberg-Marquardt)
-function lmGroup(ts, vars) {
+// drag: a point is being dragged, once for each frame of the mouse. A position nothing can satisfy must not cost 100 rounds a frame, so this stops after
+// 20 rounds, or as soon as a round gains less than a millionth of what is left
+function lmGroup(ts, vars, drag) {
   const loc = new Map(), vs = [];
   for (const t of ts) for (const j of t.vars) if (!loc.has(j)) { loc.set(j, vs.length); vs.push(vars[j]); }
   const n = vs.length;
-  let r = rowsOf(ts), m = r.length, w = worstOf(r), norm = Math.hypot(...r), lam = 1e-6, J = null, stall = 0;
+  let r = rowsOf(ts), m = r.length, w = worstOf(r), norm = Math.hypot(...r), lam = 1e-6, J = null, nz = null, G = null, stall = 0;
   if (!isFinite(w)) return;
-  for (let it = 0; it < MAX_ITER && w > SOLVE_TOL; it++) {
-    J = J || jacobian(ts, vars, loc, n);
+  for (let it = 0; it < (drag ? DRAG_ITER : MAX_ITER) && w > SOLVE_TOL; it++) {
+    if (!J) { // each row touches a few unknowns only: keep which, and build the products below from those
+      J = jacobian(ts, vars, loc, n);
+      nz = J.map((row) => { const o = []; for (let q = 0; q < n; q++) if (row[q] !== 0) o.push(q); return o; });
+      G = Array.from({ length: m <= n ? m : n }, (_, i) => new Float64Array(i + 1)); // lower triangle of J J^T, or of J^T J when there are more rows than unknowns
+      if (m <= n) for (let i = 0; i < m; i++) for (let k = 0; k <= i; k++) { let s = 0; for (const q of nz[i]) s += J[i][q] * J[k][q]; G[i][k] = s; }
+      else for (let i = 0; i < m; i++) for (const p of nz[i]) for (const q of nz[i]) if (q <= p) G[p][q] += J[i][p] * J[i][q];
+    }
     // minimum-norm step dx = -J^T (J J^T + lam I)^-1 r (or the same through J^T J when there are more rows than unknowns)
-    let dx;
+    const A = G.map((row, i) => { const c = Float64Array.from(row); c[i] += lam; return c; });
+    let dx = null;
     if (m <= n) {
-      const A = J.map((a, i) => Float64Array.from(J, (b, k) => { let s = i === k ? lam : 0; for (let q = 0; q < n; q++) s += a[q] * b[q]; return s; }));
       const y = cholSolve(A, Float64Array.from(r));
-      dx = y && Float64Array.from({ length: n }, (_, q) => { let s = 0; for (let i = 0; i < m; i++) s -= J[i][q] * y[i]; return s; });
+      if (y) { dx = new Float64Array(n); for (let i = 0; i < m; i++) for (const q of nz[i]) dx[q] -= J[i][q] * y[i]; }
     } else {
-      const A = Array.from({ length: n }, (_, a) => Float64Array.from({ length: n }, (_, b) => { let s = a === b ? lam : 0; for (let i = 0; i < m; i++) s += J[i][a] * J[i][b]; return s; }));
-      const g = Float64Array.from({ length: n }, (_, a) => { let s = 0; for (let i = 0; i < m; i++) s -= J[i][a] * r[i]; return s; });
+      const g = new Float64Array(n);
+      for (let i = 0; i < m; i++) for (const q of nz[i]) g[q] -= J[i][q] * r[i];
       dx = cholSolve(A, g);
     }
     let better = false;
@@ -190,11 +199,11 @@ function lmGroup(ts, vars) {
       const x0 = vs.map((v) => v.o[v.k]);
       vs.forEach((v, q) => { v.o[v.k] = x0[q] + dx[q]; });
       const rn = rowsOf(ts), nn = Math.hypot(...rn);
-      if (nn < norm) { better = true; stall = norm - nn < 1e-12 * norm ? stall + 1 : 0; r = rn; norm = nn; w = worstOf(rn); lam = Math.max(lam / 10, 1e-9); J = null; }
+      if (nn < norm) { better = true; stall = norm - nn < (drag ? 1e-6 : 1e-12) * norm ? stall + 1 : 0; r = rn; norm = nn; w = worstOf(rn); lam = Math.max(lam / 10, 1e-9); J = null; }
       else vs.forEach((v, q) => { v.o[v.k] = x0[q]; });
     }
     if (!better) { lam *= 10; if (lam > 1e8) break; }
-    if (stall >= 3) break; // not going anywhere: the constraints fight
+    if (stall >= (drag ? 1 : 3)) break; // not going anywhere: the constraints fight
   }
 }
 
@@ -216,7 +225,7 @@ export function solveSketch(sk, keep = new Set()) {
   const vars = bindVars(sk, terms, P, fixed, false);
   const start = vars.map((v) => v.o[v.k]);
   // only the groups of constraints that are off are touched: a group that already holds stays exactly where it is
-  for (const ts of groupTerms(terms, vars.length)) if (worstOf(rowsOf(ts)) > SOLVE_TOL) lmGroup(ts, vars);
+  for (const ts of groupTerms(terms, vars.length)) if (worstOf(rowsOf(ts)) > SOLVE_TOL) lmGroup(ts, vars, keep.size > 0);
   // a result that is not a real shape (a NaN, a circle shrunk to nothing) is thrown away
   if (vars.some((v, i) => !isFinite(v.o[v.k]) || (v.k === "r" && !(v.o.r > 1e-6)))) vars.forEach((v, i) => { v.o[v.k] = start[i]; });
   let worst = 0;
@@ -256,14 +265,21 @@ function analyze(sk) {
   return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - arcs - rank), redundant: rows - rank, repeated: (sk.cons || []).filter((c) => repeated.has(c)).map((c) => c.id) };
 }
 // does this row point somewhere the basis does not reach yet? (it is then added to the basis, as a unit vector)
-function adds(row, basis) {
-  const n0 = Math.hypot(...row);
+function adds(row, basis) { // works in place on typed arrays: this runs for every constraint of every sketch on a redraw
+  const n = row.length;
+  let n0 = 0;
+  for (let i = 0; i < n; i++) n0 += row[i] * row[i];
+  n0 = Math.sqrt(n0);
   if (!(n0 > 1e-9)) return false;
-  let w = Array.from(row, (x) => x / n0);
-  for (let pass = 0; pass < 2; pass++) for (const b of basis) { let d = 0; for (let i = 0; i < w.length; i++) d += w[i] * b[i]; w = w.map((x, i) => x - d * b[i]); }
-  const m = Math.hypot(...w);
+  const w = new Float64Array(n);
+  for (let i = 0; i < n; i++) w[i] = row[i] / n0;
+  for (let pass = 0; pass < 2; pass++) for (const b of basis) { let d = 0; for (let i = 0; i < n; i++) d += w[i] * b[i]; for (let i = 0; i < n; i++) w[i] -= d * b[i]; }
+  let m = 0;
+  for (let i = 0; i < n; i++) m += w[i] * w[i];
+  m = Math.sqrt(m);
   if (!(m > RANK_TOL)) return false;
-  basis.push(w.map((x) => x / m));
+  for (let i = 0; i < n; i++) w[i] /= m;
+  basis.push(w);
   return true;
 }
 
