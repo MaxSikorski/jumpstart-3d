@@ -495,6 +495,8 @@ export function initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickB
       const out = [el("div", { id: "hp-total", style: { fontWeight: "600" } }, countText(n, st.shape) + (k > 0 ? ` (${k} left out: they would not fit inside the face and its margin)` : ""))];
       if (st.check.error) out.push(el("div", { id: "hp-warn", class: "err-msg" }, st.check.error));
       else if (st.check.warn) out.push(el("div", { id: "hp-warn", class: "hint", style: { padding: 0 } }, st.check.warn));
+      const cap = st.kind === "tapped" ? offsetSelect.note(st.clear, st.pitch, "nut") : ""; // jumpstart-3d: ISO thread profile
+      if (cap) out.push(el("div", { id: "hp-capnote", class: "hint", style: { padding: 0 } }, cap));
       return out;
     }
     function draw() {

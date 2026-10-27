@@ -155,6 +155,8 @@ export function initFasteners(app, { openCmd, commit, row, seg, offsetSelect, ST
         if (st.type !== "nut") body.append(row("Length", app.numField({ value: st.length, id: "fa-len", len: true, min: 3 * pitch(), step: 1, onCommit: (v) => { st.length = v; def.render(); } }), "fa-len"));
         body.append(row("Hand", seg([[false, "Right"], [true, "Left"]], st.left, (v) => { st.left = v; def.render(); }, "fa-hand")));
         body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; def.render(); }, "fa-clear"), "fa-clear"));
+        const cap = offsetSelect.note(st.clear, pitch(), st.type === "bolt" || st.type === "rod" ? "bolt" : "nut", isMetric(st.size) ? st.size : "");
+        if (cap) note(cap);
         const [af, k, nutAf, m] = HEX[diaKey(st.size)];
         if (st.type === "bolt") note(`Hex head ${withUnit(af, 3)} across flats, ${withUnit(k, 3)} high; the length is measured under the head.`);
         else if (st.type === "nut") note(`Hex nut ${withUnit(nutAf, 3)} across flats, ${withUnit(m, 3)} thick.`);

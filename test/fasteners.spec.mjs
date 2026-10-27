@@ -72,6 +72,18 @@ test("Advanced: a nut from the dialog has no length row", async () => {
   expect(nut.bbox.max[2]).toBeCloseTo(6.8, 3);
 });
 
+test("the Fastener dialog says when the print offset is past what the thread can take (bolt 0.07 pitch, nut 0.15 pitch)", async () => {
+  await fresh("advanced");
+  await openFromRibbon();
+  await page.selectOption("#fa-size", "M3");
+  await page.selectOption("#fa-clear", "-0.1");
+  await expect(page.locator("#cmd")).toContainText("M3: offsets past −0.035 mm make no difference on this bolt");
+  await part("Nut");
+  await expect(page.locator("#cmd")).toContainText("M3: offsets past −0.075 mm make no difference on this nut or hole");
+  await page.selectOption("#fa-size", "M8");
+  await expect(page.locator("#cmd")).not.toContainText("make no difference"); // 0.1 is under 0.15 x 1.25
+});
+
 // quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
 test("rods: M8x30 and 1/4-20x40 build to the expected volume, left hand included", async ({}, info) => {
   quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");

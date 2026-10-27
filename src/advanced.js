@@ -1767,11 +1767,16 @@ export function initAdvanced(app) {
         const ssel = el("select", { class: "num", id: "hole-size", "aria-label": "Screw size" }, el("option", { value: "" }, "Custom"), ...groups);
         ssel.onchange = () => { st.size = ssel.value; if (st.size) applySize(st.size); refresh(); };
         body.append(row(st.kind === "tapped" ? "Thread" : "Screw size", ssel, "hole-size"));
-        const custom = (f) => (v, t) => { f(v, t); st.size = ""; const s2 = document.getElementById("hole-size"); if (s2) s2.value = ""; refresh(false); }; // jumpstart-3d: parameters
+        let capSync = null; // jumpstart-3d: ISO thread profile
+        const custom = (f) => (v, t) => { f(v, t); st.size = ""; const s2 = document.getElementById("hole-size"); if (s2) s2.value = ""; refresh(false); if (capSync) capSync(); }; // jumpstart-3d: parameters
         body.append(row(st.kind === "tapped" ? "Tap drill" : "Diameter", app.numField({ value: st.dia, id: "hole-dia", min: 0.01, step: 0.1, live: true, expr: exprOf(st, "dia"), onCommit: custom((v, t) => { st.dia = v; setExpr(st, "dia", t); }) }), "hole-dia")); // jumpstart-3d: parameters
         if (st.kind === "tapped") {
           body.append(pitchRow(st.pitch, custom((v) => (st.pitch = v)), "hole-pitch", true));
-          body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; refresh(false); }, "hole-clear"), "hole-clear"));
+          const capNote = el("div", { class: "hint", id: "hole-capnote", style: { padding: 0 } }); // jumpstart-3d: ISO thread profile
+          const setCap = () => { capNote.textContent = offsetSelect.note(st.clear, st.pitch, "nut"); capNote.hidden = !capNote.textContent; };
+          capSync = setCap;
+          body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; refresh(false); setCap(); }, "hole-clear"), "hole-clear"), capNote);
+          setCap();
         }
         body.append(row("Extent", seg([[true, "Through all"], [false, "Depth"]], st.through, (v) => { st.through = v; refresh(); }, "hole-ext")));
         if (!st.through) {
@@ -2843,6 +2848,13 @@ export function initAdvanced(app) {
     sel.onchange = () => onPick(+sel.value);
     return sel;
   }
+  // jumpstart-3d: ISO thread profile: the offset is capped per part (bolt 0.07 pitch, nut or hole 0.15 pitch; kernel.js threadGroove).
+  // The text for a dialog showing this offset and pitch (mm) when the cap bites, else "". what: "bolt" or "nut" (also a hole).
+  offsetSelect.note = (clear, pitch, what, size) => {
+    const c = Math.abs(clear || 0), pre = size ? size + ": " : "", tail = " (the thread crest would get too thin).";
+    const cap = (what === "bolt" ? 0.07 : 0.15) * pitch;
+    return c > cap + 1e-9 ? pre + `offsets past −${withUnit(cap, 3)} make no difference on this ${what === "bolt" ? "bolt" : "nut or hole"}` + tail : "";
+  };
   // every thread feature in a body, including ones inside combined bodies
   function threadMods(node, out = []) {
     for (const m of node.mods || []) if (m.t === "thread" || (m.t === "hole" && m.tapped)) out.push(m);
@@ -2866,8 +2878,13 @@ export function initAdvanced(app) {
       ok() { commit(def, "Thread print offset"); app.toast(st.clear ? `Print offset ${offsetLabel(st.clear)} applied to ${st.scope === "sel" ? nSel : nAll} thread${(st.scope === "sel" ? nSel : nAll) === 1 ? "" : "s"}.` : "Print offset removed."); },
       hint: () => "Loosens printed threads so bolts and nuts screw together. Outside threads get thinner and inside threads get wider.",
       build(body) {
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, getUnit() === "in" ? "Moves the thread flanks into the material by this much (the crest stays the same), so printed parts fit. −0.004 in (0.1 mm) is a good start; use more if threads bind." : "Moves the thread flanks into the material by this much (the crest stays the same), so printed parts fit. −0.1 mm is a good start; use more if threads bind.")); // jumpstart-3d: ISO thread profile
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, getUnit() === "in" ? "Moves the thread flanks into the material by this much (the crest stays the same), so printed parts fit. −0.004 in (0.1 mm) is a good start. Small threads (M5 and under) reach their limit quickly; if they still bind, scale the nut up 1-2% or use a bigger size." : "Moves the thread flanks into the material by this much (the crest stays the same), so printed parts fit. −0.1 mm is a good start. Small threads (M5 and under) reach their limit quickly; if they still bind, scale the nut up 1-2% or use a bigger size.")); // jumpstart-3d: ISO thread profile
         body.append(row("Offset", offsetSelect(st.clear, (v) => { st.clear = v; def.render(); }, "to-clear"), "to-clear"));
+        { // jumpstart-3d: ISO thread profile: threads this offset cannot loosen any further (the caps are in kernel.js threadGroove)
+          const mods = (st.scope === "sel" ? selIds : allIds).flatMap((id) => { const b = findBody(store.doc, id); return b && !b.hole ? threadMods(b.node) : []; });
+          const lim = mods.filter((m) => m.pitch > 0 && Math.abs(st.clear) > (m.t === "hole" ? 0.15 : 0.07) * m.pitch + 1e-9).length;
+          if (lim) body.append(el("div", { class: "hint", style: { padding: 0 } }, `${lim} of ${mods.length} thread${mods.length === 1 ? "" : "s"} ${lim === 1 ? "is" : "are"} at the limit: a bigger offset makes no difference there (the thread crest would get too thin).`));
+        }
         body.append(row("Apply to", seg([["all", `All threads (${nAll})`], ["sel", `Selected objects (${nSel})`]], st.scope, (v) => { if (v === "sel" && !selIds.length) { app.toast("Select objects first, then open this again."); return; } st.scope = v; def.render(); }, "to-scope")));
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "to-new", checked: st.forNew, onchange: (e) => { st.forNew = e.target.checked; } }), "Also use for new threads"));
         if (!nAll) body.append(el("div", { class: "hint", style: { padding: 0 } }, "There are no threads yet. Tick the box above to use this offset for threads you make."));
