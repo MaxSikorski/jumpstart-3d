@@ -172,6 +172,7 @@ export function initBeginner(app) {
     btn("sketch", "Sketch", "Draw a 2D sketch on the workplane or a flat face", () => app.advanced.createSketch(), "bb-sketch", true);
     btn("spline", "3D Sketch", "Draw lines in 3D on a shape, a virtual sphere or cube, or in the air", () => app.sketch3d.open(), "bb-sketch3d", true);
     btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
+    btn("chipcarve", "Chip Carve", "Chip carve a board or a shape with knives, like real wood carving (pen pressure sets the depth)", () => app.carve.open(), "bb-chipcarve", true);
     btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
     btn("extrude", "Extrude", "Extrude a sketch into a shape (E)", () => app.quickExtrude(), "bb-extrude", true);
     btn("import", "Import", "Import a 3D model (STL, OBJ, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true); // jumpstart-3d: OBJ import
@@ -188,6 +189,8 @@ export function initBeginner(app) {
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);
+    btn("fillet", "Fillet", "Round the edges of a shape: click edges or a face, or round all of its edges", () => app.advanced.fillet(), "bb-fillet", true);
+    btn("shell", "Shell", "Make a shape hollow inside with a wall you choose, or open it up like a cup or box", () => app.advanced.shell(), "bb-shell", true);
     btn("facePattern", "Face pattern", "Raise or cut a hexagon, diamond plate or screen mesh pattern on a flat face", () => app.advanced.facePattern(), "bb-facepat", true);
     btn("measure", "Measure", "Measure sizes, distances and angles (I)", () => app.advanced.measure(), "bb-measure", true);
     btn("printsim", "3D Print Sim", "Simulate printing it: supports, layers, strength, print time", () => app.advanced.openPrintSim(), "bb-printsim", true);
@@ -211,7 +214,7 @@ export function initBeginner(app) {
     set("bb-group", true); const gb = $("bb-group"); if (gb) gb.classList.toggle("dim", n < 2); set("bb-ungroup", sel.some((b) => b.node.t === "group"));
     set("bb-align", n >= 1); set("bb-lock", n);
     const lk = $("bb-lock");
-    if (lk) { const all = n && app.sel.every((id) => app.isLocked(id)); lk.innerHTML = ICON[all ? "unlock" : "lock"]; lk.append(el("span", { class: "lbl" }, all ? "Unlock" : "Lock")); } set("bb-pattern", n); set("bb-drop", n); set("bb-hole", n); set("bb-solid", n);
+    if (lk) { const all = n && app.sel.every((id) => app.isLocked(id)); lk.innerHTML = ICON[all ? "unlock" : "lock"]; lk.append(el("span", { class: "lbl" }, all ? "Unlock" : "Lock")); } set("bb-pattern", n); set("bb-fillet", true); set("bb-shell", true); set("bb-drop", n); set("bb-hole", n); set("bb-solid", n);
     renderMirror();
   }
 
@@ -1049,10 +1052,11 @@ export function initBeginner(app) {
     if (one) transformControls(body, one);
     if (one && !one.hole) textureControls(body, one);
     if (one && !one.hole) facePatControls(body, one);
+    if (one && !one.hole) shapeFeatControls(body, one);
     if (one && one.node.t === "group") body.append(el("button", { class: "btn", onclick: () => ungroup() }, "Ungroup"));
     if (sel.length > 1) body.append(el("button", { class: "btn primary", onclick: () => group() }, `Group ${sel.length} shapes`));
-    const feats = one ? (one.node.mods || []).filter((m) => m.t !== "scale").length : 0;
-    if (feats) body.append(el("div", { class: "hint", style: { padding: 0 } }, `Has ${feats} feature${feats > 1 ? "s" : ""} from Advanced mode (fillets, holes…).`));
+    const feats = one ? (one.node.mods || []).filter((m) => !["scale", "facepat", "shell", "fillet", "chamfer"].includes(m.t)).length : 0;
+    if (feats) body.append(el("div", { class: "hint", style: { padding: 0 } }, `Has ${feats} more feature${feats > 1 ? "s" : ""} from Advanced mode (holes, cuts…).`));
     const pbox = el("div", { class: "tree", id: "insp-params" }); // jumpstart-3d: parameters
     app.advanced.paramRows(pbox);
     body.append(pbox);
@@ -1120,6 +1124,24 @@ export function initBeginner(app) {
         el("button", { class: "xbtn", "aria-label": "Remove pattern", title: "Remove pattern", html: ICON.close, onclick: () => store.update((doc) => { const x = findBody(doc, b.id); x.node.mods = (x.node.mods || []).filter((y) => y.id !== m.id); }, "Remove pattern") })));
     }
     body.append(el("button", { class: "btn", id: "insp-facepat", onclick: () => app.advanced.facePattern() }, list.length ? "Add another pattern" : "Add a face pattern…"));
+  }
+  // fillets, chamfers and shells (hollow) on this shape: edit or remove
+  function shapeFeatControls(body, b) {
+    const list = (b.node.mods || []).filter((m) => m.t === "shell" || m.t === "fillet" || m.t === "chamfer");
+    body.append(el("div", { class: "subhead" }, "Rounding and hollow"));
+    for (const m of list) {
+      const sets = m.sets && m.sets.length ? m.sets : [{ edges: m.edges || [], r: m.t === "fillet" ? m.r : m.d }];
+      const nE = sets.reduce((a, x) => a + (x.edges || []).length, 0);
+      const label = m.t === "shell" ? ((m.faces || []).length ? `Shell · ${m.th} mm wall, ${(m.faces || []).length} opening${m.faces.length > 1 ? "s" : ""}` : `Hollow · ${m.th} mm wall`)
+        : `${m.t === "fillet" ? "Fillet" : "Chamfer"} · ${sets[0].r} mm, ${nE} edge${nE === 1 ? "" : "s"}`;
+      body.append(el("div", { class: "texrow" },
+        el("span", {}, label),
+        el("button", { class: "btn", onclick: () => app.advanced.editFeature(b.id, m.id) }, "Edit"),
+        el("button", { class: "xbtn", "aria-label": "Remove", title: "Remove", html: ICON.close, onclick: () => store.update((doc) => { const x = findBody(doc, b.id); x.node.mods = (x.node.mods || []).filter((y) => y.id !== m.id); }, "Remove " + (m.t === "shell" ? "shell" : m.t)) })));
+    }
+    body.append(el("div", { style: { display: "flex", gap: "6px" } },
+      el("button", { class: "btn", id: "insp-fillet", onclick: () => app.advanced.fillet() }, "Round edges…"),
+      el("button", { class: "btn", id: "insp-shell", onclick: () => app.advanced.shell({ type: "hollow" }) }, "Make hollow…")));
   }
   // exprs: { w: "w/2" } for a size typed as a parameter expression; any other key in the patch loses its binding
   function updatePrim(id, patch, label = "Edit shape", exprs = {}) {

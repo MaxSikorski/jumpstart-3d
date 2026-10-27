@@ -838,5 +838,85 @@ button,.btn,.tool,.bru,.chip,label,select{touch-action:manipulation}
 @media (max-width:820px){#top{overflow-x:auto;scrollbar-width:none}#top::-webkit-scrollbar{display:none}#top .btn,#top .tb,#top .brand{flex-shrink:0}#top .btn{padding:0 8px}#panelToggle{position:sticky;right:0;background:var(--panel);box-shadow:-10px 0 10px var(--panel)}}
 html.ios input[type=number],html.ios input[type=text],html.ios input[type=search],html.ios select,html.ios textarea{font-size:16px}
 </style>""")
+# Hollow: make a model hollow inside, with a wall of a set thickness (like Shell -> Hollow in
+# Beginner and Advanced). The inside wall is the outside moved inward along smoothed normals.
+R("""  slice: { axis: 1, off: 0.35, keep: 'below', split: false },""", """  slice: { axis: 1, off: 0.35, keep: 'below', split: false },
+  hollow: { th: 2 },""")
+R("""  { id: 'slice', g: 'cut', name: 'Plane slice',""", """  { id: 'hollow', g: 'cut', name: 'Hollow', hint: 'Click a model, set the wall thickness, then make it hollow inside (saves material when 3D printing).', icon: '<rect x="3" y="3" width="14" height="14" rx="3"/><rect x="6.5" y="6.5" width="7" height="7" rx="1.5" stroke-dasharray="2 1.6"/>' },
+  { id: 'slice', g: 'cut', name: 'Plane slice',""")
+R("""  { id: 'e-combine', tool: 'combine',""", """  { id: 'e-hollow', tool: 'hollow', name: 'Hollow', icon: '<rect x="3" y="3" width="14" height="14" rx="3"/><rect x="6.5" y="6.5" width="7" height="7" rx="1.5" stroke-dasharray="2 1.6"/>', hint: 'Click a model, then make it hollow inside with a wall as thick as you choose.' },
+  { id: 'e-combine', tool: 'combine',""")
+R("""function renderToolSec() {
+  if (S.tool === 'sketch' || S.tool === 'combine') { CAD.renderSec(); return; }""", """function renderToolSec() {
+  if (S.tool === 'sketch' || S.tool === 'combine') { CAD.renderSec(); return; }
+  if (S.tool === 'hollow') { renderHollowSec(); return; }""")
+R("""  if (hit && t === 'slice' && hit.obj !== sel) { select(hit.obj); refreshAll(); }""", """  if (hit && t === 'slice' && hit.obj !== sel) { select(hit.obj); refreshAll(); }
+  if (hit && t === 'hollow' && hit.obj !== sel) { select(hit.obj); refreshAll(); renderToolSec(); }""")
+R("""if (S.tool === 'lasso' || S.tool === 'box' || S.tool === 'slice') renderToolSec();""", """if (S.tool === 'lasso' || S.tool === 'box' || S.tool === 'slice' || S.tool === 'hollow') renderToolSec();""")
+R("""function applyBoolean(op) {""", """// one Chisel unit is 20 mm
+const HOLLOW_MM = 20;
+function renderHollowSec() {
+  const sec = $('#toolSec');
+  const t = toolById('hollow');
+  let h = `<h2><span class="dot"></span>Hollow</h2><p class="hint">${t.hint}</p>`;
+  h += `<div class="hrow"><label for="hTh">Wall thickness</label><input type="number" id="hTh" min="0.2" max="50" step="0.5" value="${S.hollow.th}"><span>mm</span></div>`;
+  h += `<div class="toggles" role="group" aria-label="Wall thickness presets">${[1, 2, 3, 5].map((v) => `<button type="button" data-hth="${v}" aria-pressed="${S.hollow.th === v}">${v} mm</button>`).join('')}</div>`;
+  h += `<button class="action" id="hollowGo" ${sel ? '' : 'disabled'}>Hollow ${sel ? esc(sel.name) : 'the model'}</button>`;
+  h += `<p class="hint">The outside stays the same; a hollow space is left inside. For 3D printing, a wall of 1.5 to 3 mm is usual. Very thin parts of a model may not have room for a hollow.</p>`;
+  sec.innerHTML = h;
+  const inp = $('#hTh', sec);
+  inp.addEventListener('change', () => { const v = +inp.value; if (v > 0) S.hollow.th = Math.min(50, Math.max(0.2, v)); renderToolSec(); });
+  $$('[data-hth]', sec).forEach((b) => b.addEventListener('click', () => { S.hollow.th = +b.dataset.hth; renderToolSec(); }));
+  $('#hollowGo', sec).addEventListener('click', applyHollow);
+}
+function hollowTris(T, th) {
+  const w = Core.weldTris(T, 1e-5), pos = w.pos, idx = w.idx, nv = pos.length / 3;
+  let n = new Float32Array(nv * 3);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
+    for (const k of [a, b, c]) { n[k] += fx; n[k + 1] += fy; n[k + 2] += fz; }
+  }
+  // smooth the directions a little so sharp corners don't fold the inside wall over itself
+  const nb = Array.from({ length: nv }, () => []);
+  for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) { const a = idx[t + e], b = idx[t + (e + 1) % 3]; nb[a].push(b); nb[b].push(a); }
+  const norm = (A) => { for (let i = 0; i < nv; i++) { const L = Math.hypot(A[i * 3], A[i * 3 + 1], A[i * 3 + 2]) || 1; A[i * 3] /= L; A[i * 3 + 1] /= L; A[i * 3 + 2] /= L; } };
+  norm(n);
+  for (let it = 0; it < 3; it++) {
+    const m = new Float32Array(nv * 3);
+    for (let i = 0; i < nv; i++) { let x = n[i * 3] * 2, y = n[i * 3 + 1] * 2, z = n[i * 3 + 2] * 2; for (const j of nb[i]) { x += n[j * 3]; y += n[j * 3 + 1]; z += n[j * 3 + 2]; } m[i * 3] = x; m[i * 3 + 1] = y; m[i * 3 + 2] = z; }
+    norm(m); n = m;
+  }
+  const sgn = Core.signedVolume(T) >= 0 ? 1 : -1;
+  const inner = new Float32Array(idx.length * 3);
+  for (let t = 0; t < idx.length; t += 3) {
+    // reversed winding: the inside wall faces into the hollow
+    const tri = [idx[t], idx[t + 2], idx[t + 1]];
+    for (let k = 0; k < 3; k++) { const v = tri[k] * 3; for (let d = 0; d < 3; d++) inner[(t + k) * 3 + d] = pos[v + d] - sgn * n[v + d] * th; }
+  }
+  return inner;
+}
+function applyHollow() {
+  const o = sel; if (!o) { toast('Click a model to hollow', true); return; }
+  const th = S.hollow.th / HOLLOW_MM / objScale(o);
+  const box = worldBox(o).getSize(new V3()), thin = Math.min(box.x, box.y, box.z);
+  if ((S.hollow.th / HOLLOW_MM) * 2.2 >= thin) { toast('That wall is too thick for this model. Try a thinner wall.', true); return; }
+  busy('Hollowing', () => {
+    const L = Core.toTris(o.pos, o.idx), V0 = Math.abs(Core.signedVolume(L));
+    const inner = hollowTris(L, th), Vi = Math.abs(Core.signedVolume(inner));
+    if (!(Vi > V0 * 0.01) || Vi >= V0) { toast('This model has no room inside for a hollow at that thickness', true); return; }
+    pushUndo();
+    const all = new Float32Array(L.length + inner.length); all.set(L); all.set(inner, L.length);
+    const m = Core.cleanMesh(all);
+    if (!m.idx.length) { undoStack.pop(); updateUndoBtns(); toast('Could not hollow this model', true); return; }
+    setGeometry(o, m.pos, m.idx);
+    refreshAll(); renderToolSec();
+    toast('Hollow: ' + S.hollow.th + ' mm wall · ' + Math.round((100 * Vi) / V0) + '% less material');
+  });
+}
+function applyBoolean(op) {""")
+R("</style>", """.hrow{display:flex;align-items:center;gap:8px;margin:8px 0}.hrow label{flex:1}.hrow input{width:76px}
+</style>""")
 open(ROOT + '/src/chisel.html', 'w').write(s)
 print('chisel.html (puppet)', len(s))

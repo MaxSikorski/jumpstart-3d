@@ -86,6 +86,7 @@ export const ICON = {
   close: S('<path d="M6 6l12 12M18 6 6 18"/>'),
   body: S('<path d="M4 8l8-4 8 4-8 4z"/><path d="M4 8v8l8 4 8-4V8"/>'),
   combineIcon: S('<rect x="3" y="7" width="11" height="11" rx="1"/><circle cx="15" cy="10" r="6"/>'),
+  chipcarve: S('<path d="M3 21l7.5-7.5"/><path d="M10.5 13.5l7-9.5 2.5 2.5-9.5 7z"/><path d="M14 21l3-5 3 5z" stroke="#1f4fa8"/><path d="M17 16v2.6" stroke="#1f4fa8"/>'),
   lathe: S('<path d="M1.5 12h3M19.5 12h3"/><path d="M4.5 8.5c3 0 3.5 2 6 2s3-2.5 5.5-2.5c2 0 3.5.8 3.5.8v6.4s-1.5.8-3.5.8c-2.5 0-3-2.5-5.5-2.5s-3 2-6 2z"/><path d="M12 22l2.5-6.5" stroke="#1f4fa8" stroke-width="2.2"/>'),
   cam: S('<path d="M9 3h6v5H9z"/><path d="M11 8v6l1 2 1-2V8" stroke="#1f4fa8"/><path d="M3 21h18M5 18h14v3H5z"/><path d="M7 18c1-1.5 3-2 5-2s4 .5 5 2" stroke="#1f4fa8"/>'),
   archWall: S('<path d="M3 20V9h6v11M9 13h12v7H9"/><path d="M3 12h6M3 15.5h6M9 16.5h12" stroke="#1f4fa8"/>'),
