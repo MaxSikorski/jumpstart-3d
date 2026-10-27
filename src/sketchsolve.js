@@ -315,9 +315,9 @@ const NEW_CLASH_MIN = 10 * OK_TOL, SPREAD = 0.1;
 export function editVerdict(pre, st, was, cons) {
   const sk = { cons };
   if (!st.ok) {
-    const before = pre.resid || {}, now = st.resid || {};
+    const now = st.resid || {};
     const limit = Math.max(NEW_CLASH_MIN, SPREAD * pre.worst);
-    const newly = st.conflicting.some((cid) => !pre.conflicting.includes(cid) && (before[cid] || 0) <= OK_TOL && (now[cid] || 0) > limit);
+    const newly = st.conflicting.some((cid) => !pre.conflicting.includes(cid) && (now[cid] || 0) > limit);
     if (pre.ok || newly) return { refuse: true, toast: clashNote(sk, st.conflicting, was) };
   }
   const fresh = st.redundant.filter((cid) => !pre.redundant.includes(cid));

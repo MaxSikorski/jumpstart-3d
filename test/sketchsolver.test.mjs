@@ -458,11 +458,13 @@ test("editVerdict: leftover error from the old clash spreading onto a constraint
   assert.ok(oldRule(v0.pre, v0.st), "the old rule refused this edit: " + v0.st.conflicting);
   const newly = v0.st.conflicting.filter((id) => !v0.pre.conflicting.includes(id));
   assert.ok(newly.some((id) => id !== "n"), "a constraint that held before took some of the error: " + newly);
-  assert.ok(newly.every((id) => v0.st.resid[id] < 0.1 * v0.pre.worst), "...but only a sliver of the old worst error (" + v0.pre.worst.toFixed(3) + ")");
+  assert.ok(newly.every((id) => v0.st.resid[id] < 0.03 * v0.pre.worst), "...but only a sliver of the old worst error (" + v0.pre.worst.toFixed(3) + ")");
   assert.equal(v0.refuse, false);
   assert.match(v0.toast, /^The sketch still has constraints that conflict: /);
   // while a dimension that really fights the old clash moves one of them as far as the clash itself
   const hard = clashed();
   const v1 = guarded(hard, (k) => k.cons.push({ id: "n", t: "dim", k: "dist", p1: "a", p2: "c", o: "a", v: typed + 8 }));
   assert.equal(v1.refuse, true);
+  const newlyHard = v1.st.conflicting.filter((id) => !v1.pre.conflicting.includes(id));
+  assert.ok(newlyHard.some((id) => v1.st.resid[id] > 0.15 * v1.pre.worst), "a real conflict moves a constraint by more than 15 % of the old worst error (" + v1.pre.worst.toFixed(3) + ")");
 });
