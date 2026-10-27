@@ -278,3 +278,30 @@ test("c4-sketch-constraints: a crooked box becomes a rectangular plate with two 
   expect(bs[0].volume).toBeCloseTo((w * h - 2 * Math.PI * cc[0].r * cc[0].r) * 4, -1); // the rectangle less two equal holes
   await finishLesson();
 });
+
+test('the hole lesson does not tick when the cutter misses the box (browser test F7)', async () => {
+  await page.evaluate(() => window.__app.tutorials.close());
+  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.c-view-block/.test(k) || k.startsWith("p.c-view-block")) localStorage.removeItem(k); });
+  await startLesson("c-view-block", "beginner");
+  await next(); // step 2 of the lesson is "Add a solid"; this opens the cutter step (index 2)
+  expect((await cur()).step).toBe(2);
+  const [boxId, cutId] = await page.evaluate(() => [
+    JS3D.add("box", { size: { w: 40, d: 40, h: 8 }, at: [40, 0, 0] }), // the mistake in the report: box left at X 40
+    JS3D.add("cylinder", { size: { w: 10, d: 10, h: 12 }, at: [0, 0, -2], hole: true }),
+  ]);
+  const gid = await page.evaluate(async (ids) => { const g = JS3D.group(ids); await JS3D.ready(); return g; }, [boxId, cutId]);
+  await waitIdle(page);
+  await page.waitForTimeout(1500);
+  expect(await doneHas(2), "the lesson ticked although the cutter is clear of the box").toBeFalsy();
+  await next();
+  expect((await cur()).step, "Next moved on from a cut that did not happen").toBe(2);
+  await expect(page.locator("#toasts")).toContainText("does not cut");
+  // fix it the way the lesson says: undo the group, put the box at X 0, group again
+  await page.evaluate(async (ids) => { JS3D.undo(); JS3D.moveTo(ids[0], [0, 0, 0]); JS3D.group(ids); await JS3D.ready(); }, [boxId, cutId]);
+  await waitIdle(page);
+  await ticks(2, "a cutter that really cuts the box");
+  expect(gid).toBeTruthy();
+  await next();
+  expect((await cur()).step).toBe(3);
+  await page.evaluate(() => window.__app.tutorials.close());
+});

@@ -133,6 +133,12 @@ export function initFasteners(app, { openCmd, commit, row, seg, offsetSelect, ST
           const t = app.vp.view.target, g = 10;
           st.r = resolve({ type: st.type, size: st.size, length: st.length, clear: st.clear, left: st.left, at: [Math.round(t.x / g) * g, Math.round(t.y / g) * g, 0] }, STD);
         } catch (err) { app.toast(err.message, "err"); return; }
+        // jumpstart-3d: a new part starts beside the bodies already there (browser test F8)
+        const rad = (st.r.type === "nut" ? st.r.nutAf : st.r.type === "bolt" ? st.r.af : st.r.d) / Math.sqrt(3) + 2;
+        const boxes = store.doc.bodies.filter((b) => !b.hidden).map((b) => { const bb = app.scene.bodyTightBox(b.id); return bb && !bb.isEmpty() ? bb : { min: { x: b.m[12] - 15, y: b.m[13] - 15 }, max: { x: b.m[12] + 15, y: b.m[13] + 15 } }; });
+        const hits = (x, y) => boxes.some((bb) => x + rad > bb.min.x && x - rad < bb.max.x && y + rad > bb.min.y && y - rad < bb.max.y);
+        for (let n = 0; st.r.type !== "cutter" && n < 200 && hits(st.r.at[0], st.r.at[1]); n++) st.r.at[0] += 10; // the grid step
+        // end jumpstart-3d
         commit(def, "Add " + st.r.name);
         if (!app.command) app.select([st.id]);
       },
