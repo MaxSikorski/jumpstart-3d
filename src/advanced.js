@@ -4440,7 +4440,7 @@ export function initAdvanced(app) {
         // jumpstart-3d: stop queued dialog previews before staging the atomic result.
         closeCmd(false);
         try {
-          const ids = await commitCombine(app, doc => { def.apply(doc); return t; }, "Combine", { target: t, op: st.op });
+          const ids = await commitCombine(app, doc => { def.apply(doc); return t; }, "Combine", { target: t, op: st.op, edit: !!editing });
           if (ids.length) app.select(ids);
         } catch (err) { app.toast(err.message, "err"); }
       },

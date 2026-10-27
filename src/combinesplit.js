@@ -17,12 +17,22 @@ export function significantPieces(volumes, areas, count) {
   return keep.length ? keep : all;
 }
 
+// A cut that "succeeds" but returns the solid unchanged leaves the model as it was with no word. The volume of the result equals the volume
+// before the cut, to within float noise (1e-9 of it, never less than 1e-3 mm3; a 2 mm pilot hole in a 200 mm cube still counts); a missing volume (null) never counts.
+export function cutRemovedNothing(volumeBefore, volumeAfter) {
+  if (!Number.isFinite(volumeBefore) || !Number.isFinite(volumeAfter) || volumeBefore <= 0 || volumeAfter <= 0) return false;
+  return Math.abs(volumeBefore - volumeAfter) <= Math.max(1e-9 * volumeBefore, 1e-3);
+}
+
+export const GROUP_CUT_NOTHING = "The hole did not cut anything. Check that it overlaps the part, then try again (Undo brings the pieces back).";
+export const COMBINE_CUT_NOTHING = "The cut did not remove anything. Check that the tool overlaps the part, then try again (Undo brings the pieces back).";
+
 export function hasLaterKeepPiece(mods = [], modId) {
   const index = mods.findIndex(m => m.id === modId && m.src === "combine");
   return index >= 0 && mods.slice(index + 1).some(m => m.t === "keeppiece" && !m.sole);
 }
 
-export async function commitCombine(app, prepare, label, { target, op } = {}) {
+export async function commitCombine(app, prepare, label, { target, op, edit = false } = {}) {
   const source = store.doc, mode = app.mode, command = app.command, proposed = clone(source);
   let staged = null;
   const current = () => store.doc === source && app.mode === mode && app.command === command && store.preview === staged;
@@ -91,6 +101,9 @@ export async function commitCombine(app, prepare, label, { target, op } = {}) {
     }
     if (!current()) throw new Error(`${label} cancelled because the design changed. Try again.`);
     store.update(doc => Object.assign(doc, proposed), label);
+    // The baseline (Group: the solids without their holes; Combine: the target before the cut) was built above, so this costs no extra build.
+    // Editing an existing Combine starts from a baseline that already holds the cut, so the check only fits a commit that adds one.
+    if (!edit && (hasHoles || op === "cut") && cutRemovedNothing(before?.volume, builtResult.mesh.volume)) app.toast(isGroup ? GROUP_CUT_NOTHING : COMBINE_CUT_NOTHING);
     return ids;
   } finally {
     scene.holdBusy--;

@@ -305,3 +305,69 @@ test('the hole lesson does not tick when the cutter misses the box (browser test
   expect((await cur()).step).toBe(3);
   await page.evaluate(() => window.__app.tutorials.close());
 });
+
+// These isolate the cut checks; the earlier lesson steps are deliberately marked by hand.
+const holeCases = [
+  ["b-keychain", "Group everything", "box", [60, 25, 4], "cylinder", [6, 6, 10], -2, "text"],
+  ["b-pencil", "Group it", "prism", [80, 80, 100], "prism", [72, 72, 100], 4],
+  ["b-phone", "Group it", "box", [70, 70, 8], "box", [16, 20, 30], -1, "wedge"],
+  ["b-bookmark", "Group it", "box", [150, 40, 2], "cylinder", [6, 6, 10], -2, "text"],
+  ["b-cutter", "Group it", "star", [70, 70, 15], "star", [64, 64, 17], -1, "star"],
+  ["b-tray", "Group the tray first", "box", [100, 70, 20], "box", [94, 64, 20], 3],
+  ["b-maze", "Group the tray", "box", [110, 110, 14], "box", [102, 102, 14], 3],
+  ["b-lidbox", "Hollow the box", "box", [80, 60, 40], "box", [74, 54, 40], 3],
+  ["b-lidbox", "Make the lip a ring", "box", [73.2, 53.2, 6], "box", [69.2, 49.2, 6], 0],
+  ["b-pencilbox", "Group the lid", "box", [186, 45.4, 2], "cylinder", [16, 16, 3], 1],
+];
+for (const [lesson, title, kind, size, cutter, cutSize, z, extra] of holeCases) {
+  test(`${lesson}: ${title} refuses a missed cutter, then accepts a real cut`, async () => {
+    await page.evaluate((id) => {
+      window.__app.tutorials.close();
+      for (const k of Object.keys(localStorage)) if (k.includes(id)) localStorage.removeItem(k);
+    }, lesson);
+    await startLesson(lesson, "beginner");
+    while (!(await page.locator(".tut-step h3").textContent()).includes(title)) {
+      await page.locator("#tut-check").check();
+      await next();
+    }
+    const step = (await cur()).step;
+    const ids = await page.evaluate(async ({ kind, size, cutter, cutSize, z, extra, lesson }) => {
+      const dims = ([w, d, h]) => ({ w, d, h });
+      let solid = JS3D.add(kind, { size: dims(size), at: [0, 0, 0] });
+      if (extra) {
+        const added = JS3D.add(extra, { size: extra === "text" ? { text: "A", size: 10, h: 1 } : dims(extra === "star" ? [80, 80, 3] : [20, 20, 4]), at: extra === "star" ? [0, 0, 0] : [20, 0, size[2]] });
+        // A joined mesh supplies the union volume for overlapping stars and raised lettering.
+        await JS3D.ready();
+        solid = JS3D.group([solid, added]);
+      }
+      if (lesson === "b-pencilbox") {
+        const b = JS3D.add("box", { size: dims([190, 50, 26]), at: [0, 100, 0] });
+        const h = JS3D.add("box", { size: dims([182, 42, 26]), at: [0, 100, 3], hole: true });
+        JS3D.group([b, h]); // this step requires two cut groups
+      }
+      const hole = JS3D.add(cutter, { size: dims(cutSize), at: [300, 0, z], hole: true });
+      await JS3D.ready(); // keep the already-built rounded/text/union volumes available
+      JS3D.group([solid, hole]);
+      await JS3D.ready();
+      return [solid, hole];
+    }, { kind, size, cutter, cutSize, z, extra, lesson });
+    await waitIdle(page);
+    await page.waitForTimeout(1500);
+    expect(await doneHas(step), "a cutter clear of the solid must not tick").toBeFalsy();
+    await next();
+    expect((await cur()).step).toBe(step);
+    await expect(page.locator("#toasts")).toContainText("The cutter does not cut the block yet: move it so it overlaps, then group again.");
+    await page.evaluate(async ({ ids, z }) => {
+      JS3D.undo();
+      JS3D.moveTo(ids[1], [0, 0, z]);
+      JS3D.group(ids);
+      await JS3D.ready();
+    }, { ids, z });
+    await waitIdle(page);
+    await ticks(step, "the corrected cutter removes material");
+    await next();
+    expect((await cur()).step).toBe(step + 1);
+    await noErrors();
+    await page.evaluate(() => window.__app.tutorials.close());
+  });
+}

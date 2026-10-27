@@ -198,7 +198,8 @@ export const TUTORIALS = [
           "The tag, the letters and the hole become one keychain, with the hole cut out.",
         ],
         when: "Group last: it joins the solids and cuts the holes. To change something later, Ungroup, fix it, and group again.",
-        check: (t) => t.groups().some((g) => t.hasHole(g) && t.childKinds(g).includes("text")),
+        check: (t) => t.groups().some((g) => t.cuts(g) && t.childKinds(g).includes("text")), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "Pick a color", tool: "Color", icon: "appearance", show: { sel: ".inspector .colors, #inspector .colors" },
@@ -327,7 +328,8 @@ export const TUTORIALS = [
         title: "Group it", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["With both selected (or <b>Ctrl+A</b>), click <b>Group</b>. Orbit the view to look inside: it's hollow with a floor."],
         when: "Group to cut the hole out of the solid.",
-        check: (t) => t.groups().some((g) => t.hasHole(g)),
+        check: (t) => t.groups().some((g) => t.cuts(g)), // jumpstart-3d: require removed material when its volume is known
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "Add a texture", tool: "Texture", icon: "texture", show: { sel: "#bb-texture" },
@@ -398,7 +400,8 @@ export const TUTORIALS = [
         title: "Group it", tool: "Group", icon: "group", show: { sel: "#bb-group" },
         how: ["Press <b>Ctrl+A</b>, then click <b>Group</b> (or press <b>Ctrl+G</b>)."],
         when: "Grouping joins the base, slope and lip into one stand and cuts the slot.",
-        check: (t) => t.groups().some((g) => t.hasHole(g) && t.childKinds(g).includes("wedge")),
+        check: (t) => t.groups().some((g) => t.cuts(g) && t.childKinds(g).includes("wedge")), // jumpstart-3d: overlapping solids keep the hole check if no joined volume is available
+        strict: "The cutter does not cut the block yet: move it so it overlaps, then group again.", // jumpstart-3d: keep Next on an uncut hole step
       },
       {
         title: "Test the angle", tool: "Measure", icon: "measure", show: { sel: "#bb-measure" },

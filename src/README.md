@@ -23,7 +23,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `knurl.js` | Knurled knobs |
 | `spring.js` | Compression springs |
 | `sketchmirror.js` | Sketch Mirror (M, Modify group): copies picked shapes across a line, the X or Y axis or the origin; `mirrorEnts` is the pure maths, the rest is the tool's clicks and panel box |
-| `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `constraints.js` re-exports it in one marked block |
+| `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
@@ -31,7 +31,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts |
 | `report.js` | Report a problem (prefilled GitHub issue link) |
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
-| `combinesplit.js` | Group and Combine leave one body per new piece |
+| `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
 | `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
