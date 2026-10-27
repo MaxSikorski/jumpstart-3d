@@ -182,7 +182,7 @@ const EMPTY_CUT = "The hole did not cut anything";
 const clearToasts = () => run(() => {
   document.getElementById("toasts").replaceChildren();
   window.__toastLog = [];
-  window.__toastWatch ||= new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) window.__toastLog.push(n.textContent); })
+  (window.__toastWatch ||= new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) window.__toastLog.push(n.textContent); }))
     .observe(document.getElementById("toasts"), { childList: true });
 });
 const toastLog = () => run(() => window.__toastLog);
