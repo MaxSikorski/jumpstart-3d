@@ -3,7 +3,7 @@
 // repeats. The same flow through the real app is test/sketch-solver.spec.mjs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { solveSketch, normalizeSketch, addConstraint, pruneConstraints, sketchDof, clashNote, conKey } from "../src/constraints.js";
+import { solveSketch, normalizeSketch, addConstraint, pruneConstraints, sketchDof, clashNote, conKey, editVerdict } from "../src/constraints.js";
 import { buildDim, measureDim } from "../src/dims.js";
 
 // a hand-drawn hexagon of radius 20, every corner nudged by up to ~1.5 mm, drawn counter-clockwise from the bottom left
@@ -359,4 +359,112 @@ test("speed: counting the freedoms of a 100-line sketch takes under half a secon
   const st = solveSketch(s, new Set([mid.id]));
   assert.ok(st.ok);
   assert.deepEqual([mid.x, mid.y].map((v) => +v.toFixed(9)), [free.pts[50].x + 3, free.pts[50].y + 2].map((v) => +v.toFixed(9)));
+});
+
+// ---- the decision sketcher.edit makes after a constraint or dimension edit: editVerdict (refuse / keep with a note / keep)
+const clone = (o) => JSON.parse(JSON.stringify(o));
+// one guarded edit the way sketcher.edit does it: solve a copy for "before", change, prune, solve; a refused edit leaves the sketch as it was
+function guarded(sk, fn) {
+  const before = clone(sk), pre = solveSketch(clone(sk)), was = new Map((sk.cons || []).map((c) => [c.id, conKey(c)]));
+  fn(sk); pruneConstraints(sk);
+  const st = solveSketch(sk, new Set());
+  const v = editVerdict(pre, st, was, sk.cons);
+  if (v.refuse) { sk.pts = before.pts; sk.ents = before.ents; sk.cons = before.cons; } else normalizeSketch(sk);
+  return { ...v, st, pre };
+}
+// the rule before editVerdict looked at residuals: any constraint that was not in the old clash and now fails refuses the edit
+const oldRule = (pre, st) => !st.ok && (pre.ok || st.conflicting.some((id) => !pre.conflicting.includes(id)));
+const rect4 = () => ({ pts: [{ id: "p0", x: 0, y: 0 }, { id: "p1", x: 30, y: 0 }, { id: "p2", x: 30, y: 20 }, { id: "p3", x: 0, y: 20 }],
+  ents: [0, 1, 2, 3].map((i) => ({ id: "e" + i, t: "line", a: "p" + i, b: "p" + ((i + 1) % 4) })),
+  cons: [{ id: "k1", t: "horizontal", e1: "e0" }, { id: "k2", t: "vertical", e1: "e1" }, { id: "k3", t: "horizontal", e1: "e2" }, { id: "k4", t: "vertical", e1: "e3" }, { id: "d1", t: "dim", k: "dist", p1: "p0", p2: "p1", o: "h", v: 30 }] });
+// five lines in a ring, hand-drawn off true, with a clash already in it: the second and third sides are equal, yet one is told 10 long and the other 14
+function clashed() {
+  const sk = { pts: [["a", 0, 0], ["b", 10, 0.4], ["c", 20.3, 5], ["d", 28, 12], ["e", 30, -3]].map(([id, x, y]) => ({ id, x, y })),
+    ents: [["a", "b"], ["b", "c"], ["c", "d"], ["d", "e"], ["e", "a"]].map(([a, b], i) => ({ id: "e" + i, t: "line", a, b })),
+    cons: [{ id: "h0", t: "horizontal", e1: "e0" }, { id: "l0", t: "dim", k: "dist", p1: "a", p2: "b", o: "a", v: 10 }, { id: "eq", t: "equal", e1: "e1", e2: "e2" }, { id: "pp", t: "perpendicular", e1: "e1", e2: "e2" },
+      { id: "v3", t: "vertical", e1: "e3" }, { id: "l3", t: "dim", k: "dist", p1: "d", p2: "e", o: "a", v: 15 }, { id: "par", t: "parallel", e1: "e0", e2: "e4" },
+      { id: "x1", t: "dim", k: "dist", p1: "b", p2: "c", o: "a", v: 10 }, { id: "x2", t: "dim", k: "dist", p1: "c", p2: "d", o: "a", v: 14 }] };
+  assert.equal(solveSketch(sk, new Set()).ok, false);
+  normalizeSketch(sk);
+  return sk;
+}
+
+test("editVerdict: a solvable sketch refuses an edit that cannot hold, with the clash named, and the sketch is left alone", () => {
+  const sk = rect4(), keep = clone(sk);
+  const v = guarded(sk, (k) => k.cons.push({ id: "d2", t: "dim", k: "dist", p1: "p3", p2: "p2", o: "h", v: 40 }));
+  assert.equal(v.refuse, true);
+  assert.match(v.toast, /^That length conflicts with the .* constraints?; nothing changed\.$/);
+  assert.deepEqual(sk, keep);
+});
+
+test("editVerdict: a constraint that only repeats the others is kept, with a note that names it", () => {
+  const sk = rect4();
+  const v = guarded(sk, (k) => addConstraint(k, "parallel", [pick(k, "e0"), pick(k, "e2")]));
+  assert.equal(v.refuse, false);
+  assert.equal(v.toast, "That parallel repeats what the other constraints already hold, so it adds nothing. It is kept.");
+  assert.equal(sk.cons.length, 6);
+  // a fine edit has no toast at all
+  assert.deepEqual(guarded(rect4(), (k) => { k.cons.find((c) => c.id === "d1").v = 35; }).toast, null);
+});
+
+test("editVerdict: after a point merge that adds no constraint, the note says 'After that, the ... constraint repeats'", () => {
+  // two lines each told 10 long; merging the second one's ends into the first one's makes the two lengths the same line
+  const sk = { pts: [{ id: "a", x: 0, y: 0 }, { id: "b", x: 10, y: 0 }, { id: "c", x: 0, y: 5 }, { id: "d", x: 10, y: 5 }],
+    ents: [{ id: "L1", t: "line", a: "a", b: "b" }, { id: "L2", t: "line", a: "c", b: "d" }],
+    cons: [{ id: "n1", t: "dim", k: "dist", p1: "a", p2: "b", o: "a", v: 10 }, { id: "n2", t: "dim", k: "dist", p1: "c", p2: "d", o: "a", v: 10 }] };
+  assert.ok(solveSketch(sk, new Set()).ok);
+  const v = guarded(sk, (k) => {
+    const to = { c: "a", d: "b" };
+    for (const e of k.ents) { e.a = to[e.a] || e.a; e.b = to[e.b] || e.b; }
+    for (const c of k.cons) { c.p1 = to[c.p1] || c.p1; c.p2 = to[c.p2] || c.p2; }
+    k.pts = k.pts.filter((p) => !to[p.id]);
+  });
+  assert.equal(v.refuse, false);
+  assert.equal(v.toast, "After that, the length constraint repeats what the others hold, so it adds nothing. It is kept.");
+});
+
+test("editVerdict: a sketch that already clashes keeps its clash, and a harmless edit goes through with a note", () => {
+  const sk = clashed();
+  const pre = solveSketch(clone(sk));
+  assert.deepEqual(pre.conflicting.sort(), ["eq", "x1", "x2"]);
+  // 'Origin' on a point is harmless: nothing already held is touched
+  const v = guarded(sk, (k) => addConstraint(k, "coincident", [{ kind: "pt", pid: "a" }, { kind: "origin" }]));
+  assert.equal(v.refuse, false);
+  assert.equal(v.toast, "The sketch still has constraints that conflict: equal and length.");
+});
+
+test("editVerdict: with an old clash, an edit that makes another constraint fail is refused, whether its id is new or old", () => {
+  // a new constraint (new id) that cannot hold alongside the rest
+  for (const [t, a, b] of [["equal", "e0", "e3"], ["perpendicular", "e0", "e1"]]) {
+    const sk = clashed(), keep = clone(sk);
+    const v = guarded(sk, (k) => addConstraint(k, t, [pick(k, a), pick(k, b)]));
+    assert.equal(v.refuse, true, t + " is refused");
+    assert.match(v.toast, new RegExp("^That " + t + " conflicts with the .* constraints?; nothing changed\\.$"));
+    assert.deepEqual(sk, keep);
+  }
+  // an old, held constraint that is made to fail: the left side must be 10 and the top (parallel to it) is held as 10 long too
+  const sk = clashed();
+  const v = guarded(sk, (k) => { k.cons.push({ id: "z", t: "dim", k: "dist", p1: "a", p2: "e", o: "a", v: 60 }); });
+  assert.equal(v.refuse, true);
+});
+
+test("editVerdict: leftover error from the old clash spreading onto a constraint that held does not refuse a harmless edit", () => {
+  // the distance from a to c typed to one decimal: it shifts the compromise a little, and the constraints that held take a sliver of the old clash
+  const sk = clashed(), a = sk.pts.find((p) => p.id === "a"), b = sk.pts.find((p) => p.id === "c");
+  const typed = Math.round(Math.hypot(b.x - a.x, b.y - a.y) * 10) / 10;
+  assert.notEqual(typed, Math.hypot(b.x - a.x, b.y - a.y));
+  const probe = clone(sk);
+  const v0 = guarded(probe, (k) => k.cons.push({ id: "n", t: "dim", k: "dist", p1: "a", p2: "c", o: "a", v: typed }));
+  assert.ok(oldRule(v0.pre, v0.st), "the old rule refused this edit: " + v0.st.conflicting);
+  const newly = v0.st.conflicting.filter((id) => !v0.pre.conflicting.includes(id));
+  assert.ok(newly.some((id) => id !== "n"), "a constraint that held before took some of the error: " + newly);
+  assert.ok(newly.every((id) => v0.st.resid[id] < 0.03 * v0.pre.worst), "...but only a sliver of the old worst error (" + v0.pre.worst.toFixed(3) + ")");
+  assert.equal(v0.refuse, false);
+  assert.match(v0.toast, /^The sketch still has constraints that conflict: /);
+  // while a dimension that really fights the old clash moves one of them as far as the clash itself
+  const hard = clashed();
+  const v1 = guarded(hard, (k) => k.cons.push({ id: "n", t: "dim", k: "dist", p1: "a", p2: "c", o: "a", v: typed + 8 }));
+  assert.equal(v1.refuse, true);
+  const newlyHard = v1.st.conflicting.filter((id) => !v1.pre.conflicting.includes(id));
+  assert.ok(newlyHard.some((id) => v1.st.resid[id] > 0.15 * v1.pre.worst), "a real conflict moves a constraint by more than 15 % of the old worst error (" + v1.pre.worst.toFixed(3) + ")");
 });
