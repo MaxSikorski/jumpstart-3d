@@ -2,6 +2,7 @@
   "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run. ar-planexp (Floor plan: PDF, SVG, DXF) is in none of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats.",
   "gaps": {
     "Advanced toolbar": [
+      "ad-chipcarve",
       "ad-ins-dxf",
       "ad-ins-img",
       "ad-ins-svg",
@@ -13,9 +14,12 @@
       "ad-sweep"
     ],
     "Beginner toolbar": [
+      "bb-chipcarve",
       "bb-cosforge",
       "bb-extrude",
+      "bb-fillet",
       "bb-import",
+      "bb-shell",
       "bb-sketch",
       "bb-sketch3d"
     ],
@@ -44,6 +48,12 @@
       "theme:perf:high",
       "theme:perf:normal",
       "theme:perf:ultra",
+      "theme:text:",
+      "theme:text:Extra",
+      "theme:text:Hairline",
+      "theme:text:Medium",
+      "theme:text:Thick",
+      "theme:text:Thin",
       "theme:theme:contrast",
       "theme:theme:dark",
       "theme:theme:light",
@@ -71,9 +81,11 @@
     ],
     "Advanced simulate toolbar": [
       "sim-apply",
+      "sim-chipcarve",
       "sim-cosforge",
       "sim-drive",
       "sim-joint",
+      "sim-lathe",
       "sim-motion",
       "sim-print",
       "sim-render",
