@@ -31,7 +31,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts |
 | `report.js` | Report a problem (prefilled GitHub issue link) |
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
-| `combinesplit.js` | Group and Combine leave one body per new piece |
+| `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
 | `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |

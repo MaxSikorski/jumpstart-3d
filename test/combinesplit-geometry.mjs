@@ -50,11 +50,12 @@ async function setup(nodes, mode = "advanced") {
   const doc = newDoc("Real kernel combine", mode); doc.bodies = nodes;
   store.load(doc);
   const off = store.on(rebuild); rebuild();
-  const app = { mode, command: null, kernel: { get: key => meshes.get(key) }, scene: { errors: new Map() } };
+  const toasts = [];
+  const app = { mode, command: null, toast: m => toasts.push(m), kernel: { get: key => meshes.get(key) }, scene: { errors: new Map() } };
   const results = () => store.doc.bodies.map(b => {
     const r = meshes.get(b._key); assert.equal(r?.ok, true, r?.error || "Missing built body"); return r.mesh;
   });
-  return { ...api, app, off, results };
+  return { ...api, app, off, results, toasts };
 }
 const volumes = meshes => meshes.map(m => Math.round(m.volume));
 const center = mesh => mesh.bbox.min.map((v, i) => (v + mesh.bbox.max[i]) / 2);
@@ -129,7 +130,20 @@ test("real kernel: Group with a remote hole preserves its two-solid baseline as 
     assert.equal(ids.length, 1); assert.equal(h.store.doc.bodies.length, 1);
     assert.equal(h.results()[0].solidCount, 2); assert.deepEqual(volumes(h.results()), [128]);
     assert.deepEqual(h.store.doc.bodies[0].node.mods, []);
+    assert.equal(h.toasts.length, 1); assert.match(h.toasts[0], /^The hole did not cut anything/);
   } finally { h.off(); }
+});
+test("real kernel: a Group with no hole, or a hole that overlaps, says nothing; a Combine cut that misses says so", async () => {
+  const run = async (nodes, commit) => { const h = await setup(nodes, "beginner"); try { await commit(h); return h.toasts; } finally { h.off(); } };
+  const inside = body("hole", box(4, 4, 4)); inside.hole = true;
+  const apart = body("hole", box(4, 4, 4), moved(40)); apart.hole = true;
+  const grp = h => h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+  assert.deepEqual(await run([body("a", box()), body("b", box(4, 4, 4), moved(30))], grp), []);
+  assert.deepEqual(await run([body("a", box()), inside], grp), []);
+  assert.equal((await run([body("a", box()), apart], grp)).length, 1);
+  const miss = h => h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push({ t: "bool", src: "combine", op: "cut", tool: group([body("c", box(4, 4, 4), moved(40))]) }); return "target"; }, "Combine", { target: "target", op: "cut" });
+  const toasts = await run([body("target", box())], miss);
+  assert.equal(toasts.length, 1); assert.match(toasts[0], /^The cut did not remove anything/);
 });
 test("real kernel: Intersect splits new pieces and keeps left/right identity across sub-0.01 mm centre changes", async () => {
   const h = await setup([body("target", box())]);

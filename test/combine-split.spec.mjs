@@ -176,6 +176,42 @@ test("editing one copy to a different solid count errors clearly and leaves its 
   await run(() => JS3D.undo()); await waitIdle(page); await expectVolumes([3600, 3600]);
 });
 
+// A hole that removes nothing leaves the model as it was: the app must say so (once), and say nothing when the hole cut.
+const EMPTY_CUT = "The hole did not cut anything";
+// Toasts vanish after 2.6 s and the Group is followed by a wait for the engine: record every toast as it appears.
+const clearToasts = () => run(() => {
+  document.getElementById("toasts").replaceChildren();
+  window.__toastLog = [];
+  (window.__toastWatch ||= new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) window.__toastLog.push(n.textContent); }))
+    .observe(document.getElementById("toasts"), { childList: true });
+});
+const toastLog = () => run(() => window.__toastLog);
+test("Beginner: a hole fully apart from the part gets the 'did not cut anything' note", async () => {
+  await loadDoc(page, newDoc("Hole apart", "beginner", { bodies: [box("target", 20, 20, 20), box("cutter", 4, 4, 4, translated(60, 0, 0))] }));
+  await clearToasts();
+  await combine("beginner");
+  const log = await toastLog();
+  expect(log.filter(t => t.includes(EMPTY_CUT))).toEqual(["The hole did not cut anything. Check that it overlaps the part, then try again (Undo brings the pieces back)."]);
+  await expectVolumes([8000]);
+});
+test("Beginner: a hole that overlaps the part gives no such note", async () => {
+  await loadDoc(page, newDoc("Hole inside", "beginner", { bodies: [box("target", 20, 20, 20), box("cutter", 4, 4, 4, translated(0, 0, 0))] }));
+  await clearToasts();
+  await combine("beginner");
+  await expectVolumes([8000 - 64]);
+  expect((await toastLog()).filter(t => t.includes(EMPTY_CUT))).toEqual([]);
+});
+test("Beginner: a Group without holes gives no such note", async () => {
+  await loadDoc(page, newDoc("No hole", "beginner", { bodies: [box("target", 20, 20, 20), box("other", 4, 4, 4, translated(60, 0, 0))] }));
+  await clearToasts();
+  await run(() => JS3D.select(["target", "other"]));
+  const depth = await run(() => __store.undoStack.length);
+  await page.click("#bb-group");
+  await expect.poll(() => run(() => __store.undoStack.length)).toBe(depth + 1);
+  await waitIdle(page);
+  expect((await toastLog()).filter(t => t.includes(EMPTY_CUT))).toEqual([]);
+});
+
 // A hole group builds twice: first without its holes (the baseline piece count), then complete.
 // Hold each build in turn, so the change lands mid-operation whichever one is running.
 for (const stage of ["hole-free", "complete"]) for (const scenario of ["failure", "stale edit", "new command"]) {
