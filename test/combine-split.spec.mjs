@@ -262,3 +262,55 @@ test('beginner: a box with a hole through its middle stays one body after Group,
   expect(made[0].volume).toBeCloseTo(8000 - Math.PI * 16 * 20, 0);
   expect(await run(() => __store.undoStack.length)).toBe(depth + 1);
 });
+
+test('Export clicked during a Group waits for the rebuild and downloads the finished part (browser test F4)', async () => {
+  await loadDoc(page, newDoc("Export during group", "beginner", { bodies: [
+    box("target", 20, 20, 20),
+    body("hole", "Cylinder hole", prim("cylinder", { w: 6, d: 6, h: 30 }), translated(0, 0, -5), { hole: true }),
+  ] }));
+  await waitIdle(page);
+  await run(() => {
+    window.__toasts = [];
+    new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) window.__toasts.push(n.textContent); }).observe(document.getElementById("toasts"), { childList: true });
+    JS3D.select(["target", "hole"]);
+  });
+  const [dl] = await Promise.all([
+    page.waitForEvent("download", { timeout: 60_000 }),
+    // one tick: Group, then Export > STL before the rebuild has landed
+    run(() => { document.getElementById("bb-group").click(); document.getElementById("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]').click(); }),
+  ]);
+  const chunks = [];
+  for await (const c of await dl.createReadStream()) chunks.push(c);
+  const got = Buffer.concat(chunks);
+  await waitIdle(page);
+  const want = Buffer.from(await run(async () => Array.from(await JS3D.export("stl"))));
+  expect(got.equals(want)).toBe(true);
+  const toasts = await run(() => window.__toasts);
+  expect(toasts.some((t) => t.includes("Still building"))).toBe(true);
+  expect(toasts.some((t) => t.includes("Nothing to export"))).toBe(false);
+});
+
+test('two Export clicks during a Group give exactly one download, and the later format wins (review of the F4 fix)', async () => {
+  await loadDoc(page, newDoc("Double export", "beginner", { bodies: [
+    box("target", 20, 20, 20),
+    body("hole", "Cylinder hole", prim("cylinder", { w: 6, d: 6, h: 30 }), translated(0, 0, -5), { hole: true }),
+  ] }));
+  await waitIdle(page);
+  await run(() => {
+    window.__toasts = [];
+    new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) window.__toasts.push(n.textContent); }).observe(document.getElementById("toasts"), { childList: true });
+    JS3D.select(["target", "hole"]);
+  });
+  const names = [];
+  page.on("download", (d) => names.push(d.suggestedFilename()));
+  await run(() => {
+    document.getElementById("bb-group").click();
+    const click = (act) => { document.getElementById("btn-export").click(); document.querySelector(`#menu-export button[data-act="${act}"]`).click(); };
+    click("stl"); click("obj");
+  });
+  await expect.poll(() => names.length, { timeout: 60_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(3000);
+  expect(names).toHaveLength(1);
+  expect(names[0]).toMatch(/\.obj$/);
+  expect((await run(() => window.__toasts)).some((t) => t.includes("Already waiting"))).toBe(true);
+});
