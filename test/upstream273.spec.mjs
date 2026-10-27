@@ -23,8 +23,8 @@ const bytes = (a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength);
 const near = (got, want, tol = 0.005) => expect(Math.abs(got - want)).toBeLessThanOrEqual(Math.abs(want) * tol + 1e-6);
 
 test("the splash and About show version 2.7.3 with the 2.7.3 and 2.7.2 notes", async () => {
-  expect(VERSION).toBe("2.7.3");
-  const label = `Version 2.7.3 · community build ${BUILD}`;
+  expect(VERSION).toMatch(/^2\.7\./); // 2.7.7 and later keep these notes (upstream277.spec.mjs checks the newest)
+  const label = `Version ${VERSION} · community build ${BUILD}`;
   expect(await page.locator("#sp-ver").textContent()).toBe(label);
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
