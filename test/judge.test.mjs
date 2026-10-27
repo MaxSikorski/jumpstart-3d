@@ -276,6 +276,46 @@ test('summary has all six build/format rows, failures included', () => {
   assert.equal(fileKey({ build: 'site', fixture: 'advanced-text.json', format: 'step' }), 'site/advanced-text.step');
 });
 
+test('reviewed solid counts cover exactly the current fixtures', () => {
+  const solids = JSON.parse(readFileSync(path.join(ROOT, 'test/judge-solids.json')));
+  const golden = JSON.parse(readFileSync(path.join(ROOT, 'test/golden.json')));
+  assert.deepEqual(Object.keys(solids).sort(), Object.keys(golden).sort());
+  assert.ok(Object.values(solids).every(n => Number.isSafeInteger(n) && n > 0));
+});
+
+test('nightly known crossings accept measured failures but reject worse or unrelated failures', () => {
+  // Run 40509173084: identical measurements in single and site, log lines
+  // 1300/1429, 1321/1450, 1358/1487 and 1360/1489 respectively.
+  const cases = {
+    'advanced-tapped-hole.stl': [[0.3385, 0, 0]],
+    'fasteners.stl': [[0.3121, 0, 0]],
+    'spring.3mf': [[0.0102, 1, 0], [0.0583, 2, 0]],
+    'spring.stl': [[0.0102, 0, 1], [0.0583, 0, 2]],
+  };
+  const known = readKnown();
+  for (const [name, measurements] of Object.entries(cases)) {
+    // Once a geometry fix removes an entry, it needs no exemption test.
+    if (!known[name]) continue;
+    const reason = ([value, mesh, component]) => classifyCrossings([{ longest_mm: value, mesh, component, count: 1, finite: true }]).failures[0];
+    const reasons = measurements.map(reason);
+    const run = failures => {
+      const row = { fixture: name.replace(/\.(stl|3mf)$/, '.json'), format: name.split('.').pop(), reasons: [...failures] };
+      assert.deepEqual(applyKnown([row], { [name]: known[name] }), []);
+      return row;
+    };
+    assert.equal(run(reasons).reasons.length, 0, name);
+    for (const [i, [value, mesh, component]] of measurements.entries()) {
+      const worse = [...reasons];
+      worse[i] = reason([value + 0.0001, mesh, component]);
+      assert.deepEqual(run(worse).reasons, worse, `${name}: larger crossing must fail`);
+    }
+    for (const extra of ['open_edges=4', 'FreeCAD self-intersection without a usable measurement (mesh 0 component 0)', reasons[0] + ' unexpected failure']) {
+      assert.deepEqual(run([...reasons, extra]).reasons, [...reasons, extra], name);
+    }
+    assert.match(run([]).reasons[0], /remove it from judge-known.json/);
+  }
+});
+
 test('golden collector rejects missing run ID and baseline-update mode before running tests', async t => {
   const out = temporary(t);
   for (const [name, settings] of [
