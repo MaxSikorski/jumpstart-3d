@@ -1401,7 +1401,33 @@ function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
   // anything else: the distance-field wall
   return sdfShell(shape, t, open, dir);
 }
+// jumpstart-3d: shell hang guard (wall equals a fillet radius). When the offset distance matches the radius of a round
+// face (a fillet's cylinder, a corner's sphere, a torus tube), that face shrinks to nothing and OpenCascade's offset
+// loops for minutes while it eats gigabytes (box with 2 mm fillets and a 2 mm wall, 2026-10-27). Walls 0.5% off the radius
+// offset in half a second, so within 0.25% of a radius the wall is made 0.5% thinner (0.01 mm on a 2 mm wall). The slice
+// method was tried instead and was wrong there (inner hollow 30% too big, walls too thin), the distance field took 30 s.
+function offsetHitsRadius(shape, d) {
+  let hit = false;
+  for (const f of shape.faces) {
+    if (!hit && f.geomType !== "PLANE") {
+      const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+      try {
+        const ST = OC.GeomAbs_SurfaceType, k = ad.GetType(), near = (r) => Math.abs(r - d) <= d * 0.0025;
+        if (k === ST.GeomAbs_Cylinder) hit = near(ad.Cylinder().Radius());
+        else if (k === ST.GeomAbs_Sphere) hit = near(ad.Sphere().Radius());
+        else if (k === ST.GeomAbs_Torus) { const tr = ad.Torus(); hit = near(tr.MinorRadius()) || near(tr.MajorRadius()); }
+      } catch (e) {} finally { ad.delete(); }
+    }
+    f.delete();
+  }
+  return hit;
+}
+// end jumpstart-3d
 function shellSolidOffset(shape, t, open, dir, vIn) {
+  if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) { // jumpstart-3d: shell hang guard (wall equals a fillet radius)
+    t *= 0.995;
+    if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) return null; // another round face at the new size: leave it to the slice and field methods
+  }
   const ok = (sh, more) => { const v = safeVolume(sh); return v > 1e-6 && (more ? v > vIn * 1.002 : v < vIn * 0.998); };
   // a wall can't hold much more than (area of the kept surface) x thickness; OpenCascade
   // sometimes "succeeds" by hollowing only part of a body, which this catches
