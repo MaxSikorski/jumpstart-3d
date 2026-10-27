@@ -13,7 +13,8 @@ const prim = (kind, w, d, h, z = 0, hole = false, extra = {}) => ({
 function harness(children, volume) {
   const meshes = new Map();
   const g = { id: 'group', node: { t: 'group', children, mods: [] } };
-  const T = { volume: () => volume, hasHole: (g) => g.node.children.some((c) => c.hole) };
+  const any = (node) => (node.children || []).some((c) => c.hole || any(c.node));
+  const T = { volume: () => volume, hasHole: (g) => any(g.node) };
   const app = { scene: { kernel: { get: (key) => meshes.get(key) } } };
   Object.assign(T, Function('T', 'app', 'store', 'THREE', 'bodyKey', 'resolveNode', `return ({${method}})`)(T, app, { doc: {} }, THREE, JSON.stringify, (n) => n));
   return { cuts: () => T.cuts(g), cache: (node, volume, min, max) => meshes.set(JSON.stringify(node), { ok: true, mesh: { volume, bbox: { min, max } } }), g };
@@ -81,4 +82,32 @@ test('touching solids can be summed, and a hole is required', () => {
   assert.equal(harness(children, 6000).cuts(), false);
   assert.equal(harness(children, 6000 - 240).cuts(), true);
   assert.equal(harness(children.slice(0, 2), 0).cuts(), false);
+});
+
+test('a tag and hole grouped first, then joined to the text, still passes', () => {
+  const tag = { node: { t: 'group', children: [prim('box', 40, 20, 4), prim('cylinder', 6, 6, 10, -2, true)], mods: [] }, m: new THREE.Matrix4().toArray(), hole: false };
+  const letters = prim('box', 10, 10, 2, 4);
+  assert.equal(harness([tag, letters], 3000).cuts(), true);
+  // a nested hole group with no hole at all in sight is still refused
+  assert.equal(harness([{ ...tag, node: { t: 'group', children: [prim('box', 40, 20, 4)], mods: [] } }, letters], 3000).cuts(), false);
+});
+
+test('bookmark: a 2 mm plate with 3 mm raised letters and a through cutter passes; a missed one does not', () => {
+  const plate = prim('box', 150, 40, 2), letters = prim('box', 60, 20, 3, 2, false), vol = 150 * 40 * 2 + 60 * 20 * 3;
+  const cutter = (x) => ({ ...prim('cylinder', 6, 6, 10, -2, true), m: new THREE.Matrix4().makeTranslation(x, 0, -2).toArray() });
+  const through = Math.PI * 9 * 2;
+  assert.equal(harness([plate, letters, cutter(-70)], vol - through).cuts(), true);
+  assert.equal(harness([plate, letters, cutter(-70)], vol).cuts(), false);
+  assert.equal(harness([plate, letters, cutter(300)], vol).cuts(), false);
+});
+
+test('a cutter with no readable volume (sphere) falls back to the plain hole check', () => {
+  const sphere = prim('sphere', 10, 10, 10, 0, true);
+  assert.equal(harness([prim('box', 40, 40, 8), sphere], 12800).cuts(), true);
+  assert.equal(harness([prim('box', 40, 40, 8)], 12800).cuts(), false);
+});
+
+test('cutters are checked on all three axes, so one that misses sideways is refused', () => {
+  const side = { ...prim('box', 10, 10, 12, 0, true), m: new THREE.Matrix4().makeTranslation(60, 0, -2).toArray() };
+  assert.equal(harness([prim('box', 40, 40, 8), side], 12800).cuts(), false);
 });

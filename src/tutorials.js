@@ -92,7 +92,9 @@ export function initTutorials(app) {
         return { volume: v * Math.abs(m.determinant()), box };
       };
       const solids = g.node.children.filter((c) => !c.hole), holes = g.node.children.filter((c) => c.hole);
-      if (!solids.length || !holes.length) return false;
+      // holes only inside a nested group (tag and hole grouped first, then joined to the text): that cut is already made, so accept like hasHole
+      if (!holes.length) return true;
+      if (!solids.length) return false;
       // A previously joined solid may already have an exact cached volume, even when its children overlap.
       const joined = measure({ node: { ...g.node, children: solids, mods: [] } });
       const parts = solids.map(measure);
@@ -104,17 +106,31 @@ export function initTutorials(app) {
           const a = parts[i].box, b = parts[j].box;
           if (["x", "y", "z"].every((k) => Math.min(a.max[k], b.max[k]) - Math.max(a.min[k], b.min[k]) > 1e-6)) return T.hasHole(g);
         }
-        solid = { volume: parts.reduce((sum, p) => sum + p.volume, 0), box: parts.reduce((box, p) => box.union(p.box), new THREE.Box3()) };
+        solid = { volume: parts.reduce((sum, p) => sum + p.volume, 0) };
       }
       const cutters = holes.map(measure);
-      // Wait for a known cutter volume before accepting the cut.
-      if (cutters.some((c) => !c)) return false;
-      const expected = cutters.reduce((sum, c) => {
-        const height = c.box.max.z - c.box.min.z;
-        const overlap = Math.max(0, Math.min(solid.box.max.z, c.box.max.z) - Math.max(solid.box.min.z, c.box.min.z));
-        return sum + c.volume * (height > 0 ? Math.min(1, overlap / height) : 0);
-      }, 0);
-      return expected > 0 && solid.volume - volume >= 0.5 * expected;
+      // A cutter whose volume cannot be read without a build (sphere, cone, text, rounded, after a reload) keeps the plain hole check.
+      if (cutters.some((c) => !c)) return T.hasHole(g);
+      // Each known solid's own box, so raised lettering cannot stretch the box the cutter is compared with; the joined box only if no part is known.
+      const boxes = parts.filter(Boolean).map((p) => p.box);
+      if (!boxes.length && joined) boxes.push(joined.box);
+      // Per cutter: its volume times the share of its box that lies inside each solid's box (all three axes), capped at the cutter's volume.
+      // Cutters that overlap each other are simply summed, so the total can be a little generous; that only makes the check stricter.
+      let expected = 0;
+      for (const c of cutters) {
+        const size = c.box.getSize(new THREE.Vector3()), whole = size.x * size.y * size.z;
+        if (!(whole > 0)) continue;
+        let inside = 0;
+        for (const b of boxes) {
+          const x = Math.min(b.max.x, c.box.max.x) - Math.max(b.min.x, c.box.min.x);
+          const y = Math.min(b.max.y, c.box.max.y) - Math.max(b.min.y, c.box.min.y);
+          const z = Math.min(b.max.z, c.box.max.z) - Math.max(b.min.z, c.box.min.z);
+          if (x > 0 && y > 0 && z > 0) inside += x * y * z;
+        }
+        expected += c.volume * Math.min(1, inside / whole);
+      }
+      if (!(expected > 0)) return parts.some((p) => !p) ? T.hasHole(g) : false; // a solid we could not measure may be what the cutter sits in
+      return solid.volume - volume >= 0.5 * expected;
     },
     // end jumpstart-3d
     countMods(t) { let n = 0; for (const b of T.bodies()) walk(b.node, (node) => { for (const m of node.mods || []) if (m.t === t) n++; }); return n; },
