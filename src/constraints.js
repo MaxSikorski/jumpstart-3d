@@ -1,6 +1,6 @@
 // Sketch constraints: coincident (also to the origin), horizontal, vertical, parallel,
-// perpendicular, tangent, concentric, equal and midpoint. They are stored on the sketch (sk.cons) and kept true by a small
-// iterative solver that runs after every sketch edit and while dragging.
+// perpendicular, tangent, concentric, equal and midpoint. They are stored on the sketch (sk.cons) and kept true by a solver
+// that runs after every sketch edit and while dragging (one least-squares solve over the whole sketch; see "the solver" below).
 export const CONSTRAINTS = {
   coincident: { label: "Coincident", glyph: "●", picks: "A point, then another point, a line/arc/circle or the origin" },
   horizontal: { label: "Horizontal", glyph: "H", picks: "A line (or two points)" },
@@ -186,208 +186,244 @@ export function normalizeSketch(sk) {
 }
 
 // ------------------------------------------------------------ the solver
-// keep: point ids that must not move (being dragged); projected points never move
-export function solveSketch(sk, keep = new Set()) {
-  if (!sk.cons || !sk.cons.length) return;
-  pruneConstraints(sk);
-  const P = new Map(sk.pts.map((p) => [p.id, p]));
-  const E = new Map(sk.ents.map((e) => [e.id, e]));
-  const fixed = new Set(keep);
-  for (const e of sk.ents) if (e.proj) for (const id of entIds(e)) fixed.add(id);
-  // points on the origin sit at (0, 0) and never move
-  for (const c of sk.cons) if (c.t === "origin") { const p = P.get(c.p); if (p) { p.x = 0; p.y = 0; fixed.add(c.p); } }
-  const free = (id) => !fixed.has(id);
-  const radius = (e) => (e.t === "circle" ? e.r : Math.hypot(P.get(e.a).x - P.get(e.c).x, P.get(e.a).y - P.get(e.c).y));
-  const setRadius = (e, r) => {
-    if (!(r > 1e-6)) return;
-    if (e.t === "circle") { e.r = r; return; }
-    const c = P.get(e.c);
-    for (const id of [e.a, e.b]) { if (!free(id)) continue; const q = P.get(id), L = Math.hypot(q.x - c.x, q.y - c.y) || 1; q.x = c.x + ((q.x - c.x) / L) * r; q.y = c.y + ((q.y - c.y) / L) * r; }
-  };
-  // move a whole round shape (its center, and an arc's ends with it)
-  const shiftRound = (e, dx, dy) => { for (const id of e.t === "arc" ? [e.c, e.a, e.b] : [e.c]) if (free(id)) { const q = P.get(id); q.x += dx; q.y += dy; } };
-  const roundFree = (e) => free(e.c);
-  // turn a line to a direction, about a fixed end or its middle
-  function aim(e, dx, dy) {
-    const a = P.get(e.a), b = P.get(e.b);
-    let L = Math.hypot(b.x - a.x, b.y - a.y);
-    if (L < 1e-9) return;
-    const dl = Math.hypot(dx, dy); dx /= dl; dy /= dl;
-    if ((b.x - a.x) * dx + (b.y - a.y) * dy < 0) { dx = -dx; dy = -dy; }
-    if (free(a.id) && free(b.id)) { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; a.x = mx - (dx * L) / 2; a.y = my - (dy * L) / 2; b.x = mx + (dx * L) / 2; b.y = my + (dy * L) / 2; }
-    else if (free(b.id)) { b.x = a.x + dx * L; b.y = a.y + dy * L; }
-    else if (free(a.id)) { a.x = b.x - dx * L; a.y = b.y - dy * L; }
-  }
-  const lineFree = (e) => free(e.a) || free(e.b);
-  // change b - a by d, moving whichever ends may move
-  function stretch(i1, i2, dx, dy) {
-    const a = P.get(i1), b = P.get(i2);
-    if (free(i1) && free(i2)) { a.x -= dx / 2; a.y -= dy / 2; b.x += dx / 2; b.y += dy / 2; }
-    else if (free(i2)) { b.x += dx; b.y += dy; }
-    else if (free(i1)) { a.x -= dx; a.y -= dy; }
-  }
-  // turn a line by ang (radians) about a shared/fixed end, or its middle
-  function turn(e, ang, other) {
-    const a = P.get(e.a), b = P.get(e.b);
-    const shared = other ? [e.a, e.b].find((id) => [other.a, other.b].includes(id)) : null;
-    let pv;
-    if (shared) pv = P.get(shared);
-    else if (!free(e.a) && free(e.b)) pv = a;
-    else if (!free(e.b) && free(e.a)) pv = b;
-    else pv = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const cs = Math.cos(ang), sn = Math.sin(ang), px = pv.x, py = pv.y;
-    for (const q of [a, b]) {
-      if (!free(q.id) || q === pv) continue;
-      const x = q.x - px, y = q.y - py;
-      q.x = px + x * cs - y * sn; q.y = py + x * sn + y * cs;
-    }
-  }
-  // sketch dimensions (see dims.js): returns how far off the dimension still is
-  function solveDim(c) {
-    if (!(c.v >= 0)) return 0;
-    if (c.k === "dist") {
-      const a = P.get(c.p1), b = P.get(c.p2);
-      if (!a || !b) return 0;
-      if (c.o === "h" || c.o === "v") {
-        const k = c.o === "h" ? "x" : "y", cur = b[k] - a[k], want = (cur < 0 ? -1 : 1) * c.v, err = want - cur;
-        if (Math.abs(err) > 1e-12) stretch(c.p1, c.p2, k === "x" ? err : 0, k === "y" ? err : 0);
-        return Math.abs(err);
+// jumpstart-3d: sketch solver. One damped least-squares (Levenberg-Marquardt) solve over the whole sketch replaces J.Siwek's
+// one-constraint-at-a-time loop, which turned the wrong line when two constraints wanted the same one (the hexagon bug).
+// Unknowns: the free points' x and y, and each free circle's radius. Every constraint is a few numbers that must reach zero
+// (its "rows"). Each step is the smallest move of the unknowns that cuts all rows at once, so geometry that already holds
+// does not move, and a point held by a constraint (origin, projected, or dragged) is never an unknown at all.
+const SOLVE_TOL = 1e-10; // stop when every row is this close to zero
+const OK_TOL = 1e-6; // a sketch counts as solved when its worst row is below this (millimetres; angles are scaled to a length)
+const FD_STEP = 1e-6; // finite-difference step for the Jacobian
+const RANK_TOL = 1e-5; // a row adds a degree of constraint only if this much of it (as a fraction of its own length) is new
+const MAX_ITER = 100;
+
+// every constraint as { c, n, f, deps }: f() = its n rows, read from the live points; deps = the point ids and circle shapes they depend on.
+// Choices made from the geometry as it is now (which side a distance is measured on, the sign of an angle) are fixed here, once per solve.
+// store: write a missing angle sign (c.sg) onto the constraint (a solve does; a read-only count does not).
+function buildTerms(sk, store) {
+  const P = new Map(sk.pts.map((p) => [p.id, p])), E = new Map(sk.ents.map((e) => [e.id, e]));
+  const dir = (e) => { const a = P.get(e.a), b = P.get(e.b); return [b.x - a.x, b.y - a.y]; };
+  const len = (e) => Math.hypot(...dir(e));
+  const rad = (e) => (e.t === "circle" ? e.r : Math.hypot(P.get(e.a).x - P.get(e.c).x, P.get(e.a).y - P.get(e.c).y));
+  const side = (e, x, y) => { const a = P.get(e.a), d = dir(e), L = Math.hypot(d[0], d[1]) || 1; return ((x - a.x) * -d[1] + (y - a.y) * d[0]) / L; };
+  const turn = (c, e1, e2) => { const d1 = dir(e1).map((v) => v * (c.s1 || 1)), d2 = dir(e2).map((v) => v * (c.s2 || 1)); return Math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1]); };
+  const shape = (e) => (isLine(e) ? [e.a, e.b] : e.t === "circle" ? [e.c, e] : [e.c, e.a]);
+  const terms = [];
+  const add = (c, deps, f, n = 1) => terms.push({ c, n, f, deps });
+  for (const e of sk.ents) if (e.t === "arc" && P.has(e.a) && P.has(e.b) && P.has(e.c)) add(null, [e.c, e.a, e.b], () => [Math.hypot(P.get(e.b).x - P.get(e.c).x, P.get(e.b).y - P.get(e.c).y) - rad(e)]); // an arc's end sits on its circle
+  for (const c of sk.cons || []) {
+    const e1 = E.get(c.e1), e2 = E.get(c.e2), e = E.get(c.e), p = P.get(c.p);
+    if (c.t === "origin") { if (p) add(c, [c.p], () => [p.x, p.y], 2); continue; }
+    if (c.t === "horizontal" || c.t === "vertical") {
+      const ends = c.p1 ? [c.p1, c.p2] : e1 && isLine(e1) ? [e1.a, e1.b] : null;
+      if (!ends || !P.has(ends[0]) || !P.has(ends[1])) continue;
+      const a = P.get(ends[0]), b = P.get(ends[1]), k = c.t === "horizontal" ? "y" : "x";
+      add(c, ends, () => [a[k] - b[k]]);
+    } else if (c.t === "parallel" || c.t === "perpendicular") {
+      if (!isLine(e1) || !isLine(e2)) continue;
+      const sc = Math.max(1, (len(e1) + len(e2)) / 2); // a turn of this many radians moves the line's ends about sc millimetres
+      add(c, [e1.a, e1.b, e2.a, e2.b], () => { const d = dir(e1), u = dir(e2), n = Math.hypot(...d) * Math.hypot(...u) || 1; return [(sc * (c.t === "parallel" ? d[0] * u[1] - d[1] * u[0] : d[0] * u[0] + d[1] * u[1])) / n]; });
+    } else if (c.t === "equal") {
+      if (isLine(e1) && isLine(e2)) add(c, [e1.a, e1.b, e2.a, e2.b], () => [len(e1) - len(e2)]);
+      else if (isRound(e1) && isRound(e2)) add(c, [...shape(e1), ...shape(e2)], () => [rad(e1) - rad(e2)]);
+    } else if (c.t === "coincident") {
+      if (!p || !e) continue;
+      if (isLine(e)) add(c, [c.p, e.a, e.b], () => [side(e, p.x, p.y)]);
+      else if (isRound(e)) add(c, [c.p, ...shape(e)], () => [Math.hypot(p.x - P.get(e.c).x, p.y - P.get(e.c).y) - rad(e)]);
+    } else if (c.t === "midpoint") {
+      if (!p || !e || !isLine(e)) continue;
+      const a = P.get(e.a), b = P.get(e.b);
+      add(c, [c.p, e.a, e.b], () => [p.x - (a.x + b.x) / 2, p.y - (a.y + b.y) / 2], 2);
+    } else if (c.t === "tangent") {
+      let l = e1, r = e2;
+      if (isRound(l) && isLine(r)) [l, r] = [r, l];
+      if (isLine(l) && isRound(r)) {
+        const cc = P.get(r.c), sg = side(l, cc.x, cc.y) < 0 ? -1 : 1; // the circle stays on the side it is on
+        add(c, [l.a, l.b, ...shape(r)], () => [side(l, cc.x, cc.y) - sg * rad(r)]);
+      } else if (isRound(l) && isRound(r)) {
+        const c1 = P.get(l.c), c2 = P.get(r.c), inside = Math.hypot(c2.x - c1.x, c2.y - c1.y) < Math.max(rad(l), rad(r)); // one inside the other, or side by side
+        add(c, [...shape(l), ...shape(r)], () => [Math.hypot(c2.x - c1.x, c2.y - c1.y) - (inside ? Math.abs(rad(l) - rad(r)) : rad(l) + rad(r))]);
       }
-      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-      if (d < 1e-9) return 0;
-      const err = c.v - d;
-      if (Math.abs(err) > 1e-12) stretch(c.p1, c.p2, (dx / d) * err, (dy / d) * err);
-      return Math.abs(err);
-    }
-    if (c.k === "pl" || c.k === "ll") {
-      const e = E.get(c.k === "pl" ? c.e : c.e1);
-      if (!e) return 0;
-      const a = P.get(e.a), b = P.get(e.b), L = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
-      let movers, px, py;
-      if (c.k === "pl") { const p = P.get(c.p); if (!p) return 0; movers = [c.p]; px = p.x; py = p.y; }
-      else { const e2 = E.get(c.e2); if (!e2) return 0; const p = P.get(e2.a), q = P.get(e2.b); movers = [e2.a, e2.b]; px = (p.x + q.x) / 2; py = (p.y + q.y) / 2; }
-      const s = (px - a.x) * nx + (py - a.y) * ny, want = (s < 0 ? -1 : 1) * c.v, err = want - s;
-      if (Math.abs(err) < 1e-12) return 0;
-      if (movers.some(free)) { for (const id of movers) if (free(id)) { const q = P.get(id); q.x += nx * err; q.y += ny * err; } }
-      else if (lineFree(e)) for (const id of [e.a, e.b]) if (free(id)) { const q = P.get(id); q.x -= nx * err; q.y -= ny * err; }
-      return Math.abs(err);
-    }
-    if (c.k === "dia" || c.k === "rad") {
-      const e = E.get(c.e1);
-      if (!e) return 0;
-      const want = c.k === "dia" ? c.v / 2 : c.v, err = Math.abs(radius(e) - want);
-      if (err > 1e-12) setRadius(e, want);
-      return err;
-    }
-    if (c.k === "ang") {
-      const e1 = E.get(c.e1), e2 = E.get(c.e2);
-      if (!e1 || !e2) return 0;
-      const v1 = [(P.get(e1.b).x - P.get(e1.a).x) * (c.s1 || 1), (P.get(e1.b).y - P.get(e1.a).y) * (c.s1 || 1)];
-      const v2 = [(P.get(e2.b).x - P.get(e2.a).x) * (c.s2 || 1), (P.get(e2.b).y - P.get(e2.a).y) * (c.s2 || 1)];
-      const cur = Math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1]);
-      const want = (cur < 0 ? -1 : 1) * (c.v * Math.PI) / 180, err = want - cur;
-      if (Math.abs(err) < 1e-12) return 0;
-      if (lineFree(e2)) turn(e2, err, e1); else if (lineFree(e1)) turn(e1, -err, e2);
-      return Math.abs(err);
-    }
-    return 0;
-  }
-  for (let it = 0; it < 60; it++) {
-    let worst = 0;
-    for (const c of sk.cons) {
-      if (c.t === "dim") { worst = Math.max(worst, solveDim(c)); continue; }
-      if (c.t === "horizontal" || c.t === "vertical") {
-        const [i1, i2] = c.p1 ? [c.p1, c.p2] : (() => { const e = E.get(c.e1); return [e.a, e.b]; })();
-        const a = P.get(i1), b = P.get(i2);
+    } else if (c.t === "dim") {
+      if (!(c.v >= 0)) continue; // no value yet
+      if (c.k === "dist") {
+        const a = P.get(c.p1), b = P.get(c.p2);
         if (!a || !b) continue;
-        const k = c.t === "horizontal" ? "y" : "x";
-        const err = Math.abs(a[k] - b[k]);
-        worst = Math.max(worst, err);
-        if (err < 1e-12) continue;
-        if (free(i1) && free(i2)) { const m = (a[k] + b[k]) / 2; a[k] = m; b[k] = m; }
-        else if (free(i2)) b[k] = a[k];
-        else if (free(i1)) a[k] = b[k];
-      } else if (c.t === "parallel" || c.t === "perpendicular") {
-        const e1 = E.get(c.e1), e2 = E.get(c.e2);
-        const a1 = P.get(e1.a), b1 = P.get(e1.b), a2 = P.get(e2.a), b2 = P.get(e2.b);
-        let dx = b1.x - a1.x, dy = b1.y - a1.y;
-        if (c.t === "perpendicular") [dx, dy] = [-dy, dx];
-        const ux = b2.x - a2.x, uy = b2.y - a2.y;
-        const err = Math.abs(dx * uy - dy * ux) / ((Math.hypot(dx, dy) * Math.hypot(ux, uy)) || 1);
-        worst = Math.max(worst, err);
-        if (err < 1e-12) continue;
-        if (lineFree(e2)) aim(e2, dx, dy);
-        else if (lineFree(e1)) { let vx = ux, vy = uy; if (c.t === "perpendicular") [vx, vy] = [vy, -vx]; aim(e1, vx, vy); }
-      } else if (c.t === "equal") {
-        const e1 = E.get(c.e1), e2 = E.get(c.e2);
-        if (isLine(e1) && isLine(e2)) {
-          const L1 = Math.hypot(P.get(e1.b).x - P.get(e1.a).x, P.get(e1.b).y - P.get(e1.a).y);
-          const a = P.get(e2.a), b = P.get(e2.b), L2 = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-          const err = Math.abs(L1 - L2); worst = Math.max(worst, err);
-          if (err < 1e-12) continue;
-          const ux = (b.x - a.x) / L2, uy = (b.y - a.y) / L2;
-          if (free(e2.a) && free(e2.b)) { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; a.x = mx - (ux * L1) / 2; a.y = my - (uy * L1) / 2; b.x = mx + (ux * L1) / 2; b.y = my + (uy * L1) / 2; }
-          else if (free(e2.b)) { b.x = a.x + ux * L1; b.y = a.y + uy * L1; }
-          else if (free(e2.a)) { a.x = b.x - ux * L1; a.y = b.y - uy * L1; }
-        } else if (isRound(e1) && isRound(e2)) {
-          const r1 = radius(e1), r2 = radius(e2), err = Math.abs(r1 - r2);
-          worst = Math.max(worst, err);
-          if (err > 1e-12) setRadius(e2, r1);
-        }
-      } else if (c.t === "coincident") {
-        const p = P.get(c.p), e = E.get(c.e);
-        if (!p || !e) continue;
-        if (isLine(e)) {
-          const a = P.get(e.a), b = P.get(e.b), dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
-          const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2, fx = a.x + t * dx, fy = a.y + t * dy;
-          const err = Math.hypot(p.x - fx, p.y - fy); worst = Math.max(worst, err);
-          if (err < 1e-12) continue;
-          if (free(p.id)) { p.x = fx; p.y = fy; }
-          else if (lineFree(e)) { const ox = p.x - fx, oy = p.y - fy; for (const id of [e.a, e.b]) if (free(id)) { const q = P.get(id); q.x += ox; q.y += oy; } }
-        } else if (isRound(e)) {
-          const cc = P.get(e.c), r = radius(e), L = Math.hypot(p.x - cc.x, p.y - cc.y) || 1e-9;
-          const err = Math.abs(L - r); worst = Math.max(worst, err);
-          if (err < 1e-12) continue;
-          if (free(p.id)) { p.x = cc.x + ((p.x - cc.x) / L) * r; p.y = cc.y + ((p.y - cc.y) / L) * r; }
-          else setRadius(e, L);
-        }
-      } else if (c.t === "midpoint") {
-        const p = P.get(c.p), e = E.get(c.e);
-        if (!p || !e || !isLine(e)) continue;
-        const a = P.get(e.a), b = P.get(e.b), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-        const err = Math.hypot(p.x - mx, p.y - my); worst = Math.max(worst, err);
-        if (err < 1e-12) continue;
-        if (free(p.id)) { p.x = mx; p.y = my; }
-        else if (free(e.a) && free(e.b)) { const ox = p.x - mx, oy = p.y - my; a.x += ox; a.y += oy; b.x += ox; b.y += oy; }
-        else if (free(e.b)) { b.x = 2 * p.x - a.x; b.y = 2 * p.y - a.y; }
-        else if (free(e.a)) { a.x = 2 * p.x - b.x; a.y = 2 * p.y - b.y; }
-      } else if (c.t === "tangent") {
-        let e1 = E.get(c.e1), e2 = E.get(c.e2);
-        if (isRound(e1) && isLine(e2)) [e1, e2] = [e2, e1];
-        if (isLine(e1) && isRound(e2)) {
-          const a = P.get(e1.a), b = P.get(e1.b), cc = P.get(e2.c), r = radius(e2);
-          const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
-          const s = (cc.x - a.x) * nx + (cc.y - a.y) * ny, want = s >= 0 ? r : -r, err = Math.abs(s - want);
-          worst = Math.max(worst, err);
-          if (err < 1e-12) continue;
-          if (roundFree(e2)) shiftRound(e2, nx * (want - s), ny * (want - s));
-          else if (lineFree(e1)) for (const id of [e1.a, e1.b]) if (free(id)) { const q = P.get(id); q.x -= nx * (want - s); q.y -= ny * (want - s); }
-          else if (e2.t === "circle") e2.r = Math.abs(s);
-        } else if (isRound(e1) && isRound(e2)) {
-          const c1 = P.get(e1.c), c2 = P.get(e2.c), r1 = radius(e1), r2 = radius(e2);
-          const d = Math.hypot(c2.x - c1.x, c2.y - c1.y) || 1e-9;
-          const want = d < Math.max(r1, r2) ? Math.abs(r1 - r2) : r1 + r2, err = Math.abs(d - want);
-          worst = Math.max(worst, err);
-          if (err < 1e-12) continue;
-          const ux = (c2.x - c1.x) / d, uy = (c2.y - c1.y) / d;
-          if (roundFree(e2)) shiftRound(e2, ux * (want - d), uy * (want - d));
-          else if (roundFree(e1)) shiftRound(e1, -ux * (want - d), -uy * (want - d));
-        }
+        if (c.o === "h" || c.o === "v") { const k = c.o === "h" ? "x" : "y", sg = b[k] - a[k] < 0 ? -1 : 1; add(c, [c.p1, c.p2], () => [b[k] - a[k] - sg * c.v]); }
+        else add(c, [c.p1, c.p2], () => [Math.hypot(b.x - a.x, b.y - a.y) - c.v]);
+      } else if (c.k === "pl" || c.k === "ll") {
+        const l = c.k === "pl" ? e : e1, e3 = c.k === "ll" ? e2 : null;
+        if (!isLine(l) || (c.k === "pl" ? !p : !isLine(e3))) continue;
+        const at = c.k === "pl" ? () => [p.x, p.y] : () => { const a = P.get(e3.a), b = P.get(e3.b); return [(a.x + b.x) / 2, (a.y + b.y) / 2]; };
+        const sg = side(l, ...at()) < 0 ? -1 : 1;
+        add(c, c.k === "pl" ? [c.p, l.a, l.b] : [l.a, l.b, e3.a, e3.b], () => [side(l, ...at()) - sg * c.v]);
+      } else if (c.k === "dia" || c.k === "rad") {
+        if (!isRound(e1)) continue;
+        add(c, shape(e1), () => [rad(e1) - (c.k === "dia" ? c.v / 2 : c.v)]);
+      } else if (c.k === "ang") {
+        if (!isLine(e1) || !isLine(e2)) continue;
+        // which way round the angle opens is kept from when it was placed (c.sg), never re-picked: a corner can't flip to -v
+        let sg = c.sg;
+        if (sg !== 1 && sg !== -1) { sg = turn(c, e1, e2) < 0 ? -1 : 1; if (store) c.sg = sg; }
+        const want = (sg * c.v * Math.PI) / 180, sc = Math.max(1, (len(e1) + len(e2)) / 2);
+        add(c, [e1.a, e1.b, e2.a, e2.b], () => { const d = turn(c, e1, e2) - want; return [sc * Math.atan2(Math.sin(d), Math.cos(d))]; });
       }
     }
-    if (worst < 1e-9) break;
+  }
+  return { terms, P };
+}
+// the unknowns: each term learns the indices of the free ones it depends on. fixed: point ids that are not unknowns.
+// all: also make unknowns of every free point and circle in the sketch (for counting degrees of freedom)
+function bindVars(sk, terms, P, fixed, all) {
+  const idx = new Map(), vars = [];
+  const get = (o, k, key) => { let i = idx.get(key); if (i == null) { i = vars.length; idx.set(key, i); vars.push({ o, k }); } return i; };
+  const point = (id, out) => { if (fixed.has(id) || !P.has(id)) return; out.push(get(P.get(id), "x", id + "x"), get(P.get(id), "y", id + "y")); };
+  for (const t of terms) {
+    t.vars = [];
+    for (const d of t.deps) { if (typeof d === "string") point(d, t.vars); else if (!d.proj) t.vars.push(get(d, "r", "r" + d.id)); }
+    t.vars = [...new Set(t.vars)];
+  }
+  if (all) for (const e of sk.ents) if (!e.proj) { for (const id of entIds(e)) point(id, []); if (e.t === "circle") get(e, "r", "r" + e.id); }
+  return vars;
+}
+// a symmetric positive definite system A x = b by Cholesky (A is overwritten); null when A is not positive definite
+function cholSolve(A, b) {
+  const n = b.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let s = A[i][j];
+      for (let k = 0; k < j; k++) s -= A[i][k] * A[j][k];
+      if (i === j) { if (!(s > 1e-14)) return null; A[i][i] = Math.sqrt(s); } else A[i][j] = s / A[j][j];
+    }
+  }
+  const y = new Float64Array(n);
+  for (let i = 0; i < n; i++) { let s = b[i]; for (let k = 0; k < i; k++) s -= A[i][k] * y[k]; y[i] = s / A[i][i]; }
+  for (let i = n - 1; i >= 0; i--) { let s = y[i]; for (let k = i + 1; k < n; k++) s -= A[k][i] * y[k]; y[i] = s / A[i][i]; }
+  return y;
+}
+const rowsOf = (ts) => { const r = []; for (const t of ts) r.push(...t.f()); return r; };
+const worstOf = (r) => { let w = 0; for (const v of r) { const a = Math.abs(v); if (!isFinite(a)) return Infinity; if (a > w) w = a; } return w; };
+// the Jacobian of the terms ts over the unknowns vs (loc: unknown index -> column), by central differences, one dense row per equation
+function jacobian(ts, vars, loc, ncol) {
+  const J = [];
+  for (const t of ts) {
+    const rows = Array.from({ length: t.n }, () => new Float64Array(ncol));
+    for (const j of t.vars) {
+      const v = vars[j], x0 = v.o[v.k], h = FD_STEP * Math.max(1, Math.abs(x0));
+      v.o[v.k] = x0 + h; const up = t.f(); v.o[v.k] = x0 - h; const dn = t.f(); v.o[v.k] = x0;
+      for (let i = 0; i < t.n; i++) rows[i][loc.get(j)] = (up[i] - dn[i]) / (2 * h);
+    }
+    J.push(...rows);
+  }
+  return J;
+}
+// solve the terms of one connected group: the smallest move that takes every row to zero (Levenberg-Marquardt)
+function lmGroup(ts, vars) {
+  const loc = new Map(), vs = [];
+  for (const t of ts) for (const j of t.vars) if (!loc.has(j)) { loc.set(j, vs.length); vs.push(vars[j]); }
+  const n = vs.length;
+  let r = rowsOf(ts), m = r.length, w = worstOf(r), norm = Math.hypot(...r), lam = 1e-6, J = null, stall = 0;
+  if (!isFinite(w)) return;
+  for (let it = 0; it < MAX_ITER && w > SOLVE_TOL; it++) {
+    J = J || jacobian(ts, vars, loc, n);
+    // minimum-norm step dx = -J^T (J J^T + lam I)^-1 r (or the same through J^T J when there are more rows than unknowns)
+    let dx;
+    if (m <= n) {
+      const A = J.map((a, i) => Float64Array.from(J, (b, k) => { let s = i === k ? lam : 0; for (let q = 0; q < n; q++) s += a[q] * b[q]; return s; }));
+      const y = cholSolve(A, Float64Array.from(r));
+      dx = y && Float64Array.from({ length: n }, (_, q) => { let s = 0; for (let i = 0; i < m; i++) s -= J[i][q] * y[i]; return s; });
+    } else {
+      const A = Array.from({ length: n }, (_, a) => Float64Array.from({ length: n }, (_, b) => { let s = a === b ? lam : 0; for (let i = 0; i < m; i++) s += J[i][a] * J[i][b]; return s; }));
+      const g = Float64Array.from({ length: n }, (_, a) => { let s = 0; for (let i = 0; i < m; i++) s -= J[i][a] * r[i]; return s; });
+      dx = cholSolve(A, g);
+    }
+    let better = false;
+    if (dx) {
+      const x0 = vs.map((v) => v.o[v.k]);
+      vs.forEach((v, q) => { v.o[v.k] = x0[q] + dx[q]; });
+      const rn = rowsOf(ts), nn = Math.hypot(...rn);
+      if (nn < norm) { better = true; stall = norm - nn < 1e-12 * norm ? stall + 1 : 0; r = rn; norm = nn; w = worstOf(rn); lam = Math.max(lam / 10, 1e-9); J = null; }
+      else vs.forEach((v, q) => { v.o[v.k] = x0[q]; });
+    }
+    if (!better) { lam *= 10; if (lam > 1e8) break; }
+    if (stall >= 3) break; // not going anywhere: the constraints fight
   }
 }
+
+// keep: point ids that must not move (being dragged); projected points and points on the origin never move.
+// Returns { ok, worst, redundant, conflicting, dof }: ok = every constraint holds (worst = how far the worst is off, mm);
+// conflicting = ids of the constraints that do not hold; redundant = ids of constraints that hold but add nothing the others
+// do not already fix; dof = the degrees of freedom left (null while dragging, which skips that count).
+export function solveSketch(sk, keep = new Set()) {
+  const idle = { ok: true, worst: 0, redundant: [], conflicting: [], dof: null };
+  if (!sk.cons || !sk.cons.length) return idle;
+  pruneConstraints(sk);
+  if (!sk.cons.length) return idle;
+  const fixed = new Set(keep);
+  for (const e of sk.ents) if (e.proj) for (const id of entIds(e)) fixed.add(id);
+  const P = new Map(sk.pts.map((p) => [p.id, p]));
+  // points on the origin sit at (0, 0) and never move
+  for (const c of sk.cons) if (c.t === "origin") { const p = P.get(c.p); if (p) { p.x = 0; p.y = 0; fixed.add(c.p); } }
+  const { terms } = buildTerms(sk, true);
+  const vars = bindVars(sk, terms, P, fixed, false);
+  const start = vars.map((v) => v.o[v.k]);
+  // only the groups of constraints that are off are touched: a group that already holds stays exactly where it is
+  const parent = vars.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  for (const t of terms) for (let j = 1; j < t.vars.length; j++) parent[find(t.vars[j])] = find(t.vars[0]);
+  const groups = new Map();
+  for (const t of terms) if (t.vars.length) { const g = find(t.vars[0]); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(t); }
+  for (const ts of groups.values()) if (worstOf(rowsOf(ts)) > SOLVE_TOL) lmGroup(ts, vars);
+  // a result that is not a real shape (a NaN, a circle shrunk to nothing) is thrown away
+  if (vars.some((v, i) => !isFinite(v.o[v.k]) || (v.k === "r" && !(v.o.r > 1e-6)))) vars.forEach((v, i) => { v.o[v.k] = start[i]; });
+  let worst = 0;
+  const bad = new Set();
+  for (const t of terms) {
+    if (!t.c) continue;
+    const w = worstOf(t.f());
+    worst = Math.max(worst, w);
+    if (w > OK_TOL) bad.add(t.c);
+  }
+  const conflicting = sk.cons.filter((c) => bad.has(c)).map((c) => c.id);
+  if (keep.size) return { ok: worst < OK_TOL, worst, redundant: [], conflicting, dof: null };
+  const an = analyze(sk);
+  return { ok: worst < OK_TOL, worst, redundant: an.repeated.filter((id) => !conflicting.includes(id)), conflicting, dof: an.dof };
+}
+// How constrained the sketch is, by the rank of the Jacobian at its current points (nothing moves): free = unknowns (an arc's end
+// sits on its circle, so an arc has 5), rank = how many of them the constraints pin down, dof = free - rank, redundant = how many
+// equations repeat others, repeated = the ids of constraints that add nothing (each is judged in the order they were made, so a
+// later repeat of an earlier one is the one named). A row counts when RANK_TOL of it is new.
+function analyze(sk) {
+  const fixed = new Set();
+  for (const e of sk.ents) if (e.proj) for (const id of entIds(e)) fixed.add(id);
+  const { terms, P } = buildTerms(sk, false);
+  const vars = bindVars(sk, terms, P, fixed, true);
+  const basis = [];
+  const gain = (row) => { // does this row add a direction the basis does not have yet?
+    const n0 = Math.hypot(...row);
+    if (!(n0 > 1e-9)) return false;
+    let w = row.map((x) => x / n0);
+    for (let pass = 0; pass < 2; pass++) for (const b of basis) { let d = 0; for (let i = 0; i < w.length; i++) d += w[i] * b[i]; w = w.map((x, i) => x - d * b[i]); }
+    const m = Math.hypot(...w);
+    if (!(m > RANK_TOL)) return false;
+    basis.push(w.map((x) => x / m));
+    return true;
+  };
+  const loc = new Map(vars.map((_, i) => [i, i]));
+  let arcs = 0, rows = 0;
+  const repeated = [], seen = new Set();
+  for (const t of terms) {
+    const J = jacobian([t], vars, loc, vars.length);
+    let g = false;
+    for (const row of J) if (gain(Array.from(row))) g = true;
+    if (!t.c) { if (g) arcs++; continue; }
+    rows += t.n;
+    if (!g && !seen.has(t.c.id)) { seen.add(t.c.id); repeated.push(t.c.id); }
+  }
+  const rank = basis.length - arcs;
+  return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - basis.length), redundant: rows - rank, repeated };
+}
+// end jumpstart-3d
 
 // where to draw each constraint's little badge (sketch coordinates)
 export function glyphSpots(sk) {
@@ -411,29 +447,12 @@ export function glyphSpots(sk) {
   return out;
 }
 
-// jumpstart-3d: parameters. How many degrees of freedom a sketch has left, as a plain count (free variables minus
-// equations), so it is an estimate: it can read too high when constraints repeat each other, or too low when they
-// fight. free is the variable count (0 for a sketch with no shapes); over is free minus equations (below 0: more
-// constraints than needed); dof is over, never below 0. A parallel or perpendicular between two lines that already
-// each have a horizontal or vertical constraint adds nothing (the usual repeat), so it is not counted.
+// jumpstart-3d: parameters. How many degrees of freedom a sketch has left, counted by the rank of its constraints
+// (jumpstart-3d: sketch solver: from the Jacobian at the sketch's current points; no longer a count of equations, which read too
+// high when constraints repeat each other and too low when they fought). free is the unknown count (0 for a sketch with no shapes);
+// rank is how many of them the constraints pin down; dof is free minus rank; redundant is how many equations repeat others (more
+// constraints than needed). Nothing is moved.
 export function sketchDof(sk) {
-  const fixed = new Set(), ids = new Set(), hv = new Set();
-  let extra = 0, eqs = 0;
-  for (const c of sk.cons || []) {
-    if (c.t !== "horizontal" && c.t !== "vertical") continue;
-    if (c.e1) hv.add(c.e1);
-    else for (const e of sk.ents) if (e.t === "line" && ((e.a === c.p1 && e.b === c.p2) || (e.a === c.p2 && e.b === c.p1))) hv.add(e.id);
-  }
-  for (const e of sk.ents) {
-    for (const id of entIds(e)) { ids.add(id); if (e.proj) fixed.add(id); }
-    if (!e.proj) extra += e.t === "circle" ? 1 : e.t === "arc" ? -1 : 0; // a circle's radius; an arc's end sits on its circle
-  }
-  for (const c of sk.cons || []) {
-    if (c.t === "dim") eqs += c.v >= 0 ? 1 : 0;
-    else if (c.t === "origin") eqs += fixed.has(c.p) ? 0 : 2;
-    else if ((c.t === "parallel" || c.t === "perpendicular") && hv.has(c.e1) && hv.has(c.e2)) continue;
-    else eqs += c.t === "midpoint" ? 2 : 1;
-  }
-  const free = 2 * [...ids].filter((id) => !fixed.has(id)).length + extra;
-  return { free, dof: Math.max(0, free - eqs), over: free - eqs };
+  const { free, rank, dof, redundant } = analyze(sk);
+  return { free, rank, dof, redundant };
 }
