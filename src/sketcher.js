@@ -9,7 +9,7 @@ import {
 } from "./regions.js";
 import { uid, parseLength, fmt, round, el } from "./util.js";
 import { getUnit } from "./units.js";
-import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, conName, conNames, conKey, clashNote, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
+import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, conKey, editVerdict, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
 import { buildDim, dimGraphics, measureDim } from "./dims.js";
 import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import * as sketchMirror from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
@@ -793,7 +793,7 @@ export class Sketcher {
     const sk0 = drawing && this.app.onShapeClosed ? findSketch(store.doc, id) : null;
     const before = sk0 ? { loops: new Set(userLoops(sk0).map((l) => l.key)), regs: new Set(regionsFor(sk0).map((r) => r.key)) } : null;
     // jumpstart-3d: sketch solver. A constraint or dimension edit that leaves the sketch unsolvable is refused: nothing changes and a toast names the clash.
-    // One that only repeats others is kept, with a warning. A sketch that already clashed before the edit may keep its old clash, but no new one.
+    // One that only repeats others is kept, with a warning. A sketch that already clashed before the edit may keep its old clash, but no new one (editVerdict in sketchsolve.js decides).
     const guarded = /^(?!Delete).*constraint$|^(Dimension|Edit dimension)$/.test(label);
     let refused = false, note = null;
     store.update((doc) => {
@@ -806,13 +806,9 @@ export class Sketcher {
       const st = solveSketch(sk, this.keepPts || new Set());
       normalizeSketch(sk);
       if (guarded) {
-        if (!st.ok && (was.pre.ok || st.conflicting.some((cid) => !was.pre.conflicting.includes(cid)))) { refused = true; note = clashNote(sk, st.conflicting, was.cons); return false; }
-        const fresh = st.redundant.filter((cid) => !was.pre.redundant.includes(cid));
-        const added = sk.cons.find((c) => !was.cons.has(c.id));
-        if (fresh.length) {
-          const c = sk.cons.find((k) => k.id === (added && fresh.includes(added.id) ? added.id : fresh[0]));
-          note = added && c.id === added.id ? `That ${conName(c)} repeats what the other constraints already hold, so it adds nothing. It is kept.` : `After that, the ${conName(c)} constraint repeats what the others hold, so it adds nothing. It is kept.`; // (a point merge adds no constraint of its own)
-        } else if (!st.ok) note = "The sketch still has constraints that conflict: " + conNames(sk, st.conflicting) + ".";
+        const v = editVerdict(was.pre, st, was.cons, sk.cons);
+        note = v.toast;
+        if (v.refuse) { refused = true; return false; }
       }
     }, label);
     if (note && this.app.toast) this.app.toast(note);
