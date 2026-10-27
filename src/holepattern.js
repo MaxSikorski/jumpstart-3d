@@ -244,8 +244,8 @@ function verdict(L, cutter, n, res) {
 }
 
 // ------------------------------------------------------------------ the hole
-// A tapped hole's thread is cut out to dia / 2 + 0.5413 pitch + 2c (kernel.js, the thread mod; c = the print offset, at most 0.3 pitch).
-const outerR = (h) => h.kind === "tapped" ? h.dia / 2 + 0.5413 * h.pitch + 2 * Math.min(Math.abs(h.clear), 0.3 * h.pitch)
+// A tapped hole's thread is cut out to dia / 2 + 0.5413 pitch + c (kernel.js, the thread mod; c = the print offset, at most 0.2 pitch).
+const outerR = (h) => h.kind === "tapped" ? h.dia / 2 + 0.5413 * h.pitch + Math.min(Math.abs(h.clear), 0.2 * h.pitch)
   : Math.max(h.dia, h.kind === "cbore" ? h.cbDia : 0, h.kind === "csink" ? h.csDia : 0) / 2;
 
 // The Hole dialog's size rule: a screw size fills the diameter (and the bore, sink or thread). T: its tables.

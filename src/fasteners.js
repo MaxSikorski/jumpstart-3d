@@ -95,10 +95,10 @@ function partBody(doc, r) {
     body.node = node;
   } else {
     // a rod; a cutter is a rod marked as a hole. A bolt's print offset thins the thread, which loosens it. A hole works the other way
-    // round (a thinner cutter would make a tighter hole), so the cutter is built wider and its thread has no offset. The kernel moves a
-    // thread face by the offset square to the face; widening the radius by c moves a 60 degree flank only c / 2 that way, so the radius
-    // grows by 2c (the diameter by 4c) to match the move a nut gets.
-    const grow = type === "cutter" ? 4 * Math.min(Math.abs(clear), 0.3 * p) : 0;
+    // round (a thinner cutter would make a tighter hole), so the cutter is built wider and its thread has no offset. The kernel puts a
+    // nut's flanks s (the offset) further out, and the flanks of the plain ISO profile on a rod grown by s in radius sit just there, so
+    // the radius grows by s (the diameter by 2s).
+    const grow = type === "cutter" ? 2 * Math.min(Math.abs(clear), 0.2 * p) : 0;
     const node = cylinder(+(d + grow).toFixed(4), L);
     node.mods.push(thread(L / 2, type === "cutter" ? 0 : clear));
     body.node = node;

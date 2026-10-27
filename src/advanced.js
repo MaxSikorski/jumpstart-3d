@@ -2831,7 +2831,7 @@ export function initAdvanced(app) {
     return best;
   }
   // clearance for 3D-printed threads: every thread face moves into the material
-  const THREAD_OFFSETS = [0, -0.2, -0.25, -0.3, -0.35, -0.4, -0.45, -0.5];
+  const THREAD_OFFSETS = [0, -0.1, -0.2, -0.25, -0.3, -0.35, -0.4, -0.45, -0.5]; // jumpstart-3d: ISO thread profile (-0.1 added)
   // inch mode: thousandths of an inch (stored in mm)
   const THREAD_OFFSETS_IN = [0, -0.005, -0.008, -0.010, -0.012, -0.015, -0.018, -0.020].map((v) => +(v * IN).toFixed(4));
   const offsetLabel = (v) => (!v ? "None" : getUnit() === "in" ? `${fmt(v / IN, 3)} in (${fmt(v, 2)} mm)` : `${fmt(v, 2)} mm`);
@@ -2854,7 +2854,7 @@ export function initAdvanced(app) {
     const count = (ids) => ids.reduce((n, id) => { const b = findBody(store.doc, id); return n + (b && !b.hole ? threadMods(b.node).length : 0); }, 0); // jumpstart-3d: fasteners
     const allIds = store.doc.bodies.map((b) => b.id);
     const nAll = count(allIds), nSel = count(selIds);
-    const st = { clear: store.doc.threadOffset || -0.2, scope: nSel ? "sel" : "all", forNew: !nSel };
+    const st = { clear: store.doc.threadOffset || -0.1, scope: nSel ? "sel" : "all", forNew: !nSel }; // jumpstart-3d: ISO thread profile (default -0.2 -> -0.1)
     const def = {
       title: "Thread print offset",
       keepSelection: true,
@@ -2927,7 +2927,7 @@ export function initAdvanced(app) {
         body.append(row("Start", seg([[false, "Open end"], [true, "Other end"]], st.flip, (v) => { st.flip = v; refresh(); }, "th-flip")));
         body.append(row("Hand", seg([[false, "Right"], [true, "Left"]], st.left, (v) => { st.left = v; refresh(); }, "th-hand")));
         body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; refresh(); }, "th-clear"), "th-clear"));
-        if (st.clear && Math.abs(st.clear) > 0.3 * st.pitch + 1e-9) body.append(el("div", { class: "hint", style: { padding: 0 } }, `This pitch allows at most −${withUnit(0.3 * st.pitch, 3)}; that is used.`));
+        if (st.clear && Math.abs(st.clear) > 0.2 * st.pitch + 1e-9) body.append(el("div", { class: "hint", style: { padding: 0 } }, `This pitch allows at most −${withUnit(0.2 * st.pitch, 3)}; that is used.`)); // jumpstart-3d: ISO thread profile (cap 0.2 pitch)
       },
       start() {
         // a selected body with one round face picked from it is common; otherwise wait for a click

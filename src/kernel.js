@@ -2371,22 +2371,25 @@ function threadGroove(shape, mod) {
   if (b - a < 0.6 * p) throw new Error("Thread is too short for this pitch");
   if ((b - a) / p > 400) throw new Error("That thread has too many turns to model. Use a larger pitch or a shorter length.");
   const S = [0, 1, 2].map((i) => o[i] + d[i] * tS + u[i] * a);
-  // print offset (clearance): every thread face moves c into the material. For the 60° V that
-  // takes the groove 2c deeper (same flank angle) and the crest c lower.
-  const c = Math.min(Math.abs(mod.clear || 0), 0.3 * p);
-  const depth = (external ? 0.6134 : 0.5413) * p + 2 * c, over = 0.12 * p;
-  const sgn = external ? 1 : -1;
+  // jumpstart-3d: ISO thread profile (ISO 68-1 basic profile, tolerance position h / H, so offset None fits exactly; H = 0.866P).
+  // Bolt: groove from the major radius, 7P/16 half-wide there (crest flat P/8), root flat P/12 half-wide at 17H/24 depth (d3).
+  // Nut: groove from the minor radius D1/2, 3P/8 half-wide there (crest flat P/4), root flat P/16 half-wide at 5H/8 depth (major).
+  // The print offset is the radial clearance s of this part: both flanks and the root move s into the material (the groove is s
+  // deeper and its flanks sit s * tan30 wider at the same radius), capped at 0.2P. The crest keeps its ISO size (no ring cut).
+  const c = Math.min(Math.abs(mod.clear || 0), 0.2 * p);
+  const H = 0.8660254 * p, sgn = external ? 1 : -1, over = 0.12 * p;
   const tan30 = Math.tan(Math.PI / 6);
-  const outR = r - sgn * c + sgn * over; // just past the (relieved) crest
-  const w = (depth - c + over) * tan30;
-  let pts = [[r - sgn * depth, 0], [outR, w], [outR, -w]];
-  // a big offset on a fine pitch would make neighbouring turns of the groove overlap:
-  // keep the groove a little narrower than the pitch (the tooth comes to a point)
+  const hR = (external ? 17 * H / 24 : 5 * H / 8) + c; // groove depth
+  const w0 = (external ? 7 * p / 16 : 3 * p / 8) + c * tan30; // groove half-width at r
+  const wRoot = w0 - hR * tan30, outR = r + sgn * over, w = w0 + over * tan30, rRoot = r - sgn * hR;
+  let pts = [[rRoot, wRoot], [outR, w], [outR, -w], [rRoot, -wRoot]];
+  // a big offset on a fine pitch would make neighbouring turns of the groove overlap: keep the groove a little narrower than the pitch
   const wMax = 0.49 * p;
   if (w > wMax) {
-    const rk = r - sgn * depth + (sgn * wMax) / tan30;
-    pts = [[r - sgn * depth, 0], [rk, wMax], [outR, wMax], [outR, -wMax], [rk, -wMax]];
+    const rk = r - sgn * (w0 - wMax) / tan30;
+    pts = [[rRoot, wRoot], [rk, wMax], [outR, wMax], [outR, -wMax], [rk, -wMax], [rRoot, -wRoot]];
   }
+  // end jumpstart-3d
   // jumpstart-3d: the cut plane at each end (along the helix) must not land on a break between two helix edges, or the boolean
   // leaves sliver triangles there: put the breaks in the middle of the wider gap between the two planes' phases
   const ph = (h) => ((h / p) % 1 + 1) % 1, p0 = ph(-a), p1 = ph(L - a), gap = (p1 - p0 + 1) % 1;
@@ -2414,20 +2417,9 @@ function threadGroove(shape, mod) {
     clip.delete();
     return c;
   };
-  // crest relief for the print offset: a thin ring over the threaded part of the face
-  let crest = null;
-  if (c > 1e-6) {
-    const lo = fromStart ? t0 + Math.max(0, a) : t1 - Math.min(full, b);
-    const hi = fromStart ? t0 + Math.min(full, b) : t1 - Math.max(0, a);
-    const span = hi - lo;
-    if (span > 1e-6) {
-      const base = [0, 1, 2].map((i) => o[i] + d[i] * lo);
-      if (external) {
-        const outer = R.makeCylinder(r + 2 * p, span, base, d), inner = R.makeCylinder(r - c, span, base, d);
-        crest = outer.cut(inner); outer.delete(); inner.delete();
-      } else crest = R.makeCylinder(r + c, span, base, d);
-    }
-  }
+  // jumpstart-3d: ISO thread profile: no crest ring any more (the offset is in the groove), so there is never a crest cut
+  const crest = null;
+  // end jumpstart-3d
   return { groove, clipped, crest };
 }
 // cut many tools in one boolean (no result simplification: it is slow on threads)
