@@ -10,7 +10,7 @@ import { landArrays, GROUND, PLANTS } from "./archland.js";
 // jumpstart-3d: register community lessons without changing the author's data.
 import { COMMUNITY_TUTORIALS } from "./tutorial_data_community.js";
 const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...ARCH_TUTORIALS, ...COMMUNITY_TUTORIALS];
-import { store } from "./store.js";
+import { store, resolveNode, bodyKey } from "./store.js"; // jumpstart-3d: read already-built volumes without asking the kernel to build
 import { el } from "./util.js";
 import { ICON } from "./icons.js";
 import { animSVG, animFor } from "./tutorial_anims.js";
@@ -50,6 +50,73 @@ export function initTutorials(app) {
     childKinds(g) { const out = []; walk(g.node, (n) => { if (n.t === "prim") out.push(n.kind); }); return out; },
     countHoles(g) { let n = 0; const go = (node) => { for (const c of node.children || []) { if (c.hole) n++; go(c.node); } }; go(g.node); return n; },
     hasHole: (g) => T.countHoles(g) > 0,
+    // jumpstart-3d: a hole counts only when it removes enough material; reuse existing meshes, never build geometry
+    cuts(g) {
+      const volume = T.volume(g.id);
+      if (!T.hasHole(g) || !Number.isFinite(volume)) return false;
+      const cached = (node) => {
+        const key = bodyKey(resolveNode(node, store.doc)) + (app.scene.kernel.quality > 1 ? "@q" + app.scene.kernel.quality : "");
+        const result = app.scene.kernel.get(key);
+        return result?.ok && Number.isFinite(result.mesh?.volume) ? result.mesh : null;
+      };
+      const measure = (child) => {
+        const node = child.node, mesh = cached(node), p = node.p || {};
+        let v = mesh?.volume, bounds = mesh?.bbox;
+        if (v == null && node.t === "prim" && !(node.mods || []).length && !p.r && !p.c) {
+          const { w, d, h } = p;
+          if (![w, d, h].every((x) => Number.isFinite(x) && x > 0)) return null;
+          let area;
+          if (node.kind === "box") area = w * d;
+          if (node.kind === "cylinder") area = Math.PI * w * d / 4;
+          if (node.kind === "prism") {
+            const n = Math.max(3, Math.round(p.sides ?? 6));
+            area = n * w * d * Math.sin(2 * Math.PI / n) / 8;
+          }
+          if (node.kind === "star") {
+            const n = Math.max(3, Math.min(24, Math.round(p.points ?? 5))), k = Math.max(0.1, Math.min(0.95, p.inner ?? 0.5));
+            const pts = Array.from({ length: 2 * n }, (_, i) => {
+              const a = Math.PI / 2 + i * Math.PI / n, r = i % 2 ? k : 1;
+              return [Math.cos(a) * r, Math.sin(a) * r];
+            });
+            const span = (axis) => Math.max(...pts.map((p) => p[axis])) - Math.min(...pts.map((p) => p[axis]));
+            area = n * k * Math.sin(Math.PI / n) * w * d / (span(0) * span(1));
+          }
+          if (area == null) return null;
+          v = area * h;
+          bounds = { min: [-w / 2, -d / 2, 0], max: [w / 2, d / 2, h] };
+        }
+        if (v == null || !bounds) return null;
+        const m = new THREE.Matrix4();
+        if (child.m) m.fromArray(child.m);
+        const box = new THREE.Box3(new THREE.Vector3(...bounds.min), new THREE.Vector3(...bounds.max)).applyMatrix4(m);
+        return { volume: v * Math.abs(m.determinant()), box };
+      };
+      const solids = g.node.children.filter((c) => !c.hole), holes = g.node.children.filter((c) => c.hole);
+      if (!solids.length || !holes.length) return false;
+      // A previously joined solid may already have an exact cached volume, even when its children overlap.
+      const joined = measure({ node: { ...g.node, children: solids, mods: [] } });
+      const parts = solids.map(measure);
+      let solid = joined;
+      if (!solid) {
+        // Unknown or overlapping solids need a new union build: retain the old hole check in that case.
+        if (parts.some((p) => !p)) return T.hasHole(g);
+        for (let i = 0; i < parts.length; i++) for (let j = 0; j < i; j++) {
+          const a = parts[i].box, b = parts[j].box;
+          if (["x", "y", "z"].every((k) => Math.min(a.max[k], b.max[k]) - Math.max(a.min[k], b.min[k]) > 1e-6)) return T.hasHole(g);
+        }
+        solid = { volume: parts.reduce((sum, p) => sum + p.volume, 0), box: parts.reduce((box, p) => box.union(p.box), new THREE.Box3()) };
+      }
+      const cutters = holes.map(measure);
+      // Wait for a known cutter volume before accepting the cut.
+      if (cutters.some((c) => !c)) return false;
+      const expected = cutters.reduce((sum, c) => {
+        const height = c.box.max.z - c.box.min.z;
+        const overlap = Math.max(0, Math.min(solid.box.max.z, c.box.max.z) - Math.max(solid.box.min.z, c.box.min.z));
+        return sum + c.volume * (height > 0 ? Math.min(1, overlap / height) : 0);
+      }, 0);
+      return expected > 0 && solid.volume - volume >= 0.5 * expected;
+    },
+    // end jumpstart-3d
     countMods(t) { let n = 0; for (const b of T.bodies()) walk(b.node, (node) => { for (const m of node.mods || []) if (m.t === t) n++; }); return n; },
     hasMod: (t) => T.countMods(t) > 0,
     hasCombine(op) {

@@ -126,12 +126,7 @@ export const COMMUNITY_TUTORIALS = [
         how: ["Click <b>Holes</b>, then <b>Cylinder</b>.", "Set Width 10, Depth 10, Height 12 mm and Position X 0, Y 0, Z (bottom) -2.", "Press Ctrl+A, then click Group to cut the hole.", "Look from the top: you should see the grid through the hole."],
         when: "The Holes tab adds shapes that are already set to cut.",
         // jumpstart-3d: the lesson only ticks when the cutter really removed material from the box (browser test F7)
-        check: (t) => t.groups().some((g) => { // the cutter must have removed about the volume of its own hole (a circle for a cylinder, else its footprint) through the box
-          const b = g.node.children.find((c) => !c.hole && c.node.t === "prim" && c.node.kind === "box"), h = g.node.children.find((c) => c.hole && c.node.t === "prim"), v = t.volume(g.id);
-          if (!b || !h || v == null || !t.hasHole(g)) return false;
-          const foot = h.node.kind === "cylinder" ? Math.PI * (h.node.p.w / 2) ** 2 : h.node.p.w * h.node.p.d;
-          return b.node.p.w * b.node.p.d * b.node.p.h - v >= 0.5 * foot * Math.min(b.node.p.h, h.node.p.h);
-        }),
+        check: (t) => t.groups().some((g) => t.cuts(g)),
         strict: "The cutter does not cut the box yet: undo, set the box to X 0, Y 0 and group again." },
       { title: "Bring everything into view", tool: "Fit all", icon: "select", show: { sel: "#nav-fit" },
         how: ["Zoom out with the mouse wheel, then click <b>Fit all</b> beside the view cube."],
