@@ -6002,17 +6002,27 @@ export function initAdvanced(app) {
     app.toast(lock ? "Locked: it can't be moved, changed or deleted." : "Unlocked");
   }
 
-  // jumpstart-3d: parameters. How constrained a sketch is, from sketchDof's count: null for a sketch with no shapes.
-  const dofOf = (sk) => { const r = sketchDof(sk); return r.free ? r : null; };
-  const OVER = (n) => `Fully constrained by count; ${n} more constraint${n === 1 ? "" : "s"} than needed, some may fight`;
+  // jumpstart-3d: parameters. How constrained a sketch is, from sketchDof (jumpstart-3d: sketch solver: by rank, so a constraint that repeats others is told apart): null for a sketch with no shapes.
+  // (a drag redraws the Browser on every frame: the count does not change while a point only moves, so the last one is reused until the drag ends)
+  const dofCache = new Map();
+  let previewing = false;
+  const dofOf = (sk) => {
+    const key = store.doc.id + ":" + sk.id;
+    if (previewing && dofCache.has(key)) return dofCache.get(key);
+    const r = sketchDof(sk), out = r.free ? r : null;
+    dofCache.set(key, out);
+    return out;
+  };
+  const REPEATS = (n) => `${n} more constraint${n === 1 ? "" : "s"} than needed (${n === 1 ? "it repeats or clashes with" : "they repeat or clash with"} the others)`;
+  const dofText = (r) => (r.dof ? `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left` : "Fully constrained") + (r.redundant ? "; " + REPEATS(r.redundant) : "");
   // the sketch ribbon's note while editing: the proof line, kept current by refresh()
   function showDofNote() {
     const note = document.getElementById("sk-note"), sk = (store.view.sketches || []).find((s) => s.id === sketcher.active), r = sk && dofOf(sk);
-    if (note) note.textContent = !r ? "Profiles shade blue when closed." : r.over < 0 ? OVER(-r.over) : r.dof === 0 ? "Fully constrained" : `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left: add dimensions or constraints`;
+    if (note) note.textContent = !r ? "Profiles shade blue when closed." : dofText(r) + (r.dof ? ": add dimensions or constraints" : "");
   }
   const dofBadge = (sk) => { // jumpstart-3d: parameters
     const r = dofOf(sk);
-    return !r ? null : el("span", { class: "sk-dof" + (r.dof ? "" : " ok"), title: r.over < 0 ? OVER(-r.over) : r.dof ? `${r.dof} degree${r.dof === 1 ? "" : "s"} of freedom left` : "Fully constrained" }, r.dof ? `${r.dof} free` : "✓");
+    return !r ? null : el("span", { class: "sk-dof" + (r.dof ? "" : " ok"), title: dofText(r) }, r.dof ? `${r.dof} free` : "✓");
   };
   // Parameters as a CSV file: one row each, name,expression,unit
   async function exportParamsCsv() {
@@ -6423,10 +6433,11 @@ export function initAdvanced(app) {
       if ((kind === "mode" || kind === "load") && workspace !== "design") { workspace = "design"; app.simLock = false; if (app.command) closeCmd(false); psim.teardown(); sim.resetPose(); }
       if (kind === "mode" || kind === "sketch" || kind === "load" || !ribbon.querySelector(".rgroup") || lastKind === "mode-b") renderRibbon();
       lastKind = kind;
+      previewing = kind === "preview"; // jumpstart-3d: sketch solver (the count is not redone on every frame of a drag)
       renderBrowser();
       renderTimeline();
       renderPalette();
-      showDofNote(); // jumpstart-3d: parameters
+      if (kind !== "preview") showDofNote(); // jumpstart-3d: sketch solver (not on every frame of a drag) // jumpstart-3d: parameters
       if (app.command && (kind === "change" || kind === "load") && app.command.render && !app.command.noRerenderOnChange) {/* keep dialog */}
     },
     editItem,

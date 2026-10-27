@@ -150,10 +150,10 @@ test("a fully constrained rectangle on the axis is not over-constrained by its c
     ents: [0, 1, 2, 3].map((i) => ({ id: "e" + i, t: "line", a: "p" + i, b: "p" + ((i + 1) % 4) })),
     cons: [{ id: "k0", t: "origin", p: "p0" }, { id: "k1", t: "horizontal", e1: "e0" }, { id: "k2", t: "horizontal", e1: "e2" }, { id: "k3", t: "vertical", e1: "e1" }, { id: "k4", t: "vertical", e1: "e3" },
       { id: "d1", t: "dim", k: "dist", p1: "p0", p2: "p1", o: "h", v: 30, off: [15, -4] }, { id: "d2", t: "dim", k: "dist", p1: "p1", p2: "p2", o: "v", v: 20, off: [34, 10] }] };
-  assert.equal(sketchDof(sk).over, 0);
+  assert.equal(sketchDof(sk).redundant, 0);
   const r = mirrorEnts(sk, ["e0", "e1", "e2", "e3"], Y);
   const whole = { pts: [...sk.pts, ...r.pts], ents: [...sk.ents, ...r.ents], cons: [...sk.cons, ...r.cons] };
-  assert.equal(sketchDof(whole).over, 0, "no copy that only repeats another");
+  assert.equal(sketchDof(whole).redundant, 0, "no copy that only repeats another");
   assert.equal(sketchDof(whole).dof, 0);
   assert.ok(r.cons.length >= 3, "the dimensions still come across");
 });
