@@ -282,3 +282,51 @@ test("returns usable fields for a sketch with no constraints, and ignores a cons
   assert.equal(solveSketch(sk, new Set()).ok, true);
   assert.equal(sk.cons.length, 0, "pruned");
 });
+
+// a line that ends on an arc, tangent there: the usual "distance from the centre equals the radius" row is flat at the answer in that
+// case, so a count would call the tangent a repeat; the solver squares the radius to the line instead
+const pick2 = (sk, id) => { const e = sk.ents.find((x) => x.id === id); return { kind: e.t === "line" ? "line" : "round", e }; };
+function roundedRect(W, H, R, jitter = 0) {
+  const j = (i) => ((i * 7919) % 13 - 6) / 6 * jitter; // fixed small nudges, so the drawing is a little off
+  const P = [["cbl", R, R], ["cbr", W - R, R], ["ctr", W - R, H - R], ["ctl", R, H - R],
+    ["b1", R, 0], ["b2", W - R, 0], ["r1", W, R], ["r2", W, H - R], ["t1", W - R, H], ["t2", R, H], ["l1", 0, H - R], ["l2", 0, R]];
+  const pts = P.map(([id, x, y], i) => ({ id, x: x + j(i), y: y + j(i + 3) }));
+  const ents = [{ id: "B", t: "line", a: "b1", b: "b2" }, { id: "Rt", t: "line", a: "r1", b: "r2" }, { id: "T", t: "line", a: "t1", b: "t2" }, { id: "L", t: "line", a: "l1", b: "l2" },
+    { id: "ABR", t: "arc", c: "cbr", a: "b2", b: "r1" }, { id: "ATR", t: "arc", c: "ctr", a: "r2", b: "t1" }, { id: "ATL", t: "arc", c: "ctl", a: "t2", b: "l1" }, { id: "ABL", t: "arc", c: "cbl", a: "l2", b: "b1" }];
+  return { pts, ents, cons: [] };
+}
+test("a rounded rectangle held by tangents, horizontals, verticals, equal radii and dimensions has no degrees of freedom left and no repeats", () => {
+  const sk = roundedRect(60, 40, 8, 0.3);
+  for (const [a, b] of [["B", "ABR"], ["Rt", "ABR"], ["Rt", "ATR"], ["T", "ATR"], ["T", "ATL"], ["L", "ATL"], ["L", "ABL"], ["B", "ABL"]]) edit(sk, (k) => addConstraint(k, "tangent", [pick2(k, a), pick2(k, b)]));
+  for (const id of ["B", "T"]) edit(sk, (k) => addConstraint(k, "horizontal", [pick2(k, id)]));
+  for (const id of ["L", "Rt"]) edit(sk, (k) => addConstraint(k, "vertical", [pick2(k, id)]));
+  for (const id of ["ATR", "ATL", "ABL"]) edit(sk, (k) => addConstraint(k, "equal", [pick2(k, "ABR"), pick2(k, id)]));
+  const push = (c) => edit(sk, (k) => { k.cons.push(c); });
+  push({ id: "dr", t: "dim", k: "rad", e1: "ABR", v: 8 });
+  push({ id: "dw", t: "dim", k: "dist", p1: "l1", p2: "r2", o: "h", v: 60 });
+  push({ id: "dh", t: "dim", k: "dist", p1: "b1", p2: "t2", o: "v", v: 40 });
+  push({ id: "o", t: "origin", p: "l2" });
+  const st = solveSketch(sk, new Set());
+  assert.ok(st.ok, "worst " + st.worst);
+  assert.deepEqual(st.redundant, [], "no tangent is called a repeat");
+  const d = sketchDof(sk);
+  assert.equal(d.dof, 0, "fully constrained: " + JSON.stringify(d));
+  assert.equal(d.redundant, 0);
+  const m = pm(sk);
+  assert.ok(Math.abs(m.get("r1").x - 60) < 1e-6 && Math.abs(m.get("t2").y - m.get("b1").y - 40) < 1e-6 && Math.abs(m.get("l2").x) + Math.abs(m.get("l2").y) < 1e-12);
+});
+test("a slot (two arcs and two lines): horizontal and four tangents give no repeats, and with its dimensions it is fully constrained", () => {
+  const sk = { pts: [{ id: "cl", x: 0, y: 0 }, { id: "cr", x: 40, y: 0.5 }, { id: "t1", x: 0, y: 10 }, { id: "b1", x: 0.3, y: -10 }, { id: "t2", x: 40, y: 10.4 }, { id: "b2", x: 40, y: -9.5 }],
+    ents: [{ id: "Al", t: "arc", c: "cl", a: "t1", b: "b1" }, { id: "Ar", t: "arc", c: "cr", a: "b2", b: "t2" }, { id: "e0", t: "line", a: "b1", b: "b2" }, { id: "e1", t: "line", a: "t2", b: "t1" }], cons: [] };
+  const seen = [];
+  const tryEdit = (fn) => { const before = solveSketch(JSON.parse(JSON.stringify(sk))); const r = edit(sk, fn); seen.push(...r.st.redundant.filter((id) => !before.redundant.includes(id))); };
+  tryEdit((k) => addConstraint(k, "horizontal", [pick2(k, "e0")]));
+  for (const [a, b] of [["e0", "Al"], ["e0", "Ar"], ["e1", "Al"], ["e1", "Ar"]]) tryEdit((k) => addConstraint(k, "tangent", [pick2(k, a), pick2(k, b)]));
+  tryEdit((k) => addConstraint(k, "equal", [pick2(k, "Al"), pick2(k, "Ar")]));
+  tryEdit((k) => addConstraint(k, "coincident", [{ kind: "pt", pid: "cl" }, { kind: "origin" }]));
+  tryEdit((k) => { k.cons.push({ id: "r", t: "dim", k: "rad", e1: "Al", v: 10 }); });
+  tryEdit((k) => { k.cons.push({ id: "l", t: "dim", k: "dist", p1: "b1", p2: "b2", o: "a", v: 40 }); });
+  assert.deepEqual(seen, [], "no edit along the way calls anything a repeat");
+  const d = sketchDof(sk);
+  assert.deepEqual([d.dof, d.redundant], [0, 0]);
+});

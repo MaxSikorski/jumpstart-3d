@@ -64,12 +64,24 @@ function buildTerms(sk, store) {
     } else if (c.t === "tangent") {
       let l = e1, r = e2;
       if (isRound(l) && isLine(r)) [l, r] = [r, l];
+      // the points sitting on a round shape: an arc's ends, and any point a Coincident holds on it
+      const onIt = (q) => new Set([...(q.t === "arc" ? [q.a, q.b] : []), ...sk.cons.filter((k) => k.t === "coincident" && k.e === q.id).map((k) => k.p)]);
       if (isLine(l) && isRound(r)) {
         const cc = P.get(r.c), sg = side(l, cc.x, cc.y) < 0 ? -1 : 1; // the circle stays on the side it is on
-        add(c, [l.a, l.b, ...shape(r)], () => [side(l, cc.x, cc.y) - sg * rad(r)]);
+        const at = [l.a, l.b].find((id) => onIt(r).has(id));
+        if (at) { // the line ends on the shape: tangent there = the radius to that point is square to the line. (The usual row is flat at the answer here: a repeat in the count)
+          const q = P.get(at), sc = Math.max(1, (len(l) + rad(r)) / 2);
+          add(c, [l.a, l.b, ...shape(r), at], () => { const d = dir(l), u = [q.x - cc.x, q.y - cc.y]; return [(sc * (u[0] * d[0] + u[1] * d[1])) / ((Math.hypot(...u) * Math.hypot(...d)) || 1)]; });
+        } else add(c, [l.a, l.b, ...shape(r)], () => [side(l, cc.x, cc.y) - sg * rad(r)]);
       } else if (isRound(l) && isRound(r)) {
-        const c1 = P.get(l.c), c2 = P.get(r.c), inside = Math.hypot(c2.x - c1.x, c2.y - c1.y) < Math.max(rad(l), rad(r)); // one inside the other, or side by side
-        add(c, [...shape(l), ...shape(r)], () => [Math.hypot(c2.x - c1.x, c2.y - c1.y) - (inside ? Math.abs(rad(l) - rad(r)) : rad(l) + rad(r))]);
+        const c1 = P.get(l.c), c2 = P.get(r.c), both = onIt(r), at = [...onIt(l)].find((id) => both.has(id));
+        if (at) { // they meet at a point: tangent there = the two radii to it point along one line
+          const q = P.get(at), sc = Math.max(1, (rad(l) + rad(r)) / 2);
+          add(c, [...shape(l), ...shape(r), at], () => { const u = [q.x - c1.x, q.y - c1.y], w = [q.x - c2.x, q.y - c2.y]; return [(sc * (u[0] * w[1] - u[1] * w[0])) / ((Math.hypot(...u) * Math.hypot(...w)) || 1)]; });
+        } else {
+          const inside = Math.hypot(c2.x - c1.x, c2.y - c1.y) < Math.max(rad(l), rad(r)); // one inside the other, or side by side
+          add(c, [...shape(l), ...shape(r)], () => [Math.hypot(c2.x - c1.x, c2.y - c1.y) - (inside ? Math.abs(rad(l) - rad(r)) : rad(l) + rad(r))]);
+        }
       }
     } else if (c.t === "dim") {
       if (!(c.v >= 0)) continue; // no value yet
