@@ -247,7 +247,7 @@ export function initTutorials(app) {
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
         tabs, list));
     back.append(modal);
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
     document.body.append(back);
     show(want);
     modal.querySelector(".xbtn").focus();

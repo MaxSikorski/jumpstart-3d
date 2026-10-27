@@ -244,8 +244,8 @@ function verdict(L, cutter, n, res) {
 }
 
 // ------------------------------------------------------------------ the hole
-// A tapped hole's thread is cut out to dia / 2 + 0.5413 pitch + 2c (kernel.js, the thread mod; c = the print offset, at most 0.3 pitch).
-const outerR = (h) => h.kind === "tapped" ? h.dia / 2 + 0.5413 * h.pitch + 2 * Math.min(Math.abs(h.clear), 0.3 * h.pitch)
+// A tapped hole's thread is cut out to dia / 2 + 0.5413 pitch + c (kernel.js, the thread mod; c = the print offset, at most 0.15 pitch).
+const outerR = (h) => h.kind === "tapped" ? h.dia / 2 + 0.5413 * h.pitch + Math.min(Math.abs(h.clear), 0.15 * h.pitch)
   : Math.max(h.dia, h.kind === "cbore" ? h.cbDia : 0, h.kind === "csink" ? h.csDia : 0) / 2;
 
 // The Hole dialog's size rule: a screw size fills the diameter (and the bore, sink or thread). T: its tables.
@@ -495,6 +495,8 @@ export function initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickB
       const out = [el("div", { id: "hp-total", style: { fontWeight: "600" } }, countText(n, st.shape) + (k > 0 ? ` (${k} left out: they would not fit inside the face and its margin)` : ""))];
       if (st.check.error) out.push(el("div", { id: "hp-warn", class: "err-msg" }, st.check.error));
       else if (st.check.warn) out.push(el("div", { id: "hp-warn", class: "hint", style: { padding: 0 } }, st.check.warn));
+      const cap = st.kind === "tapped" ? offsetSelect.note(st.clear, st.pitch, "nut") : ""; // jumpstart-3d: ISO thread profile
+      if (cap) out.push(el("div", { id: "hp-capnote", class: "hint", style: { padding: 0 } }, cap));
       return out;
     }
     function draw() {

@@ -166,7 +166,7 @@ test("add_fastener makes a threaded rod and refuses a bad size", async () => {
   const [rod] = data(await call(s.client, "list_bodies"));
   assert.equal(rod.name, "M8×30 threaded rod");
   assert.equal(rod.error, null);
-  assert.ok(rod.volume > 1290 && rod.volume < 1340, "volume " + rod.volume);
+  assert.ok(rod.volume > 1200 && rod.volume < 1260, "volume " + rod.volume);
   const bad = await call(s.client, "add_fastener", { type: "rod", size: "M7", length: 30 });
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /^unknown size "M7"/);
