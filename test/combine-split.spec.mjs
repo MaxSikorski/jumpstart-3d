@@ -289,3 +289,28 @@ test('Export clicked during a Group waits for the rebuild and downloads the fini
   expect(toasts.some((t) => t.includes("Still building"))).toBe(true);
   expect(toasts.some((t) => t.includes("Nothing to export"))).toBe(false);
 });
+
+test('two Export clicks during a Group give exactly one download, and the later format wins (review of the F4 fix)', async () => {
+  await loadDoc(page, newDoc("Double export", "beginner", { bodies: [
+    box("target", 20, 20, 20),
+    body("hole", "Cylinder hole", prim("cylinder", { w: 6, d: 6, h: 30 }), translated(0, 0, -5), { hole: true }),
+  ] }));
+  await waitIdle(page);
+  await run(() => {
+    window.__toasts = [];
+    new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) window.__toasts.push(n.textContent); }).observe(document.getElementById("toasts"), { childList: true });
+    JS3D.select(["target", "hole"]);
+  });
+  const names = [];
+  page.on("download", (d) => names.push(d.suggestedFilename()));
+  await run(() => {
+    document.getElementById("bb-group").click();
+    const click = (act) => { document.getElementById("btn-export").click(); document.querySelector(`#menu-export button[data-act="${act}"]`).click(); };
+    click("stl"); click("obj");
+  });
+  await expect.poll(() => names.length, { timeout: 60_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(3000);
+  expect(names).toHaveLength(1);
+  expect(names[0]).toMatch(/\.obj$/);
+  expect((await run(() => window.__toasts)).some((t) => t.includes("Already waiting"))).toBe(true);
+});

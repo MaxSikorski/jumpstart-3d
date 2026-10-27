@@ -737,16 +737,26 @@ export function initProjects(app) {
     // default: just the selection if something is selected, otherwise every body
     if (!menu.hidden) { exportScope = selectedSolids().length ? "sel" : "all"; renderScope(); }
   };
-  menu.addEventListener("click", async (e) => {
+  // jumpstart-3d: an Export clicked while a rebuild runs waits for it (browser test F4: a click during Group found no mesh).
+  // One export waits at a time: a later click replaces the format (latest wins); the Selected / All choice is kept from the click.
+  let pendingExport = null;
+  const buildingNow = () => app.scene.busy() || app.kernel.inflight || app.kernel.queue.size;
+  async function exportWhenBuilt(a) {
+    const was = pendingExport;
+    pendingExport = { a, scope: exportScope };
+    if (was) { app.toast("Already waiting: your file downloads when the build finishes."); return; }
+    app.toast("Still building. Your file downloads as soon as it is ready.");
+    try { await window.JS3D.ready(130000); } catch (err) { pendingExport = null; app.toast("Still building after two minutes. Try Export again when it has finished.", "err"); return; }
+    const { a: act, scope } = pendingExport; pendingExport = null;
+    exportScope = scope;
+    ({ stl: exportSTL, obj: exportOBJ, "3mf": export3MF, glb: exportGLB, step: exportSTEP })[act]();
+  }
+  // end jumpstart-3d
+  menu.addEventListener("click", async (e) => { // jumpstart-3d: async, for the export wait
     const a = e.target.closest("button")?.dataset.act;
     if (!a) return;
     menu.hidden = true;
-    // jumpstart-3d: export waits for a rebuild (browser test F4: a click during Group found no mesh)
-    if (["stl", "obj", "3mf", "glb", "step"].includes(a) && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size)) {
-      app.toast("Still building. Your file downloads as soon as it is ready.");
-      try { await window.JS3D.ready(130000); } catch (err) { app.toast("Still building after two minutes. Try Export again when it has finished.", "err"); return; }
-    }
-    // end jumpstart-3d
+    if (["stl", "obj", "3mf", "glb", "step"].includes(a) && (pendingExport || buildingNow())) { await exportWhenBuilt(a); return; } // jumpstart-3d: export waits for a rebuild
     if (a === "stl") exportSTL();
     if (a === "obj") exportOBJ();
     if (a === "3mf") export3MF();

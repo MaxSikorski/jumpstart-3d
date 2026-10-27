@@ -46,7 +46,7 @@ export function initTutorials(app) {
       return { min: b.min, max: b.max, center: b.getCenter(new THREE.Vector3()), size: b.getSize(new THREE.Vector3()) };
     },
     groups: () => T.bodies().filter((b) => b.node.t === "group"),
-    volume: (id) => { const v = app.scene.views.get(id); return v && v.data ? v.data.volume : null; }, // jumpstart-3d: a lesson check can ask how much material a body has left (browser test F7)
+    volume: (id) => { const v = app.scene.views.get(id); return v && v.data && !v.pending ? v.data.volume : null; }, // jumpstart-3d: a lesson check can ask how much material a body has left (browser test F7)
     childKinds(g) { const out = []; walk(g.node, (n) => { if (n.t === "prim") out.push(n.kind); }); return out; },
     countHoles(g) { let n = 0; const go = (node) => { for (const c of node.children || []) { if (c.hole) n++; go(c.node); } }; go(g.node); return n; },
     hasHole: (g) => T.countHoles(g) > 0,
