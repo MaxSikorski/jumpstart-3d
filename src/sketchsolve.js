@@ -210,7 +210,8 @@ function lmGroup(ts, vars, drag) {
 // keep: point ids that must not move (being dragged); projected points and points on the origin never move.
 // Returns { ok, worst, redundant, conflicting, dof }: ok = every constraint holds (worst = how far the worst is off, mm);
 // conflicting = ids of the constraints that do not hold; redundant = ids of constraints that hold but add nothing the others
-// do not already fix; dof = the degrees of freedom left (null while dragging, which skips that count).
+// do not already fix; dof = the degrees of freedom left (null while dragging, which skips that count); resid = how far each
+// constraint is off, by id (mm; absent for a sketch with no constraints).
 export function solveSketch(sk, keep = new Set()) {
   const idle = { ok: true, worst: 0, redundant: [], conflicting: [], dof: null };
   if (!sk.cons || !sk.cons.length) return idle;
@@ -229,17 +230,18 @@ export function solveSketch(sk, keep = new Set()) {
   // a result that is not a real shape (a NaN, a circle shrunk to nothing) is thrown away
   if (vars.some((v, i) => !isFinite(v.o[v.k]) || (v.k === "r" && !(v.o.r > 1e-6)))) vars.forEach((v, i) => { v.o[v.k] = start[i]; });
   let worst = 0;
-  const bad = new Set();
+  const bad = new Set(), resid = {};
   for (const t of terms) {
     if (!t.c) continue;
     const w = worstOf(t.f());
     worst = Math.max(worst, w);
     if (w > OK_TOL) bad.add(t.c);
+    resid[t.c.id] = Math.max(resid[t.c.id] || 0, w);
   }
   const conflicting = sk.cons.filter((c) => bad.has(c)).map((c) => c.id);
-  if (keep.size) return { ok: worst < OK_TOL, worst, redundant: [], conflicting, dof: null };
+  if (keep.size) return { ok: worst < OK_TOL, worst, redundant: [], conflicting, dof: null, resid };
   const an = analyze(sk);
-  return { ok: worst < OK_TOL, worst, redundant: an.repeated.filter((id) => !conflicting.includes(id)), conflicting, dof: an.dof };
+  return { ok: worst < OK_TOL, worst, redundant: an.repeated.filter((id) => !conflicting.includes(id)), conflicting, dof: an.dof, resid };
 }
 // How constrained the sketch is, by the rank of the Jacobian at its current points (nothing moves): free = unknowns (an arc's end
 // sits on its circle, so an arc has 5), rank = how many of them the constraints pin down, dof = free - rank, redundant = how many
@@ -299,6 +301,32 @@ export function clashNote(sk, ids, was) {
   if (!others.length) return `That ${conName(mine)} can't be reached with the shapes it holds; nothing changed.`;
   const names = [...new Set(others.map(conName))];
   return `That ${conName(mine)} conflicts with the ${andList(names)} constraint${names.length > 1 ? "s" : ""}; nothing changed.`;
+}
+
+// What to do with a constraint or dimension edit (sketcher.edit calls this; nothing here touches the sketch).
+// pre / st = solveSketch before and after the edit; was = Map(constraint id -> conKey) before; cons = the constraints after.
+// Returns { refuse, toast }: refuse = undo the edit; toast = the plain-English line to show (or null).
+// A sketch that was solvable must stay so. One that already clashed may keep that clash, but no constraint may newly fail.
+// A constraint is newly failing only if it held before (a brand-new one counts as held) and is now off by more than ten times the
+// solved tolerance and more than a tenth of the worst error of the old clash: a clash that is not fixed spreads a little of its
+// error onto its neighbours when another edit shifts the compromise (a dimension typed to one decimal, say), and that is not the
+// edit's doing. (Tuned on a five-line sketch: harmless rounded dimensions spread under 2 % of the old worst, real conflicts 15 % and up.)
+const NEW_CLASH_MIN = 10 * OK_TOL, SPREAD = 0.1;
+export function editVerdict(pre, st, was, cons) {
+  const sk = { cons };
+  if (!st.ok) {
+    const now = st.resid || {};
+    const limit = Math.max(NEW_CLASH_MIN, SPREAD * pre.worst);
+    const newly = st.conflicting.some((cid) => !pre.conflicting.includes(cid) && (now[cid] || 0) > limit);
+    if (pre.ok || newly) return { refuse: true, toast: clashNote(sk, st.conflicting, was) };
+  }
+  const fresh = st.redundant.filter((cid) => !pre.redundant.includes(cid));
+  const added = cons.find((c) => !was.has(c.id));
+  if (fresh.length) {
+    const c = cons.find((k) => k.id === (added && fresh.includes(added.id) ? added.id : fresh[0]));
+    return { refuse: false, toast: added && c.id === added.id ? `That ${conName(c)} repeats what the other constraints already hold, so it adds nothing. It is kept.` : `After that, the ${conName(c)} constraint repeats what the others hold, so it adds nothing. It is kept.` }; // (a point merge adds no constraint of its own)
+  }
+  return { refuse: false, toast: st.ok ? null : "The sketch still has constraints that conflict: " + conNames(sk, st.conflicting) + "." };
 }
 
 // How many degrees of freedom a sketch has left, counted by the rank of its constraints

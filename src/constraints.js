@@ -186,7 +186,7 @@ export function normalizeSketch(sk) {
 }
 
 // jumpstart-3d: sketch solver. solveSketch, sketchDof and the plain-English clash words moved to sketchsolve.js (ours): one least-squares solve over the whole sketch.
-export { solveSketch, sketchDof, conName, conNames, conKey, clashNote } from "./sketchsolve.js";
+export { solveSketch, sketchDof, conName, conNames, conKey, clashNote, editVerdict } from "./sketchsolve.js";
 // end jumpstart-3d
 
 // where to draw each constraint's little badge (sketch coordinates)
