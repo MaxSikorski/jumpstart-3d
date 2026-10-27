@@ -217,7 +217,7 @@ test("sketch lines are about half as thick as in 2.7.1, selected lines a little 
   await run(() => window.__app.setSketchStyle({ width: "medium" }, true));
   // on the model (not being edited): thick lines of the sketch colour, 1.4 px (2.5 px before)
   const modelWidths = await run(() => { const w = new Set(); window.__app.vp.scene.traverse((o) => { const u = o.material && o.material.uniforms; if (u && u.uW && o.visible) w.add(u.uW.value); }); return [...w]; });
-  expect(modelWidths).toContain(1.4);
+  expect(modelWidths.some((w) => Math.abs(w - 1.4) < 1e-6), "a 1.4 px line (1.4 x 1.5 / 1.5 in floating point)").toBe(true);
   expect(modelWidths).not.toContain(2.5);
   // in the editor: the quads' width in screen pixels
   await run(() => window.__app.enterSketch("s1"));
