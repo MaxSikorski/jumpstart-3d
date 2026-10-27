@@ -5,7 +5,7 @@
 //   k: "dist" (two points; o = "h" horizontal, "v" vertical, "a" aligned)
 //      "pl"   (a point to a line), "ll" (two parallel lines)
 //      "dia" / "rad" (a circle's diameter, an arc's radius)
-//      "ang"  (between two lines; s1/s2 pick which way along each line the angle opens)
+//      "ang"  (between two lines; s1/s2 pick which way along each line the angle opens; sg is its turning direction, +1 or -1, kept by the solver)
 //   v: the value (mm or degrees); off: where the label sits (sketch coordinates)
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
@@ -98,7 +98,10 @@ export function buildDim(sk, picks, cur) {
     // the angle opens toward where the label is placed
     const V = vertexOf(a1, b1, a2, b2), w = sub(cur, V);
     const s1 = dot(w, d1) >= 0 ? 1 : -1, s2 = dot(w, d2) >= 0 ? 1 : -1;
-    return withV({ t: "dim", k: "ang", e1: A.e.id, e2: B.e.id, s1, s2, off: cur.slice() });
+    // jumpstart-3d: sketch solver. sg is which way round the angle turns when it is placed (+1 or -1); the solver keeps it, so a corner can't flip to the other side
+    const sg = cross(mul(d1, s1), mul(d2, s2)) < 0 ? -1 : 1;
+    return withV({ t: "dim", k: "ang", e1: A.e.id, e2: B.e.id, s1, s2, sg, off: cur.slice() });
+    // end jumpstart-3d
   }
   return null;
 }
