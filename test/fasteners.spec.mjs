@@ -285,3 +285,23 @@ test("in inch units the dialog starts at 1/4-20 and 1 inch, and names the part i
     expect(bolt.bbox.max[2]).toBeCloseTo(25.4 + 0.172 * 25.4, 2);
   } finally { await page.click("#unit-toggle"); }
 });
+
+test("Beginner: a second Fastener from the dialog starts beside the first one, not on top of it (browser test F8)", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
+  await fresh("beginner");
+  await page.click("#bb-fastener");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  await built();
+  await page.click("#bb-fastener");
+  await part("Nut");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const list = await built();
+  const bolt = list.find((b) => b.name.endsWith("bolt")), nut = list.find((b) => b.name.endsWith("nut"));
+  expect(list.filter((b) => b.error)).toEqual([]);
+  expect(bolt).toBeTruthy(); expect(nut).toBeTruthy();
+  const overlapXY = bolt.bbox.min[0] < nut.bbox.max[0] && bolt.bbox.max[0] > nut.bbox.min[0] && bolt.bbox.min[1] < nut.bbox.max[1] && bolt.bbox.max[1] > nut.bbox.min[1];
+  expect(overlapXY, "the nut sits on the bolt").toBe(false);
+  expect(nut.bbox.min[2]).toBeCloseTo(0, 3);
+});

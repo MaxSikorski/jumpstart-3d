@@ -737,10 +737,16 @@ export function initProjects(app) {
     // default: just the selection if something is selected, otherwise every body
     if (!menu.hidden) { exportScope = selectedSolids().length ? "sel" : "all"; renderScope(); }
   };
-  menu.addEventListener("click", (e) => {
+  menu.addEventListener("click", async (e) => {
     const a = e.target.closest("button")?.dataset.act;
     if (!a) return;
     menu.hidden = true;
+    // jumpstart-3d: export waits for a rebuild (browser test F4: a click during Group found no mesh)
+    if (["stl", "obj", "3mf", "glb", "step"].includes(a) && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size)) {
+      app.toast("Still building. Your file downloads as soon as it is ready.");
+      try { await window.JS3D.ready(130000); } catch (err) { app.toast("Still building after two minutes. Try Export again when it has finished.", "err"); return; }
+    }
+    // end jumpstart-3d
     if (a === "stl") exportSTL();
     if (a === "obj") exportOBJ();
     if (a === "3mf") export3MF();
