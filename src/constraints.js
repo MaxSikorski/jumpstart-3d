@@ -414,7 +414,7 @@ function analyze(sk) {
       if (t.c && !g) repeated.add(t.c);
     }
   }
-  return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - arcs - rank), redundant: rows - rank, repeated: sk.cons.filter((c) => repeated.has(c)).map((c) => c.id) };
+  return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - arcs - rank), redundant: rows - rank, repeated: (sk.cons || []).filter((c) => repeated.has(c)).map((c) => c.id) };
 }
 // does this row point somewhere the basis does not reach yet? (it is then added to the basis, as a unit vector)
 function adds(row, basis) {

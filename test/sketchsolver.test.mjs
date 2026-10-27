@@ -275,6 +275,8 @@ test("a circle that would shrink to nothing is refused, not drawn", () => {
 
 test("returns usable fields for a sketch with no constraints, and ignores a constraint that points at nothing", () => {
   const sk = hexagon();
+  const bare = { pts: sk.pts, ents: sk.ents }; // a sketch saved with no constraints list at all
+  assert.deepEqual(sketchDof(bare), { free: 12, rank: 0, dof: 12, redundant: 0 });
   assert.deepEqual(solveSketch(sk, new Set()), { ok: true, worst: 0, redundant: [], conflicting: [], dof: null });
   sk.cons.push({ id: "z", t: "equal", e1: "gone", e2: "e0" });
   assert.equal(solveSketch(sk, new Set()).ok, true);
