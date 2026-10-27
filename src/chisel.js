@@ -400,7 +400,7 @@ export function initChisel(app) {
           li("Want to keep the original?", "use Copy (under \"From your design\" in the panel) to sculpt a copy instead.")),
         el("div", { class: "ci-acts" }, ok)));
     back.append(modal);
-    const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); done(); } };
+    const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); if (e.key === "Escape") e.stopPropagation(); done(); } }; // jumpstart-3d: keep the dialog Escape from reaching the app behind it
     document.addEventListener("keydown", onKey, true);
     const done0 = done; done = () => { document.removeEventListener("keydown", onKey, true); done0(); };
     ok.onclick = () => done();
