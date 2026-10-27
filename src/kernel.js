@@ -5,8 +5,11 @@ import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: th
 import { fontBytes } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
 import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
+import { shellField, isoSurface } from "./sdfshell.js";
 
 let OC = null;
+// a face normal as a unit vector (replicad's isn't normalized on curved faces)
+const unitT = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 export async function initKernel(opencascade, wasmBinary) {
   OC = await opencascade({ wasmBinary, locateFile: (f) => f });
   R.setOC(OC);
@@ -1131,7 +1134,7 @@ function applyMod(shape, mod) {
         let best = null, bd = Infinity;
         for (const f of faces) {
           if (q.t && f.geomType !== q.t) continue;
-          if (f.geomType === "PLANE" && q.n) { let nn; try { nn = f.normalAt().toTuple(); } catch (e) { continue; } if (nn[0] * q.n[0] + nn[1] * q.n[1] + nn[2] * q.n[2] < 0.999) continue; }
+          if (f.geomType === "PLANE" && q.n) { let nn; try { nn = unitT(f.normalAt().toTuple()); } catch (e) { continue; } if (nn[0] * q.n[0] + nn[1] * q.n[1] + nn[2] * q.n[2] < 0.999) continue; }
           const d = dist(f.center.toTuple(), q.c);
           if (d < bd) { bd = d; best = f; }
         }
@@ -1191,7 +1194,7 @@ function applyMod(shape, mod) {
           if (q.t && t !== q.t) continue;
           if (t === "PLANE" && q.n) {
             let n;
-            try { n = f.normalAt().toTuple(); } catch (e) { continue; }
+            try { n = unitT(f.normalAt().toTuple()); } catch (e) { continue; }
             if (n[0] * q.n[0] + n[1] * q.n[1] + n[2] * q.n[2] < 0.999) continue;
           }
           const d = dist(f.center.toTuple(), q.c);
@@ -1236,8 +1239,13 @@ function applyMod(shape, mod) {
       // removing every face leaves nothing to keep: make a closed, hollow body instead
       if (open.size >= cands.length) open.clear();
       const vIn = safeVolume(shape);
-      const out = shellSolid(shape, t, open, dir, vIn);
-      if (!out) throw new Error(`Shell: couldn't make a ${t} mm wall here. Try a thinner wall${dir === "in" ? ", or Outside" : ""}.`);
+      let out = shellSolid(shape, t, open, dir, vIn, mod.method || "auto", mod.detail || 1);
+      if (!out) throw new Error(`Shell: couldn't make a ${t} mm wall here. Try a thinner wall${dir === "in" ? ", or Outside" : ""}${mod.method && mod.method !== "auto" && mod.method !== "field" ? ", or the Any shape method" : ""}.`);
+      // drain holes through the bottom of a closed hollow
+      if (mod.drain && !open.size) {
+        const d = drainHoles(out, shape, t, dir, mod.drain);
+        if (d) { out.delete(); out = d; }
+      }
       shape.delete();
       return out;
     }
@@ -1366,7 +1374,60 @@ function applyPattern(shape, mod) {
 // surface, with the chosen faces left open (none: a closed, hollow body). OpenCascade's
 // thick-solid first; when that can't cope (complex blends, booleans, many surface types),
 // offset copies of the whole body are subtracted and the openings cut through.
-function shellSolid(shape, t, open, dir, vIn) {
+function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
+  const T0 = Date.now();
+  // a method picked by the user
+  if (method === "exact") return shellSolidOffset(shape, t, open, dir, vIn);
+  if (method === "slices") return sliceShell(shape, t, open, dir);
+  if (method === "field") return sdfShell(shape, t, open, dir, detail);
+  // free-form sides (lofts, sweeps): the offset engine rarely manages them and takes long to give
+  // up, so the slice method goes first there
+  let freeform = false;
+  for (const f of shape.faces) { const g = f.geomType; if (g === "BSPLINE_SURFACE" || g === "BEZIER_SURFACE" || g === "OFFSET_SURFACE" || g === "OTHER_SURFACE") freeform = true; f.delete(); }
+  if (freeform) {
+    const s0 = sliceShell(shape, t, open, dir);
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("slice shell first", s0 ? "ok" : "failed", Date.now() - T0, "ms");
+    if (s0) return s0;
+  }
+  const r = shellSolidOffset(shape, t, open, dir, vIn);
+  if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("offset shell", r ? "ok" : "failed", Date.now() - T0, "ms");
+  if (r) return r;
+  if (!freeform) {
+    const T1 = Date.now();
+    const s = sliceShell(shape, t, open, dir);
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("slice shell", s ? "ok" : "failed", Date.now() - T1, "ms");
+    if (s) return s;
+  }
+  // anything else: the distance-field wall
+  return sdfShell(shape, t, open, dir);
+}
+// jumpstart-3d: shell hang guard (wall equals a fillet radius). When the offset distance matches the radius of a round
+// face (a fillet's cylinder, a corner's sphere, a torus tube), that face shrinks to nothing and OpenCascade's offset
+// loops for minutes while it eats gigabytes (box with 2 mm fillets and a 2 mm wall, 2026-10-27). Walls 0.5% off the radius
+// offset in half a second, so within 0.25% of a radius the wall is made 0.5% thinner (0.01 mm on a 2 mm wall). The slice
+// method was tried instead and was wrong there (inner hollow 30% too big, walls too thin), the distance field took 30 s.
+function offsetHitsRadius(shape, d) {
+  let hit = false;
+  for (const f of shape.faces) {
+    if (!hit && f.geomType !== "PLANE") {
+      const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+      try {
+        const ST = OC.GeomAbs_SurfaceType, k = ad.GetType(), near = (r) => Math.abs(r - d) <= d * 0.0025;
+        if (k === ST.GeomAbs_Cylinder) hit = near(ad.Cylinder().Radius());
+        else if (k === ST.GeomAbs_Sphere) hit = near(ad.Sphere().Radius());
+        else if (k === ST.GeomAbs_Torus) { const tr = ad.Torus(); hit = near(tr.MinorRadius()) || near(tr.MajorRadius()); }
+      } catch (e) {} finally { ad.delete(); }
+    }
+    f.delete();
+  }
+  return hit;
+}
+// end jumpstart-3d
+function shellSolidOffset(shape, t, open, dir, vIn) {
+  if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) { // jumpstart-3d: shell hang guard (wall equals a fillet radius)
+    t *= 0.995;
+    if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) return null; // another round face at the new size: leave it to the slice and field methods
+  }
   const ok = (sh, more) => { const v = safeVolume(sh); return v > 1e-6 && (more ? v > vIn * 1.002 : v < vIn * 0.998); };
   // a wall can't hold much more than (area of the kept surface) x thickness; OpenCascade
   // sometimes "succeeds" by hollowing only part of a body, which this catches
@@ -1421,6 +1482,310 @@ function shellSolid(shape, t, open, dir, vIn) {
     if (walls) walls.delete();
     if (inner) inner.delete();
     if (outer) outer.delete();
+  }
+}
+// 2D offset of a closed outline (CCW points [u, v]): d > 0 grows it, d < 0 shrinks it. Each
+// point moves along its normal; points that end up nearer than |d| to the outline (the folds
+// at corners) are dropped, and arcs fill the gaps round corners on the growing side.
+function polyOffset(P, d) {
+  const n = P.length, ad = Math.abs(d), out = [];
+  const nrm = (i) => { const a = P[i], b = P[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dy / l, -dx / l]; };
+  for (let i = 0; i < n; i++) {
+    const n0 = nrm((i - 1 + n) % n), n1 = nrm(i), p = P[i];
+    // turning at p: positive is a left (convex) turn for a CCW outline
+    const cr = n0[0] * n1[1] - n0[1] * n1[0];
+    if ((cr > 1e-9 && d > 0) || (cr < -1e-9 && d < 0)) {
+      const a0 = Math.atan2(n0[1], n0[0]);
+      let sw = Math.atan2(n1[1], n1[0]) - a0;
+      while (sw > Math.PI) sw -= 2 * Math.PI; while (sw < -Math.PI) sw += 2 * Math.PI;
+      const k = Math.max(1, Math.ceil(Math.abs(sw) / 0.2));
+      for (let j = 0; j <= k; j++) { const t = a0 + (sw * j) / k; out.push([p[0] + Math.cos(t) * d, p[1] + Math.sin(t) * d]); }
+    } else {
+      const m = [n0[0] + n1[0], n0[1] + n1[1]], ml = Math.hypot(m[0], m[1]) || 1;
+      out.push([p[0] + (m[0] / ml) * d, p[1] + (m[1] / ml) * d]);
+    }
+  }
+  const dist = (q) => { let best = Infinity; for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1e-12, t = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2)); best = Math.min(best, Math.hypot(a[0] + t * dx - q[0], a[1] + t * dy - q[1])); } return best; };
+  return out.filter((q) => dist(q) >= ad * 0.97 - 1e-6);
+}
+// a closed outline sampled at k even angles round a center (so corners stay at the same angle
+// from slice to slice and the loft through them doesn't twist); null when a ray from the center
+// crosses the outline more than once
+function angleLoop(P, k, c) {
+  const n = P.length, out = [];
+  for (let i = 0; i < k; i++) {
+    const a = (2 * Math.PI * i) / k, dx = Math.cos(a), dy = Math.sin(a);
+    let hits = 0, best = 0;
+    for (let j = 0; j < n; j++) {
+      const p = P[j], q = P[(j + 1) % n], ex = q[0] - p[0], ey = q[1] - p[1];
+      const den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const wx = p[0] - c[0], wy = p[1] - c[1];
+      const t = (wx * ey - wy * ex) / den, u = (wx * dy - wy * dx) / den;
+      if (t > 0 && u >= 0 && u < 1) { hits++; best = t; }
+    }
+    if (hits !== 1) return null;
+    out.push([c[0] + dx * best, c[1] + dy * best]);
+  }
+  return out;
+}
+// a closed outline resampled to k points evenly along it, starting where it crosses +u
+function resampleLoop(P, k) {
+  const n = P.length, cum = [0];
+  for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + Math.hypot(P[i % n][0] - P[i - 1][0], P[i % n][1] - P[i - 1][1]));
+  const L = cum[n];
+  let c = [0, 0]; for (const p of P) { c[0] += p[0] / n; c[1] += p[1] / n; }
+  let s0 = 0, best = -Infinity;
+  for (let i = 0; i < n; i++) { const p = P[i], sc = (p[0] - c[0]) - Math.abs(p[1] - c[1]) * 4; if (sc > best) { best = sc; s0 = cum[i]; } }
+  const out = [];
+  let j = 0;
+  for (let i = 0; i < k; i++) {
+    let s = s0 + (L * i) / k; if (s >= L) s -= L;
+    while (j > 0 && cum[j] > s) j--;
+    while (cum[j + 1] < s) j++;
+    const f = (s - cum[j]) / Math.max(1e-12, cum[j + 1] - cum[j]), a = P[j % n], b = P[(j + 1) % n];
+    out.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+    if (i + 1 < k && s0 + (L * (i + 1)) / k >= L && s < L) j = 0;
+  }
+  return out;
+}
+// Last resort for shells the offset engine can't make (lofts that run from corners into curves,
+// like a hexagon into a circle, are the usual case): the body is cut into slices across an axis
+// (the open face's normal, or Z), each slice's outline is offset in its own plane, and the
+// outlines are lofted back into the inside (or outside) of the wall. The wall is measured across
+// each slice, so it matches the thickness on sides that run along the axis.
+// Any shape at all (the last resort, or chosen as the method): the wall from a distance field
+// (see sdfshell.js). Inside: the shape minus the hollow, so the outside stays exact. Outside: the
+// grown shape minus the shape, so the original surface stays exact inside. Both: the wall itself.
+function meshPartsSolid(parts) {
+  // closed pieces facing outward are solids; ones facing inward are hollows inside them
+  const info = parts.map((p) => {
+    let v = 0;
+    const P = p.V, T = p.I, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < T.length; i += 3) { const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3; v += P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]); }
+    for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], P[i + k]); hi[k] = Math.max(hi[k], P[i + k]); }
+    return { p, v: v / 6, lo, hi };
+  });
+  const outers = info.filter((x) => x.v > 0).sort((a, b) => a.v - b.v), holes = info.filter((x) => x.v < 0);
+  if (!outers.length) return null;
+  const inside = (h, o) => h.lo.every((v, k) => v >= o.lo[k] - 1e-6) && h.hi.every((v, k) => v <= o.hi[k] + 1e-6);
+  const B = new OC.TopoDS_Builder();
+  const solids = outers.map((o) => {
+    const so = new OC.TopoDS_Solid();
+    B.MakeSolid(so);
+    B.Add(so, solidFromMesh(o.p.V, o.p.I, 1, false, true));
+    o.so = so;
+    return so;
+  });
+  // each hollow goes in the smallest solid round it
+  for (const h of holes) { const o = outers.find((x) => inside(h, x)); if (o) B.Add(o.so, solidFromMesh(h.p.V, h.p.I, 1, false, true)); }
+  if (solids.length === 1) return R.cast(solids[0]);
+  const comp = new OC.TopoDS_Compound();
+  B.MakeCompound(comp);
+  for (const so of solids) B.Add(comp, so);
+  return R.cast(comp);
+}
+function sdfShell(shape, t, open, dir, detail = 1) {
+  const DBG = typeof process !== "undefined" && process.env && process.env.SHELL_T;
+  const T0 = Date.now();
+  const gc = [];
+  try {
+    const faces = shape.faces, openIdx = new Set();
+    faces.forEach((f, i) => { if (open.has(f.hashCode)) openIdx.add(i); f.delete(); });
+    const bb = bboxOf(shape), diag = Math.hypot(...bb.size) || 1;
+    const tol = Math.max(0.005, Math.min(t / 8, diag * 0.0006)), ang = 0.12;
+    const m = shape.mesh({ tolerance: tol, angularTolerance: ang });
+    try { repairFaceMeshes(shape, m, tol, ang); } catch (e) {}
+    const nt = m.triangles.length / 3, faceOf = new Int32Array(nt);
+    m.faceGroups.forEach((g, fi) => { for (let k = g.start / 3; k < (g.start + g.count) / 3; k++) faceOf[k] = fi; });
+    const mesh = { V: Float32Array.from(m.vertices), I: Uint32Array.from(m.triangles), faceOf };
+    const part = (kind) => {
+      const r = shellField(mesh, openIdx, t, kind, { detail, limit: Math.round(9000 * detail) });
+      if (DBG) console.log("sdf", kind, "cell", r.h.toFixed(3), "pieces", r.parts.length, "tris", r.parts.reduce((a, p) => a + p.I.length / 3, 0), Date.now() - T0, "ms");
+      const sol = meshPartsSolid(r.parts);
+      if (sol) gc.push(sol);
+      return sol;
+    };
+    // flat and round (cylinder, cone) faces: cut the hollow out with the geometry engine, so the
+    // shape's own surface stays exact; anything else: the wall straight from the field (quick)
+    let simple = true, nf = 0;
+    for (const f of shape.faces) { nf++; const g = f.geomType; if (g !== "PLANE" && g !== "CYLINDRE" && g !== "CONE") simple = false; f.delete(); }
+    if (nf > 150) simple = false;
+    let walls;
+    if (simple && dir === "in") { const c = part("cavity"); if (!c) return null; walls = shape.cut(c); }
+    else if (simple && dir === "out") { const o = part("outer"); if (!o) return null; walls = o.cut(shape); }
+    else { walls = part(dir === "in" ? "win" : dir === "out" ? "wout" : "wboth"); if (!walls) return null; gc.splice(gc.indexOf(walls), 1); }
+    const v = safeVolume(walls);
+    let kept = 0;
+    for (const f of shape.faces) { if (!open.has(f.hashCode)) try { kept += R.measureArea(f); } catch (e) {} f.delete(); }
+    if (DBG) console.log("sdf walls", v.toFixed(0), "expected about", (kept * t).toFixed(0), Date.now() - T0, "ms");
+    if (!(v > 1e-6) || (kept > 0 && !(v > kept * t * 0.4 && v < kept * t * 2))) { walls.delete(); return null; }
+    return walls;
+  } catch (e) {
+    if (DBG) console.log("sdf err", e && (e.message || e));
+    return null;
+  } finally {
+    for (const g of gc) try { g.delete(); } catch (e) {}
+  }
+}
+// holes up through the bottom wall of a hollow (to let resin or powder out): under the middle of
+// the lowest downward face, or under the middle of the shape
+function drainHoles(walls, shape, t, dir, dr) {
+  const bb = bboxOf(shape);
+  let best = null;
+  for (const f of shape.faces) {
+    try {
+      if (f.geomType === "PLANE") {
+        const n = unitT(f.normalAt().toTuple());
+        if (n[2] < -0.9) {
+          const c = f.center.toTuple(), fb = f.boundingBox, [lo, hi] = fb.bounds;
+          if (!best || c[2] < best.c[2] - 1e-6) best = { c, w: [hi[0] - lo[0], hi[1] - lo[1]] };
+          fb.delete && fb.delete();
+        }
+      }
+    } catch (e) {}
+    f.delete();
+  }
+  if (!best) best = { c: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, bb.min[2]], w: [bb.size[0] * 0.5, bb.size[1] * 0.5] };
+  const r = Math.max(0.25, (dr.d || 3) / 2), n = dr.n || 1;
+  const below = dir === "out" ? t : dir === "both" ? t / 2 : 0, above = dir === "in" ? t : dir === "both" ? t / 2 : 0;
+  const z0 = best.c[2] - below - 1, h = below + above + 2;
+  const dx = Math.min(best.w[0] / 4, 30), dy = Math.min(best.w[1] / 4, 30);
+  const spots = n >= 4 ? [[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]] : n === 2 ? [[-dx, 0], [dx, 0]] : [[0, 0]];
+  const v0 = safeVolume(walls);
+  let cur = walls.clone();
+  for (const [ox, oy] of spots) {
+    try {
+      const cyl = R.makeCylinder(r, h, [best.c[0] + ox, best.c[1] + oy, z0], [0, 0, 1]);
+      const c2 = cur.cut(cyl); cyl.delete(); cur.delete(); cur = c2;
+    } catch (e) {}
+  }
+  if (!(safeVolume(cur) < v0 - 1e-9) || !(safeVolume(cur) > v0 * 0.5)) { cur.delete(); return null; }
+  return cur;
+}
+function fuzzyCut(a, b, fz) {
+  const args = new OC.TopTools_ListOfShape(), tools = new OC.TopTools_ListOfShape();
+  args.Append(a); tools.Append(b);
+  const op = new OC.BRepAlgoAPI_Cut();
+  op.SetArguments(args); op.SetTools(tools); op.SetFuzzyValue(fz); op.SetRunParallel(false);
+  op.Build(new OC.Message_ProgressRange());
+  const r = op.Shape();
+  args.delete(); tools.delete();
+  return r;
+}
+function sliceShell(shape, t, open, dir) {
+  const gc = [], TS = Date.now();
+  const keep = (s) => { if (s) gc.push(s); return s; };
+  try {
+    // the axis, and which ends are open
+    let axis = null;
+    const ends = [];
+    for (const f of shape.faces) {
+      if (open.has(f.hashCode)) {
+        if (f.geomType !== "PLANE") { f.delete(); return null; }
+        const n = unitT(f.normalAt().toTuple()), c = f.center.toTuple();
+        ends.push({ n, c });
+      }
+      f.delete();
+    }
+    if (ends.length) {
+      axis = ends[0].n;
+      for (const e of ends) if (Math.abs(e.n[0] * axis[0] + e.n[1] * axis[1] + e.n[2] * axis[2]) < 0.999) return null;
+    } else axis = [0, 0, 1];
+    const L = Math.hypot(...axis); axis = axis.map((v) => v / L);
+    const dot = (p) => p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2];
+    const bb = bboxOf(shape), [a, b] = [bb.min, bb.max];
+    let smin = Infinity, smax = -Infinity;
+    for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) { const s = dot([x, y, z]); smin = Math.min(smin, s); smax = Math.max(smax, s); }
+    // the real ends: the open faces sit exactly on them
+    for (const e of ends) { const s = dot(e.c); if (dot(e.n) > 0) smax = Math.min(smax, s); else smin = Math.max(smin, s); }
+    const openHi = ends.some((e) => dot(e.n) > 0), openLo = ends.some((e) => dot(e.n) < 0);
+    const span = smax - smin;
+    if (!(span > 3 * t)) return null;
+    const diag = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) * 2 + 10;
+    const xd = Math.abs(axis[2]) < 0.9 ? [axis[1], -axis[0], 0] : [1, 0, 0];
+    const xl = Math.hypot(...xd), xDir = xd.map((v) => v / xl);
+    const c0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], s0 = dot(c0);
+    const at = (s) => c0.map((v, i) => v + axis[i] * (s - s0));
+    const planeFace = (s) => keep(R.drawRectangle(diag, diag).sketchOnPlane(new R.Plane(at(s), xDir, axis)).face());
+    // the outline of the slice at s (a slice in two pieces, or with a hole in it, can't be done
+    // this way), as points in its plane, counter-clockwise
+    const eps = Math.min(0.05, span * 0.002);
+    const yDir = [axis[1] * xDir[2] - axis[2] * xDir[1], axis[2] * xDir[0] - axis[0] * xDir[2], axis[0] * xDir[1] - axis[1] * xDir[0]];
+    const sectionAt = (s) => {
+      s = Math.max(smin + eps, Math.min(smax - eps, s));
+      const sec = keep(keep(shape.clone()).intersect(planeFace(s)));
+      const fs = sec.faces;
+      if (fs.length !== 1) { fs.forEach((f) => f.delete()); throw new Error("slice in " + fs.length + " pieces"); }
+      const f = fs[0];
+      const nw = f.wires.length;
+      if (nw !== 1) { f.delete(); throw new Error("slice with a hole"); }
+      const w = keep(f.outerWire()); // (outerWire uses up the face)
+      const M = 480, pts = [];
+      for (let i = 0; i < M; i++) { const q = w.pointAt(i / M), v = q.toTuple(); q.delete && q.delete(); const r = [v[0] - c0[0], v[1] - c0[1], v[2] - c0[2]]; pts.push([r[0] * xDir[0] + r[1] * xDir[1] + r[2] * xDir[2], r[0] * yDir[0] + r[1] * yDir[1] + r[2] * yDir[2]]); }
+      let A2 = 0; for (let i = 0; i < M; i++) { const p = pts[i], q = pts[(i + 1) % M]; A2 += p[0] * q[1] - q[0] * p[1]; }
+      if (A2 < 0) pts.reverse();
+      return { s, P: pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) > 1e-6) };
+    };
+    // an outline offset in its plane (+ grows), as a smooth closed curve at height s
+    const K = 120;
+    // one center for every slice: the middle of the first slice
+    let cen = null;
+    const curve = (o, d, s) => {
+      const Q = d ? polyOffset(o.P, d) : o.P;
+      if (Q.length < 12) throw new Error("collapsed");
+      if (!cen) { cen = [0, 0]; for (const p of o.P) { cen[0] += p[0] / o.P.length; cen[1] += p[1] / o.P.length; } }
+      const R2 = angleLoop(Q, K, cen) || resampleLoop(Q, K), base = at(s);
+      const p3 = R2.map(([u, v]) => [base[0] + u * xDir[0] + v * yDir[0], base[1] + u * xDir[1] + v * yDir[1], base[2] + u * xDir[2] + v * yDir[2]]);
+      p3.push(p3[0]);
+      try { return keep(R.assembleWire([keep(R.makeBSplineApproximation(p3, { tolerance: 0.01, degMin: 3, degMax: 3 }))])); }
+      catch (err) { return keep(R.makePolygon(p3.slice(0, -1)).outerWire()); }
+    };
+    // a solid through slices from lo to hi, offset by d, run on straight past either end
+    const N = 14;
+    const lofted = (d, lo, hi, extLo, extHi) => {
+      const ws = [], os = [];
+      for (let k = 0; k < N; k++) os.push(sectionAt(lo + ((hi - lo) * k) / (N - 1)));
+      if (extLo) ws.push(curve(os[0], d, lo - extLo));
+      for (let k = 0; k < N; k++) ws.push(curve(os[k], d, lo + ((hi - lo) * k) / (N - 1)));
+      if (extHi) ws.push(curve(os[N - 1], d, hi + extHi));
+      return keep(R.loft(ws, { ruled: false }));
+    };
+    const tin = dir === "in" ? t : dir === "both" ? t / 2 : 0, tout = dir === "out" ? t : dir === "both" ? t / 2 : 0;
+    // the outside of the wall: past closed ends by the wall
+    const outer = tout ? lofted(tout, smin + eps, smax - eps, eps + (openLo ? 0 : tout), eps + (openHi ? 0 : tout)) : shape;
+    // the hollow inside: short of closed ends by the wall, out through open ones
+    const lo = openLo ? smin + eps : smin + tin, hi = openHi ? smax - eps : smax - tin;
+    let inner = lofted(-tin, lo, hi, 0, 0);
+    // open ends: a straight plug out through the opening (fused on: a loft that runs on past
+    // the end can trip up the cut)
+    const plug = (s, len) => { const f = keep(R.makeFace(curve(sectionAt(s), -tin, s))); return keep(R.basicFaceExtrusion(f, new R.Vector(axis).multiply(len))); };
+    if (openLo) inner = keep(inner.fuse(plug(lo, -(eps + tout + 2))));
+    if (openHi) inner = keep(inner.fuse(plug(hi, eps + tout + 2)));
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("solids ms", Date.now() - TS);
+    let walls = outer.cut(inner);
+    let v = safeVolume(walls);
+    const vo = safeVolume(outer);
+    // the boolean engine sometimes gives up on the loft as it is: a fuzzy cut usually does it
+    if (!(v < vo * 0.999)) {
+      walls.delete();
+      for (const fz of [1e-4, 1e-3, 1e-2]) {
+        try { walls = R.cast(fuzzyCut(outer.wrapped, inner.wrapped, fz)); v = safeVolume(walls); if (v > 1e-6 && v < vo * 0.999) break; } catch (e) {}
+      }
+    }
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) { const ib = bboxOf(inner); console.log("slice: outer", vo.toFixed(0), "inner", safeVolume(inner).toFixed(0), "inner z", ib.min[2].toFixed(2), ib.max[2].toFixed(2), "walls", v.toFixed(0), "openLo/Hi", openLo, openHi, "smin/smax", smin.toFixed(2), smax.toFixed(2)); }
+    if (!(v > 1e-6) || !(v < vo * 0.999)) { walls.delete(); return null; }
+    // a wall of thickness t round the kept surface holds about area x t: much less means the
+    // slices thinned it somewhere (a dome, a steep overhang), so this method isn't right here
+    let kept = 0;
+    for (const f of shape.faces) { if (!open.has(f.hashCode)) try { kept += R.measureArea(f); } catch (e) {} f.delete(); }
+    if (kept > 0 && !(v > kept * t * 0.6 && v < kept * t * 1.7)) { if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("slice wall check failed", v, kept * t); walls.delete(); return null; }
+    return walls;
+  } catch (e) {
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("slice err", e && (e.stack || e.message || e));
+    return null;
+  } finally {
+    for (const s of gc) if (s !== shape) try { s.delete(); } catch (e) {}
   }
 }
 function thickSolid(shape, d, openHashes, vIn, grows) {
@@ -1674,7 +2039,7 @@ function tangentChain(shape, open) {
 // wall at that face, limited (on flat faces) to the area over the hollow inside.
 function openingTool(face, t, dir, cavity) {
   const eps = Math.max(0.05, t * 0.05);
-  const n = face.normalAt().toTuple(); // outward
+  const n = unitT(face.normalAt().toTuple()); // outward
   const span = dir === "in" ? [-(t + eps), eps] : dir === "out" ? [-eps, t + eps] : [-(t / 2 + eps), t / 2 + eps];
   const slabOf = (a, b) => {
     // slab from a to b along the normal (a < b)
@@ -1728,7 +2093,7 @@ function thickenFace(face, d, q) {
   const t = face.geomType;
   if (t === "PLANE") {
     let n = q && q.n;
-    if (!n) n = face.normalAt().toTuple();
+    if (!n) n = unitT(face.normalAt().toTuple());
     return R.basicFaceExtrusion(face, new R.Vector(n).multiply(d));
   }
   const ad = new OC.BRepAdaptor_Surface(face.wrapped, true);
@@ -1975,7 +2340,7 @@ function facePatFace(shape, m) {
   for (const f of faces) {
     if (f.geomType !== "PLANE") continue;
     let nf;
-    try { nf = f.normalAt().toTuple(); } catch (e) { continue; }
+    try { nf = unitT(f.normalAt().toTuple()); } catch (e) { continue; }
     if (Vec.dot(nf, n) < 0.999) continue;
     let d;
     try { const v = R.makeVertex(p); d = R.measureDistanceBetween(v, f); v.delete(); } catch (e) { d = Infinity; }
@@ -2720,7 +3085,7 @@ function buildMeshAsset(node) {
   return solidFromMesh(V, I, node.k || 1);
 }
 // a solid from triangles (shared corners, consistent winding)
-function solidFromMesh(V, I, k = 1) {
+function solidFromMesh(V, I, k = 1, merge = true, shellOnly = false) {
   const nv = V.length / 3, nt = I.length / 3;
   const T = { t0: Date.now() };
   // Build the faces on shared vertices and edges, so the triangles are already joined
@@ -2768,6 +3133,7 @@ function solidFromMesh(V, I, k = 1) {
     } catch (e) {}
   }
   if (!nf) throw new Error("This mesh has no usable triangles");
+  if (shellOnly) return shell;
   T.faces = Date.now();
   let shape = null;
   try {
@@ -2786,7 +3152,7 @@ function solidFromMesh(V, I, k = 1) {
   // (skipped for dense, curved meshes where it is slow and merges little)
   // (with a small tolerance: STL corners are rounded to 7 digits, so the triangles of a flat
   // face are flat only to about a millionth of the model's size)
-  if (nf <= 20000) {
+  if (merge && nf <= 20000) {
     const bb = bboxOf(shape), diag = Math.hypot(...bb.size) || 1;
     const u = unifiedTol(shape, Math.max(1e-6, diag * 2e-6), 2e-4);
     if (u) { shape.delete(); shape = u; }
@@ -3101,7 +3467,7 @@ export function meshShape(shape, quality = 1) {
       const quick = fastFlat && t === "PLANE" ? flatFromMesh(m.faceGroups[fi]) : null;
       if (quick) { info.n = quick.n; info.c = quick.c; }
       else if (t === "PLANE") {
-        info.n = f.normalAt().toTuple();
+        info.n = unitT(f.normalAt().toTuple());
         info.c = f.center.toTuple();
       } else {
         info.c = f.center.toTuple();
@@ -3293,3 +3659,4 @@ export function exportStep(bodies) {
   const comp = shapes.length === 1 ? shapes[0] : R.makeCompound(shapes);
   return comp.blobSTEP();
 }
+export const _test = { solidFromMesh, safeVolume, shellSolid: (s, t, faces, dir, method) => shellSolid(s, t, new Set(faces.map((f) => f.hashCode)), dir, safeVolume(s), method || "auto") };

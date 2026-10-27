@@ -66,6 +66,7 @@ export const ALIAS = [
   [/^src\/chat(?:providers|tools)\.js$/, ["chat"]],
   [/^src\/recovery\.js$/, ["storage-chaos"]],
   [/^src\/(?:arch(?:flood|land|plan|weather)?|cam(?:core|worker)?)\.js$/, ["upstream25"]],
+  [/^src\/(?:carve|sdfshell)\.js$/, ["upstream277"]],
   [/^src\/projects\.js$/, ["storage", "storage-chaos", "backup", "restorefolder"]],
   [/^src\/projstore\.js$/, ["storage", "storage-chaos"]],
 ];

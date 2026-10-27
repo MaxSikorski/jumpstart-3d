@@ -15,9 +15,9 @@ import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import * as sketchMirror from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
 
 const DEG = Math.PI / 180;
-import { theme } from "./theme.js";
+import { theme, sketchColor, sketchScaled } from "./theme.js";
 const C = {
-  get line() { return theme.c.sketch; }, get point() { return theme.c.sketch; }, cons: 0xc07a12, proj: 0x7d3fb0, hover: 0xe8a317,
+  get line() { return sketchColor(); }, get point() { return sketchColor(); }, cons: 0xc07a12, proj: 0x7d3fb0, hover: 0xe8a317,
   // brighter selection/preview colors on the dark themes, where dark blue disappears
   get sel() { return theme.name === "light" ? 0x1f4fa8 : 0x4fc3ff; },
   get dim() { return theme.name === "light" ? 0x2b3a4c : 0xb8c6d6; },
@@ -1443,10 +1443,12 @@ export class Sketcher {
     const dimSegs = [];
     if (this.active) this.drawDims(px, dimSegs);
     // thin lines, so small and narrow profiles stay easy to see and click
+    // (the width and colour of sketch lines are set in the theme menu)
+    const SW = sketchScaled;
     mk(dimSegs, C.dim, { w: 1.1 });
     if (dimSegs.preview) mk(dimSegs.preview, C.preview, { w: 1.2 });
-    mk(segs.line, C.line, { w: 1.5 }); mk(segs.cons, C.cons, { dashed: true }); mk(segs.proj, C.proj, { w: 1.2 });
-    mk(segs.sel, C.sel, { w: 2.4 }); mk(segs.hover, C.hover, { w: 2.4 }); mk(segs.preview, C.preview, { w: 1.5 });
+    mk(segs.line, C.line, { w: SW(1.5) }); mk(segs.cons, C.cons, { dashed: true }); mk(segs.proj, C.proj, { w: SW(1.2) });
+    mk(segs.sel, C.sel, { w: Math.max(SW(2.4), SW(1.5) + 0.8) }); mk(segs.hover, C.hover, { w: Math.max(SW(2.4), SW(1.5) + 0.8) }); mk(segs.preview, C.preview, { w: SW(1.5) });
     // points
     const pp = [], ps = [];
     for (const p of sk.pts) (this.sel.has("pt:" + p.id) || this.hover === "pt:" + p.id ? ps : pp).push(p.x, p.y, 0);

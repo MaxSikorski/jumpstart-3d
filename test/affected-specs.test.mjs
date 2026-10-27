@@ -24,7 +24,7 @@ after(() => rmSync(scratch, { recursive: true, force: true }));
 const rel = (...parts) => parts.join("/");
 const imp = (...parts) => `import "${rel(...parts)}";\n`;
 const BUTTONS = '<header>\n<button id="btn-old">Old</button>\n<button class="tb" id="btn-second">Second</button>\n</header>\n<style>button { cursor: pointer; }</style>\n';
-const ALIAS_SPECS = ["fine-rotate", "rotation-access", "printerpreview", "paint3mf", "chat", "storage", "storage-chaos", "backup", "restorefolder", "upstream25"];
+const ALIAS_SPECS = ["fine-rotate", "rotation-access", "printerpreview", "paint3mf", "chat", "storage", "storage-chaos", "backup", "restorefolder", "upstream25", "upstream277"];
 const BASE = {
   ".gitignore": "ignored/\ntest/ignored.spec.mjs\n",
   "README.md": "# readme\n", "BRIDGE.md": "# bridge\n", "NOTICE.md": "# notice\n", "LICENSES/MIT.txt": "mit\n", "LICENSES/OFL-1.1-fonts.txt": "ofl\n", "LICENSE": "license\n",
@@ -363,6 +363,8 @@ const ALIAS_CASES = [
   ["src/archplan.js", ["upstream25"]],
   ["src/cam.js", ["upstream25"]],
   ["src/camcore.js", ["upstream25"]],
+  ["src/carve.js", ["upstream277"]],
+  ["src/sdfshell.js", ["upstream277"]],
   ["src/projects.js", ["storage", "storage-chaos", "backup", "restorefolder"]], // also geometry
   ["src/projstore.js", ["storage", "storage-chaos"]],
 ];

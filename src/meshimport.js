@@ -452,7 +452,9 @@ function qem(mesh, limit) {
       const mx = (ax + bx) / 2, my = (ay + by) / 2, mz = (az + bz) / 2;
       if (isFinite(x) && Math.hypot(x - mx, y - my, z - mz) <= L) tryP(x, y, z);
     }
-    return Math.max(0, best);
+    // ties (flat areas cost nothing to merge): shorter edges first, so the mesh thins out evenly
+    // instead of piling hundreds of triangles onto one corner (which made big flat meshes crawl)
+    return Math.max(0, best) + 1e-7 * ((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2);
   };
   // binary heap of candidate merges (lazy: stale entries are skipped when popped)
   const hc = [], ha = [], hb = [], hva = [], hvb = [];

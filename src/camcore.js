@@ -22,6 +22,7 @@ export const POSTS = {
   marlin: { name: "Marlin", ext: "gcode", note: "Marlin-based CNC conversions and MPCNC-style machines", stream: true },
   fanuc: { name: "Fanuc-style (ISO)", ext: "nc", note: "Industrial machining centers and routers with Fanuc-compatible controls (program number, G54, tool length offsets, coolant)", stream: false, axes4: true, industrial: true },
   haas: { name: "Haas-style (NGC)", ext: "nc", note: "Haas-style vertical machining centers and tool-room mills", stream: false, axes4: true, industrial: true },
+  roland: { name: "Roland NC code (MDX)", ext: "nc", note: "Roland MODELA MDX-series mills (such as the MDX-50) with the command set on NC code: send the file with Roland's VPanel. Tool changes use the automatic tool changer and tool length offsets", stream: false, axes4: true },
   grblhal: { name: "grblHAL / FluidNC", ext: "nc", note: "GRBL-style controllers with a 4th (A) axis: grblHAL, FluidNC", stream: true, axes4: true },
 };
 // machine profiles: work area (mm), spindle range, feeds (mm/min), controller, units. "group" sorts
@@ -47,6 +48,7 @@ export const MACHINES = [
   { id: "mminimill", group: "Benchtop & hobby mills", name: "Mini mill conversion (Mach3/Mach4)", kind: "mill", x: 230, y: 100, z: 200, rpmMin: 100, rpmMax: 2500, feedMax: 900, rapid: 1500, post: "mach3", units: "mm" },
   { id: "mmill", group: "Benchtop & hobby mills", name: "Benchtop mill (LinuxCNC)", kind: "mill", x: 300, y: 150, z: 250, rpmMin: 100, rpmMax: 5000, feedMax: 1500, rapid: 2500, post: "linuxcnc", units: "mm", toolChange: true },
   { id: "mbenchatc", group: "Benchtop & hobby mills", name: "Benchtop mill with tool changer (LinuxCNC)", kind: "mill", x: 350, y: 200, z: 300, rpmMin: 100, rpmMax: 10000, feedMax: 2500, rapid: 5000, post: "linuxcnc", units: "mm", toolChange: true },
+  { id: "mdx50", group: "Benchtop & hobby mills", name: "Roland MDX-50, 5-tool changer (NC code)", kind: "mill", x: 400, y: 305, z: 135, rpmMin: 4500, rpmMax: 15000, feedMax: 3600, rapid: 3600, post: "roland", units: "mm", toolChange: true },
   { id: "mknee", group: "Benchtop & hobby mills", name: "CNC knee mill retrofit (LinuxCNC, inches)", kind: "mill", x: 760, y: 305, z: 400, rpmMin: 60, rpmMax: 4200, feedMax: 2500, rapid: 5000, post: "linuxcnc", units: "in", toolChange: true },
   { id: "mknee3", group: "Benchtop & hobby mills", name: "CNC knee mill retrofit (Mach3, inches)", kind: "mill", x: 760, y: 305, z: 400, rpmMin: 60, rpmMax: 4200, feedMax: 2500, rapid: 5000, post: "mach3", units: "in", toolChange: true },
   // pro and shop routers
@@ -79,6 +81,7 @@ export const MACHINES = [
   { id: "m3018r", group: "4th axis (rotary)", name: "Desktop CNC 3018 + rotary axis (grblHAL)", kind: "mill", x: 300, y: 180, z: 45, rpmMin: 1000, rpmMax: 10000, feedMax: 1000, rapid: 1500, post: "grblhal", units: "mm", rotary: { maxD: 60, maxL: 250 } },
   { id: "mhobbyr", group: "4th axis (rotary)", name: "Hobby router + 4th axis (FluidNC)", kind: "mill", x: 400, y: 400, z: 75, rpmMin: 8000, rpmMax: 24000, feedMax: 3000, rapid: 5000, post: "grblhal", units: "mm", rotary: { maxD: 100, maxL: 350 } },
   { id: "m6040r", group: "4th axis (rotary)", name: "Router 6040 + 4th axis (Mach3)", kind: "mill", x: 600, y: 400, z: 100, rpmMin: 6000, rpmMax: 24000, feedMax: 3000, rapid: 5000, post: "mach3", units: "mm", rotary: { maxD: 120, maxL: 450 } },
+  { id: "mdx50r", group: "4th axis (rotary)", name: "Roland MDX-50 + ZCL-50A rotary axis (NC code)", kind: "mill", x: 400, y: 305, z: 135, rpmMin: 4500, rpmMax: 15000, feedMax: 3600, rapid: 3600, post: "roland", units: "mm", toolChange: true, rotary: { maxD: 120, maxL: 380 } },
   { id: "mmill4", group: "4th axis (rotary)", name: "Mill with 4th axis (LinuxCNC)", kind: "mill", x: 300, y: 150, z: 250, rpmMin: 100, rpmMax: 5000, feedMax: 1500, rapid: 2500, post: "linuxcnc", units: "mm", toolChange: true, rotary: { maxD: 150, maxL: 300 } },
   { id: "mmach4", group: "4th axis (rotary)", name: "Router with 4th axis (Mach3, inches)", kind: "mill", x: 610, y: 610, z: 120, rpmMin: 8000, rpmMax: 24000, feedMax: 5000, rapid: 7000, post: "mach3", units: "in", rotary: { maxD: 150, maxL: 500 } },
   { id: "vmc4h", group: "4th axis (rotary)", name: "VMC with 4th axis, 40-taper (Haas-style, inches)", kind: "mill", x: 762, y: 406, z: 508, rpmMin: 50, rpmMax: 8100, feedMax: 16510, rapid: 25400, post: "haas", units: "in", toolChange: true, rotary: { maxD: 210, maxL: 600 } },
@@ -517,7 +520,7 @@ export function toGcode(prog, job, mach, opts = {}) {
   const post = POSTS[opts.post || mach.post] ? opts.post || mach.post : "grbl", inch = (opts.units || mach.units) === "in";
   const k = inch ? 1 / IN : 1, dp = inch ? 4 : 3, O = workOrigin(job), rot = !!job.rotary;
   const n = (v) => { let s = (v * k).toFixed(dp); if (s.includes(".")) s = s.replace(/0+$/, "").replace(/\.$/, ""); return s === "-0" ? "0" : s; };
-  const ind = post === "fanuc" || post === "haas", tc = ind || post === "linuxcnc" || post === "mach3";
+  const ind = post === "fanuc" || post === "haas", rol = post === "roland", tc = ind || rol || post === "linuxcnc" || post === "mach3";
   const L = [], c = (t) => L.push(post === "marlin" ? "; " + t : "(" + (ind ? t.toUpperCase() : t).replace(/[()]/g, "") + ")");
   if (ind) L.push("O" + String(opts.progNo || 1000).padStart(4, "0") + " (" + String(opts.title || "JumpStart 3D job").toUpperCase().replace(/[()]/g, "").slice(0, 40) + ")");
   const laserMach = mach.kind === "laser";
@@ -533,6 +536,7 @@ export function toGcode(prog, job, mach, opts = {}) {
   if (post === "linuxcnc") L.push("G17 G21 G40 G49 G80 G90 G94 G64 P" + n(0.02).replace(/^0$/, "0.02"));
   else if (post === "mach3") L.push("G17 G40 G49 G80 G90 G94");
   else if (ind) L.push("G17 G40 G49 G80 G90 G94");
+  else if (rol) L.push("G17 G40 G49 G80 G90 G94 G54");
   else L.push("G90 G94 G17");
   L.push(inch ? "G20" : "G21");
   if (ind) L.push("G91 G28 Z0", "G90 G54");
@@ -551,18 +555,19 @@ export function toGcode(prog, job, mach, opts = {}) {
       const p0 = moves[0] || { x: O[0], y: O[1] };
       L.push(`G0 G90 G54 X${n(p0.x - O[0])} Y${n(p0.y - O[1])}${rot && p0.a !== undefined ? " A" + an(p0.a) : ""} S${Math.round(op.rpm)} M3`);
       L.push(`G43 H${tn} Z${n(safe - O[2])} M8`);
-    } else if (!first || post === "linuxcnc" || post === "mach3") {
+    } else if (!first || post === "linuxcnc" || post === "mach3" || rol) {
       L.push(`G0 Z${n(safe - O[2])}`);
       if (!laser || !first) L.push(post === "marlin" ? "M5" : "M5");
       if (!first) {
-        if (post === "linuxcnc" || post === "mach3") { L.push(`T${tn} M6`); if (post === "linuxcnc") L.push(`G43 H${tn}`); }
+        if (post === "linuxcnc" || post === "mach3" || rol) { L.push(`T${tn} M6`); if (post === "linuxcnc" || rol) L.push(`G43 H${tn}`); }
         else if (!laser) { c(`Change the bit to T${tn}: ${op.tool.name}, set Z zero again, then resume`); L.push(post === "marlin" ? "M0 Change bit" : "M0"); }
-      } else if (post === "linuxcnc" || post === "mach3") { L.push(`T${tn} M6`); if (post === "linuxcnc") L.push(`G43 H${tn}`); }
+      } else if (post === "linuxcnc" || post === "mach3" || rol) { L.push(`T${tn} M6`); if (post === "linuxcnc" || rol) L.push(`G43 H${tn}`); }
     }
     first = false;
     if (ind) { /* spindle started with the tool change */ }
     else if (laser) L.push(post === "marlin" ? "M3 S0" : "M4 S0");
     else if (post === "marlin") { L.push(`M3 S${Math.max(1, Math.min(255, Math.round((op.rpm / (mach.rpmMax || op.rpm)) * 255)))}`); L.push("G4 S3"); }
+    else if (rol) { L.push(`S${Math.round(Math.max(mach.rpmMin || 0, Math.min(mach.rpmMax || op.rpm, op.rpm)))} M3`); L.push("G04 X3."); }
     else { L.push(`S${Math.round(op.rpm)} M3`); L.push(post === "grbl" ? "G4 P3" : "G4 P3"); }
     last = { x: null, y: null, z: null, f: null, s: null, g: null, a: last.a };
     const sScale = laser ? (post === "marlin" ? 255 : mach.rpmMax || 1000) : 1;
@@ -595,7 +600,7 @@ export function toGcode(prog, job, mach, opts = {}) {
   L.push(`G0 X0 Y0`);
   if (rot) L.push("G0 A0");
   L.push(post === "linuxcnc" ? "M2" : post === "marlin" ? "M84" : "M30");
-  if (post === "linuxcnc" || post === "mach3") { L.unshift("%"); L.push("%"); }
+  if (post === "linuxcnc" || post === "mach3" || rol) { L.unshift("%"); L.push("%"); }
   return L.join("\n") + "\n";
 }
 

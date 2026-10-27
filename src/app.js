@@ -5,6 +5,7 @@ import { inflate } from "./inflate.js";
 import { CREDITS, LICENSE_TEXTS } from "./licenses.js";
 import { initSketch3D } from "./sketch3d.js";
 import { initLathe } from "./lathe.js";
+import { initCarve } from "./carve.js";
 // jumpstart-3d: keep the upstream version and community release number separate.
 import { VERSION, BUILD } from "./version.js";
 const BUILD_LABEL = VERSION + " · community build " + BUILD;
@@ -25,7 +26,7 @@ import { el, parseLength, fmt, IS_MAC, IS_IOS, IS_IPHONE, watchMacLabels } from 
 const parseLengthMM = parseLength;
 import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import { getUnit, setUnit, onUnit, toU, fromU, showLen, parseLen, unitName, SNAP_SIZES } from "./units.js";
-import { setThemeColors, theme } from "./theme.js";
+import { setThemeColors, theme, sketchStyle, SKETCH_WIDTHS, SKETCH_COLORS } from "./theme.js";
 import { ICON } from "./icons.js";
 import { initBeginner } from "./beginner.js";
 import { initAdvanced } from "./advanced.js";
@@ -173,6 +174,7 @@ function boot() {
   app.tutorials = initTutorials(app);
   app.sketch3d = initSketch3D(app);
 app.lathe = initLathe(app);
+app.carve = initCarve(app);
 // jumpstart-3d: match the static splash before the app loads.
 { const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + BUILD_LABEL; }
 app.bricks = initBricks(app);
@@ -274,6 +276,10 @@ app.voxel = initVoxel(app);
   $("btn-theme").onclick = () => { tmenu.hidden = !tmenu.hidden; if (!tmenu.hidden) app.syncMeshDetailUI(); };
   tmenu.addEventListener("click", (e) => { const b = e.target.closest("button"); const t = b?.dataset.theme, pf = b?.dataset.perf, md = b?.dataset.detail; if (t) { app.setTheme(t); tmenu.hidden = true; } else if (md) { app.setMeshDetail(md); tmenu.hidden = true; } else if (pf) { app.setPerf(pf); tmenu.hidden = true; } });
   window.addEventListener("pointerdown", (e) => { if (!tmenu.hidden && !tmenu.contains(e.target) && !e.target.closest("#btn-theme")) tmenu.hidden = true; });
+  // sketch line width and colour (the menu stays open so choices can be compared)
+  const hex = (n) => "#" + n.toString(16).padStart(6, "0");
+  $("sk-widths").append(...SKETCH_WIDTHS.map(([k, label, w]) => el("button", { "data-skw": k, role: "menuitemradio", title: label + " sketch lines", onclick: (e) => { e.stopPropagation(); app.setSketchStyle({ width: k }); } }, el("i", { style: { height: Math.max(1, w) + "px", opacity: w < 1 ? 0.7 : 1 } }), label.replace("Extra thick", "Extra"))));
+  $("sk-colors").append(...SKETCH_COLORS.map(([k, label, c]) => el("button", { "data-skc": k, role: "menuitemradio", class: c == null ? "sk-theme" : "", title: label + (c == null ? " (follows Light, Dark or High contrast)" : ""), "aria-label": label, onclick: (e) => { e.stopPropagation(); app.setSketchStyle({ color: k }); } }, el("span", { style: c == null ? {} : { background: hex(c) } }))));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (app.themePref === "system") app.setTheme("system"); });
   $("btn-keys").onclick = () => app.showShortcuts();
   // Full screen, like a video player's. Esc stays with the tools: where the browser allows it the
@@ -432,7 +438,7 @@ function gridFromSnap() {
 }
 function readPrefs() { try { return JSON.parse(localStorage.getItem("workplane.ui.v1") || "{}"); } catch (e) { return {}; } }
 function savePrefs() {
-  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ theme: app.themePref, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
+  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ skw: sketchStyle.width, skc: sketchStyle.color, theme: app.themePref, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
 }
 function loadPrefs() {
   const p = readPrefs();
@@ -443,6 +449,7 @@ function loadPrefs() {
   app.objectSnap = p.obj !== false;
   $("snap-obj").setAttribute("aria-pressed", app.objectSnap);
   app.setSnap(p.snap !== false, true);
+  app.setSketchStyle({ width: p.skw || "thin", color: p.skc || "theme" }, true);
   app.setTheme(p.theme || "system", true);
   // realistic lighting starts off (faster); it stays on only for someone who turned it on themselves
   app.setLighting(p.lightOn === true, true);
@@ -523,6 +530,20 @@ function onSlow() {
     app.toast("Things look slow on this computer. Try " + (i === 0 ? "High or Normal" : "Normal") + " in the theme menu (◐): " + (i === 0 ? "they draw" : "it draws") + " less, and every tool still works.");
   }
 }
+
+// Sketch lines: width and colour, everywhere sketches are drawn (Advanced, Beginner, Chisel).
+app.setSketchStyle = function (patch, quiet) {
+  if (patch.width && SKETCH_WIDTHS.some((x) => x[0] === patch.width)) sketchStyle.width = patch.width;
+  if (patch.color && SKETCH_COLORS.some((x) => x[0] === patch.color)) sketchStyle.color = patch.color;
+  document.querySelectorAll("#sk-widths button").forEach((b) => b.setAttribute("aria-checked", b.dataset.skw === sketchStyle.width));
+  document.querySelectorAll("#sk-colors button").forEach((b) => b.setAttribute("aria-checked", b.dataset.skc === sketchStyle.color));
+  if (app.scene) app.scene.syncSketches(store.view);
+  if (app.sketcher && app.sketcher.active) app.sketcher.redraw();
+  if (app.vp) app.vp.request();
+  // Chisel reads the colours when its theme is (re)applied
+  try { app.chiselTheme && app.chiselTheme(); } catch (e) {}
+  if (!quiet) savePrefs();
+};
 
 // Light, dark and high-contrast interface. "system" follows the device setting.
 app.setTheme = function (pref, quiet) {
@@ -660,6 +681,24 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.7.7", [
+        ["Shell for any shape:", "Shell and Hollow now work on complex shapes: shapes with holes through them, branches and bosses, joined shapes, free-form and organic bodies, tori, and curved openings (open a round side, not just a flat end). When the exact offset can't make the wall, a new distance-field method builds it from the distance to the kept faces, so it works on any closed shape; flat and round shapes keep their own surface exact. It takes a few seconds."],
+        ["Shell options:", "pick opening faces on several shapes at once (each gets its own shell); Hollow can add 1, 2 or 4 drain holes through the bottom (for resin and powder printing) with the size you set; and Method (Auto, Exact offset, Slices, or Any shape with Normal or Fine detail) lets you choose how the wall is made. Auto tries them in turn."],
+      ]),
+      sec("New in version 2.7.6", [
+        ["Shell on lofts:", "Shell and Hollow now work on lofted shapes that the offset engine couldn't handle, such as a loft from a hexagon on one plane to a circle on an offset plane. When a shape has free-form sides, the wall is built from slices across the shape (each slice's outline is offset in its own plane and the slices are lofted back together), with Inside, Outside or Both and openings on flat ends. It is also much quicker to give an answer."],
+        ["Tangent chain fix:", "Shell's Tangent chain no longer takes every face of a curved (lofted) body: curved faces' directions were compared wrongly, which also hid some real edges between curved faces in the view."],
+      ]),
+      sec("New in version 2.7.5", [
+        ["Chip Carving:", "a new woodcraft simulator (Simulate → Woodcraft, Advanced's Create group, Beginner's toolbar and Chisel). Carve a board, a round plate, a log or a shape from your design, in basswood, butternut, white pine, mahogany, cherry, black walnut, hard maple or red oak (harder woods cut less deep). Knives: corner chips (three-corner, four-corner and diamond) that pop out as real chips, V-cut lines, curved sweeps with a stop cut, and a stab knife; plus a pencil and eraser for layout lines, layout guides (square or triangle grid, rosette, border band) and a sanding block. A pen's pressure sets how deep each cut goes and its tilt the blade angle; with a mouse or finger the Pressure slider does. Fingers can carve or, once a pen is used, move the view. A raking light shows the facets. Add the carving to your design or export STL, 3MF or OBJ."],
+        ["Roland MDX-50:", "CAM Studio has Roland MDX-50 profiles (with the 5-tool changer, and with the ZCL-50A rotary axis) and a Roland NC code post processor for MDX-series mills."],
+      ]),
+      sec("New in version 2.7.4", [
+        ["Sketch line style:", "choose how thick sketch lines are (Hairline, Thin, Medium, Thick or Extra thick) and their colour (the theme's own colour, or black, white, blue, red, green, orange, purple, yellow or cyan) in the theme menu (◐), under Sketch lines. It applies in Advanced, Beginner and Chisel and is remembered. The new default, Thin, is thinner than before."],
+        ["Shell → Hollow:", "the Shell tool now has two types. Openings removes the faces you click (an open box or cup); Hollow makes the whole model hollow inside, closed all round, with a 2 mm wall to start that you can change (quick picks 1, 2, 3 and 5 mm). Hollow works on the selected shapes, or click shapes to add them."],
+        ["Shell and Fillet in Beginner:", "Beginner's toolbar has Fillet (click edges or a face, or Round all edges of the shape) and Shell (Hollow to start). The shape's panel lists its fillets and shells with Edit and Remove, plus Round edges and Make hollow buttons. Fillet and Chamfer in Advanced have the all-edges button too."],
+        ["Hollow in Chisel:", "a new Hollow tool (in Easy and full Chisel) makes a sculpted model hollow inside with the wall thickness you choose."],
+      ]),
       sec("New in version 2.7.3", [
         ["No more stray planes:", "fixed flat \"planes\" that could appear across a model after an extrude, offset or cut and couldn't be removed. They were a drawing fault on some round faces (a cylinder band, for example), not part of the solid; those faces are now checked and redrawn correctly, on screen and in exports. Files that showed them look right as soon as they are opened."],
         ["Pattern features, like Fusion 360:", "with Objects set to Features, click a face of a cut, boss, hole or text on the model to pick that feature (click again to unpick), or click it in the timeline. The whole body is no longer selected: picked features are outlined in blue and marked in the timeline, and the feature under the pointer is outlined in orange. Ticking features in the list still works."],

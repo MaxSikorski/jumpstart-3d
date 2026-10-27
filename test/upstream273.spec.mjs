@@ -23,8 +23,8 @@ const bytes = (a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength);
 const near = (got, want, tol = 0.005) => expect(Math.abs(got - want)).toBeLessThanOrEqual(Math.abs(want) * tol + 1e-6);
 
 test("the splash and About show version 2.7.3 with the 2.7.3 and 2.7.2 notes", async () => {
-  expect(VERSION).toBe("2.7.3");
-  const label = `Version 2.7.3 · community build ${BUILD}`;
+  expect(VERSION).toMatch(/^2\.7\./); // 2.7.7 and later keep these notes (upstream277.spec.mjs checks the newest)
+  const label = `Version ${VERSION} · community build ${BUILD}`;
   expect(await page.locator("#sp-ver").textContent()).toBe(label);
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
@@ -213,9 +213,11 @@ test("sketch lines are about half as thick as in 2.7.1, selected lines a little 
   const doc = pocketBar();
   doc.bodies[0].node.mods = []; // the sketch alone, so it shows as a loose profile
   await loadDoc(page, doc);
+  // J.Siwek 2.7.4 made the sketch line width a setting and "Thin" (1.0 px) the default; these are the 2.7.3 numbers, which are his "Medium" (1.5 px)
+  await run(() => window.__app.setSketchStyle({ width: "medium" }, true));
   // on the model (not being edited): thick lines of the sketch colour, 1.4 px (2.5 px before)
   const modelWidths = await run(() => { const w = new Set(); window.__app.vp.scene.traverse((o) => { const u = o.material && o.material.uniforms; if (u && u.uW && o.visible) w.add(u.uW.value); }); return [...w]; });
-  expect(modelWidths).toContain(1.4);
+  expect(modelWidths.some((w) => Math.abs(w - 1.4) < 1e-6), "a 1.4 px line (1.4 x 1.5 / 1.5 in floating point)").toBe(true);
   expect(modelWidths).not.toContain(2.5);
   // in the editor: the quads' width in screen pixels
   await run(() => window.__app.enterSketch("s1"));
@@ -240,4 +242,5 @@ test("sketch lines are about half as thick as in 2.7.1, selected lines a little 
   expect(sel.map((x) => x.w).sort()).toEqual([1.5, 2.4]); // the selected line: 3.5 before, still bolder than the others
   expect(sel.find((x) => x.w === 2.4).hex).not.toBe(plain[0].hex);
   await run(() => window.__app.exitSketch());
+  await run(() => window.__app.setSketchStyle({ width: "thin" }, true));
 });
