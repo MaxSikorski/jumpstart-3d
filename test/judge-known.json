@@ -1,1 +1,22 @@
-{}
+{
+  "advanced-tapped-hole.stl": {
+    "match": "^FreeCAD self-intersection longer than 0\\.01 mm \\(0\\.3385 mm, mesh 0 component 0\\)$",
+    "defect": "thread/spring sweep self-touch, tracked in the backlog (screw-thread profile fix in progress)",
+    "followUp": "Fix the screw-thread profile and remove this entry when the export passes."
+  },
+  "fasteners.stl": {
+    "match": "^FreeCAD self-intersection longer than 0\\.01 mm \\(0\\.3121 mm, mesh 0 component 0\\)$",
+    "defect": "thread/spring sweep self-touch, tracked in the backlog (screw-thread profile fix in progress)",
+    "followUp": "Fix the screw-thread profile and remove this entry when the export passes."
+  },
+  "spring.3mf": {
+    "match": "^FreeCAD self-intersection longer than 0\\.01 mm \\((?:0\\.0102 mm, mesh 1 component 0|0\\.0583 mm, mesh 2 component 0)\\)$",
+    "defect": "thread/spring sweep self-touch, tracked in the backlog (screw-thread profile fix in progress)",
+    "followUp": "Fix the spring sweep self-touch and remove this entry when the export passes."
+  },
+  "spring.stl": {
+    "match": "^FreeCAD self-intersection longer than 0\\.01 mm \\((?:0\\.0102 mm, mesh 0 component 1|0\\.0583 mm, mesh 0 component 2)\\)$",
+    "defect": "thread/spring sweep self-touch, tracked in the backlog (screw-thread profile fix in progress)",
+    "followUp": "Fix the spring sweep self-touch and remove this entry when the export passes."
+  }
+}

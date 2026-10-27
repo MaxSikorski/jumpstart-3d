@@ -95,6 +95,7 @@ export function mirrorEnts(sk, ids, axis) {
     else if (c.k === "ang" && direct.has(E(c.e1)) && direct.has(E(c.e2))) nc = { ...copy(c), e1: E(c.e1), e2: E(c.e2) };
     if (nc) {
       delete nc.name; // a parameter name belongs to one dimension
+      delete nc.sg; // an angle's turning direction is read again from the copies (a mirror turns the other way round)
       if (nc.off) nc.off = reflect(nc.off, axis);
     }
     return nc;

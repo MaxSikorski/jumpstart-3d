@@ -190,7 +190,7 @@ const SKETCH_KEYS = new Set(["id", "name", "seq", "plane", "pts", "ents", "hidde
 const ENT_KEYS = {
   line: ["a", "b"], circle: ["c", "r"], arc: ["c", "a", "b"], spline: ["pts", "closed"], point: ["p"], text: ["p", "str", "size", "angle", "font"],
 };
-const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2"]);
+const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2", "sg"]); // sg: jumpstart-3d: sketch solver (an angle's turning direction)
 const CON_TYPES = new Set(["origin", "coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "concentric", "equal", "midpoint", "dim"]);
 const PLANE_KEYS = new Set(["id", "name", "seq", "kind", "def", "plane", "size", "hidden"]);
 const MEDIA_MAPS = new Set(["front", "wrap", "box", "ball"]);
@@ -354,6 +354,7 @@ export function validateEnvelope(env) {
       if (c.expr !== undefined) text(c.expr, "a dimension expression", LIMITS.EXPR);
       if (c.unit !== undefined && !UNITS.has(c.unit)) throw damaged("a dimension unit");
       if (c.name !== undefined) text(c.name, "a dimension name", 64);
+      if (c.sg !== undefined && c.sg !== 1 && c.sg !== -1) throw damaged("an angle direction"); // jumpstart-3d: sketch solver
     }
     if (s.image !== undefined) {
       obj(s.image, "a sketch picture"); allow(s.image, new Set(["src", "name", "w", "h", "cx", "cy", "rot", "opacity"]), "a sketch picture");

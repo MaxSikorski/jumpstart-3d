@@ -127,7 +127,7 @@ export function initReport(app) {
     refresh();
     back.append(modal);
     document.body.append(back);
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
     modal.querySelector(".xbtn").focus();
   };
 

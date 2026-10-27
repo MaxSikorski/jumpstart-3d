@@ -32,6 +32,7 @@ See [NOTICE.md](NOTICE.md) for credit and licensing.
 ## Contents
 
 - [Get started](#get-started)
+- [Host it yourself or embed it](#host-it-yourself-or-embed-it)
 - [What people make with it](#what-people-make-with-it)
 - [What it can do](#what-it-can-do)
 - [Keep your designs safe](#keep-your-designs-safe)
@@ -73,6 +74,36 @@ shared an Electron wrapper for the single file on macOS in
 After your first visit, the JumpStart 3D website keeps a copy on your computer, fonts included, so
 it opens at once and works without internet. When a new version is published, a message asks you
 to reload. The single file never needs the web.
+
+## Host it yourself or embed it
+
+To host JumpStart 3D at home or at school, use the single HTML file from the GitHub release,
+[`jumpstart-3d.html`](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html),
+or copy the `docs/` site folder. Any static web server works: run `python3 -m http.server` in the
+folder, or use nginx or Caddy on a computer, a Raspberry Pi, or a Proxmox LXC container with nginx.
+The single file needs no internet; the website keeps a copy for offline use after its first visit.
+
+Designs stay in the browser's IndexedDB storage. That means each browser on each device has its own
+designs; they do not sync automatically. Use Export / Save or the backup tools in Your designs to
+move them to another browser or device. See [Keep your designs safe](#keep-your-designs-safe).
+
+### Embed it in another program
+
+Load the page in an iframe or webview, then run JavaScript in the app page's context through
+`window.JS3D`. A parent page can access an iframe this way when both pages share an origin. See
+[BRIDGE.md](BRIDGE.md) for every call and its options. For example:
+
+```js
+const app = window.JS3D;
+const id = app.add("box", { size: [40, 30, 20] });
+await app.ready();
+const volume = app.get(id).volume;
+const stl = await app.export("stl", { ids: [id] });
+```
+
+For AI agents, see the [MCP server guide](mcp/README.md).
+
+License: From build 24, Max's code is AGPL-3.0-only; if you host a modified copy for others, offer them its source. J.Siwek's original code stays MIT.
 
 ## What people make with it
 

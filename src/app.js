@@ -849,7 +849,7 @@ app.showAbout = function () {
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/issues", target: "_blank", rel: "noopener" }, "Report a bug or idea"))));
   back.append(modal);
   document.body.append(back);
-  back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
   modal.querySelector(".xbtn").focus();
 };
 app.showShortcuts = function () {
@@ -867,7 +867,7 @@ app.showShortcuts = function () {
       rows("Everywhere", [[", .", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Shift drag", "On a rotation arc or ring: turn by any angle (otherwise 15° steps)"], ["Turn − +", "In the status bar: turn the selected shape by the chosen step (15, 5, 1, 0.5 or 0.1°); the , and . keys use that step too"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
   back.append(modal);
   document.body.append(back);
-  back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
   modal.querySelector(".xbtn").focus();
 };
 

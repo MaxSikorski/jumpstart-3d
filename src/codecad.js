@@ -265,7 +265,7 @@ export function initCodeCad(app) {
         state));
     back.append(modal);
     document.body.append(back);
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
     renderLinks();
     renderHints();
     code.focus();
