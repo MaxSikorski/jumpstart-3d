@@ -65,6 +65,7 @@ export function initBridge(app) {
   const edit = () => {
     if (app.mode === "chisel") throw new Error("leave Chisel mode first");
     if (app.cosforge && app.cosforge.isOpen) throw new Error("close CosForge first"); // jumpstart-3d: CosForge
+    if (app.carve && app.carve.active) throw new Error("close Chip Carving first"); // jumpstart-3d: Chip Carving (same reason as CosForge)
     if (app.command) app.command.cancel();
   };
   const bool = (v, what) => {
