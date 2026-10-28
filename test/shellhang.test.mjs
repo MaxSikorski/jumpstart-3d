@@ -118,7 +118,8 @@ test("Auto Outside of a convex oval sphere keeps the exact offset", () => {
   const r = result("sphereout");
   assert.ok(r.ok, r.error);
   assert.ok(r.ms < 10000, `build took ${r.ms} ms`);
-  near(r.volume, 4066.2, .005);
+  // the field wall measures 4059.0 (0.18% low): the tight band tells the exact offset from it
+  near(r.volume, 4066.2, .001);
   assert.equal(r.open, 0);
 });
 test("the curvature gate sees the tightest curve of an oval capsule, by side (the 40 x 36 x 12 capsule's inward offset pinches at 2 mm and is never tried)", () => {
