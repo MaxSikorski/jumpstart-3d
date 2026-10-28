@@ -58,7 +58,8 @@ self.onmessage = async (ev) => {
     } else if (msg.type === "build") {
       await ready;
       await manifoldReady(); // jumpstart-3d: Manifold starts with the first imported mesh; a build waits for it (nothing when no mesh was imported)
-      const res = buildBodies(msg.bodies, msg.quality || 1);
+      // jumpstart-3d: scoped stage messages are independent of engine loading.
+      const res = buildBodies(msg.bodies, msg.quality || 1, { onProgress: (event) => self.postMessage({ type: "progress", req: msg.req, ...event }) });
       const transfer = [];
       for (const r of res) if (r.ok) {
         const m = r.mesh;

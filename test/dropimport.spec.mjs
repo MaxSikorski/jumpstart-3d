@@ -284,10 +284,10 @@ for (const mode of ["beginner", "advanced"]) {
     await fresh(mode);
     await page.click("#btn-export");
     await expect(page.locator("#btn-export")).toHaveAttribute("title", /import a model/);
-    // top to bottom: Open a project file…, Import…, a rule, the export-scope picker, a rule, Send to slicer, then STL
+    // top to bottom: Open a project file…, Import…, Insert a real part…, a rule, the export-scope picker, a rule, Send to slicer, then STL
     const order = await page.evaluate(() => [...document.getElementById("menu-export").children].filter((el) => el.offsetParent !== null)
-      .map((el) => el.tagName === "HR" ? "HR" : el.id === "export-scope" ? "SCOPE" : el.textContent.trim().slice(0, 14)));
-    expect(order.slice(0, 7)).toEqual(["Open a project", "Import a model", "HR", "SCOPE", "HR", "Send to slicer", "STL for 3D pri"]);
+      .map((el) => el.tagName === "HR" ? "HR" : el.id === "export-scope" ? "SCOPE" : el.id === "btn-insertpart-menu" ? "PART" : el.textContent.trim().slice(0, 14)));
+    expect(order.slice(0, 8)).toEqual(["Open a project", "Import a model", "PART", "HR", "SCOPE", "HR", "Send to slicer", "STL for 3D pri"]);
     const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#btn-import-menu")]);
     await expect(page.locator("#menu-export")).toBeHidden();
     const f = await modelFile("stl", "FromMenu.stl");

@@ -1,3 +1,5 @@
+// jumpstart-3d: checked STEP transfer and scoped build stages.
+import { readStepShape, beginStepBuild, stepStage, denseStep } from "./stepload.js";
 // Geometry kernel: turns the document's node trees into OpenCascade solids
 // and meshes. Runs inside a Web Worker in the app, and directly in Node for tests.
 import * as R from "replicad";
@@ -3323,9 +3325,6 @@ function solidFromMesh(V, I, k = 1, merge = true, shellOnly = false) {
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("mesh build ms: faces", T.faces - T.t0, "solid", T.solid - T.faces, "unify", T.unify - T.solid);
   return shape;
 }
-// jumpstart-3d: plain words for a STEP file that cannot be used
-const STEP_UNREADABLE = "Could not read this STEP file (it may be damaged or not a STEP file).";
-const STEP_NO_SHAPES = "This STEP file has no solids or surfaces in it, so there is nothing to import.";
 // jumpstart-3d: all the solids of a STEP file fused in ONE boolean (the first as the argument, the others as tools), then merged once with the
 // round-face-safe simplifiedResult. Fusing them one after another took 45 s for 200 parts (every step runs against everything fused so far);
 // this takes under a second and gives the same shape. A fuse the engine reports errors for falls back to J.Siwek's one-after-another loop.
@@ -3356,33 +3355,21 @@ const stepSolids = new Map();
 const stepPartOrder = new Map(); // asset id + ":" + k -> the permutation (sorted index -> explorer index) of that file's solids
 function buildStepAsset(node) {
   const bytes = assetBytes(node);
-  const name = "import_" + Math.random().toString(36).slice(2);
-  OC.FS.writeFile("/" + name, bytes);
-  const reader = new OC.STEPControl_Reader();
+  // jumpstart-3d: the reader owns validation and healing; extraction order stays here.
+  let shape = readStepShape(OC, R, bytes);
+  // one solid when the file has several
+  const solids = [];
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  // jumpstart-3d: release exploration temporaries even when extraction fails.
   try {
-    // jumpstart-3d: ReadFile returns a status string (never false), so `!reader.ReadFile(name)` could not fire and a damaged or non-STEP file showed "This shape has not type, it is null"
-    if (reader.ReadFile(name) !== OC.IFSelect_ReturnStatus.IFSelect_RetDone) throw new Error(STEP_UNREADABLE);
-    reader.TransferRoots();
-    // jumpstart-3d: a file with nothing in it gives a null shape, which R.cast reports as "This shape has not type, it is null"
-    const whole = reader.OneShape();
-    if (whole.IsNull()) { whole.delete(); throw new Error(STEP_NO_SHAPES); }
-    let shape = R.cast(whole);
-    if (isEmptyShape(shape)) { shape.delete(); throw new Error(STEP_NO_SHAPES); } // jumpstart-3d
-    // one solid when the file has several
-    const solids = [];
-    const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
-    for (; ex.More(); ex.Next()) solids.push(R.cast(OC.TopoDS.Solid(ex.Current())));
-    ex.delete();
-    stepSolids.set(node.asset, solids.length); // jumpstart-3d: STEP parts (#173)
-    if (solids.length === 1) { shape.delete(); shape = solids[0]; }
-    else if (solids.length > 1 && node.parts) { shape.delete(); { const parts = R.makeCompound(solids); solids.forEach((x) => x.delete()); shape = parts; } } // jumpstart-3d: STEP parts (#173). one body per part: the solids stay apart in a compound
-    else if (solids.length > 1) { shape.delete(); shape = fuseSolids(solids); } // jumpstart-3d: was the one-after-another fuse loop, now the fallback in fuseSolids
-    if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
-    return shape;
-  } finally {
-    reader.delete();
-    try { OC.FS.unlink("/" + name); } catch (e) {}
-  }
+    for (; ex.More(); ex.Next()) { const current = ex.Current(); try { solids.push(R.cast(OC.TopoDS.Solid(current))); } finally { current.delete(); } }
+  } finally { ex.delete(); }
+  stepSolids.set(node.asset, solids.length); // jumpstart-3d: STEP parts (#173)
+  if (solids.length === 1) { shape.delete(); shape = solids[0]; }
+  else if (solids.length > 1 && node.parts) { shape.delete(); { const parts = R.makeCompound(solids); solids.forEach((x) => x.delete()); shape = parts; } } // jumpstart-3d: STEP parts (#173). one body per part: the solids stay apart in a compound
+  else if (solids.length > 1) { shape.delete(); shape = fuseSolids(solids); } // jumpstart-3d: was the one-after-another fuse loop, now the fallback in fuseSolids
+  if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
+  return shape;
 }
 // imported models sit centered on the origin, resting on the workplane
 function placeImported(shape, node) {
@@ -3594,72 +3581,81 @@ function repairFaceMeshes(shape, m, tol, ang) {
   } finally { faces.forEach((f) => f.delete()); }
 }
 
-export function meshShape(shape, quality = 1) {
+export function meshShape(shape, quality = 1, options = {}) {
   const TT = [Date.now()], tick = () => TT.push(Date.now());
   const bb = bboxOf(shape);
   const diag = Math.hypot(...bb.size) || 1;
   const tol = Math.max(0.005, diag * 0.0006 / quality);
-  const m = shape.mesh({ tolerance: tol, angularTolerance: 0.2 / quality });
-  try { repairFaceMeshes(shape, m, tol, 0.2 / quality); } catch (err) {}
-  flipSlivers(m); // jumpstart-3d: a pointed cone's mesh has flat slivers at its tip; the STL writer drops them and opened the mesh
-  tick();
-  const e = shape.meshEdges({ tolerance: tol, angularTolerance: 0.2 / quality });
-  tick();
-  const faces = shape.faces;
-  // Dense bodies (imported meshes): flat faces get their center and normal from the
-  // display triangles, which is exact for flat faces and far quicker than integrating.
-  const fastFlat = faces.length > 400 && m.faceGroups.length === faces.length;
-  const flatFromMesh = (g) => {
-    let ax = 0, ay = 0, az = 0, cx = 0, cy = 0, cz = 0, A = 0;
-    const T = m.triangles, P = m.vertices;
-    for (let i = g.start; i < g.start + g.count; i += 3) {
-      const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3;
-      const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
-      const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
-      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const ar = Math.hypot(nx, ny, nz) / 2;
-      ax += nx; ay += ny; az += nz; A += ar;
-      cx += ar * (P[a] + P[b] + P[c]) / 3; cy += ar * (P[a + 1] + P[b + 1] + P[c + 1]) / 3; cz += ar * (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
-    }
-    const L = Math.hypot(ax, ay, az);
-    if (!(A > 0) || !(L > 0)) return null;
-    return { n: [ax / L, ay / L, az / L], c: [cx / A, cy / A, cz / A] };
-  };
-  const faceInfo = faces.map((f, fi) => {
-    const t = f.geomType;
-    const info = { t };
-    try {
-      const quick = fastFlat && t === "PLANE" ? flatFromMesh(m.faceGroups[fi]) : null;
-      if (quick) { info.n = quick.n; info.c = quick.c; }
-      else if (t === "PLANE") {
-        info.n = unitT(f.normalAt().toTuple());
-        info.c = f.center.toTuple();
-      } else {
-        info.c = f.center.toTuple();
-        if (t === "SPHERE") {
-          const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
-          // jumpstart-3d: free the surface, placement and point objects too (upstream left them for the garbage collector)
-          const own = [];
-          try { const sp = ad.Sphere(); own.push(sp); const ps = sp.Position(); own.push(ps); const L = ps.Location(); own.push(L); info.r = sp.Radius(); info.o = [L.X(), L.Y(), L.Z()]; } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
-        }
-        if (t === "CYLINDRE") {
-          // axis, radius and which side the material is on (for threads)
-          const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
-          const own = []; // jumpstart-3d: free the surface, placement, point and direction objects too
-          try {
-            const cy = ad.Cylinder(), pos = cy.Position();
-            own.push(cy, pos);
-            const P = (p) => { own.push(p); return [p.X(), p.Y(), p.Z()]; };
-            const reversed = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED;
-            info.r = cy.Radius(); info.ax = P(pos.Direction()); info.o = P(pos.Location());
-            info.ext = (pos.Direct() ? 1 : -1) * (reversed ? -1 : 1) > 0;
-          } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
-        }
+  // jumpstart-3d: only untouched dense STEP imports at Normal use the wider angle.
+  let faces;
+  const eligible = denseStep(options.node, Infinity, quality);
+  let m, e, faceInfo;
+  try {
+    if (eligible) faces = shape.faces;
+    const angle = eligible && faces.length > 400 ? 0.35 : 0.2 / quality;
+    m = shape.mesh({ tolerance: tol, angularTolerance: angle });
+    try { repairFaceMeshes(shape, m, tol, angle); } catch (err) {}
+    flipSlivers(m); // jumpstart-3d: a pointed cone's mesh has flat slivers at its tip; the STL writer drops them and opened the mesh
+    tick();
+    e = shape.meshEdges({ tolerance: tol, angularTolerance: angle });
+    tick();
+    faces ||= shape.faces;
+    // Dense bodies (imported meshes): flat faces get their center and normal from the
+    // display triangles, which is exact for flat faces and far quicker than integrating.
+    const fastFlat = faces.length > 400 && m.faceGroups.length === faces.length;
+    const flatFromMesh = (g) => {
+      let ax = 0, ay = 0, az = 0, cx = 0, cy = 0, cz = 0, A = 0;
+      const T = m.triangles, P = m.vertices;
+      for (let i = g.start; i < g.start + g.count; i += 3) {
+        const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3;
+        const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+        const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const ar = Math.hypot(nx, ny, nz) / 2;
+        ax += nx; ay += ny; az += nz; A += ar;
+        cx += ar * (P[a] + P[b] + P[c]) / 3; cy += ar * (P[a + 1] + P[b + 1] + P[c + 1]) / 3; cz += ar * (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
       }
-    } catch (err) {}
-    f.delete();
-    return info;
-  });
+      const L = Math.hypot(ax, ay, az);
+      if (!(A > 0) || !(L > 0)) return null;
+      return { n: [ax / L, ay / L, az / L], c: [cx / A, cy / A, cz / A] };
+    };
+    faceInfo = faces.map((f, fi) => {
+      const t = f.geomType;
+      const info = { t };
+      try {
+        const quick = fastFlat && t === "PLANE" ? flatFromMesh(m.faceGroups[fi]) : null;
+        if (quick) { info.n = quick.n; info.c = quick.c; }
+        else if (t === "PLANE") {
+          info.n = unitT(f.normalAt().toTuple());
+          info.c = f.center.toTuple();
+        } else {
+          info.c = f.center.toTuple();
+          if (t === "SPHERE") {
+            const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+            // jumpstart-3d: free the surface, placement and point objects too (upstream left them for the garbage collector)
+            const own = [];
+            try { const sp = ad.Sphere(); own.push(sp); const ps = sp.Position(); own.push(ps); const L = ps.Location(); own.push(L); info.r = sp.Radius(); info.o = [L.X(), L.Y(), L.Z()]; } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
+          }
+          if (t === "CYLINDRE") {
+            // axis, radius and which side the material is on (for threads)
+            const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+            const own = []; // jumpstart-3d: free the surface, placement, point and direction objects too
+            try {
+              const cy = ad.Cylinder(), pos = cy.Position();
+              own.push(cy, pos);
+              const P = (p) => { own.push(p); return [p.X(), p.Y(), p.Z()]; };
+              const reversed = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED;
+              info.r = cy.Radius(); info.ax = P(pos.Direction()); info.o = P(pos.Location());
+              info.ext = (pos.Direct() ? 1 : -1) * (reversed ? -1 : 1) > 0;
+            } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
+          }
+        }
+      } catch (err) {}
+      return info;
+    });
+  } finally {
+    faces?.forEach(f => f.delete());
+  }
   tick();
   const edges = shape.edges;
   const edgeIndex = new Map(edges.map((ed, i) => [ed.hashCode, i]));
@@ -3806,10 +3802,12 @@ function importPart(shape, mod, node) {
   }
 }
 
-export function buildBodies(bodies, quality = 1) {
+export function buildBodies(bodies, quality = 1, options = {}) {
   setMeshQuality(quality); // jumpstart-3d: Manifold results are made at this mesh detail, including the B-reps built from them
   const out = [];
   for (const b of bodies) {
+    // jumpstart-3d: synchronous context is always removed, even on engine failure.
+    const endProgress = beginStepBuild(b, options.onProgress);
     try {
       // jumpstart-3d: a join or cut with an imported mesh is done by Manifold and drawn from it, with no OpenCascade work; null means Manifold refused it and the code below runs as before
       const viaManifold = meshBody(b.node, quality);
@@ -3817,7 +3815,9 @@ export function buildBodies(bodies, quality = 1) {
       const shape = evalNode(b.node);
       // jumpstart-3d: a boolean can leave nothing (two boxes that do not meet, a hole that cuts all of a shape); meshing it would throw a bare engine exception
       if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
-      const mesh = meshShape(shape, quality);
+      // jumpstart-3d: cached STEP evaluations still have a real meshing boundary.
+      stepStage("meshing");
+      const mesh = meshShape(shape, quality, { node: b.node });
       { const engine = engineOf(b.node); if (engine) mesh.meshEngine = engine; } // jumpstart-3d: which engine built it (tests read this)
       if (b.node.t === "step" && !b.node.parts && stepSolids.has(b.node.asset)) mesh.stepParts = stepSolids.get(b.node.asset); // jumpstart-3d: STEP parts (#173). how many parts the file holds
       // jumpstart-3d: fill openings
@@ -3839,9 +3839,11 @@ export function buildBodies(bodies, quality = 1) {
       finally { faces.delete(); }
       shape.delete();
       out.push({ id: b.id, rev: b.rev, ok: true, mesh });
+      // jumpstart-3d: result construction is complete.
+      stepStage("sending");
     } catch (e) {
       out.push({ id: b.id, rev: b.rev, ok: false, error: friendly(e) });
-    }
+    } finally { endProgress(); }
   }
   return out;
 }

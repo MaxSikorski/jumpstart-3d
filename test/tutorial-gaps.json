@@ -6,6 +6,7 @@
       "ad-fillopen",
       "ad-ins-dxf",
       "ad-ins-img",
+      "ad-ins-realpart",
       "ad-ins-svg",
       "ad-moverot",
       "ad-pipe",
@@ -32,6 +33,7 @@
     ],
     "top bar menus": [
       "btn-import-menu",
+      "btn-insertpart-menu",
       "btn-plate",
       "btn-report",
       "export-scope-all",

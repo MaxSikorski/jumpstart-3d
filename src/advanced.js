@@ -1,6 +1,9 @@
+// jumpstart-3d: current mesh checks and accurate STEP timeout wording.
+import { currentImportView, stepStallMessage, stageName } from "./stepprogress.js";
 // Advanced mode: Fusion-style ribbon, browser, timeline and feature commands.
 import * as THREE from "three";
 import { store, findBody, findSketch, nextSeq, IDENTITY, timeline, regionsFor, regionOwners, shapeGroup, userLoops, resolveNode, bodyKey, primName, pathChain, orderPath } from "./store.js";
+import { holdImport, importBusy } from "./dropimport.js"; // jumpstart-3d: insert supplier parts
 import { el, fmt, uid, round, clone, nextColor, fileAccept } from "./util.js";
 import { getUnit, withUnit, showLen } from "./units.js";
 import { ICON } from "./icons.js";
@@ -2260,7 +2263,8 @@ export function initAdvanced(app) {
     const accept = kind === "svg" ? ".svg,image/svg+xml" : kind === "dxf" ? ".dxf" : kind === "image" ? "image/png,image/jpeg,image/webp,image/gif,image/bmp" : kind === "model" ? MODELS : ".svg,.dxf,image/png,image/jpeg,image/webp,image/gif," + MODELS;
     const f = await pickFile(accept);
     if (!f) return;
-    return openModelFile(f); // jumpstart-3d: drop import. the picker and the page-wide drop share one entry
+    if (importBusy()) { app.toast("Still opening the last file. Choose it again in a moment.", "err"); return; } // jumpstart-3d: insert supplier parts
+    return holdImport(() => openModelFile(f)); // jumpstart-3d: insert supplier parts. Hold the shared import lock for picked files.
   }
   // jumpstart-3d: drop import. What a file is, by its ending in any letter case: "model" (STL, OBJ, 3MF, STEP, STP), "svg", "dxf",
   // "image" (by its type), or null. Shared by the picker and the page-wide drop so they accept the same files.
@@ -2274,7 +2278,10 @@ export function initAdvanced(app) {
   // (the dialog it opens may still be showing); never rejects.
   async function openModelFile(f) {
     const type = fileKind(f);
-    if (type === "model") return importModel(f);
+    if (type === "model") {
+      if (app.insertPart?.noteFile(f)) { app.toast(`Already brought in from ${app.insertPart.folderName()}.`); return; } // jumpstart-3d: insert supplier parts
+      return importModel(f);
+    }
     if (!type) { app.toast("Pick an SVG, DXF or picture file.", "err"); return; }
     try {
       if (type === "image") {
@@ -2296,11 +2303,14 @@ export function initAdvanced(app) {
   async function importModel(file, bytesIn) {
     const ext = (file.name.split(".").pop() || "").toLowerCase();
     const base = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "Import";
+    // jumpstart-3d: include file reading in elapsed import time.
+    const session = /^(step|stp)$/.test(ext) ? app.stepProgress.start(file.name) : null;
     try {
       const bytes = bytesIn || new Uint8Array(await file.arrayBuffer());
       if (ext === "step" || ext === "stp") {
-        addImported({ kind: "step", bytes, name: base, k: 1, plate: true }); // jumpstart-3d: drop import. a model file lands on the plate centre
-        app.toast(`Imported ${file.name} as a CAD solid. It may take a moment to appear.`);
+        // jumpstart-3d: a document replacement during file IO cancels this import.
+        if (!app.stepProgress.sessions.has(session.token)) return;
+        addImported({ kind: "step", bytes, name: base, k: 1, plate: true, session }); // jumpstart-3d: drop import. a model file lands on the plate centre
         return;
       }
       const big = bytes.length > 4e6;
@@ -2318,11 +2328,11 @@ export function initAdvanced(app) {
         const bodyId = addImported({ kind: "mesh", bytes: packMesh(mesh), name: base, k: 1, plate: true });
         showImportToast({ app, bodyId, fileName: file.name, mesh, ntOrig: nt0, info, frame: frameIfOffScreen });
       } else importStlCmd(mesh, base, file.name, nt0, info);
-    } catch (e) { app.toast(e.message || "That file couldn't be read.", "err"); }
+    } catch (e) { app.stepProgress.finish(session); app.toast(e.message || "That file couldn't be read.", "err"); }
   }
   // jumpstart-3d: STEP parts (#173). A STEP file with up to this many parts comes in as one body per part; a bigger one stays one fused body.
   const MAX_SPLIT_PARTS = 200;
-  function addImported({ kind, bytes, name, k, plate }) { // jumpstart-3d: drop import. plate: put it at the plate centre (X 0, Y 0), not at the view target
+  function addImported({ kind, bytes, name, k, plate, session }) { // jumpstart-3d: drop import. plate: put it at the plate centre (X 0, Y 0), not at the view target
     const id = contentId(bytes);
     const data = toB64(bytes);
     let bodyId = null;
@@ -2336,23 +2346,70 @@ export function initAdvanced(app) {
     app.select([bodyId]);
     if (data.length > 3e6) app.toast("This model is large: if saving in the browser fails, use Export → Save Project File to keep your design.");
     // big meshes take a few seconds to turn into a solid: say so, then say when it's there
+    // jumpstart-3d: one deadline and one session survive the parts handoff.
     const t0 = Date.now();
+    if (session) {
+      const checkImport = () => {
+        if (!app.stepProgress.sessions.has(session.token) || session.handoff) return;
+        const there = session.ids.map(body => store.doc.bodies.find(b => b.id === body)).filter(b => b && b.node.asset === id);
+        if (!there.length) { app.stepProgress.finish(session); return; }
+        const ready = there.filter(b => currentImportView(app, b));
+        const failed = there.filter(b => app.kernel.get(b._key)?.ok === false);
+        if (session.stage !== "parts" && ready.length && ready[0].id === bodyId) {
+          const v = currentImportView(app, ready[0]);
+          if (store.preview && v.data.stepParts > 1 && stepStillPlain(bodyId, id)) return;
+          if (v.data.stepParts > 1 && !session.splitTried) {
+            session.splitTried = true;
+            session.handoff = true;
+            try { if (splitStepParts({ bodyId, assetId: id, name, parts: v.data.stepParts, imported, session })) { queueMicrotask(checkImport); return; } }
+            finally { session.handoff = false; }
+          }
+        }
+        session.ready = ready.length;
+        app.stepProgress.update(session);
+        const complete = ready.length + failed.length === there.length;
+        if (plate && ready.length && ((!session.framedFirst && session.stage === "parts") || (complete && !session.framedComplete))) {
+          frameIfOffScreen(ready.map(b => b.id));
+          session.framedFirst = true;
+          if (complete) session.framedComplete = true;
+        }
+        // jumpstart-3d: finish after a frame with these current meshes, not on receipt of a worker message.
+        const renderedKey = ready.map(b => b.id + ":" + b._key).join("|");
+        if (!failed.length && ready.length === there.length && session.renderedKey !== renderedKey && !document.hidden) {
+          if (!session.frame) session.frame = requestAnimationFrame(() => { session.frame = 0; session.renderedKey = renderedKey; checkImport(); });
+          return;
+        }
+        if ((failed.length || ready.length === there.length) && (session.stage !== "parts" || complete)) {
+          if (failed.length) {
+            const result = app.kernel.get(failed[0]._key);
+            app.toast(result.limitMs ? stepStallMessage(name, result, session.lastStage || session.stage) : session.stage === "parts" ? `${failed.length} of ${session.ids.length} parts of ${name} couldn't be built: ${result.error}` : `Couldn't build ${name}: ${result.error}`, "err");
+          } else if (Date.now() - t0 > 2500) app.toast(session.stage === "parts" ? `${session.ids.length} parts of ${name} are ready.` : name + " is ready.");
+          app.stepProgress.finish(session); return;
+        }
+        if (performance.now() - session.start > 180000) {
+          const hint = (app.kernel.quality || 1) > 1 ? " Try Normal mesh detail for faster loading." : "";
+          app.toast(`${name} is still loading after 3 minutes. Last stage: ${stageName(session.lastStage || session.stage)}.${hint}`, "err");
+          app.stepProgress.finish(session);
+        }
+
+      };
+      app.stepProgress.attach(session, [bodyId], id, checkImport);
+      app.status();
+      return bodyId;
+    }
     let told = false;
     let framed = false;
     const watch = setInterval(() => {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
       if (plate && !framed && v && v.preview) { framed = true; frameIfOffScreen(bodyId); } // jumpstart-3d: import preview. frame it as soon as the preview shows
-      // jumpstart-3d: STEP parts (#173). a drag or an open command holds a preview that a split would wipe: wait for it to end, then split
-      if (kind === "step" && store.preview && v && v.data && v.data.stepParts > 1 && stepStillPlain(bodyId, id)) return;
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
-        if (kind === "step" && v && v.data && v.data.stepParts > 1 && splitStepParts({ bodyId, assetId: id, name, parts: v.data.stepParts, imported, plate, t0 })) return; // jumpstart-3d: STEP parts (#173). the parts' own watcher takes over
         if (plate && v && v.data && store.doc.bodies.some((b) => b.id === bodyId)) frameIfOffScreen(bodyId); // jumpstart-3d: drop import
         // jumpstart-3d: STEP parts (#173). a stalled read gets a plain word of its own; giving up after 3 minutes is no longer silent
-        if (err && store.doc.bodies.some((b) => b.id === bodyId)) app.toast(/stalled the geometry engine/.test(err) ? `Couldn't import ${name}: reading it took longer than 2 minutes, so it was stopped. Files with many detailed parts can take that long.` : `Couldn't build ${name}: ${err}`, "err"); // jumpstart-3d: drop import. a failed build used to show only in the status line
+        if (err && store.doc.bodies.some((b) => b.id === bodyId)) app.toast(`Couldn't build ${name}: ${err}`, "err"); // jumpstart-3d: drop import. a failed build used to show only in the status line
         else if (!(v && v.data) && store.doc.bodies.some((b) => b.id === bodyId)) app.toast(`${name} is still not ready after 3 minutes.`, "err");
         if (v && v.data && Date.now() - t0 > 2500) app.toast(name + " is ready.");
-      } else if (Date.now() - t0 > 1500 && !told) { told = true; app.toast(kind === "step" ? `Reading ${name}… big STEP files can take a minute or two.` : "Preparing " + name + "… larger models can take up to a minute."); } // jumpstart-3d: STEP parts (#173). the STEP wording
+      } else if (Date.now() - t0 > 1500 && !told) { told = true; app.toast("Preparing " + name + "… larger models can take up to a minute."); } // jumpstart-3d: mesh imports retain their preparation note
     }, 500);
     return bodyId;
   }
@@ -2362,7 +2419,7 @@ export function initAdvanced(app) {
     const at = store.doc.bodies.find((b) => b.id === bodyId);
     return !!at && at.node.t === "step" && at.node.asset === assetId && !at.node.parts && !(at.node.mods || []).length;
   }
-  function splitStepParts({ bodyId, assetId, name, parts, imported, plate, t0 }) {
+  function splitStepParts({ bodyId, assetId, name, parts, imported, session }) {
     if (!stepStillPlain(bodyId, assetId)) return false;
     if (parts > MAX_SPLIT_PARTS) { app.toast(`${name} has ${parts} parts. Files with more than ${MAX_SPLIT_PARTS} parts come in as one body.`); return false; }
     // nothing happened since the import: the split joins its undo step. The import's own entry is taken off first and put back in place of the split's,
@@ -2391,17 +2448,8 @@ export function initAdvanced(app) {
     if (own && next) store.undoStack[store.undoStack.length - 1] = own; // one Undo removes the whole import; Redo brings every part back
     if (!next) return false;
     app.select(ids);
-    const watchParts = setInterval(() => {
-      const there = ids.filter((id) => store.doc.bodies.some((b) => b.id === id));
-      if (!there.length) { clearInterval(watchParts); return; }
-      const done = (id) => { const v = app.scene.views.get(id); return !!app.scene.errors.get(id) || !!(v && v.data && !v.pending); };
-      if (!there.every(done)) return;
-      clearInterval(watchParts);
-      const failed = there.filter((id) => app.scene.errors.get(id));
-      if (plate) frameIfOffScreen(there.filter((id) => !app.scene.errors.get(id)));
-      if (failed.length) app.toast(`${failed.length} of ${parts} parts of ${name} couldn't be built: ${app.scene.errors.get(failed[0])}`, "err");
-      else if (Date.now() - t0 > 2500) app.toast(`${parts} parts of ${name} are ready.`);
-    }, 500);
+    // jumpstart-3d: attach every part before returning to the original watcher.
+    app.stepProgress.parts(session, ids);
     return true;
   }
   // jumpstart-3d: drop import. A file import lands at the plate centre; a view that is zoomed in or panned away would not show it, so frame it then.
@@ -6058,11 +6106,14 @@ export function initAdvanced(app) {
       ] },
     ]);
     group("Insert", "", [
-      { id: "ad-insert", label: "Insert", title: "Insert an SVG, DXF or picture", icon: "import", dropdown: [
+      // jumpstart-3d: insert supplier parts
+      { id: "ad-insert", label: "Insert", title: "Insert an SVG, DXF, picture, model or supplier part", icon: "import", dropdown: [
         { id: "ad-ins-svg", label: "SVG drawing", title: "Insert an SVG drawing as a sketch", icon: "svgfile", fn: () => insertFile("svg") },
         { id: "ad-ins-dxf", label: "DXF drawing", title: "Insert a DXF drawing as a sketch", icon: "dxffile", fn: () => insertFile("dxf") },
         { id: "ad-ins-img", label: "Image to trace", title: "Place a picture to trace over (canvas)", icon: "image", fn: () => insertFile("image") },
         { id: "ad-ins-model", label: "STL / OBJ / 3MF / STEP model", title: "Import a 3D model: an STL, OBJ or 3MF mesh, or a STEP solid", icon: "import", fn: () => insertFile("model") }, // jumpstart-3d: OBJ import
+        // jumpstart-3d: insert supplier parts
+        { id: "ad-ins-realpart", label: "Real part from a supplier…", title: "Find a supplier part and import its downloaded model", icon: "import", fn: () => app.insertPart.open() },
       ] },
     ]);
     group("Modify", "", [
@@ -6118,6 +6169,8 @@ export function initAdvanced(app) {
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", esc, true);
     document.body.append(menu);
+    // jumpstart-3d: a menu under a button near the right edge (a phone or tablet scrolls the ribbon) stays on screen
+    { const mw = menu.offsetWidth; if (r.left + mw > innerWidth - 8) menu.style.left = Math.max(8, innerWidth - mw - 8) + "px"; }
     anchor.setAttribute("aria-expanded", "true");
     const first = menu.querySelector("[aria-checked=true]") || menu.querySelector("button");
     first && first.focus();
