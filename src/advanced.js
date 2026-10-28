@@ -21,6 +21,7 @@ import { renderImage, QUALITY, LIGHT_COLORS, LIGHT_TYPES, BACKGROUNDS } from "./
 import { LIB, TEX_CATS, TEXTURE_DEFAULTS, textureThumb, texByKey, registerImageTexture, bytesToB64 } from "./texture.js";
 import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
+import { previewWorldBox } from "./meshpreview.js"; // jumpstart-3d: import preview
 import { importsAtOnce, showImportToast } from "./importtoast.js"; // jumpstart-3d: import units
 import { initMeasure } from "./measure.js";
 import { commitCombine, hasLaterKeepPiece } from "./combinesplit.js"; // jumpstart-3d: separate Combine pieces
@@ -30,6 +31,8 @@ import { sketchesDXF } from "./dxf.js";
 import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
+import { initFillOpenings } from "./fillopenings.js"; // jumpstart-3d: fill openings
+import { initFaceBox } from "./facebox.js"; // jumpstart-3d: box on face
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
 import { snapSwitch, fine, makeGizmo, axisAlong, ringDrag, turnFeedback, placePill } from "./rotationui.js"; // jumpstart-3d: rotation access
 import { liveGizmo, onEscape } from "./pivot.js"; // jumpstart-3d: pivot
@@ -2323,8 +2326,10 @@ export function initAdvanced(app) {
     // big meshes take a few seconds to turn into a solid: say so, then say when it's there
     const t0 = Date.now();
     let told = false;
+    let framed = false;
     const watch = setInterval(() => {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
+      if (plate && !framed && v && v.preview) { framed = true; frameIfOffScreen(bodyId); } // jumpstart-3d: import preview. frame it as soon as the preview shows
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
         if (plate && v && v.data && store.doc.bodies.some((b) => b.id === bodyId)) frameIfOffScreen(bodyId); // jumpstart-3d: drop import
@@ -2337,7 +2342,7 @@ export function initAdvanced(app) {
   // jumpstart-3d: drop import. A file import lands at the plate centre; a view that is zoomed in or panned away would not show it, so frame it then.
   // A body that is already fully in view leaves the camera alone.
   function frameIfOffScreen(id) {
-    const box = scene.bodyTightBox(id);
+    const box = scene.bodyTightBox(id) || previewWorldBox(scene.views.get(id)); // jumpstart-3d: import preview. the preview's box until the solid is built
     if (!box || box.isEmpty()) return;
     vp.updateCamera(); // the camera as the view says it is now, not as the last frame drew it
     vp.camera.updateMatrixWorld(true);
@@ -5760,6 +5765,7 @@ export function initAdvanced(app) {
     else if (m.t === "scale") scaleCmd({ body: b.id, mod: m.id });
     else if (m.t === "emboss") embossCmd({ body: b.id, mod: m.id });
     else if (m.t === "facepat") facePatternCmd({ body: b.id, mod: m.id });
+    else if (m.t === "fillopen") fillOpen.cmd({ body: b.id, mod: m.id }); // jumpstart-3d: fill openings
     else if (m.t === "pattern") patternCmd({ body: b.id, mod: m.id }); // jumpstart-3d: pattern
     else if (m.t === "keeppiece") app.toast(`This body keeps piece ${m.piece + 1} of ${m.count}. Its earlier features are independent copies. Undo Combine or Group to restore the inputs.`); // jumpstart-3d: split pieces
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
@@ -5996,6 +6002,7 @@ export function initAdvanced(app) {
         ] },
       { id: "ad-offset", label: "Offset face", title: "Offset face / press pull (Q)", icon: "offset", fn: () => offsetCmd() },
       { id: "ad-shell", label: "Shell", icon: "shell", fn: () => shellCmd() },
+      { id: "ad-fillopen", label: "Fill openings", title: "Make the openings in a flat face solid (vents, slots, holes, logos)", icon: "fillOpen", fn: () => fillOpen.cmd() }, // jumpstart-3d: fill openings
       { id: "ad-advmod", label: "Advanced Modify", title: "Combine, Split body and Split face", icon: "combine", dropdown: [
         { id: "ad-combine", label: "Combine", title: "Join, cut or intersect bodies (B)", icon: "combine", fn: () => combineCmd() },
         { id: "ad-splitbody", label: "Split body", title: "Cut a body into pieces with a plane, a face or another body", icon: "splitBody", fn: () => splitBodyCmd() },
@@ -6247,7 +6254,7 @@ export function initAdvanced(app) {
   }
 
   // ------------------------------------------------------------------ timeline
-  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", keeppiece: "splitBody", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", pattern: "pattern" }; // jumpstart-3d: pattern
+  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", keeppiece: "splitBody", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", pattern: "pattern", fillopen: "fillOpen" }; // jumpstart-3d: pattern, fill openings
   let lastTl = null, lastTlT = 0;
   function renderTimeline() {
     tl.innerHTML = "";
@@ -6412,6 +6419,8 @@ export function initAdvanced(app) {
   const { pipeCmd, coilCmd } = initPipeCoil(app, { vp, scene, openCmd, closeCmd, commit, schedulePreview, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawDot, clearOv, row, seg, pickbox, pickSketchCurve, pathPts, deleteFeature, frameFrom });
   const fasteners = initFasteners(app, { openCmd, commit, row, seg, offsetSelect, STD }); // jumpstart-3d: fasteners
   const holePattern = initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv, offsetSelect, pitchRow, planeFromFace, CLEAR, CBORE, CSINK, TAP, isInchKey }); // jumpstart-3d: hole pattern
+  const fillOpen = initFillOpenings(app, { openCmd, commit, schedulePreview, deleteFeature, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv }); // jumpstart-3d: fill openings
+  const faceBox = initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, pickBaseFace, drawFace, ov, clearOv, planeFromFace }); // jumpstart-3d: box on face
   const gears = initGears(app, { openCmd, commit, row, seg }); // jumpstart-3d: gears
   const namePlate = initNamePlate(app, { openCmd, commit, row, seg }); // jumpstart-3d: name plates
   const knurl = initKnurl(app, { openCmd, commit, row, seg }); // jumpstart-3d: knurl
@@ -6552,6 +6561,8 @@ export function initAdvanced(app) {
     paramRows, // jumpstart-3d: parameters
     fastener: () => fasteners.cmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
+    fillOpenings: () => fillOpen.cmd(), // jumpstart-3d: fill openings
+    faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
     namePlate: () => namePlate.cmd(), addNamePlate: (spec) => namePlate.add(spec), // jumpstart-3d: name plates
     knurl: () => knurl.cmd(), addKnurl: (spec) => knurl.add(spec), // jumpstart-3d: knurl

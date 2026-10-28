@@ -284,6 +284,7 @@ button { cursor: pointer; }
 .vp-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .vp-label { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); font: 500 11.5px/1 var(--f-mono); background: var(--glass); border: 1px solid var(--line); color: var(--ink); padding: 3px 5px; border-radius: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vp-label.err { background: var(--err-bg); border-color: var(--err-line); color: var(--danger); font-family: var(--f-ui); }
+.vp-label.prep { background: var(--panel); color: var(--ink-2); font-family: var(--f-ui); font-size: 11.5px; } /* jumpstart-3d: import preview */
 .vp-label.coord { background: var(--panel); color: var(--ink-2); font-size: 11px; }
 .vp-label.coord.snapped { background: #e8a317; border-color: #c98a0c; color: #1d1404; font-weight: 600; }
 .vp-label.angle { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
@@ -1462,9 +1463,12 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <button class="tb-btn" id="btn-full" title="Full screen" aria-label="Full screen" aria-pressed="false"><svg class="fs-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fs-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg><span class="fs-lbl">Exit full screen</span></button>
     <button class="tb-btn" id="btn-projects" title="Your designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="lbl">Designs</span></button>
     <div class="menu-wrap">
-      <button class="tb-btn" id="btn-export" aria-haspopup="true" title="Open a project file, save a copy, or export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span class="lbl">Open/Export</span></button>
+      <button class="tb-btn" id="btn-export" aria-haspopup="true" title="Open a project file, import a model, save a copy, or export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></svg><span class="lbl">Open/Export</span></button>
       <div class="menu" id="menu-export" hidden>
         <button id="btn-tutorials-menu" class="menu-tut" title="Tutorials: step-by-step projects">Tutorials <small>step-by-step lessons</small></button><hr class="menu-tut"><!-- jumpstart-3d: phone Tutorials entry (the top bar has no room at 560 px and below) -->
+        <button data-act="import">Open a project file…</button>
+        <button id="btn-import-menu" title="Import a 3D model (STL, OBJ, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace">Import a model, drawing or picture… <small>.stl .obj .3mf .step .svg .dxf</small></button>
+        <hr><!-- jumpstart-3d: import in the file menu -->
         <button data-act="stl">STL for 3D printing <small>.stl</small></button>
         <button data-act="obj">OBJ for Blender and other 3D apps <small>.obj</small></button>
         <button data-act="3mf">3MF for 3D printing (with colors) <small>.3mf</small></button>
@@ -1473,7 +1477,6 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <button data-act="dxf" title="Every sketch, flat, for laser or vinyl cutters and other CAD">Sketches as DXF <small>.dxf</small></button>
         <hr>
         <button data-act="json">Save Project File <small>.json</small></button>
-        <button data-act="import">Open a project file…</button>
         <button id="btn-share-link" title="Make a link that holds a small design, or open one that was shared with you. Nothing is uploaded.">Share link… <small>copy a link</small></button><!-- jumpstart-3d: share link -->
         <button data-act="runscript" title="Run a JavaScript file that uses the JS3D scripting bridge (see BRIDGE.md)">Run script… <small>.js</small></button><!-- jumpstart-3d: run script -->
         <button id="btn-codecad" data-act="codecad" title="Write replicad code that builds one solid. The solid becomes an ordinary STEP body that keeps its code">Code CAD… <small>replicad</small></button><!-- jumpstart-3d: Code CAD -->
@@ -1530,7 +1533,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.7.7 · community build 26</p>
+    <p class="sp-ver" id="sp-ver">Version 2.7.7 · community build 27</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

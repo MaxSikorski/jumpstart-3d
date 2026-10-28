@@ -184,8 +184,8 @@ const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil
 const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
 const CHILD_KEYS = new Set(["node", "m", "hole", "color", "name", "hidden", "id", "seq"]);
-const MOD_TYPES = new Set(["fillet", "chamfer", "hole", "bool", "keeppiece", "halfspace", "sketchsplit", "splitface", "offset", "shell", "emboss", "facepat", "thread", "scale", "pattern"]);
-const MOD_KEYS = new Set(["id", "seq", "t", "exprs", "exprUnits", "angle", "at", "ax1", "ax2", "cax", "cbDepth", "cbDia", "center", "chain", "clear", "closed", "cn", "count", "csAngle", "csDia", "curves", "d", "depth", "dia", "dir", "edges", "face", "faces", "feats", "flip", "k", "kind", "left", "length", "m", "mode", "n", "n1", "n2", "o", "op", "p", "piece", "pitch", "plane", "poly", "r", "s1", "s2", "sets", "side", "sym", "th", "through", "tip", "tool", "what", "size", "x", "str", "font", "along", "mirror", "reverse", "sketch", "tapped", "hidden", "src", "sole"]);
+const MOD_TYPES = new Set(["fillopen", "fillet", "chamfer", "hole", "bool", "keeppiece", "halfspace", "sketchsplit", "splitface", "offset", "shell", "emboss", "facepat", "thread", "scale", "pattern"]);
+const MOD_KEYS = new Set(["keep", "id", "seq", "t", "exprs", "exprUnits", "angle", "at", "ax1", "ax2", "cax", "cbDepth", "cbDia", "center", "chain", "clear", "closed", "cn", "count", "csAngle", "csDia", "curves", "d", "depth", "dia", "dir", "edges", "face", "faces", "feats", "flip", "k", "kind", "left", "length", "m", "mode", "n", "n1", "n2", "o", "op", "p", "piece", "pitch", "plane", "poly", "r", "s1", "s2", "sets", "side", "sym", "th", "through", "tip", "tool", "what", "size", "x", "str", "font", "along", "mirror", "reverse", "sketch", "tapped", "hidden", "src", "sole"]);
 const SKETCH_KEYS = new Set(["id", "name", "seq", "plane", "pts", "ents", "hidden", "onBody", "faceCenter", "fromFace", "cons", "image"]);
 const ENT_KEYS = {
   line: ["a", "b"], circle: ["c", "r"], arc: ["c", "a", "b"], spline: ["pts", "closed"], point: ["p"], text: ["p", "str", "size", "angle", "font"],
@@ -461,6 +461,11 @@ function node(n, ctx, what) {
         if (m.tool !== undefined) node(obj(m.tool, "a cutting shape"), ctx, what);
         if (m.m !== undefined) mat16(m.m, "a cutting shape placement");
       } else if (m.src !== undefined) throw damaged("a modifier source");
+      if (m.t === "fillopen") {
+        obj(m.plane, "an opening plane"); allow(m.plane, new Set(["o", "n"]), "an opening plane");
+        vec(m.plane.o, 3, "plane origin"); vec(m.plane.n, 3, "plane normal");
+        for (const e of arr(m.keep, "kept openings", LIMITS.NODES)) { obj(e, "a kept opening"); allow(e, new Set(["c", "a"]), "a kept opening"); vec(e.c, 3, "opening centre"); num(e.a, "opening area"); if (e.a < 0) throw damaged("opening area"); }
+      }
       exprs(m, ctx);
       counts(m, ctx);
     }

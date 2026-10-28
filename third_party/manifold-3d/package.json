@@ -1,1 +1,1 @@
-{"name":"manifold-3d","type":"module","main":"index.js"}
+{"name":"manifold-3d","version":"3.5.4","type":"module","main":"index.js","license":"Apache-2.0","description":"manifold-3d 3.5.4 as vendored by JumpStart 3D: the package's own glue (manifold.js), its WebAssembly file as a gzipped base64 string (wasm.js) and a loader (index.js)."}

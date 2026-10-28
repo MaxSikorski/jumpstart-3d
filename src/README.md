@@ -18,6 +18,10 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sharelink.js` | Share link: a small design inside a web address |
 | `fasteners.js` | Bolts, nuts, threaded rods, tap cutters |
 | `holepattern.js` | Rows, staggered rows or a circle of holes on a face |
+| `fillopen.js` | Fill openings, the geometry: finds the openings in a flat face (vents, slots, holes, logos) and rebuilds the part's faces without them, no boolean; runs in the worker and in Node |
+| `fillopenings.js` | Fill openings, the panel: click a flat face, outlines of every opening, click one to keep it open, Fill; one `fillopen` feature, editable from the timeline |
+| `fillpick.js` | Plain helpers for that panel (`openingAt`: which opening is under a point; the keep-open matching), with no DOM so Node tests import them |
+| `facebox.js` | Box on face (Beginner): click a flat face, drag a rectangle with live sizes, set the height (out, into or both ways); adds a plain box body on the face |
 | `gears.js` | Spur, rack and bevel gears |
 | `nameplate.js` | A plate sized to its text, raised or cut in |
 | `knurl.js` | Knurled knobs |
@@ -37,8 +41,10 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `importtoast.js` | Import units: a closed mesh of known units (3MF, OBJ and STL from 6 mm up) comes in at once; the note with its size, repairs and mm / cm / in buttons (one undo step); the dialog stays for open or non-manifold meshes and STL or OBJ under 6 mm; the note also has a CAD faces… shortcut to Mesh to STEP |
+| `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
+| `meshbool.js` | Joins, cuts and combines that involve an imported mesh run on Manifold (triangle-mesh engine, `third_party/manifold-3d/`) instead of OpenCascade. `startManifold()` / `manifoldReady()` load it (the worker starts it on a mesh asset; a failed or 15 s stuck start ends in a kept error and OpenCascade does the booleans); `kernel.js` calls it from marked blocks (`import` + `initMeshBool`, the top of `evalNode`, `buildBodies`, `clearCache`). `meshBody` draws a meshy body from a Manifold (`meshEngine: "manifold"`); `meshBrep` builds a B-rep from it on demand; a refusal runs today's OpenCascade code (`meshEngine: "occt-fallback"`). Corners of a moved operand go back to the decimal they were written as, through the matrix in doubles, to float32 once (so a moved mesh still meets a box set on its face); `simplify(1e-5)`, cavities kept with the solid around them, closed-by-position check, films dropped |
 | `sw.js` | Service worker, site only (see section 4) |
 
 ## 2. J.Siwek's, with our marked blocks
@@ -52,6 +58,7 @@ No markers. On a port, take his new version whole. Do not "tidy" these.
 
 ## 4. Special files
 - `occt-gz.wasm` (7.2 MB): the OpenCascade kernel, gzipped. The worker fetches it on the site; the single file carries it as base64. If upstream's wasm changes, `tools/upstream-merge.mjs` only reports it: re-gzip with `gzip -9 -n`.
+- `../third_party/manifold-3d/`: the Manifold engine (manifold-3d 3.5.4), vendored: the package's glue, its wasm as a gzipped base64 string in `wasm.js`, our loader `index.js`. It rides inside `docs/worker.js` and the single file (about +225 KB gzipped); `build.mjs` and `sw.js` needed no change. Regenerate with `tools/vendor-manifold.mjs`; the README there has the hashes.
 - `flexigen.html`, `meshstep.html`, `chisel.html`: built helper pages, committed and imported as text. Rebuild steps: `tools/README-helpers.md`.
 - `sw.js`: site only. `build.mjs` copies it to `docs/sw.js` with a version hash. Never remove it from the site (a 404 keeps the old worker serving its cache forever).
 - `camworker.js`: `build.mjs` bundles it in memory for CAM Studio's Blob worker. `camworker.bundle.txt` is gitignored; a stale copy can never win.

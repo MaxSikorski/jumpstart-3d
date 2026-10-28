@@ -5,7 +5,9 @@ import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: th
 import { fontBytes } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
 import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
+import { fillOpenings, analyseOpenings, chooseOpenings } from "./fillopen.js"; // jumpstart-3d: fill openings
 import { shellField, isoSurface } from "./sdfshell.js";
+import { initMeshBool, meshBody, meshBrep, engineOf, qualityKey, setMeshQuality, clearMeshCache, setMeshBoolEnabled, meshBoolReason } from "./meshbool.js"; // jumpstart-3d: joins and cuts with an imported mesh run on Manifold
 
 let OC = null;
 // a face normal as a unit vector (replicad's isn't normalized on curved faces)
@@ -38,6 +40,7 @@ function cachePut(key, shape) {
 export function clearCache() {
   for (const s of cache.values()) try { s.delete(); } catch (e) {}
   cache.clear();
+  clearMeshCache(); // jumpstart-3d: Manifold results
 }
 
 // ---------------------------------------------------------------- helpers
@@ -966,8 +969,42 @@ function matchEdges(shape, sigs) {
 }
 
 // ---------------------------------------------------------------- modifiers
+// jumpstart-3d: fill openings
+let lastFillReport;
+const fillReports = new Map();
+// Retain reports recovered after eviction as well as reports made during a fill.
+function rememberFillReport(key, report) {
+  fillReports.set(key, report);
+  if (fillReports.size > 30) fillReports.delete(fillReports.keys().next().value);
+}
+// The key evalNode caches a node's B-rep under (it includes the mesh detail for a body with a Manifold result in it); every fill report is stored and read
+// under this one key, so a build never analyses twice and never returns another detail's report.
+const fillKey = (node) => stableKey(node) + qualityKey(node);
+// The report of every Fill openings feature of a built body, on both routes (OpenCascade and Manifold).
+function attachFillReports(node, mesh) {
+  for (const [i, mod] of (node.mods || []).entries()) if (mod.t === "fillopen") {
+    const prefix = { ...node, mods: node.mods.slice(0, i + 1) }, key = fillKey(prefix);
+    let report = fillReports.get(key);
+    if (!report) {
+      const before = evalNode({ ...prefix, mods: prefix.mods.slice(0, -1) });
+      try {
+        report = chooseOpenings(analyseOpenings(before, mod.plane), mod.keep);
+        rememberFillReport(key, report);
+      } finally {
+        before.delete();
+      }
+    }
+    (mesh.fillReports ||= {})[mod.id] = report;
+  }
+}
 function applyMod(shape, mod) {
   switch (mod.t) {
+    // jumpstart-3d: fill openings
+    case "fillopen": {
+      const result = fillOpenings(shape, mod, fixSolid);
+      lastFillReport = result.report;
+      return result.shape;
+    }
     case "fillet":
     case "chamfer": {
       // one or more selection sets, each with its own size; a fillet's radius can be
@@ -2903,6 +2940,13 @@ function scaleMod(m, k, o) {
   const N = (n) => { if (!n) return n; const v = n.map((x, i) => x / k[i]); const l = Math.hypot(...v) || 1; return v.map((x) => x / l); };
   const uni = isUniform(k);
   switch (m.t) {
+    // jumpstart-3d: fill openings
+    case "fillopen":
+      return uni ? {
+        ...m,
+        plane: { o: P(m.plane.o), n: N(m.plane.n) },
+        keep: (m.keep || []).map(entry => ({ c: P(entry.c), a: entry.a * k[0] * k[0] })),
+      } : null;
     case "fillet": case "chamfer": {
       const E = (list) => (list || []).map((e) => ({ ...e, a: P(e.a), b: P(e.b), m: P(e.m), t: e.t === "LINE" || uni ? e.t : undefined }));
       return { ...m, edges: E(m.edges), sets: m.sets && m.sets.map((x) => ({ ...x, edges: E(x.edges) })) };
@@ -3252,7 +3296,8 @@ function evalBase(node) {
 }
 
 export function evalNode(node) {
-  const key = stableKey(node);
+  { const viaManifold = meshBrep(node); if (viaManifold) return viaManifold; } // jumpstart-3d: a join or cut with an imported mesh was done by Manifold; this is its B-rep (STEP export, a fillet or shell on top, Code CAD)
+  const key = stableKey(node) + qualityKey(node); // jumpstart-3d: a node with a Manifold result in it depends on the mesh detail
   const hit = cacheGet(key);
   if (hit) return hit;
   let shape;
@@ -3267,6 +3312,10 @@ export function evalNode(node) {
     const prefix = { ...node, mods: mods.slice(0, -1) };
     shape = evalNode(prefix);
     shape = solidsOnly(applyMod(shape, mods[mods.length - 1]));
+    // jumpstart-3d: fill openings
+    if (last.t === "fillopen") {
+      rememberFillReport(key, lastFillReport); // key = fillKey(node)
+    }
   } else {
     shape = solidsOnly(evalBase(node));
   }
@@ -3596,13 +3645,20 @@ function solidPieces(shape) {
 }
 
 export function buildBodies(bodies, quality = 1) {
+  setMeshQuality(quality); // jumpstart-3d: Manifold results are made at this mesh detail, including the B-reps built from them
   const out = [];
   for (const b of bodies) {
     try {
+      // jumpstart-3d: a join or cut with an imported mesh is done by Manifold and drawn from it, with no OpenCascade work; null means Manifold refused it and the code below runs as before
+      const viaManifold = meshBody(b.node, quality);
+      if (viaManifold) { attachFillReports(b.node, viaManifold); out.push({ id: b.id, rev: b.rev, ok: true, mesh: viaManifold }); continue; } // jumpstart-3d: fill openings keep their reports on this route too
       const shape = evalNode(b.node);
       // jumpstart-3d: a boolean can leave nothing (two boxes that do not meet, a hole that cuts all of a shape); meshing it would throw a bare engine exception
       if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
       const mesh = meshShape(shape, quality);
+      { const engine = engineOf(b.node); if (engine) mesh.meshEngine = engine; } // jumpstart-3d: which engine built it (tests read this)
+      // jumpstart-3d: fill openings
+      attachFillReports(b.node, mesh);
       // jumpstart-3d: only new Combine/Group actions use the count to create bodies.
       const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
       mesh.solidCount = 0;
@@ -3659,4 +3715,9 @@ export function exportStep(bodies) {
   const comp = shapes.length === 1 ? shapes[0] : R.makeCompound(shapes);
   return comp.blobSTEP();
 }
-export const _test = { solidFromMesh, safeVolume, shellSolid: (s, t, faces, dir, method) => shellSolid(s, t, new Set(faces.map((f) => f.hashCode)), dir, safeVolume(s), method || "auto") };
+// jumpstart-3d: Manifold gets what it needs from here (a function call at load time, so meshbool.js does not import kernel.js)
+initMeshBool({ evalNode, assetBytes, solidFromMesh, makeCompound: (shapes) => R.makeCompound(shapes), isNearEmpty, stableKey, cacheGet, cachePut, nothingLeft: NOTHING_LEFT });
+export const _test = { setMeshBoolEnabled, meshBoolReason, withoutManifold: (fn) => { setMeshBoolEnabled(false); try { return fn(); } finally { setMeshBoolEnabled(true); } }, solidFromMesh, safeVolume, shellSolid: (s, t, faces, dir, method) => shellSolid(s, t, new Set(faces.map((f) => f.hashCode)), dir, safeVolume(s), method || "auto") };
+
+// jumpstart-3d: fill openings
+Object.assign(_test, { fixSolid, scaleMod });

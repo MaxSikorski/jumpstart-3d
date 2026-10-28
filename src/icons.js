@@ -104,6 +104,8 @@ export const ICON = {
   archPlanDoc: S('<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 11h7v6H9zM12 11v3" stroke="#1f4fa8"/>'),
   archExport: S('<path d="M4 15v5h16v-5"/><path d="M12 3v12M8 11l4 4 4-4" stroke="#1f4fa8"/>'),
   archSend: S('<path d="M3 13 12 6l9 7"/><path d="M6 11v8h7"/><path d="M15 17h6M18.5 14.5 21 17l-2.5 2.5" stroke="#1f4fa8"/>'),
+  // jumpstart-3d: fill openings. a square plate with one hole drawn dashed (the hole being made solid)
+  fillOpen: S('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.5" stroke="#1f4fa8" stroke-dasharray="2.2 2.2"/>'),
   facePattern: S('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 6.5l2 1.2v2.3l-2 1.2-2-1.2V7.7z M16 6.5l2 1.2v2.3l-2 1.2-2-1.2V7.7z M12 13l2 1.2v2.3l-2 1.2-2-1.2v-2.3z" stroke="#1f4fa8"/>'),
   voxel: S('<path d="M4 9l4-2 4 2-4 2z M4 9v5l4 2v-5 M12 9v5l-4 2"/><path d="M12 9l4-2 4 2-4 2z M12 9v5l4 2v-5 M20 9v5l-4 2" stroke="#1f4fa8"/><path d="M8 7V3l4-1 4 1v4"/>'),
   bricks: S('<rect x="3" y="13" width="18" height="7" rx="1"/><rect x="7" y="6" width="10" height="7" rx="1" stroke="#1f4fa8"/><path d="M6 13v-1.6h3V13M15 13v-1.6h3V13M9 6V4.4h2V6M13 6V4.4h2V6"/>'),

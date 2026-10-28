@@ -3,6 +3,7 @@ import opencascade from "replicad-opencascadejs";
 import { gunzip } from "./inflate.js";
 import { initKernel, buildBodies, exportStep, clearCache, setAsset, errorText } from "./kernel.js";
 import { runCodeCad } from "./codecad-worker.js"; // jumpstart-3d: Code CAD
+import { startManifold, manifoldReady } from "./meshbool.js"; // jumpstart-3d: Manifold mesh booleans
 
 let ready = null;
 
@@ -56,6 +57,7 @@ self.onmessage = async (ev) => {
       self.postMessage({ type: "ready" });
     } else if (msg.type === "build") {
       await ready;
+      await manifoldReady(); // jumpstart-3d: Manifold starts with the first imported mesh; a build waits for it (nothing when no mesh was imported)
       const res = buildBodies(msg.bodies, msg.quality || 1);
       const transfer = [];
       for (const r of res) if (r.ok) {
@@ -65,17 +67,20 @@ self.onmessage = async (ev) => {
       self.postMessage({ type: "built", req: msg.req, results: res }, transfer);
     } else if (msg.type === "step") {
       await ready;
+      await manifoldReady(); // jumpstart-3d: Manifold
       const blob = exportStep(msg.bodies);
       const buf = await blob.arrayBuffer();
       self.postMessage({ type: "step", req: msg.req, data: buf }, [buf]);
     } else if (msg.type === "code") { // jumpstart-3d: Code CAD. only the temporary worker that codecadclient.js starts is sent this
       await ready;
+      await manifoldReady(); // jumpstart-3d: Manifold
       const r = await runCodeCad(msg);
       self.postMessage({ type: "coded", req: msg.req, bytes: r.bytes }, [r.bytes]);
     } else if (msg.type === "dropasset") { // jumpstart-3d: Code CAD. frees the bytes of a file the design no longer has
       setAsset(msg.id, "step", new Uint8Array(0));
     } else if (msg.type === "asset") {
       setAsset(msg.id, msg.kind, new Uint8Array(msg.bytes));
+      if (msg.kind === "mesh") startManifold(); // jumpstart-3d: Manifold, fire and forget (a failed start leaves OpenCascade doing the booleans)
     } else if (msg.type === "clear") {
       clearCache();
     }

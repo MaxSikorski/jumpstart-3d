@@ -454,3 +454,13 @@ test("names are only ever text: a literal element in a name survives as text", a
   assert.equal(r.ok, true);
   assert.equal((await readFragment(r.url.split("#")[1])).name, name);
 });
+
+test("fill openings survives sharing and validates nested keep entries", async () => {
+  const doc = fixture("beginner-box"), mod = {id:"fill",seq:2,t:"fillopen",plane:{o:[0,0,3],n:[0,0,1]},keep:[{c:[2,4,3],a:19.5}]};
+  doc.bodies[0].node.mods=[mod];
+  const link=await makeLink(doc,BASE); assert.equal(link.ok,true);
+  const read=await readFragment(extractFragment(link.url)); assert.deepEqual(read.bodies[0].node.mods,[mod]);
+  for(const entry of [{c:[1,2],a:2},{c:[1,2,3],a:-1},{c:[1,2,3],a:2,extra:true}]) {
+    const bad=structuredClone(doc);bad.bodies[0].node.mods[0].keep=[entry];throwsShare(()=>validateEnvelope(env(bad)),entry.extra ? "unsupported" : "damaged");
+  }
+});

@@ -2,19 +2,17 @@
 // flat only to ~1e-5 mm, so on Max's Raspberry Pi lid 546 of 2,953 faces were invalid and a join with faces exactly flush came out
 // open (137 open edges, 2,084 non-manifold) with a volume the guard accepted: no retry, no error. solidFromMesh now runs the
 // kernel's fixSolid after the merge (kernel.js, "mesh import fix"). This loads the real kernel (as booleanretry.test.mjs does).
-// The lid (test/fixtures/pi-lid.stl, 466 KB) is not in the public repo yet: its tests skip, saying so, while it is missing; a generated
-// sphere carries the same check in CI.
+// The lid is examples/pi-lid/raspberry-pi-4-case-lid.stl (466 KB, committed as a reference model).
+// A generated sphere carries the same check without it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const lidFile = root + "test/fixtures/pi-lid.stl";
-const haveLid = existsSync(lidFile);
-const skipLid = haveLid ? false : "test/fixtures/pi-lid.stl is missing (Max's Pi lid, not in the public repo yet): copy it there to run this test";
+const lidFile = root + "examples/pi-lid/raspberry-pi-4-case-lid.stl";
 
 const tp = root + "third_party/";
 const bundle = await build({
@@ -84,20 +82,20 @@ function checkMesh(shape) {
 
 const I = (x = 0, y = 0, z = 0) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];
 
-test("an imported Pi lid has only valid faces", { skip: skipLid }, async () => {
+test("an imported Pi lid has only valid faces", async () => {
   const lid = evalNode(await importMesh("lid", readFileSync(lidFile), "pi-lid.stl"));
   assert.ok(faces(lid).length > 2000, "the lid keeps its merged faces");
   assert.equal(invalidFaces(lid), 0, "faces BRepCheck calls invalid (546 before the fix)");
 });
 
-test("the Pi lid joined with a box flush with its faces, then cut, comes out closed and full", { skip: skipLid }, async () => {
+test("the Pi lid joined with a box flush with its faces, then cut, comes out closed and full", async () => {
   const lidNode = await importMesh("lid2", readFileSync(lidFile), "pi-lid.stl");
   const fill = { t: "prim", kind: "box", p: { w: 64, d: 31, h: 3 }, mods: [] };
   const join = { t: "group", mods: [], children: [{ node: lidNode, m: I() }, { node: fill, m: I(-5.25, 0, 0) }] };
   const t0 = Date.now();
   const joined = evalNode(join);
   const ms = Date.now() - t0;
-  assert.ok(ms < 15000, `the join took ${ms} ms`);
+  assert.ok(ms < 30000, `the join took ${ms} ms`); // Linux CI runners take about 15-16 s for the OpenCascade flush join; the limit guards against the old multi-minute hang, not speed
   const cutNode = { t: "group", mods: [], children: [{ node: join, m: I() }, { node: { t: "prim", kind: "box", p: { w: 38, d: 38, h: 5 }, mods: [] }, m: I(-7.3, 0, -1), hole: true }] };
   const cut = evalNode(cutNode);
   for (const [name, shape] of [["join", joined], ["cut", cut]]) {
