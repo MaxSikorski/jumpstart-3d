@@ -21,6 +21,7 @@ import { renderImage, QUALITY, LIGHT_COLORS, LIGHT_TYPES, BACKGROUNDS } from "./
 import { LIB, TEX_CATS, TEXTURE_DEFAULTS, textureThumb, texByKey, registerImageTexture, bytesToB64 } from "./texture.js";
 import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
+import { previewWorldBox } from "./meshpreview.js"; // jumpstart-3d: import preview
 import { importsAtOnce, showImportToast } from "./importtoast.js"; // jumpstart-3d: import units
 import { initMeasure } from "./measure.js";
 import { commitCombine, hasLaterKeepPiece } from "./combinesplit.js"; // jumpstart-3d: separate Combine pieces
@@ -2324,8 +2325,10 @@ export function initAdvanced(app) {
     // big meshes take a few seconds to turn into a solid: say so, then say when it's there
     const t0 = Date.now();
     let told = false;
+    let framed = false;
     const watch = setInterval(() => {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
+      if (plate && !framed && v && v.preview) { framed = true; frameIfOffScreen(bodyId); } // jumpstart-3d: import preview. frame it as soon as the preview shows
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
         if (plate && v && v.data && store.doc.bodies.some((b) => b.id === bodyId)) frameIfOffScreen(bodyId); // jumpstart-3d: drop import
@@ -2338,7 +2341,7 @@ export function initAdvanced(app) {
   // jumpstart-3d: drop import. A file import lands at the plate centre; a view that is zoomed in or panned away would not show it, so frame it then.
   // A body that is already fully in view leaves the camera alone.
   function frameIfOffScreen(id) {
-    const box = scene.bodyTightBox(id);
+    const box = scene.bodyTightBox(id) || previewWorldBox(scene.views.get(id)); // jumpstart-3d: import preview. the preview's box until the solid is built
     if (!box || box.isEmpty()) return;
     vp.updateCamera(); // the camera as the view says it is now, not as the last frame drew it
     vp.camera.updateMatrixWorld(true);
