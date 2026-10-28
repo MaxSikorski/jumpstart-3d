@@ -41,6 +41,8 @@ test.describe("versions 2.4 and 2.5", () => {
     await loadDoc(page, newDoc(name, "beginner"));
     await page.click("#mode-arch");
     await page.waitForFunction(() => window.__app.mode === "arch");
+    // entering Architect swings the camera out to a 33 m view over about 380 ms, and a mouse press stops that swing where it is: wait until it has landed, or the room is drawn on a half-way view
+    await page.waitForFunction(() => !window.__app.vp.isMoving());
   };
   const leaveArch = async () => {
     await page.click("#mode-beginner");

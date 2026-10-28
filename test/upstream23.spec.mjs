@@ -30,6 +30,8 @@ test.describe("the 2.3 features", () => {
     await loadDoc(page, newDoc("Upstream 2.3 house", "beginner"));
     await page.click("#mode-arch");
     await page.waitForFunction(() => window.__app.mode === "arch");
+    // entering Architect swings the camera out to a 33 m view over about 380 ms, and a mouse press stops that swing where it is: wait until it has landed, or the room is drawn on a half-way view
+    await page.waitForFunction(() => !window.__app.vp.isMoving());
     const at = (x, y, z) => page.evaluate(([x, y, z]) => {
       const v = window.__app.vp, q = v.project(new v.camera.position.constructor(x, y, z)), r = v.canvas.getBoundingClientRect();
       return [r.left + q[0], r.top + q[1]];
