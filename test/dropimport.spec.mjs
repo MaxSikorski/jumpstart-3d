@@ -278,6 +278,37 @@ for (const mode of ["beginner", "advanced"]) {
   });
 }
 
+// the Open/Export menu (top right) carries Import in its first group, next to Open a project file…
+for (const mode of ["beginner", "advanced"]) {
+  test(`${mode}: the Open/Export menu opens with the project file and Import entries, and Import opens the picker and lands the model`, async () => {
+    await fresh(mode);
+    await page.click("#btn-export");
+    await expect(page.locator("#btn-export")).toHaveAttribute("title", /import a model/);
+    // the project-file group comes right after the export-scope picker: Open a project file…, Import…, then a rule, before any export
+    const group = await page.evaluate(() => {
+      const kids = [...document.getElementById("menu-export").children].filter((el) => el.offsetParent !== null);
+      const at = kids.findIndex((el) => el.dataset.act === "import");
+      return { at, next: kids.slice(at, at + 3).map((el) => el.tagName === "HR" ? "HR" : el.textContent.trim()), before: kids.slice(0, at).map((el) => el.tagName) };
+    });
+    expect(group.at).toBeGreaterThanOrEqual(0);
+    expect(group.before, "only the export-scope picker and its rule come before").toEqual(["DIV", "HR"]);
+    expect(group.next[0]).toMatch(/^Open a project file/);
+    expect(group.next[1]).toMatch(/^Import a model, drawing or picture…/);
+    expect(group.next[2]).toBe("HR");
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#btn-import-menu")]);
+    await expect(page.locator("#menu-export")).toBeHidden();
+    const f = await modelFile("stl", "FromMenu.stl");
+    await chooser.setFiles({ name: f.name, mimeType: f.type, buffer: Buffer.from(f.bytes) });
+    await waitIdle(page);
+    expectOnPlate(await state(), /^FromMenu/);
+    // Open a project file… is still in the menu and still opens its own picker
+    await page.click("#btn-export");
+    const [chooser2] = await Promise.all([page.waitForEvent("filechooser"), page.click('#menu-export button[data-act="import"]')]);
+    expect(chooser2.isMultiple()).toBe(false);
+    await expect(page.locator("#menu-export")).toBeHidden();
+  });
+}
+
 // ---- review fixes: framing, drags from inside the page, the queue, the helper frames, a real drag
 
 const inView = () => page.evaluate(() => {
