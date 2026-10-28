@@ -3,6 +3,7 @@
   "gaps": {
     "Advanced toolbar": [
       "ad-chipcarve",
+      "ad-fillopen",
       "ad-ins-dxf",
       "ad-ins-img",
       "ad-ins-svg",
@@ -18,6 +19,7 @@
       "bb-cosforge",
       "bb-extrude",
       "bb-fillet",
+      "bb-fillopen",
       "bb-import",
       "bb-shell",
       "bb-sketch",

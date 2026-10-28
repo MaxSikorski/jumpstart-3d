@@ -18,6 +18,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sharelink.js` | Share link: a small design inside a web address |
 | `fasteners.js` | Bolts, nuts, threaded rods, tap cutters |
 | `holepattern.js` | Rows, staggered rows or a circle of holes on a face |
+| `fillopen.js` | Fill openings, the geometry: finds the openings in a flat face (vents, slots, holes, logos) and rebuilds the part's faces without them, no boolean; runs in the worker and in Node |
+| `fillopenings.js` | Fill openings, the panel: click a flat face, outlines of every opening, click one to keep it open, Fill; one `fillopen` feature, editable from the timeline |
+| `fillpick.js` | Plain helpers for that panel (`openingAt`: which opening is under a point; the keep-open matching), with no DOM so Node tests import them |
 | `gears.js` | Spur, rack and bevel gears |
 | `nameplate.js` | A plate sized to its text, raised or cut in |
 | `knurl.js` | Knurled knobs |
