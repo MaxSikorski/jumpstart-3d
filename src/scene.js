@@ -8,6 +8,7 @@ import { textContours } from "./textgeo.js";
 import { resolveSketch, sampleCurve } from "./regions.js";
 import { applyTextures, matchTextureFaces } from "./texture.js";
 import { lookOf } from "./appearance.js";
+import { syncMeshPreview, disposePreview, meshStretch } from "./meshpreview.js"; // jumpstart-3d: import preview
 
 // textured meshes are expensive to make: keep the last few
 const texCache = new Map();
@@ -197,6 +198,7 @@ class BodyView {
     groups.forEach((g, i) => (g.materialIndex = states.get(i) || (this.faceMat && this.faceMat.get(i)) || 0));
   }
   dispose() {
+    disposePreview(this); // jumpstart-3d: import preview
     if (this.mesh) this.mesh.geometry.dispose();
     if (this.edges) this.edges.geometry.dispose();
   }
@@ -271,6 +273,7 @@ export class SceneSync {
       }
       v.body = b;
       v.pending = !res;
+      syncMeshPreview(this, v, b); // jumpstart-3d: import preview. a see-through copy of the file's triangles until the solid is built
       v.group.matrix.fromArray(b.m);
       // joint simulations move bodies without changing the design
       const pose = this.state.pose.get(b.id);
@@ -281,9 +284,12 @@ export class SceneSync {
         // while a resized primitive rebuilds, stretch the old mesh so the drag feels immediate
         let k = [1, 1, 1], off = [0, 0, 0];
         const s0 = v.shownNode;
+        const mk = v.key !== b._key && s0 ? meshStretch(s0, b.node) : null; // jumpstart-3d: import preview
         if (v.key !== b._key && b.node.t === "prim" && s0 && s0.t === "prim" && s0.kind === b.node.kind && !(b.node.mods || []).length) {
           const p0 = s0.p, p = b.node.p;
           k = [p.w / p0.w || 1, p.d / p0.d || 1, b.node.kind === "torus" ? 1 : p.h / p0.h || 1];
+        } else if (mk) {
+          k = [mk, mk, mk]; // jumpstart-3d: import preview. a units change on an imported mesh
         } else if (v.key !== b._key && s0) {
           // a Scale feature being dragged: stretch what is shown until the kernel catches up
           const a = scaleOf(s0), c = scaleOf(b.node);
