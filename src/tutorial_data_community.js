@@ -4,7 +4,7 @@ import { nameStep, saveStep, exportStep, FIELDS, TABS } from "./tutorial_data.js
 
 export const COMMUNITY_TUTORIALS = [
   {
-    id: "c-overhang", mode: "beginner", level: "Easy", minutes: "6-8", item: "Overhang Test",
+    id: "c-overhang", mode: "beginner", level: "Easy", minutes: "6-8", minWidth: 421, /* phone tutorials: below this width a button this lesson points at is hidden; the chooser and Show me say so */ item: "Overhang Test",
     title: "Will my printer manage it? (plate and overhangs)",
     blurb: "Pick your printer's real build area, then switch on overhang shading and see which faces hang out too far to print without support. A T-shaped test piece shows it at once.",
     learn: ["Printer plate", "Build area", "Overhang shading", "Position (Z)"],
@@ -32,7 +32,7 @@ export const COMMUNITY_TUTORIALS = [
   },
   // Beginner: editing, selection, placement, navigation, then ready-made parts.
   {
-    id: "c-copy-row", mode: "beginner", level: "Easy", minutes: "5-7", item: "Practice Blocks",
+    id: "c-copy-row", mode: "beginner", level: "Easy", minutes: "5-7", minWidth: 481, item: "Practice Blocks",
     title: "Copy a row of blocks",
     blurb: "Make a few blocks and learn how to recover from an unwanted edit.",
     learn: ["Copy", "Paste", "Duplicate", "Delete", "Undo", "Redo"],
@@ -362,7 +362,7 @@ export const COMMUNITY_TUTORIALS = [
     ],
   },
   {
-    id: "c-thread-fit", mode: "advanced", level: "Easy", minutes: "5-7", item: "Thread Sample",
+    id: "c-thread-fit", mode: "advanced", level: "Easy", minutes: "5-7", minWidth: 481, item: "Thread Sample",
     title: "Adjust a thread for printing",
     blurb: "Make a threaded rod and try a small print offset on that part.",
     learn: ["Fastener", "Thread print offset", "Undo", "Redo"],
@@ -873,7 +873,7 @@ export const COMMUNITY_TUTORIALS = [
     ],
   },
   {
-    id: "c4-turn-snap", mode: "beginner", level: "Easy", minutes: "6-8", item: "Turned Plank",
+    id: "c4-turn-snap", mode: "beginner", level: "Easy", minutes: "6-8", minWidth: 601, item: "Turned Plank",
     title: "Turn a plank, snap it straight and change the units",
     blurb: "Use the status bar at the bottom: turn a shape in small steps, snap it back square, and switch snapping and units.",
     learn: ["Turn", "Snap back", "Snap", "Snap to", "Units"],
@@ -903,7 +903,7 @@ export const COMMUNITY_TUTORIALS = [
     ],
   },
   {
-    id: "c4-top-bar", mode: "beginner", level: "Easy", minutes: "7-9", item: "Tour Block",
+    id: "c4-top-bar", mode: "beginner", level: "Easy", minutes: "7-9", minWidth: 801, item: "Tour Block",
     title: "Tour the top bar",
     blurb: "Find the buttons across the top: autosave, your saved designs, the three modes, help, full screen and the tutorials list.",
     learn: ["Autosave", "Your designs", "Modes", "Help", "Full screen", "Tutorials"],
