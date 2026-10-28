@@ -3615,6 +3615,19 @@ export function meshShape(shape, quality = 1) {
   tick();
   let volume = null;
   try { volume = R.measureVolume(shape); } catch (err) {}
+  // jumpstart-3d: the quick integral can be far off on a free-form face with many spans (a slice shell read 7716 mm3 for 8724).
+  // When it disagrees with the triangles by over 1%, the adaptive integral measures it again.
+  {
+    let mv = 0;
+    const P = m.vertices, T = m.triangles;
+    for (let i = 0; i < T.length; i += 3) { const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3; mv += P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]); }
+    mv /= 6;
+    if (volume != null && Math.abs(volume - mv) > 0.01 * Math.abs(mv)) {
+      let props;
+      try { props = new OC.GProp_GProps(); OC.BRepGProp.VolumeProperties(shape.wrapped, props, 1e-6, false, false); volume = props.Mass(); }
+      catch (err) {} finally { if (props) props.delete(); }
+    }
+  }
   tick();
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("meshShape ms:", TT.slice(1).map((t, i) => t - TT[i]).join(" "));
   return {

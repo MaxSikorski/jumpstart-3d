@@ -58,6 +58,7 @@ export class KernelClient {
     else if (msg.type === "ready") { this.ready = true; for (const id of this.assets.keys()) this.sendAsset(id); this.onReady && this.onReady(); this.pump(); }
     else if (msg.type === "built") {
       clearTimeout(this.watchdog);
+      clearTimeout(this.noteTimer); // jumpstart-3d: clear the long-build note when results arrive
       for (const r of msg.results) {
         this.solo.delete(r.rev); // jumpstart-3d
         r.key = r.rev;
@@ -79,6 +80,7 @@ export class KernelClient {
       if (w) { this.stepWaiters.delete(msg.req); w.reject(new Error(msg.error)); return; }
       if (!this.ready) { this.onFail && this.onFail(msg.error); return; }
       clearTimeout(this.watchdog);
+      clearTimeout(this.noteTimer); // jumpstart-3d: clear the long-build note when results arrive
       const items = this.inflight || [];
       this.inflight = null;
       items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
@@ -115,7 +117,7 @@ export class KernelClient {
     // send small batches so the screen updates progressively
     // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
-    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); };
+    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"t":"shell"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); }; // jumpstart-3d: a shell (hollow) goes alone with the long time limit: an oval capsule's Auto hollow takes 20-35 s
     const batch = [];
     for (const [k, it] of this.queue) {
       const alone = (b) => heavy(b) || this.solo.has(b.key); // jumpstart-3d: a retried body also goes alone
@@ -132,6 +134,8 @@ export class KernelClient {
     // imported meshes take longer to turn into solids: give them more time
     const slow = batch.some(heavy);
     this.watchdog = setTimeout(() => this.stalled(batch), this.watchdogMs || (slow ? 120000 : 25000) * (this.quality || 1)); // jumpstart-3d: watchdogMs is a test-only override
+    // jumpstart-3d: a long build gets its note in the status bar after 3 s
+    this.inflightAt = Date.now(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => this.onBusy && this.onBusy(true), 3000);
     this.onBusy && this.onBusy(true);
   }
   stalled(batch) {
