@@ -67,7 +67,7 @@ async function setUp() { // horizontal, five equals, the bottom length 20
   const sk = await sketch(), m = along(sk, 0);
   await press("#sk-dim");
   await clickAt(...m);
-  await clickAt(m[0] + 1, m[1] - 4);
+  await clickAt(m[0] + 1, m[1] + 4); // inside the hexagon: the constraint badges sit just outside their lines
   await typeValue(20);
 }
 // the same setup without the clicks (a click costs about two seconds here, the page being busy drawing): the app's own calls, which the tools make too
