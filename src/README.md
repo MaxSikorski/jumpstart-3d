@@ -32,7 +32,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
 | `loadui.js` | Engine-load note, splash, service-worker registration |
-| `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts |
+| `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts and inserts the shared three.js |
 | `report.js` | Report a problem (prefilled GitHub issue link) |
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
 | `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
@@ -59,7 +59,7 @@ No markers. On a port, take his new version whole. Do not "tidy" these.
 ## 4. Special files
 - `occt-gz.wasm` (7.2 MB): the OpenCascade kernel, gzipped. The worker fetches it on the site; the single file carries it as base64. If upstream's wasm changes, `tools/upstream-merge.mjs` only reports it: re-gzip with `gzip -9 -n`.
 - `../third_party/manifold-3d/`: the Manifold engine (manifold-3d 3.5.4), vendored: the package's glue, its wasm as a gzipped base64 string in `wasm.js`, our loader `index.js`. It rides inside `docs/worker.js` and the single file (about +225 KB gzipped); `build.mjs` and `sw.js` needed no change. Regenerate with `tools/vendor-manifold.mjs`; the README there has the hashes.
-- `flexigen.html`, `meshstep.html`, `chisel.html`: built helper pages, committed and imported as text. Rebuild steps: `tools/README-helpers.md`.
+- `flexigen.html`, `meshstep.html`, `chisel.html`: built helper pages, with `helper-three.html` as the generated shared three.js, all committed and imported as text. Rebuild steps: `tools/README-helpers.md`.
 - `sw.js`: site only. `build.mjs` copies it to `docs/sw.js` with a version hash. Never remove it from the site (a 404 keeps the old worker serving its cache forever).
 - `camworker.js`: `build.mjs` bundles it in memory for CAM Studio's Blob worker. `camworker.bundle.txt` is gitignored; a stale copy can never win.
 - Images, `manifest.webmanifest`, `webfonts.css`, `fonts/`: static assets that the build copies.

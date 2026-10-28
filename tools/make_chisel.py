@@ -11,9 +11,8 @@ def R(a, b, count=1):
     assert a in s, a[:100]
     s = s.replace(a, b, count)
 
-# its own copy of three.js (bundled, no network)
-three = open(ROOT + '/tools/three-global.min.js').read().replace('</script', '<\\/script')
-R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '<script>' + three + '</script>')
+# The shared three.js copy is inserted by src/helperfonts.js when the page opens.
+R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '<script>/*js3d:three*/</script>')
 # no Google Fonts request (the app puts its own copy of the fonts into the page when it opens Chisel: src/helperfonts.js)
 for line in ['<link rel="preconnect" href="https://fonts.googleapis.com">\n', '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n']:
     R(line, '')
