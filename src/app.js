@@ -5,6 +5,7 @@ import { inflate } from "./inflate.js";
 import { CREDITS, LICENSE_TEXTS } from "./licenses.js";
 import { initSketch3D } from "./sketch3d.js";
 import { initLathe } from "./lathe.js";
+import { initCarve } from "./carve.js";
 // jumpstart-3d: keep the upstream version and community release number separate.
 import { VERSION, BUILD } from "./version.js";
 const BUILD_LABEL = VERSION + " · community build " + BUILD;
@@ -25,18 +26,20 @@ import { el, parseLength, fmt, IS_MAC, IS_IOS, IS_IPHONE, watchMacLabels } from 
 const parseLengthMM = parseLength;
 import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import { getUnit, setUnit, onUnit, toU, fromU, showLen, parseLen, unitName, SNAP_SIZES } from "./units.js";
-import { setThemeColors, theme } from "./theme.js";
+import { setThemeColors, theme, sketchStyle, SKETCH_WIDTHS, SKETCH_COLORS } from "./theme.js";
 import { ICON } from "./icons.js";
 import { initBeginner } from "./beginner.js";
 import { initAdvanced } from "./advanced.js";
 import { initProjects } from "./projects.js";
 import { initFlexiGen } from "./flexigen.js";
 import { initMeshStep } from "./meshstep.js";
+import { initCosForge } from "./cosforge.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
 import { initPrinterPreview } from "./printerpreview.js"; // jumpstart-3d: printer plate
 import { initBridge } from "./bridge.js"; // jumpstart-3d: scripting bridge
 import { initRunScript } from "./runscript.js"; // jumpstart-3d: run script
+import { initCodeCad } from "./codecad.js"; // jumpstart-3d: Code CAD
 import { initChat } from "./chat.js"; // jumpstart-3d: chat inside the app
 import { initReport } from "./report.js"; // jumpstart-3d: report
 import { captureShare, initShareLink } from "./sharelink.js"; // jumpstart-3d: share link
@@ -171,6 +174,7 @@ function boot() {
   app.tutorials = initTutorials(app);
   app.sketch3d = initSketch3D(app);
 app.lathe = initLathe(app);
+app.carve = initCarve(app);
 // jumpstart-3d: match the static splash before the app loads.
 { const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + BUILD_LABEL; }
 app.bricks = initBricks(app);
@@ -182,6 +186,7 @@ app.voxel = initVoxel(app);
   $("btn-tutorials-menu").onclick = () => { $("menu-export").hidden = true; app.tutorials.open(); }; // jumpstart-3d: phone entry
   app.flexigen = initFlexiGen(app);
   app.meshstep = initMeshStep(app);
+  app.cosforge = initCosForge(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
   app.cam = initCam(app);
@@ -271,6 +276,10 @@ app.voxel = initVoxel(app);
   $("btn-theme").onclick = () => { tmenu.hidden = !tmenu.hidden; if (!tmenu.hidden) app.syncMeshDetailUI(); };
   tmenu.addEventListener("click", (e) => { const b = e.target.closest("button"); const t = b?.dataset.theme, pf = b?.dataset.perf, md = b?.dataset.detail; if (t) { app.setTheme(t); tmenu.hidden = true; } else if (md) { app.setMeshDetail(md); tmenu.hidden = true; } else if (pf) { app.setPerf(pf); tmenu.hidden = true; } });
   window.addEventListener("pointerdown", (e) => { if (!tmenu.hidden && !tmenu.contains(e.target) && !e.target.closest("#btn-theme")) tmenu.hidden = true; });
+  // sketch line width and colour (the menu stays open so choices can be compared)
+  const hex = (n) => "#" + n.toString(16).padStart(6, "0");
+  $("sk-widths").append(...SKETCH_WIDTHS.map(([k, label, w]) => el("button", { "data-skw": k, role: "menuitemradio", title: label + " sketch lines", onclick: (e) => { e.stopPropagation(); app.setSketchStyle({ width: k }); } }, el("i", { style: { height: Math.max(1, w) + "px", opacity: w < 1 ? 0.7 : 1 } }), label.replace("Extra thick", "Extra"))));
+  $("sk-colors").append(...SKETCH_COLORS.map(([k, label, c]) => el("button", { "data-skc": k, role: "menuitemradio", class: c == null ? "sk-theme" : "", title: label + (c == null ? " (follows Light, Dark or High contrast)" : ""), "aria-label": label, onclick: (e) => { e.stopPropagation(); app.setSketchStyle({ color: k }); } }, el("span", { style: c == null ? {} : { background: hex(c) } }))));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (app.themePref === "system") app.setTheme("system"); });
   $("btn-keys").onclick = () => app.showShortcuts();
   // Full screen, like a video player's. Esc stays with the tools: where the browser allows it the
@@ -429,7 +438,7 @@ function gridFromSnap() {
 }
 function readPrefs() { try { return JSON.parse(localStorage.getItem("workplane.ui.v1") || "{}"); } catch (e) { return {}; } }
 function savePrefs() {
-  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ theme: app.themePref, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
+  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ skw: sketchStyle.width, skc: sketchStyle.color, theme: app.themePref, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
 }
 function loadPrefs() {
   const p = readPrefs();
@@ -440,6 +449,7 @@ function loadPrefs() {
   app.objectSnap = p.obj !== false;
   $("snap-obj").setAttribute("aria-pressed", app.objectSnap);
   app.setSnap(p.snap !== false, true);
+  app.setSketchStyle({ width: p.skw || "thin", color: p.skc || "theme" }, true);
   app.setTheme(p.theme || "system", true);
   // realistic lighting starts off (faster); it stays on only for someone who turned it on themselves
   app.setLighting(p.lightOn === true, true);
@@ -520,6 +530,20 @@ function onSlow() {
     app.toast("Things look slow on this computer. Try " + (i === 0 ? "High or Normal" : "Normal") + " in the theme menu (◐): " + (i === 0 ? "they draw" : "it draws") + " less, and every tool still works.");
   }
 }
+
+// Sketch lines: width and colour, everywhere sketches are drawn (Advanced, Beginner, Chisel).
+app.setSketchStyle = function (patch, quiet) {
+  if (patch.width && SKETCH_WIDTHS.some((x) => x[0] === patch.width)) sketchStyle.width = patch.width;
+  if (patch.color && SKETCH_COLORS.some((x) => x[0] === patch.color)) sketchStyle.color = patch.color;
+  document.querySelectorAll("#sk-widths button").forEach((b) => b.setAttribute("aria-checked", b.dataset.skw === sketchStyle.width));
+  document.querySelectorAll("#sk-colors button").forEach((b) => b.setAttribute("aria-checked", b.dataset.skc === sketchStyle.color));
+  if (app.scene) app.scene.syncSketches(store.view);
+  if (app.sketcher && app.sketcher.active) app.sketcher.redraw();
+  if (app.vp) app.vp.request();
+  // Chisel reads the colours when its theme is (re)applied
+  try { app.chiselTheme && app.chiselTheme(); } catch (e) {}
+  if (!quiet) savePrefs();
+};
 
 // Light, dark and high-contrast interface. "system" follows the device setting.
 app.setTheme = function (pref, quiet) {
@@ -657,11 +681,54 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.7.7", [
+        ["Shell for any shape:", "Shell and Hollow now work on complex shapes: shapes with holes through them, branches and bosses, joined shapes, free-form and organic bodies, tori, and curved openings (open a round side, not just a flat end). When the exact offset can't make the wall, a new distance-field method builds it from the distance to the kept faces, so it works on any closed shape; flat and round shapes keep their own surface exact. It takes a few seconds."],
+        ["Shell options:", "pick opening faces on several shapes at once (each gets its own shell); Hollow can add 1, 2 or 4 drain holes through the bottom (for resin and powder printing) with the size you set; and Method (Auto, Exact offset, Slices, or Any shape with Normal or Fine detail) lets you choose how the wall is made. Auto tries them in turn."],
+      ]),
+      sec("New in version 2.7.6", [
+        ["Shell on lofts:", "Shell and Hollow now work on lofted shapes that the offset engine couldn't handle, such as a loft from a hexagon on one plane to a circle on an offset plane. When a shape has free-form sides, the wall is built from slices across the shape (each slice's outline is offset in its own plane and the slices are lofted back together), with Inside, Outside or Both and openings on flat ends. It is also much quicker to give an answer."],
+        ["Tangent chain fix:", "Shell's Tangent chain no longer takes every face of a curved (lofted) body: curved faces' directions were compared wrongly, which also hid some real edges between curved faces in the view."],
+      ]),
+      sec("New in version 2.7.5", [
+        ["Chip Carving:", "a new woodcraft simulator (Simulate → Woodcraft, Advanced's Create group, Beginner's toolbar and Chisel). Carve a board, a round plate, a log or a shape from your design, in basswood, butternut, white pine, mahogany, cherry, black walnut, hard maple or red oak (harder woods cut less deep). Knives: corner chips (three-corner, four-corner and diamond) that pop out as real chips, V-cut lines, curved sweeps with a stop cut, and a stab knife; plus a pencil and eraser for layout lines, layout guides (square or triangle grid, rosette, border band) and a sanding block. A pen's pressure sets how deep each cut goes and its tilt the blade angle; with a mouse or finger the Pressure slider does. Fingers can carve or, once a pen is used, move the view. A raking light shows the facets. Add the carving to your design or export STL, 3MF or OBJ."],
+        ["Roland MDX-50:", "CAM Studio has Roland MDX-50 profiles (with the 5-tool changer, and with the ZCL-50A rotary axis) and a Roland NC code post processor for MDX-series mills."],
+      ]),
+      sec("New in version 2.7.4", [
+        ["Sketch line style:", "choose how thick sketch lines are (Hairline, Thin, Medium, Thick or Extra thick) and their colour (the theme's own colour, or black, white, blue, red, green, orange, purple, yellow or cyan) in the theme menu (◐), under Sketch lines. It applies in Advanced, Beginner and Chisel and is remembered. The new default, Thin, is thinner than before."],
+        ["Shell → Hollow:", "the Shell tool now has two types. Openings removes the faces you click (an open box or cup); Hollow makes the whole model hollow inside, closed all round, with a 2 mm wall to start that you can change (quick picks 1, 2, 3 and 5 mm). Hollow works on the selected shapes, or click shapes to add them."],
+        ["Shell and Fillet in Beginner:", "Beginner's toolbar has Fillet (click edges or a face, or Round all edges of the shape) and Shell (Hollow to start). The shape's panel lists its fillets and shells with Edit and Remove, plus Round edges and Make hollow buttons. Fillet and Chamfer in Advanced have the all-edges button too."],
+        ["Hollow in Chisel:", "a new Hollow tool (in Easy and full Chisel) makes a sculpted model hollow inside with the wall thickness you choose."],
+      ]),
+      sec("New in version 2.7.3", [
+        ["No more stray planes:", "fixed flat \"planes\" that could appear across a model after an extrude, offset or cut and couldn't be removed. They were a drawing fault on some round faces (a cylinder band, for example), not part of the solid; those faces are now checked and redrawn correctly, on screen and in exports. Files that showed them look right as soon as they are opened."],
+        ["Pattern features, like Fusion 360:", "with Objects set to Features, click a face of a cut, boss, hole or text on the model to pick that feature (click again to unpick), or click it in the timeline. The whole body is no longer selected: picked features are outlined in blue and marked in the timeline, and the feature under the pointer is outlined in orange. Ticking features in the list still works."],
+      ]),
+      sec("New in version 2.7.2", [
+        ["Thinner sketch lines:", "sketch lines are now about half as thick, in the sketch editor and on the model, so small or narrow profiles are easier to see and click when you extrude, revolve or pick a profile. Selected and highlighted lines stay a little bolder."],
+      ]),
+      sec("New in version 2.7.1", [
+        ["Modern Sci-Fi armor:", "a new CosForge style with 27 original templates to build from: Vanguard, Interceptor, Sentinel, Strike Team and Flight helmets, a Night Watch cowl and a visor mask; Vanguard, Hex Core and Tactical chest pieces; back plates and a Jet Pack Mk II; pauldrons, arm guards, bracers, a Pulse Gauntlet and hand plates; thigh plates, knees, greaves, boots and toe caps; a collar, belt, hip plates and an Energy Shield. Add the whole Vanguard set at once."],
+        ["Sharper shapes:", "the new templates start with angled form cages (keeled chests, jutting jaws, ridged limbs) that you can keep reshaping in the Form step."],
+        ["Light lines:", "panel lines and emblems can glow in the accent colour (Surface details → Light lines and Glowing emblem), and 3MF exports keep the colours for multi-colour printing. A new angled-eyes helmet opening, too."],
+      ]),
+      sec("New in version 2.7", [
+        ["CosForge Form tool:", "a new Form step puts a control cage over any costume part, like the form tools in CAD. Pick points, edges, faces, rows or columns (Shift adds), then drag the arrows (X, Y, Z, or yellow to push and pull along the surface) or the white ball, or use Pull out, Push in, Move, Scale, Rotate, Flatten and Make smooth. Symmetry keeps left and right matched, soft selection blends the edit into nearby points, and the cage can be smooth or creased, with fewer or more points or subdivided. The outline, details, add-ons, cuts and joints all follow the new shape."],
+        ["26 more templates:", "Recon Helmet, Space Bubble Helmet, Jet Pack, Power Gauntlet, Armored Collar, Armored Hand Plate and Riot Shield (Sci-Fi); Dragon Helm, Dragon Pauldron, Dragon Gauntlet, King's Crown, Knight Hand Plate, Gorget and Wing Back Plate (Fantasy); High Collar, Lightning Helm, Star Gauntlet and Hero Shield (Comic Hero); Respirator Mask, Clockwork Gauntlet, Riveted Collar and Riveted Plate Pauldron (Steampunk); Menpo Face Guard, Nodowa Throat Guard, Horned Kabuto and Tekko Hand Guard (Samurai). Almost 100 templates in all."],
+        ["New part types:", "collars (gorgets) that sit on the shoulders around the neck, and a lower-face mask style."],
+      ]),
+      sec("New in version 2.6", [
+        ["CosForge:", "a new cosplay costume designer that opens in its own window (Simulate → CosForge in Advanced, or the CosForge button in Beginner). Enter the wearer's measurements and a mannequin is built to match, in an arms-down, A or T pose."],
+        ["Costume templates:", "over 70 parts in Sci-Fi, Fantasy, Comic Hero, Steampunk and Samurai styles, plus plain forms: helmets with visors, slits or cowls, masks, crowns, chest and back plates, belts, tassets, pauldrons, arm guards, bracers, hand plates, thigh plates, knee guards, greaves, boot covers, toe caps and shields. Add one part or a whole set."],
+        ["Shape and sculpt:", "every part is a form you can change: coverage, openings, edges (rolled, trimmed, flared), ridges, panel lines, hex plates, dragon scales, overlapping plates, muscles, emblems and rivets, plus add-ons like horns, spikes, fins, ears, wings, gems, antennas, goggles and thrusters. Sculpt with bulge, push, emboss, engrave and smooth brushes."],
+        ["Fit to the body:", "parts follow the body when the measurements change. Move, turn and size them, and check the fit: the inside turns green, orange or red, and helmets warn when the head won't fit through."],
+        ["Cut and join:", "cut parts anywhere with flat cuts, or let Auto-cut split them until every piece fits your printer (eight bed sizes). Joints go on the inside of each cut: pegs, snap clips, slide-in dovetails or magnet cups."],
+        ["Export or keep editing:", "save pieces as STL (a .zip of pieces), 3MF with colours or OBJ, as worn or laid out ready to print, or add them to your design to edit in the other modes. Import your own STL or 3MF parts, or objects from your design, to fit and cut them too. The costume is kept with the design."],
+      ]),
       sec("New in version 2.5.1", [
         ["CAM Studio machines:", "48 machine profiles, grouped from desktop and hobby routers, benchtop and knee mills, pro and shop routers, to industrial nesting routers, vertical machining centers and lasers, plus 7 with a 4th (rotary) axis. Your own machines can now have a rotary axis and a tool changer."],
         ["Industrial G-code:", "new Fanuc-style and Haas-style posts: program number, G54, tool changes with length offsets (G43 H), coolant, and a safe return home at the end."],
         ["More materials and bits:", "steels, stainless, cast iron, titanium, 7075 aluminium, copper, acetal, polycarbonate and carbon fiber; carbide end mills up to 3/4\", a face mill, bull and ball noses, a chamfer mill and a tap drill."],
-        ["No more freezing:", "CAM Studio now works out the toolpaths, G-code and the whole cutting simulation in the background, so the window keeps responding while it works and you can keep changing settings. Scrubbing and replaying are spread over frames too."],
+        ["No more freezing:", "CAM Studio now works out the toolpaths, G-code and the whole cutting simulation in the background, so the window keeps responding while it works and you can keep changing settings. Scrubbing and replaying are spread over frames too. While it works, the model stays on screen with a progress bubble, and 4th-axis jobs are about ten times faster."],
       ]),
       sec("New in version 2.5", [
         ["Log cabins:", "new Log cabin wall types in Architect: round logs (8\", 10\" or 250 mm) that cross past each corner, and hewn square logs (6\", 8\" or 200 mm) with chinking between them. Pick one before drawing, or turn any wall into logs with Build as. They go to Beginner and Advanced as real logs you can print."],
@@ -738,6 +805,7 @@ app.showAbout = function () {
       sec("Simulate", [
         ["3D Print Sim:", "30+ printer profiles (Bambu Lab, Creality, Elegoo, Flashforge, Prusa, Snapmaker), multi-color printing with AMS-style switchers, dual nozzles and tool changers: paint faces with a filament per toolhead and watch the tool changes (changes, purge waste, prime tower), supports, layer-by-layer preview, print time, and strength maps."],
         ["Simulate:", "joints and motion, stress tests, and printed-part strength by filament and print orientation."],
+        ["CosForge:", "design cosplay costumes on a mannequin built from your measurements, with themed templates you can shape, reshape with a control cage (Form), sculpt, fit, cut into printable pieces with joints, and export or add to your design."],
         ["FlexiGen:", "turn one object into a print-in-place articulated flexi model with six joint styles, then export STL or 3MF. It works on a copy, so your design is never changed."],
         ["Render:", "photo-style pictures with studio, sun, spotlight, overcast or three-point lighting, light color and direction, your own background picture, and Low to Ultra high quality, saved as PNG."]]),
       sec("Files and saving", [
@@ -781,7 +849,7 @@ app.showAbout = function () {
         el("a", { class: "btn", href: "https://github.com/MaxSikorski/jumpstart-3d/issues", target: "_blank", rel: "noopener" }, "Report a bug or idea"))));
   back.append(modal);
   document.body.append(back);
-  back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
   modal.querySelector(".xbtn").focus();
 };
 app.showShortcuts = function () {
@@ -799,7 +867,7 @@ app.showShortcuts = function () {
       rows("Everywhere", [[", .", "After using a rotation arc or ring: turn 1° (Shift: 15°)"], ["Shift drag", "On a rotation arc or ring: turn by any angle (otherwise 15° steps)"], ["Turn − +", "In the status bar: turn the selected shape by the chosen step (15, 5, 1, 0.5 or 0.1°); the , and . keys use that step too"], ["Ctrl C", "Copy"], ["Ctrl V", "Paste"], ["Ctrl A", "Select all"], ["Right-click", "Copy, paste, duplicate, delete"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl L", "Lock / unlock"], ["Ctrl S", "Save"], ["Shift S", "Snapping on / off"], ["Del", "Delete"], ["Home", "Home view"], ["?", "This list"]])));
   back.append(modal);
   document.body.append(back);
-  back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
   modal.querySelector(".xbtn").focus();
 };
 
@@ -909,6 +977,7 @@ app.sketchHint = function () {
     point: "Click to place a point (holes can use sketch points).",
     trim: "Click a segment to cut it back to the nearest intersections.",
     dim: "Sketch dimension: click a line, circle or arc (or two points or lines for a distance or angle), click again to place it, then type the value. Double-click a dimension to change it.",
+    mirror: app.sketcher.mirrorHint(), // jumpstart-3d: sketch mirror
     select: "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
   }[t] || "";
 };
@@ -1053,6 +1122,7 @@ function onKey(e) {
     if (!mod && e.shiftKey && k === "t") { app.sketcher.setTool("text"); return; }
     if (!mod && map[k]) { app.sketcher.setTool(map[k]); return; }
     if (!mod && k === "x") { app.sketcher.toggleConstruction(); return; }
+    if (!mod && !e.shiftKey && k === "m") { app.sketcher.setTool("mirror"); return; } // jumpstart-3d: sketch mirror
     if (k === "f" && e.shiftKey) { app.fit(); return; }
     return;
   }
@@ -1086,6 +1156,7 @@ window.__app = app; window.__store = store; window.__findBody = findBody;
 
 // jumpstart-3d: scripting bridge. window.JS3D, documented in BRIDGE.md; does nothing until a script calls it.
 initBridge(app);
+initCodeCad(app); // jumpstart-3d: Code CAD. the Code CAD… menu entry and app.codeCad; nothing runs until Build or Update
 initRunScript(app); // jumpstart-3d: run script. the Run script… menu entry; runs a chosen .js file with JS3D in scope
 initChat(app); // jumpstart-3d: chat inside the app. the AI button and panel; idle until clicked
 initReport(app); // jumpstart-3d: report. Report a problem (Open/Export menu and About); the app sends nothing

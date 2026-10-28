@@ -21,9 +21,18 @@ See [NOTICE.md](NOTICE.md) for credit and licensing.
 **[Download the single file](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html)** ·
 **[Use it with an AI agent](#use-it-with-an-ai-agent)**
 
+<h3 align="center">Love it? Help keep it free.</h3>
+<p align="center">JumpStart 3D is free, with no ads and no account. Your support pays for the hosting and the hours behind every new build.</p>
+<p align="center">
+  <a href="https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08"><img src=".github/assets/support-once.svg" alt="Support once, any amount" width="340"></a>
+  <a href="https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09"><img src=".github/assets/support-monthly.svg" alt="Support monthly" width="340"></a>
+</p>
+<p align="center">Prefer GitHub? <a href="https://github.com/sponsors/MaxSikorski">Sponsor on GitHub</a> (one-time or monthly).</p>
+
 ## Contents
 
 - [Get started](#get-started)
+- [Host it yourself or embed it](#host-it-yourself-or-embed-it)
 - [What people make with it](#what-people-make-with-it)
 - [What it can do](#what-it-can-do)
 - [Keep your designs safe](#keep-your-designs-safe)
@@ -66,6 +75,36 @@ After your first visit, the JumpStart 3D website keeps a copy on your computer, 
 it opens at once and works without internet. When a new version is published, a message asks you
 to reload. The single file never needs the web.
 
+## Host it yourself or embed it
+
+To host JumpStart 3D at home or at school, use the single HTML file from the GitHub release,
+[`jumpstart-3d.html`](https://github.com/MaxSikorski/jumpstart-3d/releases/latest/download/jumpstart-3d.html),
+or copy the `docs/` site folder. Any static web server works: run `python3 -m http.server` in the
+folder, or use nginx or Caddy on a computer, a Raspberry Pi, or a Proxmox LXC container with nginx.
+The single file needs no internet; the website keeps a copy for offline use after its first visit.
+
+Designs stay in the browser's IndexedDB storage. That means each browser on each device has its own
+designs; they do not sync automatically. Use Export / Save or the backup tools in Your designs to
+move them to another browser or device. See [Keep your designs safe](#keep-your-designs-safe).
+
+### Embed it in another program
+
+Load the page in an iframe or webview, then run JavaScript in the app page's context through
+`window.JS3D`. A parent page can access an iframe this way when both pages share an origin. See
+[BRIDGE.md](BRIDGE.md) for every call and its options. For example:
+
+```js
+const app = window.JS3D;
+const id = app.add("box", { size: [40, 30, 20] });
+await app.ready();
+const volume = app.get(id).volume;
+const stl = await app.export("stl", { ids: [id] });
+```
+
+For AI agents, see the [MCP server guide](mcp/README.md).
+
+License: From build 24, Max's code is AGPL-3.0-only; if you host a modified copy for others, offer them its source. J.Siwek's original code stays MIT.
+
 ## What people make with it
 
 The JumpStart 3D community shares what it builds in a few places. Everything below is by the
@@ -96,7 +135,7 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has eighty-nine step-by-step tutorials with animations, behind the **Tutorials** button
+JumpStart 3D has ninety step-by-step tutorials with animations, behind the **Tutorials** button
 in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
 toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
 a tour of the top bar, how the model looks on screen and sketch constraints.
@@ -142,6 +181,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 
 - **Named parameters:** type `w` or `w/2` instead of a number, and everything follows when it
   changes.
+- **Code CAD** (Open/Export › Code CAD…): write replicad code that builds one solid, and keep the code with the part.
 - **Bolts, nuts, gears, hole patterns, name plates, knurled knobs and springs**, ready to drop into a design.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.
 - **Your printer's plate size**, with steep undersides shaded red.
@@ -324,6 +364,11 @@ upstream version stays easy to merge.
   cut in, and optional hanging or screw holes.
 - Knurled knobs: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an
   optional round, hex or D-shaped bore. For a diamond pattern, use Texture.
+- Code CAD: replicad code (a function body that gets `replicad` and `params` and returns one closed solid) builds in a
+  temporary background engine and becomes an ordinary STEP body that keeps its code. Opening a design never runs the
+  code; press Update to run it again, for instance after a linked named parameter changed. The code runs in a
+  locked-down worker (no network, no browser storage, no imports, no code built from text) but it is not a full
+  sandbox: it can use a lot of processor time and memory, so run only code you trust. Scripts call `JS3D.codeCad`.
 - Springs: a compression spring of round wire from the wire, outside diameter, free length and turns (2 to 10),
   right or left hand, with open ends or ends cut flat.
 - Thirty-eight more tutorials, for the toolbar buttons that had none: roofs, a snowman, cutter shapes, turning and snapping, a tour of the top bar, screen looks and sketch constraints.

@@ -8,7 +8,7 @@ import { withFonts } from "./helperfonts.js";
 import { store, findBody, nextSeq, IDENTITY, regionsFor } from "./store.js";
 import { uid, el, nextColor } from "./util.js";
 import { isInch } from "./units.js";
-import { theme } from "./theme.js";
+import { theme, sketchColor, sketchScaled } from "./theme.js";
 import { simplify, packMesh, toB64, fromB64, contentId } from "./meshimport.js";
 import { M4, arr, nextName } from "./ops.js";
 import { gunzip } from "./inflate.js";
@@ -78,10 +78,11 @@ export function initChisel(app) {
       levelBar = document.createElement("div");
       levelBar.className = "chisel-level"; levelBar.id = "chisel-level";
       levelBar.setAttribute("role", "group"); levelBar.setAttribute("aria-label", "Chisel level");
-      levelBar.innerHTML = '<button data-level="easy" title="Easy: a few big, simple tools (great for kids and first-timers)">Easy</button><button data-level="pro" title="Pro: every brush, cut and setting">Pro</button><button data-lathe="1" id="chisel-lathe" class="chisel-lathe-btn" title="Turn a body or a wood blank on a virtual lathe">Lathe</button>';
+      levelBar.innerHTML = '<button data-level="easy" title="Easy: a few big, simple tools (great for kids and first-timers)">Easy</button><button data-level="pro" title="Pro: every brush, cut and setting">Pro</button><button data-lathe="1" id="chisel-lathe" class="chisel-lathe-btn" title="Turn a body or a wood blank on a virtual lathe">Lathe</button><button data-carve="1" id="chisel-carve" class="chisel-lathe-btn" title="Chip carve a board or a shape with knives">Chip carve</button>';
       levelBar.addEventListener("click", async (e) => {
         const b = e.target.closest("button"); if (!b) return;
         if (b.dataset.lathe) { await sync(); app.lathe.open(); return; } // your sculpting is saved first
+        if (b.dataset.carve) { await sync(); app.carve.open(); return; }
         setLevel(b.dataset.level);
       });
       document.body.append(levelBar);
@@ -140,7 +141,7 @@ export function initChisel(app) {
     },
     inch: () => isInch(),
     // the workplane and sketch colors of the current theme
-    themeColors: () => ({ wp: theme.c.wp, sketch: "#" + new THREE.Color(theme.c.sketch).getHexString(), sketchFill: "#" + new THREE.Color(theme.c.sketchFill).getHexString(), preview: theme.name === "light" ? "#1f4fa8" : "#ffe600" }),
+    themeColors: () => ({ wp: theme.c.wp, sketch: "#" + new THREE.Color(sketchColor()).getHexString(), sketchW: sketchScaled(1.5), sketchFill: "#" + new THREE.Color(theme.c.sketchFill).getHexString(), preview: theme.name === "light" ? "#1f4fa8" : "#ffe600" }),
     // a sketch extruded in Chisel: a real sketch + extrude in the design (new body, or a join /
     // cut on design bodies), so it stays editable in Advanced
     cadExtrude: (req) => cadExtrude(req),
@@ -152,6 +153,7 @@ export function initChisel(app) {
     perf: () => app.perfLevel || "ultra",
   };
   app.chiselPerf = (l) => { const w = win(); if (w && w.setPerf) w.setPerf(l); };
+  app.chiselTheme = () => { const w = win(); if (w && w.setTheme) w.setTheme(document.documentElement.dataset.ui || "light"); };
   // the theme changes there: Chisel follows
   new MutationObserver(() => { const w = win(); if (w && w.setTheme) w.setTheme(document.documentElement.dataset.ui || "light"); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ["data-ui"] });
@@ -400,7 +402,7 @@ export function initChisel(app) {
           li("Want to keep the original?", "use Copy (under \"From your design\" in the panel) to sculpt a copy instead.")),
         el("div", { class: "ci-acts" }, ok)));
     back.append(modal);
-    const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); done(); } };
+    const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); if (e.key === "Escape") e.stopPropagation(); done(); } }; // jumpstart-3d: keep the dialog Escape from reaching the app behind it
     document.addEventListener("keydown", onKey, true);
     const done0 = done; done = () => { document.removeEventListener("keydown", onKey, true); done0(); };
     ok.onclick = () => done();

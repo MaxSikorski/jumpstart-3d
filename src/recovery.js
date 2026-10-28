@@ -146,7 +146,7 @@ export function initRecovery({ getDoc, toast, restore, savedCopy }) {
     const m = el("div", { class: "modal recover", role: "dialog", "aria-label": title },
       el("header", {}, el("h2", {}, title), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })), el("div", { class: "mbody" }, body));
     back.append(m);
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
     document.body.append(back);
     return back;
   }

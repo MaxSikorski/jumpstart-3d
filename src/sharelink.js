@@ -185,12 +185,12 @@ const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "m
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
 const CHILD_KEYS = new Set(["node", "m", "hole", "color", "name", "hidden", "id", "seq"]);
 const MOD_TYPES = new Set(["fillet", "chamfer", "hole", "bool", "keeppiece", "halfspace", "sketchsplit", "splitface", "offset", "shell", "emboss", "facepat", "thread", "scale", "pattern"]);
-const MOD_KEYS = new Set(["id", "seq", "t", "exprs", "exprUnits", "angle", "at", "ax1", "ax2", "cax", "cbDepth", "cbDia", "center", "chain", "clear", "closed", "cn", "count", "csAngle", "csDia", "curves", "d", "depth", "dia", "dir", "edges", "face", "faces", "feats", "flip", "k", "kind", "left", "length", "m", "mode", "n", "n1", "n2", "o", "op", "p", "piece", "pitch", "plane", "poly", "r", "s1", "s2", "sets", "side", "sym", "th", "through", "tip", "tool", "what", "size", "x", "str", "font", "along", "mirror", "reverse", "sketch", "tapped", "hidden", "src"]);
+const MOD_KEYS = new Set(["id", "seq", "t", "exprs", "exprUnits", "angle", "at", "ax1", "ax2", "cax", "cbDepth", "cbDia", "center", "chain", "clear", "closed", "cn", "count", "csAngle", "csDia", "curves", "d", "depth", "dia", "dir", "edges", "face", "faces", "feats", "flip", "k", "kind", "left", "length", "m", "mode", "n", "n1", "n2", "o", "op", "p", "piece", "pitch", "plane", "poly", "r", "s1", "s2", "sets", "side", "sym", "th", "through", "tip", "tool", "what", "size", "x", "str", "font", "along", "mirror", "reverse", "sketch", "tapped", "hidden", "src", "sole"]);
 const SKETCH_KEYS = new Set(["id", "name", "seq", "plane", "pts", "ents", "hidden", "onBody", "faceCenter", "fromFace", "cons", "image"]);
 const ENT_KEYS = {
   line: ["a", "b"], circle: ["c", "r"], arc: ["c", "a", "b"], spline: ["pts", "closed"], point: ["p"], text: ["p", "str", "size", "angle", "font"],
 };
-const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2"]);
+const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2", "sg"]); // sg: jumpstart-3d: sketch solver (an angle's turning direction)
 const CON_TYPES = new Set(["origin", "coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "concentric", "equal", "midpoint", "dim"]);
 const PLANE_KEYS = new Set(["id", "name", "seq", "kind", "def", "plane", "size", "hidden"]);
 const MEDIA_MAPS = new Set(["front", "wrap", "box", "ball"]);
@@ -354,6 +354,7 @@ export function validateEnvelope(env) {
       if (c.expr !== undefined) text(c.expr, "a dimension expression", LIMITS.EXPR);
       if (c.unit !== undefined && !UNITS.has(c.unit)) throw damaged("a dimension unit");
       if (c.name !== undefined) text(c.name, "a dimension name", 64);
+      if (c.sg !== undefined && c.sg !== 1 && c.sg !== -1) throw damaged("an angle direction"); // jumpstart-3d: sketch solver
     }
     if (s.image !== undefined) {
       obj(s.image, "a sketch picture"); allow(s.image, new Set(["src", "name", "w", "h", "cx", "cy", "rot", "opacity"]), "a sketch picture");

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, loadDoc, newDoc, body, prim, IDENTITY, waitIdle, bodies, watchErrors, quarantine } from "./helpers.mjs";
+import { boot, loadDoc, newDoc, body, prim, IDENTITY, waitIdle, bodies, watchErrors, quarantine, exportBytes, stlTriangles } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -11,7 +11,7 @@ test.afterEach(() => { expect(errors).toEqual([]); });
 const run = (fn, arg) => page.evaluate(fn, arg);
 const translated = (x, y, z) => { const m = IDENTITY.slice(); m.splice(12, 3, x, y, z); return m; };
 const box = (id, w, d, h, m = IDENTITY) => body(id, id === "target" ? "Block" : id, prim("box", { w, d, h }), m);
-const fixture = (mode, width = 22) => newDoc("Combine pieces", mode, { bodies: [box("target", 20, 20, 20), box("cutter", width, 22, 2, translated(0, 0, 9))] });
+const fixture = (mode, width = 22, z = 9) => newDoc("Combine pieces", mode, { bodies: [box("target", 20, 20, 20), box("cutter", width, 22, 2, translated(0, 0, z))] });
 async function combine(mode, op = "Cut", keep = false) {
   if (mode === "beginner") {
     await run(() => JS3D.select(["cutter"]));
@@ -85,6 +85,42 @@ for (const mode of ["advanced", "beginner"]) {
   });
 }
 
+// A cutter 1e-6 mm above the floor leaves a film of 4e-4 mm3 under the real block; it must not become a stray body (the Pi-lid run showed one).
+for (const mode of ["advanced", "beginner"]) {
+  test(`${mode}: a cut that leaves a near-empty film gives one body, one solid, one exported solid`, async () => {
+    await loadDoc(page, fixture(mode, 22, 1e-6)); await combine(mode);
+    await expectVolumes([7200]);
+    const only = await run(() => ({ n: JS3D.doc().bodies.length, solids: __app.scene.views.get(__store.doc.bodies[0].id).data.solidCount, name: JS3D.doc().bodies[0].name }));
+    expect(only).toEqual({ n: 1, solids: 1, name: mode === "advanced" ? "Block" : "Group 1" });
+    const { bytes } = await exportBytes(page, "stl");
+    const tris = stlTriangles(bytes);
+    let zMin = Infinity;
+    for (let i = 0; i < tris; i++) for (let v = 0; v < 3; v++) zMin = Math.min(zMin, bytes.readFloatLE(84 + i * 50 + 12 + v * 12 + 8));
+    expect(zMin).toBeGreaterThan(2);
+  });
+}
+test("Beginner: Ungroup works after a film was dropped from a Group cut", async () => {
+  const doc = fixture("beginner", 22, 1e-6); doc.bodies[1].hole = true;
+  await loadDoc(page, doc);
+  await run(() => JS3D.select(["target", "cutter"]));
+  await page.click("#bb-group"); await waitIdle(page);
+  await expectVolumes([7200]);
+  await page.click("#bb-ungroup"); await waitIdle(page);
+  expect(await run(() => JS3D.doc().bodies.length)).toBe(2);
+  await expect(page.locator("#toasts")).not.toContainText("keeps one piece");
+});
+// quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on a Combine/Cut (app or runner-speed finding, see the PR notes)
+test("Advanced: deleting a Combine that dropped a film restores the inputs", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on this Combine/Cut build");
+  await loadDoc(page, fixture("advanced", 22, 1e-6)); await combine("advanced");
+  await expectVolumes([7200]);
+  await page.locator('.tl-item[aria-label*="Combine"]').first().dblclick();
+  await page.locator("#cmd").getByRole("button", { name: "Delete", exact: true }).click();
+  await waitIdle(page);
+  const got = await bodies(page);
+  expect(got.map(b => b.volume).sort((a, b) => a - b)).toEqual([968, 8000]);
+  expect(await run(() => JS3D.doc().bodies.map(b => (b.node.mods || []).length))).toEqual([0, 0]);
+});
 test("Advanced: Keep tools preserves the cutter beside the two pieces", async () => {
   await loadDoc(page, fixture("advanced")); await combine("advanced", "Cut", true);
   await expectVolumes([3600, 3600, 968]);
@@ -138,6 +174,42 @@ test("editing one copy to a different solid count errors clearly and leaves its 
   expect(got[0].error).toContain("expected 2 separate solids, found 1");
   expect(got[1]).toMatchObject({ volume: 3600, error: null });
   await run(() => JS3D.undo()); await waitIdle(page); await expectVolumes([3600, 3600]);
+});
+
+// A hole that removes nothing leaves the model as it was: the app must say so (once), and say nothing when the hole cut.
+const EMPTY_CUT = "The hole did not cut anything";
+// Toasts vanish after 2.6 s and the Group is followed by a wait for the engine: record every toast as it appears.
+const clearToasts = () => run(() => {
+  document.getElementById("toasts").replaceChildren();
+  window.__toastLog = [];
+  (window.__toastWatch ||= new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) window.__toastLog.push(n.textContent); }))
+    .observe(document.getElementById("toasts"), { childList: true });
+});
+const toastLog = () => run(() => window.__toastLog);
+test("Beginner: a hole fully apart from the part gets the 'did not cut anything' note", async () => {
+  await loadDoc(page, newDoc("Hole apart", "beginner", { bodies: [box("target", 20, 20, 20), box("cutter", 4, 4, 4, translated(60, 0, 0))] }));
+  await clearToasts();
+  await combine("beginner");
+  const log = await toastLog();
+  expect(log.filter(t => t.includes(EMPTY_CUT))).toEqual(["The hole did not cut anything. Check that it overlaps the part, then try again (Undo brings the pieces back)."]);
+  await expectVolumes([8000]);
+});
+test("Beginner: a hole that overlaps the part gives no such note", async () => {
+  await loadDoc(page, newDoc("Hole inside", "beginner", { bodies: [box("target", 20, 20, 20), box("cutter", 4, 4, 4, translated(0, 0, 0))] }));
+  await clearToasts();
+  await combine("beginner");
+  await expectVolumes([8000 - 64]);
+  expect((await toastLog()).filter(t => t.includes(EMPTY_CUT))).toEqual([]);
+});
+test("Beginner: a Group without holes gives no such note", async () => {
+  await loadDoc(page, newDoc("No hole", "beginner", { bodies: [box("target", 20, 20, 20), box("other", 4, 4, 4, translated(60, 0, 0))] }));
+  await clearToasts();
+  await run(() => JS3D.select(["target", "other"]));
+  const depth = await run(() => __store.undoStack.length);
+  await page.click("#bb-group");
+  await expect.poll(() => run(() => __store.undoStack.length)).toBe(depth + 1);
+  await waitIdle(page);
+  expect((await toastLog()).filter(t => t.includes(EMPTY_CUT))).toEqual([]);
 });
 
 // A hole group builds twice: first without its holes (the baseline piece count), then complete.
@@ -225,4 +297,56 @@ test('beginner: a box with a hole through its middle stays one body after Group,
   expect(made[0]).toMatchObject({ hole: false, error: null });
   expect(made[0].volume).toBeCloseTo(8000 - Math.PI * 16 * 20, 0);
   expect(await run(() => __store.undoStack.length)).toBe(depth + 1);
+});
+
+test('Export clicked during a Group waits for the rebuild and downloads the finished part (browser test F4)', async () => {
+  await loadDoc(page, newDoc("Export during group", "beginner", { bodies: [
+    box("target", 20, 20, 20),
+    body("hole", "Cylinder hole", prim("cylinder", { w: 6, d: 6, h: 30 }), translated(0, 0, -5), { hole: true }),
+  ] }));
+  await waitIdle(page);
+  await run(() => {
+    window.__toasts = [];
+    new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) window.__toasts.push(n.textContent); }).observe(document.getElementById("toasts"), { childList: true });
+    JS3D.select(["target", "hole"]);
+  });
+  const [dl] = await Promise.all([
+    page.waitForEvent("download", { timeout: 60_000 }),
+    // one tick: Group, then Export > STL before the rebuild has landed
+    run(() => { document.getElementById("bb-group").click(); document.getElementById("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]').click(); }),
+  ]);
+  const chunks = [];
+  for await (const c of await dl.createReadStream()) chunks.push(c);
+  const got = Buffer.concat(chunks);
+  await waitIdle(page);
+  const want = Buffer.from(await run(async () => Array.from(await JS3D.export("stl"))));
+  expect(got.equals(want)).toBe(true);
+  const toasts = await run(() => window.__toasts);
+  expect(toasts.some((t) => t.includes("Still building"))).toBe(true);
+  expect(toasts.some((t) => t.includes("Nothing to export"))).toBe(false);
+});
+
+test('two Export clicks during a Group give exactly one download, and the later format wins (review of the F4 fix)', async () => {
+  await loadDoc(page, newDoc("Double export", "beginner", { bodies: [
+    box("target", 20, 20, 20),
+    body("hole", "Cylinder hole", prim("cylinder", { w: 6, d: 6, h: 30 }), translated(0, 0, -5), { hole: true }),
+  ] }));
+  await waitIdle(page);
+  await run(() => {
+    window.__toasts = [];
+    new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) window.__toasts.push(n.textContent); }).observe(document.getElementById("toasts"), { childList: true });
+    JS3D.select(["target", "hole"]);
+  });
+  const names = [];
+  page.on("download", (d) => names.push(d.suggestedFilename()));
+  await run(() => {
+    document.getElementById("bb-group").click();
+    const click = (act) => { document.getElementById("btn-export").click(); document.querySelector(`#menu-export button[data-act="${act}"]`).click(); };
+    click("stl"); click("obj");
+  });
+  await expect.poll(() => names.length, { timeout: 60_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(3000);
+  expect(names).toHaveLength(1);
+  expect(names[0]).toMatch(/\.obj$/);
+  expect((await run(() => window.__toasts)).some((t) => t.includes("Already waiting"))).toBe(true);
 });

@@ -43,8 +43,8 @@ test("Advanced: Create > Advanced Create > Fastener makes an M8x30 bolt in one u
   expect(list.map((b) => b.name)).toEqual(["M8×30 bolt"]);
   expect(list[0].error).toBeNull();
   expect(list[0].hole).toBe(false);
-  expect(list[0].volume).toBeGreaterThan(2050);
-  expect(list[0].volume).toBeLessThan(2140);
+  expect(list[0].volume).toBeGreaterThan(1980); // 2010 with the ISO thread profile (about 90 mm3 less than the old, too shallow V)
+  expect(list[0].volume).toBeLessThan(2050);
   // head down on the bed, 30 under the head plus the 5.3 head
   expect(list[0].bbox.min[2]).toBeCloseTo(0, 3);
   expect(list[0].bbox.max[2]).toBeCloseTo(35.3, 3);
@@ -72,6 +72,18 @@ test("Advanced: a nut from the dialog has no length row", async () => {
   expect(nut.bbox.max[2]).toBeCloseTo(6.8, 3);
 });
 
+test("the Fastener dialog says when the print offset is past what the thread can take (bolt 0.07 pitch, nut 0.15 pitch)", async () => {
+  await fresh("advanced");
+  await openFromRibbon();
+  await page.selectOption("#fa-size", "M3");
+  await page.selectOption("#fa-clear", "-0.1");
+  await expect(page.locator("#cmd")).toContainText("M3: offsets past −0.035 mm make no difference on this bolt");
+  await part("Nut");
+  await expect(page.locator("#cmd")).toContainText("M3: offsets past −0.075 mm make no difference on this nut or hole");
+  await page.selectOption("#fa-size", "M8");
+  await expect(page.locator("#cmd")).not.toContainText("make no difference"); // 0.1 is under 0.15 x 1.25
+});
+
 // quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
 test("rods: M8x30 and 1/4-20x40 build to the expected volume, left hand included", async ({}, info) => {
   quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
@@ -85,10 +97,10 @@ test("rods: M8x30 and 1/4-20x40 build to the expected volume, left hand included
   expect(list.filter((b) => b.error)).toEqual([]);
   expect(list.map((b) => b.name)).toEqual(["M8×30 threaded rod", "1/4-20×40 threaded rod", "M8×30 threaded rod"]);
   const v = (id) => list.find((b) => b.id === id).volume;
-  expect(v(m8)).toBeGreaterThan(1290);
-  expect(v(m8)).toBeLessThan(1340);
-  expect(v(inch)).toBeGreaterThan(1040);
-  expect(v(inch)).toBeLessThan(1090);
+  expect(v(m8)).toBeGreaterThan(1200); // 1229 with the ISO profile (the rod's section is about a circle of the pitch diameter, 7.19)
+  expect(v(m8)).toBeLessThan(1260);
+  expect(v(inch)).toBeGreaterThan(945); // 974 with the ISO profile
+  expect(v(inch)).toBeLessThan(1005);
   expect(Math.abs(v(left) - v(m8)) / v(m8)).toBeLessThan(0.01);
   expect(await run((id) => JS3D.get(id).node.mods[0].left, left)).toBe(true);
   // a left-hand thread is a different shape: same rod, same place, different STL bytes
@@ -125,7 +137,7 @@ test("a tap cutter is a hole: grouped with a block it cuts a threaded hole, and 
   const body = await run((id) => JS3D.get(id), id);
   expect(body.hole).toBe(true);
   expect(body.node.mods[0].clear).toBe(0);
-  expect(body.node.p.w).toBeCloseTo(8.8, 3);
+  expect(body.node.p.w).toBeCloseTo(8.375, 3); // the radius grows by the offset, at most 0.15 pitch (0.1875), so the diameter by 0.375
 });
 
 test("the Thread print offset tool tightens a bolt but leaves a tap cutter as it was made", async () => {
@@ -284,4 +296,41 @@ test("in inch units the dialog starts at 1/4-20 and 1 inch, and names the part i
     expect(bolt.error).toBeNull();
     expect(bolt.bbox.max[2]).toBeCloseTo(25.4 + 0.172 * 25.4, 2);
   } finally { await page.click("#unit-toggle"); }
+});
+
+test("Beginner: a second Fastener from the dialog starts beside the first one, not on top of it (browser test F8)", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
+  await fresh("beginner");
+  await page.click("#bb-fastener");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  await built();
+  await page.click("#bb-fastener");
+  await part("Nut");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const list = await built();
+  const bolt = list.find((b) => b.name.endsWith("bolt")), nut = list.find((b) => b.name.endsWith("nut"));
+  expect(list.filter((b) => b.error)).toEqual([]);
+  expect(bolt).toBeTruthy(); expect(nut).toBeTruthy();
+  const overlapXY = bolt.bbox.min[0] < nut.bbox.max[0] && bolt.bbox.max[0] > nut.bbox.min[0] && bolt.bbox.min[1] < nut.bbox.max[1] && bolt.bbox.max[1] > nut.bbox.min[1];
+  expect(overlapXY, "the nut sits on the bolt").toBe(false);
+  expect(nut.bbox.min[2]).toBeCloseTo(0, 3);
+});
+
+test("Beginner: a tap cutter from the dialog stays inside the box at 0,0 and Group cuts it (review of the F8 fix)", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
+  await fresh("beginner");
+  const id = await run(() => JS3D.add("box", { size: { w: 30, d: 30, h: 40 }, at: [0, 0, 0] }));
+  await run(() => JS3D.fit()); // the dialog drops the part at the view target: look at the box first
+  const before = await volumeOf(id);
+  await page.click("#bb-fastener");
+  await part("Tap cutter");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const list = await built();
+  const cutter = list.find((b) => b.hole);
+  expect(cutter.bbox.min[0]).toBeLessThan(0); expect(cutter.bbox.max[0]).toBeGreaterThan(0); // centred on the box, not pushed aside
+  const g = await run(async (ids) => { const g = JS3D.group(ids); await JS3D.ready(); return g; }, [id, cutter.id]);
+  expect(await volumeOf(g)).toBeLessThan(before - 300);
 });

@@ -10,7 +10,7 @@ import { landArrays, GROUND, PLANTS } from "./archland.js";
 // jumpstart-3d: register community lessons without changing the author's data.
 import { COMMUNITY_TUTORIALS } from "./tutorial_data_community.js";
 const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...ARCH_TUTORIALS, ...COMMUNITY_TUTORIALS];
-import { store } from "./store.js";
+import { store, resolveNode, bodyKey } from "./store.js"; // jumpstart-3d: read already-built volumes without asking the kernel to build
 import { el } from "./util.js";
 import { ICON } from "./icons.js";
 import { animSVG, animFor } from "./tutorial_anims.js";
@@ -46,9 +46,93 @@ export function initTutorials(app) {
       return { min: b.min, max: b.max, center: b.getCenter(new THREE.Vector3()), size: b.getSize(new THREE.Vector3()) };
     },
     groups: () => T.bodies().filter((b) => b.node.t === "group"),
+    volume: (id) => { const v = app.scene.views.get(id); return v && v.data && !v.pending ? v.data.volume : null; }, // jumpstart-3d: a lesson check can ask how much material a body has left (browser test F7)
     childKinds(g) { const out = []; walk(g.node, (n) => { if (n.t === "prim") out.push(n.kind); }); return out; },
     countHoles(g) { let n = 0; const go = (node) => { for (const c of node.children || []) { if (c.hole) n++; go(c.node); } }; go(g.node); return n; },
     hasHole: (g) => T.countHoles(g) > 0,
+    // jumpstart-3d: a hole counts only when it removes enough material; reuse existing meshes, never build geometry
+    cuts(g) {
+      const volume = T.volume(g.id);
+      if (!T.hasHole(g) || !Number.isFinite(volume)) return false;
+      const cached = (node) => {
+        const key = bodyKey(resolveNode(node, store.doc)) + (app.scene.kernel.quality > 1 ? "@q" + app.scene.kernel.quality : "");
+        const result = app.scene.kernel.get(key);
+        return result?.ok && Number.isFinite(result.mesh?.volume) ? result.mesh : null;
+      };
+      const measure = (child) => {
+        const node = child.node, mesh = cached(node), p = node.p || {};
+        let v = mesh?.volume, bounds = mesh?.bbox;
+        if (v == null && node.t === "prim" && !(node.mods || []).length && !p.r && !p.c) {
+          const { w, d, h } = p;
+          if (![w, d, h].every((x) => Number.isFinite(x) && x > 0)) return null;
+          let area;
+          if (node.kind === "box") area = w * d;
+          if (node.kind === "cylinder") area = Math.PI * w * d / 4;
+          if (node.kind === "prism") {
+            const n = Math.max(3, Math.round(p.sides ?? 6));
+            area = n * w * d * Math.sin(2 * Math.PI / n) / 8;
+          }
+          if (node.kind === "star") {
+            const n = Math.max(3, Math.min(24, Math.round(p.points ?? 5))), k = Math.max(0.1, Math.min(0.95, p.inner ?? 0.5));
+            const pts = Array.from({ length: 2 * n }, (_, i) => {
+              const a = Math.PI / 2 + i * Math.PI / n, r = i % 2 ? k : 1;
+              return [Math.cos(a) * r, Math.sin(a) * r];
+            });
+            const span = (axis) => Math.max(...pts.map((p) => p[axis])) - Math.min(...pts.map((p) => p[axis]));
+            area = n * k * Math.sin(Math.PI / n) * w * d / (span(0) * span(1));
+          }
+          if (area == null) return null;
+          v = area * h;
+          bounds = { min: [-w / 2, -d / 2, 0], max: [w / 2, d / 2, h] };
+        }
+        if (v == null || !bounds) return null;
+        const m = new THREE.Matrix4();
+        if (child.m) m.fromArray(child.m);
+        const box = new THREE.Box3(new THREE.Vector3(...bounds.min), new THREE.Vector3(...bounds.max)).applyMatrix4(m);
+        return { volume: v * Math.abs(m.determinant()), box };
+      };
+      const solids = g.node.children.filter((c) => !c.hole), holes = g.node.children.filter((c) => c.hole);
+      // holes only inside a nested group (tag and hole grouped first, then joined to the text): that cut is already made, so accept like hasHole
+      if (!holes.length) return true;
+      if (!solids.length) return false;
+      // A previously joined solid may already have an exact cached volume, even when its children overlap.
+      const joined = measure({ node: { ...g.node, children: solids, mods: [] } });
+      const parts = solids.map(measure);
+      let solid = joined;
+      if (!solid) {
+        // Unknown or overlapping solids need a new union build: retain the old hole check in that case.
+        if (parts.some((p) => !p)) return T.hasHole(g);
+        for (let i = 0; i < parts.length; i++) for (let j = 0; j < i; j++) {
+          const a = parts[i].box, b = parts[j].box;
+          if (["x", "y", "z"].every((k) => Math.min(a.max[k], b.max[k]) - Math.max(a.min[k], b.min[k]) > 1e-6)) return T.hasHole(g);
+        }
+        solid = { volume: parts.reduce((sum, p) => sum + p.volume, 0) };
+      }
+      const cutters = holes.map(measure);
+      // A cutter whose volume cannot be read without a build (sphere, cone, text, rounded, after a reload) keeps the plain hole check.
+      if (cutters.some((c) => !c)) return T.hasHole(g);
+      // Each known solid's own box, so raised lettering cannot stretch the box the cutter is compared with; the joined box only if no part is known.
+      const boxes = parts.filter(Boolean).map((p) => p.box);
+      if (!boxes.length && joined) boxes.push(joined.box);
+      // Per cutter: its volume times the share of its box that lies inside each solid's box (all three axes), capped at the cutter's volume.
+      // Cutters that overlap each other are simply summed, so the total can be a little generous; that only makes the check stricter.
+      let expected = 0;
+      for (const c of cutters) {
+        const size = c.box.getSize(new THREE.Vector3()), whole = size.x * size.y * size.z;
+        if (!(whole > 0)) continue;
+        let inside = 0;
+        for (const b of boxes) {
+          const x = Math.min(b.max.x, c.box.max.x) - Math.max(b.min.x, c.box.min.x);
+          const y = Math.min(b.max.y, c.box.max.y) - Math.max(b.min.y, c.box.min.y);
+          const z = Math.min(b.max.z, c.box.max.z) - Math.max(b.min.z, c.box.min.z);
+          if (x > 0 && y > 0 && z > 0) inside += x * y * z;
+        }
+        expected += c.volume * Math.min(1, inside / whole);
+      }
+      if (!(expected > 0)) return parts.some((p) => !p) ? T.hasHole(g) : false; // a solid we could not measure may be what the cutter sits in
+      return solid.volume - volume >= 0.5 * expected;
+    },
+    // end jumpstart-3d
     countMods(t) { let n = 0; for (const b of T.bodies()) walk(b.node, (node) => { for (const m of node.mods || []) if (m.t === t) n++; }); return n; },
     hasMod: (t) => T.countMods(t) > 0,
     hasCombine(op) {
@@ -163,7 +247,7 @@ export function initTutorials(app) {
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
         tabs, list));
     back.append(modal);
-    back.addEventListener("keydown", (e) => { if (e.key === "Escape") back.remove(); });
+    back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
     document.body.append(back);
     show(want);
     modal.querySelector(".xbtn").focus();
@@ -318,7 +402,7 @@ export function initTutorials(app) {
       el("button", { class: "btn", id: "tut-back", disabled: i === 0, onclick: () => go(i - 1) }, "← Back"),
       el("label", { class: "check tut-mark" }, el("input", { type: "checkbox", id: "tut-check", checked: isDone, onchange: (e) => { if (e.target.checked) cur.done.add(i); else cur.done.delete(i); save(); render(); } }), "I did this"),
       i < n - 1
-        ? el("button", { class: "btn primary" + (isDone ? " ready" : ""), id: "tut-next", onclick: () => { cur.done.add(i); go(i + 1); } }, "Next →")
+        ? el("button", { class: "btn primary" + (isDone ? " ready" : ""), id: "tut-next", onclick: () => { /* jumpstart-3d: a strict step only moves on once its check passes (F7); "I did this" overrides */ if (step.strict && !cur.done.has(i) && !passes(step)) { app.toast(step.strict, "err"); return; } cur.done.add(i); go(i + 1); } }, "Next →")
         : el("button", { class: "btn primary" + (isDone ? " ready" : ""), id: "tut-next", onclick: () => finish() }, "Finish ✓")));
     // the checklist of every step
     const list = el("ol", { class: "tut-list", id: "tut-list" });
@@ -369,6 +453,7 @@ export function initTutorials(app) {
     if (!t) { if (loud) app.toast(step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
     spot = t;
     t.classList.add("tut-spot");
+    try { if (t.closest(".bbar, #ribbon")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now) scrolls into view before the pop-up points at it
     const r = t.getBoundingClientRect();
     const via = step.show.via && t.matches(step.show.via);
     bubble = el("div", { class: "tut-bubble", id: "tut-bubble", role: "status" },

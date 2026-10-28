@@ -139,20 +139,37 @@ function resolve(spec) {
 // Pushes the sketch(es) and the body into the design and returns the body. Sketches sit at the world origin and the body's matrix
 // carries the position, as for any Advanced body that has been moved.
 function gearBody(doc, r) {
+  // A gear has thousands of points and lines. Their IDs repeat in line endpoints and
+  // region keys, so full random IDs make saved designs needlessly large. Keep the
+  // usual region key (the sorted entity IDs), using short IDs unique in this design.
+  const used = new Set();
+  for (const sk of doc.sketches) {
+    used.add(sk.id);
+    for (const list of [sk.pts, sk.ents, sk.cons]) for (const item of list || []) used.add(item.id);
+  }
+  for (const b of doc.bodies) used.add(b.id);
+  let serial = 0;
+  const itemId = (prefix) => {
+    if (r.kind !== "helical") return uid(prefix);
+    let id;
+    do { id = prefix + (serial++).toString(36); } while (used.has(id));
+    used.add(id);
+    return id;
+  };
   const sketch = (name, z, poly, bore) => {
     const sk = { id: uid("s"), name, seq: nextSeq(doc), plane: { o: [0, 0, z], x: [1, 0, 0], n: [0, 0, 1] }, pts: [], ents: [], hidden: true };
-    const P = (x, y) => { const p = { id: uid("p"), x, y }; sk.pts.push(p); return p.id; };
-    const line = (a, b) => { const e = { id: uid("e"), t: "line", a, b }; sk.ents.push(e); return e.id; };
+    const P = (x, y) => { const p = { id: itemId("p"), x, y }; sk.pts.push(p); return p.id; };
+    const line = (a, b) => { const e = { id: itemId("e"), t: "line", a, b }; sk.ents.push(e); return e.id; };
     const ids = poly.map(([x, y]) => P(x, y));
     let first;
     ids.forEach((a, i) => { const e = line(a, ids[(i + 1) % ids.length]); if (!i) first = e; });
-    if (bore && !bore.key) sk.ents.push({ id: uid("e"), t: "circle", c: P(0, 0), r: bore.r });
+    if (bore && !bore.key) sk.ents.push({ id: itemId("e"), t: "circle", c: P(0, 0), r: bore.r });
     if (bore && bore.key) {
       // the bore with its groove as one inner loop: an arc counter-clockwise from the groove's left corner the long way round to its
       // right corner, then three lines up and across the groove
       const { r: br, b, top } = bore, hx = b / 2, hy = Math.sqrt(br * br - hx * hx);
       const c = P(0, 0), L = P(r6(-hx), r6(hy)), R = P(r6(hx), r6(hy)), RT = P(r6(hx), r6(top)), LT = P(r6(-hx), r6(top));
-      sk.ents.push({ id: uid("e"), t: "arc", c, a: L, b: R });
+      sk.ents.push({ id: itemId("e"), t: "arc", c, a: L, b: R });
       line(R, RT); line(RT, LT); line(LT, L);
     }
     doc.sketches.push(sk);

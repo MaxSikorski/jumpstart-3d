@@ -564,7 +564,7 @@ const CAD = (() => {
   }
   function hideFields() { if (sk.fields) { sk.fields.box.remove(); sk.fields = null; } }
   // ---- what the sketch looks like
-  function lineObj(P, color, closed = true, opacity = 1, w = 2.5) {
+  function lineObj(P, color, closed = true, opacity = 1, w = COL.skW || 1.5) {
     const pts = P.map((q) => toW(q[0], q[1]));
     if (w) { const seg = []; for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) seg.push(pts[i], pts[(i + 1) % pts.length]); return thick(seg, color, w); }
     const g = new THREE.BufferGeometry().setFromPoints(closed ? [...pts, pts[0]] : pts);
@@ -967,7 +967,7 @@ const CAD = (() => {
   // the workplane in the design's colors (like Beginner), and the sketch colors
   function theme(c) {
     if (!c) return;
-    Object.assign(COL, { sketch: c.sketch, fill: c.sketchFill, minor: c.wp.minor, major: c.wp.major, preview: c.preview || COL.preview });
+    Object.assign(COL, { sketch: c.sketch, fill: c.sketchFill, minor: c.wp.minor, major: c.wp.major, preview: c.preview || COL.preview, skW: c.sketchW || 1.5 });
     floorMat.color.set(c.wp.bg);
     const g = gridGeo(c.wp.minor, c.wp.major); grid.geometry.dispose(); grid.geometry = g;
     grid.material.vertexColors = true; grid.material.opacity = 0.85; grid.material.needsUpdate = true;

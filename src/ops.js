@@ -176,7 +176,7 @@ export function ungroupBody(id) {
     const gm = M4(g.m);
     const idx = doc.bodies.indexOf(g);
     // a resized group hands its Scale feature down to the children
-    const mods = g.node.mods || [];
+    const mods = (g.node.mods || []).filter((m) => !(m.t === "keeppiece" && m.sole)); // jumpstart-3d: a sole keep-piece (films dropped by Group) goes away with the group
     if (mods.length === 1 && mods[0].t === "scale" && !scaleChildren(g.node, mods[0].k, mods[0].o)) return false;
     const kids = g.node.children.map((c) => {
       const b = {

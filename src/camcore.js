@@ -8,6 +8,10 @@
 // All sizes are millimetres, Z up, in the design's own coordinates.
 
 export const EMPTY = -1e9;
+// progress reporting (the worker listens): fn(fraction 0..1)
+let progressFn = null, progressAt = 0;
+export function onProgress(fn) { progressFn = fn; }
+function progress(f) { if (!progressFn) return; const n = Date.now(); if (n - progressAt > 150 || f >= 1) { progressAt = n; progressFn(Math.max(0, Math.min(1, f))); } }
 const IN = 25.4;
 
 // ------------------------------------------------------------------ libraries
@@ -18,6 +22,7 @@ export const POSTS = {
   marlin: { name: "Marlin", ext: "gcode", note: "Marlin-based CNC conversions and MPCNC-style machines", stream: true },
   fanuc: { name: "Fanuc-style (ISO)", ext: "nc", note: "Industrial machining centers and routers with Fanuc-compatible controls (program number, G54, tool length offsets, coolant)", stream: false, axes4: true, industrial: true },
   haas: { name: "Haas-style (NGC)", ext: "nc", note: "Haas-style vertical machining centers and tool-room mills", stream: false, axes4: true, industrial: true },
+  roland: { name: "Roland NC code (MDX)", ext: "nc", note: "Roland MODELA MDX-series mills (such as the MDX-50) with the command set on NC code: send the file with Roland's VPanel. Tool changes use the automatic tool changer and tool length offsets", stream: false, axes4: true },
   grblhal: { name: "grblHAL / FluidNC", ext: "nc", note: "GRBL-style controllers with a 4th (A) axis: grblHAL, FluidNC", stream: true, axes4: true },
 };
 // machine profiles: work area (mm), spindle range, feeds (mm/min), controller, units. "group" sorts
@@ -43,6 +48,7 @@ export const MACHINES = [
   { id: "mminimill", group: "Benchtop & hobby mills", name: "Mini mill conversion (Mach3/Mach4)", kind: "mill", x: 230, y: 100, z: 200, rpmMin: 100, rpmMax: 2500, feedMax: 900, rapid: 1500, post: "mach3", units: "mm" },
   { id: "mmill", group: "Benchtop & hobby mills", name: "Benchtop mill (LinuxCNC)", kind: "mill", x: 300, y: 150, z: 250, rpmMin: 100, rpmMax: 5000, feedMax: 1500, rapid: 2500, post: "linuxcnc", units: "mm", toolChange: true },
   { id: "mbenchatc", group: "Benchtop & hobby mills", name: "Benchtop mill with tool changer (LinuxCNC)", kind: "mill", x: 350, y: 200, z: 300, rpmMin: 100, rpmMax: 10000, feedMax: 2500, rapid: 5000, post: "linuxcnc", units: "mm", toolChange: true },
+  { id: "mdx50", group: "Benchtop & hobby mills", name: "Roland MDX-50, 5-tool changer (NC code)", kind: "mill", x: 400, y: 305, z: 135, rpmMin: 4500, rpmMax: 15000, feedMax: 3600, rapid: 3600, post: "roland", units: "mm", toolChange: true },
   { id: "mknee", group: "Benchtop & hobby mills", name: "CNC knee mill retrofit (LinuxCNC, inches)", kind: "mill", x: 760, y: 305, z: 400, rpmMin: 60, rpmMax: 4200, feedMax: 2500, rapid: 5000, post: "linuxcnc", units: "in", toolChange: true },
   { id: "mknee3", group: "Benchtop & hobby mills", name: "CNC knee mill retrofit (Mach3, inches)", kind: "mill", x: 760, y: 305, z: 400, rpmMin: 60, rpmMax: 4200, feedMax: 2500, rapid: 5000, post: "mach3", units: "in", toolChange: true },
   // pro and shop routers
@@ -75,6 +81,7 @@ export const MACHINES = [
   { id: "m3018r", group: "4th axis (rotary)", name: "Desktop CNC 3018 + rotary axis (grblHAL)", kind: "mill", x: 300, y: 180, z: 45, rpmMin: 1000, rpmMax: 10000, feedMax: 1000, rapid: 1500, post: "grblhal", units: "mm", rotary: { maxD: 60, maxL: 250 } },
   { id: "mhobbyr", group: "4th axis (rotary)", name: "Hobby router + 4th axis (FluidNC)", kind: "mill", x: 400, y: 400, z: 75, rpmMin: 8000, rpmMax: 24000, feedMax: 3000, rapid: 5000, post: "grblhal", units: "mm", rotary: { maxD: 100, maxL: 350 } },
   { id: "m6040r", group: "4th axis (rotary)", name: "Router 6040 + 4th axis (Mach3)", kind: "mill", x: 600, y: 400, z: 100, rpmMin: 6000, rpmMax: 24000, feedMax: 3000, rapid: 5000, post: "mach3", units: "mm", rotary: { maxD: 120, maxL: 450 } },
+  { id: "mdx50r", group: "4th axis (rotary)", name: "Roland MDX-50 + ZCL-50A rotary axis (NC code)", kind: "mill", x: 400, y: 305, z: 135, rpmMin: 4500, rpmMax: 15000, feedMax: 3600, rapid: 3600, post: "roland", units: "mm", toolChange: true, rotary: { maxD: 120, maxL: 380 } },
   { id: "mmill4", group: "4th axis (rotary)", name: "Mill with 4th axis (LinuxCNC)", kind: "mill", x: 300, y: 150, z: 250, rpmMin: 100, rpmMax: 5000, feedMax: 1500, rapid: 2500, post: "linuxcnc", units: "mm", toolChange: true, rotary: { maxD: 150, maxL: 300 } },
   { id: "mmach4", group: "4th axis (rotary)", name: "Router with 4th axis (Mach3, inches)", kind: "mill", x: 610, y: 610, z: 120, rpmMin: 8000, rpmMax: 24000, feedMax: 5000, rapid: 7000, post: "mach3", units: "in", rotary: { maxD: 150, maxL: 500 } },
   { id: "vmc4h", group: "4th axis (rotary)", name: "VMC with 4th axis, 40-taper (Haas-style, inches)", kind: "mill", x: 762, y: 406, z: 508, rpmMin: 50, rpmMax: 8100, feedMax: 16510, rapid: 25400, post: "haas", units: "in", toolChange: true, rotary: { maxD: 210, maxL: 600 } },
@@ -197,9 +204,11 @@ export function toolKernel(tool, res) {
   return { di: Int32Array.from(di), dj: Int32Array.from(dj), off: Float32Array.from(off), n };
 }
 // the lowest the tool can go at each cell without cutting into the model (drop-cutter)
+let dropBase = 0, dropSpan = 0;
 export function dropMap(hm, kern, floor) {
   const { nx, ny, h } = hm, out = new Float32Array(nx * ny), K = kern.di.length;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    if (i === 0 && (j & 7) === 0) progress(dropBase + (j / ny) * dropSpan);
     let z = floor;
     for (let k = 0; k < K; k++) {
       const ii = i + kern.di[k], jj = j + kern.dj[k];
@@ -467,8 +476,10 @@ export function buildProgram(job, tris) {
   const hm = heightMap(tris, box, job.res);
   const ops = [], warnings = [];
   const drops = new Map();
+  const live = job.ops.filter((o) => o.enabled !== false);
   for (const op of job.ops) {
     if (op.enabled === false) continue;
+    const oi = live.indexOf(op); dropBase = oi / live.length; dropSpan = 1 / live.length; progress(dropBase);
     const key = JSON.stringify([op.tool.type, op.tool.d, op.tool.cr, op.tool.angle, op.tool.tip]);
     const D = () => { if (!drops.has(key)) drops.set(key, dropMap(hm, toolKernel(op.tool, job.res), job.floor)); return drops.get(key); };
     let moves = [];
@@ -509,7 +520,7 @@ export function toGcode(prog, job, mach, opts = {}) {
   const post = POSTS[opts.post || mach.post] ? opts.post || mach.post : "grbl", inch = (opts.units || mach.units) === "in";
   const k = inch ? 1 / IN : 1, dp = inch ? 4 : 3, O = workOrigin(job), rot = !!job.rotary;
   const n = (v) => { let s = (v * k).toFixed(dp); if (s.includes(".")) s = s.replace(/0+$/, "").replace(/\.$/, ""); return s === "-0" ? "0" : s; };
-  const ind = post === "fanuc" || post === "haas", tc = ind || post === "linuxcnc" || post === "mach3";
+  const ind = post === "fanuc" || post === "haas", rol = post === "roland", tc = ind || rol || post === "linuxcnc" || post === "mach3";
   const L = [], c = (t) => L.push(post === "marlin" ? "; " + t : "(" + (ind ? t.toUpperCase() : t).replace(/[()]/g, "") + ")");
   if (ind) L.push("O" + String(opts.progNo || 1000).padStart(4, "0") + " (" + String(opts.title || "JumpStart 3D job").toUpperCase().replace(/[()]/g, "").slice(0, 40) + ")");
   const laserMach = mach.kind === "laser";
@@ -525,6 +536,7 @@ export function toGcode(prog, job, mach, opts = {}) {
   if (post === "linuxcnc") L.push("G17 G21 G40 G49 G80 G90 G94 G64 P" + n(0.02).replace(/^0$/, "0.02"));
   else if (post === "mach3") L.push("G17 G40 G49 G80 G90 G94");
   else if (ind) L.push("G17 G40 G49 G80 G90 G94");
+  else if (rol) L.push("G17 G40 G49 G80 G90 G94 G54");
   else L.push("G90 G94 G17");
   L.push(inch ? "G20" : "G21");
   if (ind) L.push("G91 G28 Z0", "G90 G54");
@@ -543,18 +555,19 @@ export function toGcode(prog, job, mach, opts = {}) {
       const p0 = moves[0] || { x: O[0], y: O[1] };
       L.push(`G0 G90 G54 X${n(p0.x - O[0])} Y${n(p0.y - O[1])}${rot && p0.a !== undefined ? " A" + an(p0.a) : ""} S${Math.round(op.rpm)} M3`);
       L.push(`G43 H${tn} Z${n(safe - O[2])} M8`);
-    } else if (!first || post === "linuxcnc" || post === "mach3") {
+    } else if (!first || post === "linuxcnc" || post === "mach3" || rol) {
       L.push(`G0 Z${n(safe - O[2])}`);
       if (!laser || !first) L.push(post === "marlin" ? "M5" : "M5");
       if (!first) {
-        if (post === "linuxcnc" || post === "mach3") { L.push(`T${tn} M6`); if (post === "linuxcnc") L.push(`G43 H${tn}`); }
+        if (post === "linuxcnc" || post === "mach3" || rol) { L.push(`T${tn} M6`); if (post === "linuxcnc" || rol) L.push(`G43 H${tn}`); }
         else if (!laser) { c(`Change the bit to T${tn}: ${op.tool.name}, set Z zero again, then resume`); L.push(post === "marlin" ? "M0 Change bit" : "M0"); }
-      } else if (post === "linuxcnc" || post === "mach3") { L.push(`T${tn} M6`); if (post === "linuxcnc") L.push(`G43 H${tn}`); }
+      } else if (post === "linuxcnc" || post === "mach3" || rol) { L.push(`T${tn} M6`); if (post === "linuxcnc" || rol) L.push(`G43 H${tn}`); }
     }
     first = false;
     if (ind) { /* spindle started with the tool change */ }
     else if (laser) L.push(post === "marlin" ? "M3 S0" : "M4 S0");
     else if (post === "marlin") { L.push(`M3 S${Math.max(1, Math.min(255, Math.round((op.rpm / (mach.rpmMax || op.rpm)) * 255)))}`); L.push("G4 S3"); }
+    else if (rol) { L.push(`S${Math.round(Math.max(mach.rpmMin || 0, Math.min(mach.rpmMax || op.rpm, op.rpm)))} M3`); L.push("G04 X3."); }
     else { L.push(`S${Math.round(op.rpm)} M3`); L.push(post === "grbl" ? "G4 P3" : "G4 P3"); }
     last = { x: null, y: null, z: null, f: null, s: null, g: null, a: last.a };
     const sScale = laser ? (post === "marlin" ? 255 : mach.rpmMax || 1000) : 1;
@@ -587,7 +600,7 @@ export function toGcode(prog, job, mach, opts = {}) {
   L.push(`G0 X0 Y0`);
   if (rot) L.push("G0 A0");
   L.push(post === "linuxcnc" ? "M2" : post === "marlin" ? "M84" : "M30");
-  if (post === "linuxcnc" || post === "mach3") { L.unshift("%"); L.push("%"); }
+  if (post === "linuxcnc" || post === "mach3" || rol) { L.unshift("%"); L.push("%"); }
   return L.join("\n") + "\n";
 }
 
@@ -656,25 +669,36 @@ function rotaryLine(rel, ang, tool, job, kernCache) {
   const hm = heightMap(t, { x0: R.mx0 - rT, x1: R.mx1 + rT, y0: -rT, y1: rT }, res);
   const key = JSON.stringify([tool.type, tool.d, tool.cr, tool.angle, tool.tip]);
   if (!kernCache.has(key)) kernCache.set(key, toolKernel(tool, res));
-  const D = dropMap(hm, kernCache.get(key), R.core || 0);
-  const j0 = Math.round((0 - hm.y0) / res), out = [];
-  for (let i = 0; i < hm.nx; i++) { const x = hm.x0 + i * res; if (x < R.mx0 - 1e-6 || x > R.mx1 + 1e-6) continue; out.push([x, D[j0 * hm.nx + i]]); }
+  // only the line right under the tool's center is needed
+  const kern = kernCache.get(key), K = kern.di.length, j0 = Math.round((0 - hm.y0) / res), out = [], { nx, ny, h } = hm, floor = R.core || 0;
+  for (let i = 0; i < nx; i++) {
+    const x = hm.x0 + i * res; if (x < R.mx0 - 1e-6 || x > R.mx1 + 1e-6) continue;
+    let z = floor;
+    for (let k = 0; k < K; k++) {
+      const ii = i + kern.di[k], jj = j0 + kern.dj[k];
+      if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+      const v = h[jj * nx + ii]; if (v === EMPTY) continue;
+      const q = v - kern.off[k]; if (q > z) z = q;
+    }
+    out.push([x, z]);
+  }
   return out;
 }
 function buildRotary(job, tris) {
   const R = job.rotary, rel = new Float32Array(tris.length);
   for (let i = 0; i < tris.length; i += 3) { rel[i] = tris[i]; rel[i + 1] = tris[i + 1] - R.yc; rel[i + 2] = tris[i + 2] - R.zc; }
   const kc = new Map(), ops = [], warnings = [];
-  const clear = R.R + 5, deg = (r) => (r * 180) / Math.PI;
+  const clear = R.R + 5, deg = (r) => (r * 180) / Math.PI, liveOps = job.ops.filter((o) => o.enabled !== false), nOps = Math.max(1, liveOps.length);
   for (const op of job.ops) {
     if (op.enabled === false) continue;
+    const oi = liveOps.indexOf(op);
     const t = op.tool, m = [], at = { x: null, z: null, a: null };
     const mv = (g, x, r, a, f) => { m.push({ g, x, y: R.yc, z: R.zc + r, a: +a.toFixed(4), ...(g ? { f } : {}) }); at.x = x; at.z = r; at.a = a; };
     const up = () => { if (at.x !== null && at.z < clear - 1e-6) mv(0, at.x, clear, at.a); };
     if (op.type === "rrough") {
       // flat layers inward from the outside; along X at each angle, cutting where the part is lower
       const so = Math.max(job.res, t.d * op.stepover), nA = Math.max(8, Math.ceil((2 * Math.PI * R.R) / so)), sd = Math.max(0.05, op.stepdown), leave = op.leave || 0;
-      const lines = []; for (let k = 0; k < nA; k++) { const a = (2 * Math.PI * k) / nA; lines.push({ a, pts: rotaryLine(rel, a, t, job, kc) }); }
+      const lines = []; for (let k = 0; k < nA; k++) { const a = (2 * Math.PI * k) / nA; lines.push({ a, pts: rotaryLine(rel, a, t, job, kc) }); progress((oi + (k / nA) * 0.5) / nOps); }
       let lo = Infinity; for (const L of lines) for (const p of L.pts) lo = Math.min(lo, p[1] + leave);
       const rs = []; for (let r = R.R - sd; r > lo + 1e-6; r -= sd) rs.push(r); rs.push(Math.max(lo, R.core || 0));
       let flip = false, prevR = R.R;
@@ -699,6 +723,7 @@ function buildRotary(job, tris) {
       const so = Math.max(job.res * 0.5, t.d * op.stepover), nA = Math.max(12, Math.ceil((2 * Math.PI * rMax) / so));
       let flip = false;
       for (let k = 0; k <= nA; k++) {
+        progress((oi + k / nA) / nOps);
         const a = (2 * Math.PI * k) / nA, pts = rotaryLine(rel, a, t, job, kc).map((p) => [p[0], Math.max(R.core || 0, p[1]), 0]);
         if (!pts.length) continue;
         let line = simplify(pts, op.tol || 0.03);
@@ -731,11 +756,11 @@ export class RotarySim {
     this.removed = 0; this.rapidHits = 0; this.tooDeep = 0; this.kern = new Map();
     this.rotary = true;
   }
-  kernel(tool) { const k = JSON.stringify([tool.type, tool.d, tool.cr, tool.angle, tool.tip]); if (!this.kern.has(k)) this.kern.set(k, toolKernel(tool, this.res * 0.75)); return this.kern.get(k); }
+  kernel(tool) { const k = JSON.stringify([tool.type, tool.d, tool.cr, tool.angle, tool.tip]); if (!this.kern.has(k)) this.kern.set(k, toolKernel(tool, this.res)); return this.kern.get(k); }
   move(a, b, tool, g) {
     const K = this.kernel(tool), r0 = a.z - this.zc, r1 = b.z - this.zc, A0 = ((a.a || 0) * Math.PI) / 180, A1 = ((b.a ?? a.a ?? 0) * Math.PI) / 180;
     const L = Math.hypot(b.x - a.x, r1 - r0, Math.max(r0, r1) * (A1 - A0)), n = Math.max(1, Math.ceil(L / (this.res * 0.6)));
-    const { nx, na, rho, res } = this, kr = res * 0.75, da = (2 * Math.PI) / na, flute = tool.len || 1e9;
+    const { nx, na, rho, res } = this, kr = res, da = (2 * Math.PI) / na, flute = tool.len || 1e9;
     let hit = false;
     for (let s = 0; s <= n; s++) {
       const f = s / n, x = a.x + (b.x - a.x) * f, r = r0 + (r1 - r0) * f, A = A0 + (A1 - A0) * f;

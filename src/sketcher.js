@@ -9,14 +9,15 @@ import {
 } from "./regions.js";
 import { uid, parseLength, fmt, round, el } from "./util.js";
 import { getUnit } from "./units.js";
-import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
+import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, conKey, editVerdict, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
 import { buildDim, dimGraphics, measureDim } from "./dims.js";
 import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
+import * as sketchMirror from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
 
 const DEG = Math.PI / 180;
-import { theme } from "./theme.js";
+import { theme, sketchColor, sketchScaled } from "./theme.js";
 const C = {
-  get line() { return theme.c.sketch; }, get point() { return theme.c.sketch; }, cons: 0xc07a12, proj: 0x7d3fb0, hover: 0xe8a317,
+  get line() { return sketchColor(); }, get point() { return sketchColor(); }, cons: 0xc07a12, proj: 0x7d3fb0, hover: 0xe8a317,
   // brighter selection/preview colors on the dark themes, where dark blue disappears
   get sel() { return theme.name === "light" ? 0x1f4fa8 : 0x4fc3ff; },
   get dim() { return theme.name === "light" ? 0x2b3a4c : 0xb8c6d6; },
@@ -41,6 +42,7 @@ export const SKETCH_TOOLS = {
   trim: { label: "Trim", key: "T", fields: [] },
   dim: { label: "Sketch dimension", key: "D", fields: [] },
   select: { label: "Select", key: "S", fields: [] },
+  mirror: { label: "Mirror", key: "M", fields: [] }, // jumpstart-3d: sketch mirror
   ...Object.fromEntries(Object.entries(CONSTRAINTS).map(([k, c]) => ["c-" + k, { label: c.label + " constraint", fields: [], constraint: k }])),
 };
 
@@ -163,6 +165,7 @@ export class Sketcher {
     if (this.tool === "spline" && this.state && t !== "spline") this.finishSpline(); // keep a spline in progress
     if (t === "rect" || t === "rect3" || t === "rectc") this.rectMode = t;
     this.tool = t;
+    if (t === "mirror") sketchMirror.begin(this); // jumpstart-3d: sketch mirror
     this.state = null;
     this.cpicks = [];
     this.dimPicks = []; this.dimPreview = null;
@@ -445,6 +448,7 @@ export class Sketcher {
     if (t === "trim") { this.doTrim(raw); return true; }
     if (t === "dim") { this.dimClick(raw, e); return true; }
     if (t.startsWith("c-")) { this.constraintPick(this.pickEnt(raw)); return true; }
+    if (t === "mirror") return sketchMirror.click(this, raw); // jumpstart-3d: sketch mirror
     const s = this.snap(raw, this.state && this.state.anchor);
     this.click(s, e);
     return true;
@@ -456,6 +460,7 @@ export class Sketcher {
     this.cursorPx = this.vp.local(e);
     this.rawCursor = raw;
     if (this.drag) return this.dragMove(raw, e);
+    if (this.tool === "mirror") return sketchMirror.hover(this, raw); // jumpstart-3d: sketch mirror
     if (this.tool === "select" || this.tool === "trim" || this.tool === "dim" || this.tool.startsWith("c-")) {
       this.hover = this.pickEnt(raw);
       this.cursor = null;
@@ -682,10 +687,13 @@ export class Sketcher {
     if (this.dimPicks && this.dimPicks.length) { this.dimPicks = []; this.dimPreview = null; this.redraw(); return true; }
     if (this.state && this.tool === "spline") { this.finishSpline(); return true; }
     if (this.state) { this.done(); return true; }
+    if (this.tool === "mirror") { this.setTool("select"); return true; } // jumpstart-3d: sketch mirror (Esc cancels, the picked shapes stay)
     if (this.sel.size) { this.sel.clear(); this.redraw(); this.app.onSketchSelection && this.app.onSketchSelection(); return true; }
     if (this.tool !== "select") { this.setTool("select"); return true; }
     return false;
   }
+
+  mirrorHint() { return sketchMirror.hint(this); } // jumpstart-3d: sketch mirror
 
   // typed value overrides for the second point
   applyTyped(p) {
@@ -784,15 +792,27 @@ export class Sketcher {
     // closed shapes before this edit (so a newly closed one can be told apart)
     const sk0 = drawing && this.app.onShapeClosed ? findSketch(store.doc, id) : null;
     const before = sk0 ? { loops: new Set(userLoops(sk0).map((l) => l.key)), regs: new Set(regionsFor(sk0).map((r) => r.key)) } : null;
+    // jumpstart-3d: sketch solver. A constraint or dimension edit that leaves the sketch unsolvable is refused: nothing changes and a toast names the clash.
+    // One that only repeats others is kept, with a warning. A sketch that already clashed before the edit may keep its old clash, but no new one (editVerdict in sketchsolve.js decides).
+    const guarded = /^(?!Delete).*constraint$|^(Dimension|Edit dimension)$/.test(label);
+    let refused = false, note = null;
     store.update((doc) => {
       const sk = findSketch(doc, id);
+      const was = guarded ? { pre: solveSketch(JSON.parse(JSON.stringify({ pts: sk.pts, ents: sk.ents, cons: sk.cons || [] }))), cons: new Map((sk.cons || []).map((c) => [c.id, conKey(c)])) } : null;
       const oldPts = drawing ? new Set(sk.pts.map((q) => q.id)) : null, oldEnts = drawing ? new Set(sk.ents.map((e) => e.id)) : null;
       fn(sk);
       if (drawing) autoConstrain(sk, oldPts, oldEnts);
       pruneConstraints(sk);
-      solveSketch(sk, this.keepPts || new Set());
+      const st = solveSketch(sk, this.keepPts || new Set());
       normalizeSketch(sk);
+      if (guarded) {
+        const v = editVerdict(was.pre, st, was.cons, sk.cons);
+        note = v.toast;
+        if (v.refuse) { refused = true; return false; }
+      }
     }, label);
+    if (note && this.app.toast) this.app.toast(note);
+    // end jumpstart-3d
     if (before) {
       const sk1 = findSketch(store.doc, id);
       if (sk1) {
@@ -804,6 +824,7 @@ export class Sketcher {
         if (fresh.length || regs.some((r) => !before.regs.has(r.key))) this.app.onShapeClosed(id, fresh);
       }
     }
+    return { refused, toasted: !!note }; // jumpstart-3d: sketch solver
   }
 
   // ------------------------------------------------------------ select & drag
@@ -922,10 +943,10 @@ export class Sketcher {
         if (!(v > 0)) { this.app.toast && this.app.toast("Use a size above 0."); return; }
         const did = "dm" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const expr = isFinite(parseLength(text, getUnit())) ? {} : { expr: text.trim(), ...(getUnit() !== "mm" && { unit: getUnit() }) }; // jumpstart-3d: parameters
-        this.edit("Dimension", (s2) => { s2.cons = s2.cons || []; s2.cons.push({ id: did, ...d, v, ...expr }); });
+        const { refused, toasted } = this.edit("Dimension", (s2) => { s2.cons = s2.cons || []; s2.cons.push({ id: did, ...d, v, ...expr }); }); // jumpstart-3d: sketch solver (a clash has its own toast)
         this.redraw();
         const now = this.sketch && (this.sketch.cons || []).find((x) => x.id === did);
-        if (now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that size: other dimensions or constraints are holding it.");
+        if (!refused && !toasted && now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that size: other dimensions or constraints are holding it.");
       },
     });
   }
@@ -1125,10 +1146,10 @@ export class Sketcher {
       onOk: (v, text) => {
         if (!(v > 0) || (isAng && v >= 180)) { this.app.toast && this.app.toast(isAng ? "Use an angle between 0° and 180°." : "Use a size above 0."); return; }
         const plain = isFinite(parseLength(text, unit));
-        this.edit("Edit dimension", (s2) => { const k = (s2.cons || []).find((x) => x.id === id); if (k) { k.v = v; delete k.unit; if (plain) delete k.expr; else { k.expr = text.trim(); if (unit !== "mm") k.unit = unit; } } });
+        const { refused, toasted } = this.edit("Edit dimension", (s2) => { const k = (s2.cons || []).find((x) => x.id === id); if (k) { k.v = v; delete k.unit; if (plain) delete k.expr; else { k.expr = text.trim(); if (unit !== "mm") k.unit = unit; } } }); // jumpstart-3d: sketch solver (a clash has its own toast)
         this.redraw();
         const now = this.sketch && (this.sketch.cons || []).find((x) => x.id === id);
-        if (now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that value: other dimensions or constraints are holding it.");
+        if (!refused && !toasted && now && Math.abs(measureDim(this.sketch, now) - v) > Math.max(1e-3, v * 1e-3)) this.app.toast && this.app.toast("The sketch couldn't fully reach that value: other dimensions or constraints are holding it.");
       },
     });
   }
@@ -1421,10 +1442,13 @@ export class Sketcher {
     // dimensions (only while this sketch is being edited)
     const dimSegs = [];
     if (this.active) this.drawDims(px, dimSegs);
-    mk(dimSegs, C.dim, { w: 1.4 });
-    if (dimSegs.preview) mk(dimSegs.preview, C.preview, { w: 1.6 });
-    mk(segs.line, C.line, { w: 2.5 }); mk(segs.cons, C.cons, { dashed: true }); mk(segs.proj, C.proj, { w: 1.8 });
-    mk(segs.sel, C.sel, { w: 3.5 }); mk(segs.hover, C.hover, { w: 3.5 }); mk(segs.preview, C.preview, { w: 2.5 });
+    // thin lines, so small and narrow profiles stay easy to see and click
+    // (the width and colour of sketch lines are set in the theme menu)
+    const SW = sketchScaled;
+    mk(dimSegs, C.dim, { w: 1.1 });
+    if (dimSegs.preview) mk(dimSegs.preview, C.preview, { w: 1.2 });
+    mk(segs.line, C.line, { w: SW(1.5) }); mk(segs.cons, C.cons, { dashed: true }); mk(segs.proj, C.proj, { w: SW(1.2) });
+    mk(segs.sel, C.sel, { w: Math.max(SW(2.4), SW(1.5) + 0.8) }); mk(segs.hover, C.hover, { w: Math.max(SW(2.4), SW(1.5) + 0.8) }); mk(segs.preview, C.preview, { w: SW(1.5) });
     // points
     const pp = [], ps = [];
     for (const p of sk.pts) (this.sel.has("pt:" + p.id) || this.hover === "pt:" + p.id ? ps : pp).push(p.x, p.y, 0);

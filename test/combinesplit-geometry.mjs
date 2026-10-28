@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { isNearEmpty } from "../src/pieces.js";
 import opencascade from "../third_party/replicad-opencascadejs/dist/replicad_single.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -11,7 +12,7 @@ let runtime;
 async function getRuntime() {
   if (!runtime) runtime = (async () => {
     const bundle = await build({
-      stdin: { contents: 'export { initKernel, buildBodies } from "./src/kernel.js"; export { commitCombine } from "./src/combinesplit.js"; export { store, newDoc, bodyKey, resolveNode } from "./src/store.js"; export { groupBodiesInDoc } from "./src/ops.js";', resolveDir: root },
+      stdin: { contents: 'export { initKernel, buildBodies } from "./src/kernel.js"; export { commitCombine } from "./src/combinesplit.js"; export { store, newDoc, bodyKey, resolveNode } from "./src/store.js"; export { groupBodiesInDoc, ungroupBody } from "./src/ops.js";', resolveDir: root },
       bundle: true, write: false, format: "esm", platform: "node",
       alias: {
         replicad: root + "third_party/replicad/src/index.ts",
@@ -49,11 +50,12 @@ async function setup(nodes, mode = "advanced") {
   const doc = newDoc("Real kernel combine", mode); doc.bodies = nodes;
   store.load(doc);
   const off = store.on(rebuild); rebuild();
-  const app = { mode, command: null, kernel: { get: key => meshes.get(key) }, scene: { errors: new Map() } };
+  const toasts = [];
+  const app = { mode, command: null, toast: m => toasts.push(m), kernel: { get: key => meshes.get(key) }, scene: { errors: new Map() } };
   const results = () => store.doc.bodies.map(b => {
     const r = meshes.get(b._key); assert.equal(r?.ok, true, r?.error || "Missing built body"); return r.mesh;
   });
-  return { ...api, app, off, results };
+  return { ...api, app, off, results, toasts };
 }
 const volumes = meshes => meshes.map(m => Math.round(m.volume));
 const center = mesh => mesh.bbox.min.map((v, i) => (v + mesh.bbox.max[i]) / 2);
@@ -128,7 +130,20 @@ test("real kernel: Group with a remote hole preserves its two-solid baseline as 
     assert.equal(ids.length, 1); assert.equal(h.store.doc.bodies.length, 1);
     assert.equal(h.results()[0].solidCount, 2); assert.deepEqual(volumes(h.results()), [128]);
     assert.deepEqual(h.store.doc.bodies[0].node.mods, []);
+    assert.equal(h.toasts.length, 1); assert.match(h.toasts[0], /^The hole did not cut anything/);
   } finally { h.off(); }
+});
+test("real kernel: a Group with no hole, or a hole that overlaps, says nothing; a Combine cut that misses says so", async () => {
+  const run = async (nodes, commit) => { const h = await setup(nodes, "beginner"); try { await commit(h); return h.toasts; } finally { h.off(); } };
+  const inside = body("hole", box(4, 4, 4)); inside.hole = true;
+  const apart = body("hole", box(4, 4, 4), moved(40)); apart.hole = true;
+  const grp = h => h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+  assert.deepEqual(await run([body("a", box()), body("b", box(4, 4, 4), moved(30))], grp), []);
+  assert.deepEqual(await run([body("a", box()), inside], grp), []);
+  assert.equal((await run([body("a", box()), apart], grp)).length, 1);
+  const miss = h => h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push({ t: "bool", src: "combine", op: "cut", tool: group([body("c", box(4, 4, 4), moved(40))]) }); return "target"; }, "Combine", { target: "target", op: "cut" });
+  const toasts = await run([body("target", box())], miss);
+  assert.equal(toasts.length, 1); assert.match(toasts[0], /^The cut did not remove anything/);
 });
 test("real kernel: Intersect splits new pieces and keeps left/right identity across sub-0.01 mm centre changes", async () => {
   const h = await setup([body("target", box())]);
@@ -158,4 +173,75 @@ test("real kernel: Intersect splits new pieces and keeps left/right identity acr
     assert.deepEqual(volumes(h.results()), [64, 64]);
     assertLeftRight();
   } finally { h.off(); }
+});
+// A cutter that stops 1e-6 mm above the floor leaves a film far below any printable size next to the real block.
+test("real kernel: Group cut that leaves a near-empty film gives one body with one solid", async () => {
+  const tool = cutter(22, 1e-6); tool.hole = true;
+  const h = await setup([body("target", box()), tool], "beginner");
+  try {
+    const ids = await h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+    assert.equal(ids.length, 1); assert.equal(h.store.doc.bodies.length, 1);
+    assert.equal(h.results()[0].solidCount, 1);
+    assert.deepEqual(volumes(h.results()), [7200]);
+    assert.equal(h.store.undoStack.length, 1);
+  } finally { h.off(); }
+});
+test("real kernel: Combine cut that leaves a near-empty film keeps only the real piece", async () => {
+  const h = await setup([body("target", box())]);
+  try {
+    const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push(cutMod(22, 1e-6)); return "target"; }, "Combine", { target: "target", op: "cut" });
+    assert.equal(ids.length, 1); assert.equal(h.results()[0].solidCount, 1); assert.deepEqual(volumes(h.results()), [7200]);
+  } finally { h.off(); }
+});
+test("real kernel: a film beside two real pieces is dropped and the real pieces stay separate bodies", async () => {
+  const h = await setup([body("target", box())]);
+  try {
+    const slice = tool => ({ t: "bool", src: "combine", op: "cut", tool: group([tool]) });
+    const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push(slice(cutter(22, 1e-6)), slice(cutter(22, 9))); return "target"; }, "Combine", { target: "target", op: "cut" });
+    assert.equal(ids.length, 2); assert.deepEqual(volumes(h.results()), [2800, 3600]);
+  } finally { h.off(); }
+});
+test("real kernel: a thin real shim (0.05 mm, large area) is kept as its own body", async () => {
+  const tool = cutter(22, 0.05); tool.hole = true;
+  const h = await setup([body("target", box()), tool], "beginner");
+  try {
+    const ids = await h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+    assert.equal(ids.length, 2); assert.deepEqual(h.results().map(m => Math.round(m.volume * 10) / 10), [20, 7180]);
+  } finally { h.off(); }
+});
+test("real kernel: a small real pin (1 x 1 x 2 mm) beside a 190 mm block is kept as its own body", async () => {
+  const h = await setup([body("target", box(200, 200, 200))]);
+  try {
+    const ids = await h.commitCombine(h.app, doc => {
+      doc.bodies[0].node.mods.push({ t: "bool", src: "combine", op: "intersect", tool: group([body("big", box(190, 190, 190)), body("pin", box(1, 1, 2), moved(98))]) });
+      return "target";
+    }, "Combine", { target: "target", op: "intersect" });
+    assert.equal(ids.length, 2); assert.deepEqual(volumes(h.results()), [2, 6859000]);
+  } finally { h.off(); }
+});
+test("real kernel: a film under a 200 x 200 base is dropped even though its volume is not tiny", async () => {
+  const h = await setup([body("target", box(200, 200, 20))]);
+  try {
+    const ids = await h.commitCombine(h.app, doc => { doc.bodies[0].node.mods.push({ t: "bool", src: "combine", op: "cut", tool: group([body("c", box(220, 220, 2), moved(0, 0, 1e-6))]) }); return "target"; }, "Combine", { target: "target", op: "cut" });
+    assert.equal(ids.length, 1); assert.equal(h.results()[0].solidCount, 1); assert.deepEqual(volumes(h.results()), [720000]);
+  } finally { h.off(); }
+});
+test("real kernel: Ungroup after a film was dropped works, and editing the cutter so the film is gone still builds", async () => {
+  const mk = async () => { const tool = cutter(22, 1e-6); tool.hole = true; return setup([body("target", box()), tool], "beginner"); };
+  const h = await mk();
+  try {
+    await h.commitCombine(h.app, doc => h.groupBodiesInDoc(doc, doc.bodies.map(b => b.id)), "Group");
+    const mod = h.store.doc.bodies[0].node.mods[0];
+    assert.equal(mod.t, "keeppiece"); assert.equal(mod.sole, true);
+    // the cutter now sits on the floor: no film, one solid; the sole selector passes it through
+    h.store.update(doc => { doc.bodies[0].node.children.find(c => c.hole).m[14] = 0; }, "Move cutter");
+    assert.deepEqual(volumes(h.results()), [7200]);
+    const ids = h.ungroupBody(h.store.doc.bodies[0].id);
+    assert.equal(ids.length, 2); assert.equal(h.store.doc.bodies.length, 2);
+    assert.deepEqual(h.store.doc.bodies.map(b => b.node.mods || []), [[], []]);
+  } finally { h.off(); }
+});
+test("an unmeasurable piece (NaN volume or area) is kept, not dropped as near-empty", () => {
+  assert.equal(isNearEmpty(NaN, 10), false); assert.equal(isNearEmpty(5, NaN), false);
+  assert.equal(isNearEmpty(4e-4, 400), true); assert.equal(isNearEmpty(20, 800), false); assert.equal(isNearEmpty(1e-7, 0), true);
 });

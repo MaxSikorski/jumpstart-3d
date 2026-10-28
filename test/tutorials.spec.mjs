@@ -31,7 +31,7 @@ test.beforeAll(async ({ browser }, info) => {
   await boot(page, info);
   const list = await page.evaluate(() => window.__app.tutorials.list.map((t) => ({
     id: t.id, mode: t.mode, level: t.level, title: t.title, item: t.item, learn: t.learn, minutes: t.minutes,
-    steps: t.steps.map((s) => ({ title: s.title, tool: s.tool, icon: s.icon, how: s.how, when: s.when, show: s.show, hasCheck: typeof s.check === "function", anim: s.anim })),
+    steps: t.steps.map((s) => ({ title: s.title, tool: s.tool, icon: s.icon, how: s.how, when: s.when, show: s.show, hasCheck: typeof s.check === "function", anim: s.anim, strict: s.strict })),
   })));
   tutorials.push(...list);
 });
@@ -271,6 +271,7 @@ async function walk(tut) {
       await page.evaluate(() => { document.getElementById("menu-export").hidden = true; });
     }
     stats.steps++;
+    if (s.strict) await page.check("#tut-check"); // "I did this": a strict step stops Next until its check passes (browser test F7)
     await page.click("#tut-next"); // "Next →", and "Finish ✓" on the last step
   }
   const finished = page.locator(".tut-done");
@@ -281,6 +282,13 @@ async function walk(tut) {
   await expect(page.locator("#tut-panel")).toHaveCount(0);
   startedIds.add(tut.id);
 }
+
+test("steps whose picture would show the wrong action have no animation (browser test F6)", () => {
+  const WRONG = new Set(["#sk-finish", "#nav-ortho", "#ws-design", "#mode-beginner", "#bb-solid"]);
+  const hits = tutorials.flatMap((t) => t.steps.map((s, i) => ({ at: t.id + " step " + (i + 1), sel: s.show && s.show.sel, anim: s.anim }))).filter((s) => WRONG.has(s.sel));
+  expect(hits.length, "no step points at these buttons any more: update the list").toBeGreaterThan(0);
+  expect(hits.filter((s) => s.anim !== false), "steps that still get an animation of another action").toEqual([]);
+});
 
 test.describe("walk every tutorial", () => {
   test.describe.configure({ mode: "default" });

@@ -1,6 +1,6 @@
 // Keeps three.js objects in sync with the document and kernel results.
 import * as THREE from "three";
-import { theme } from "./theme.js";
+import { theme, sketchColor, sketchScaled } from "./theme.js";
 import { thickLines } from "./thickline.js";
 import { fromB64 } from "./meshimport.js";
 import { resolveNode, bodyKey, regionsFor, sketchTexts } from "./store.js";
@@ -491,7 +491,7 @@ export class SceneSync {
         for (let i = 0; i < pts.length - 1; i++) arr.push(pts[i][0], pts[i][1], 0, pts[i + 1][0], pts[i + 1][1], 0);
       }
       for (const { pts } of textOutlines(sk)) for (let i = 0; i < pts.length - 1; i++) pos.push(pts[i][0], pts[i][1], 0, pts[i + 1][0], pts[i + 1][1], 0);
-      const lines = thickLines(pos, theme.c.sketch, 2.5, true);
+      const lines = thickLines(pos, sketchColor(), sketchScaled(1.4), true);
       lines.renderOrder = 4;
       g.add(lines);
       if (cpos.length) {

@@ -22,6 +22,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `nameplate.js` | A plate sized to its text, raised or cut in |
 | `knurl.js` | Knurled knobs |
 | `spring.js` | Compression springs |
+| `sketchmirror.js` | Sketch Mirror (M, Modify group): copies picked shapes across a line, the X or Y axis or the origin; `mirrorEnts` is the pure maths, the rest is the tool's clicks and panel box |
+| `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
@@ -29,22 +31,24 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts |
 | `report.js` | Report a problem (prefilled GitHub issue link) |
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
-| `combinesplit.js` | Group and Combine leave one body per new piece |
+| `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
+| `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
+| `importtoast.js` | Import units: a closed mesh of known units (3MF, OBJ and STL from 6 mm up) comes in at once; the note with its size, repairs and mm / cm / in buttons (one undo step); the dialog stays for open or non-manifold meshes and STL or OBJ under 6 mm; the note also has a CAD faces… shortcut to Mesh to STEP |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
 | `sw.js` | Service worker, site only (see section 4) |
 
 ## 2. J.Siwek's, with our marked blocks
-Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 135, `projects.js` 60, `app.js` 58, `beginner.js` 43, `index.html` 35, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 7.
+Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 153, `projects.js` 60, `app.js` 63, `beginner.js` 43, `index.html` 35, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 14.
 Few markers (1 to 5): `inflate.js`, `icons.js`, `tutorials.js`, `tutorial_data.js`, `dims.js`, `facepat.js`, `meshimport.js`, `ops.js`, `voxel.js`, `constraints.js`, `lathe.js`, `recovery.js`, `scene.js`, `worker.js`, `version.js`.
 `kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`); `version.js` holds the community build number that `/ship` bumps.
 
 ## 3. J.Siwek's, untouched
 No markers. On a port, take his new version whole. Do not "tidy" these.
-`arch.js`, `archflood.js`, `archland.js`, `archplan.js`, `archweather.js`, `tutorial_arch.js` (Architect), `cam.js`, `camcore.js`, `camworker.js` (CAM Studio), `appearance.js`, `bricks.js`, `chisel.js`, `dxf.js`, `fea.js`, `flexigen.js`, `fonts.js`, `importers.js`, `licenses.js`, `measure.js`, `media.js`, `meshstep.js`, `pipecoil.js`, `projector.js`, `puffy.js`, `regions.js`, `render.js`, `section.js`, `simulate.js`, `sketch3d.js`, `textgeo.js`, `texture.js`, `theme.js`, `thickline.js`, `trace.js`, `tutorial_anims.js`, `tutorial_data_more.js`, `units.js`, `util.js`; the `fontsub/` fonts.
+`arch.js`, `archflood.js`, `archland.js`, `archplan.js`, `archweather.js`, `tutorial_arch.js` (Architect), `cam.js`, `camcore.js`, `camworker.js` (CAM Studio), `cosbody.js`, `coscut.js`, `cosforge.js`, `cosmesh.js`, `cosparts.js` (CosForge, from 2.6), `carve.js` (Chip Carving, from 2.7.5), `sdfshell.js` (Shell for any shape, from 2.7.7), `appearance.js`, `bricks.js`, `chisel.js`, `dxf.js`, `fea.js`, `flexigen.js`, `fonts.js`, `importers.js`, `licenses.js`, `measure.js`, `media.js`, `meshstep.js`, `pipecoil.js`, `projector.js`, `puffy.js`, `regions.js`, `render.js`, `section.js`, `simulate.js`, `sketch3d.js`, `textgeo.js`, `texture.js`, `theme.js`, `thickline.js`, `trace.js`, `tutorial_anims.js`, `tutorial_data_more.js`, `units.js`, `util.js`; the `fontsub/` fonts.
 
 ## 4. Special files
 - `occt-gz.wasm` (7.2 MB): the OpenCascade kernel, gzipped. The worker fetches it on the site; the single file carries it as base64. If upstream's wasm changes, `tools/upstream-merge.mjs` only reports it: re-gzip with `gzip -9 -n`.

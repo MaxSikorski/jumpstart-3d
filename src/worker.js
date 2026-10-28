@@ -2,6 +2,7 @@
 import opencascade from "replicad-opencascadejs";
 import { gunzip } from "./inflate.js";
 import { initKernel, buildBodies, exportStep, clearCache, setAsset, errorText } from "./kernel.js";
+import { runCodeCad } from "./codecad-worker.js"; // jumpstart-3d: Code CAD
 
 let ready = null;
 
@@ -67,6 +68,12 @@ self.onmessage = async (ev) => {
       const blob = exportStep(msg.bodies);
       const buf = await blob.arrayBuffer();
       self.postMessage({ type: "step", req: msg.req, data: buf }, [buf]);
+    } else if (msg.type === "code") { // jumpstart-3d: Code CAD. only the temporary worker that codecadclient.js starts is sent this
+      await ready;
+      const r = await runCodeCad(msg);
+      self.postMessage({ type: "coded", req: msg.req, bytes: r.bytes }, [r.bytes]);
+    } else if (msg.type === "dropasset") { // jumpstart-3d: Code CAD. frees the bytes of a file the design no longer has
+      setAsset(msg.id, "step", new Uint8Array(0));
     } else if (msg.type === "asset") {
       setAsset(msg.id, msg.kind, new Uint8Array(msg.bytes));
     } else if (msg.type === "clear") {

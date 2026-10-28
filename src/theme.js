@@ -26,3 +26,14 @@ export function setThemeColors(name) {
   theme.name = THEMES[name] ? name : "light";
   theme.c = THEMES[theme.name];
 }
+
+// Sketch line look, chosen in the theme menu (◐): a width and a colour. "theme" uses the
+// interface theme's own sketch colour. Widths are in screen pixels for an ordinary line.
+export const SKETCH_WIDTHS = [["hair", "Hairline", 0.6], ["thin", "Thin", 1.0], ["medium", "Medium", 1.5], ["thick", "Thick", 2.2], ["bold", "Extra thick", 3.0]];
+export const SKETCH_COLORS = [["theme", "Theme colour", null], ["black", "Black", 0x111111], ["white", "White", 0xf4f4f4], ["blue", "Blue", 0x1f6fe0], ["red", "Red", 0xd8262c], ["green", "Green", 0x179447], ["orange", "Orange", 0xf07c12], ["purple", "Purple", 0x8a3fd1], ["yellow", "Yellow", 0xffe600], ["cyan", "Cyan", 0x00b8d9]];
+export const sketchStyle = { width: "thin", color: "theme" };
+// the width of an ordinary sketch line, in pixels
+export function sketchW() { const w = SKETCH_WIDTHS.find((x) => x[0] === sketchStyle.width); return w ? w[2] : 1.0; }
+// a line width scaled from the original design (where an ordinary line was 1.5 px)
+export function sketchScaled(w) { return Math.max(0.5, (w * sketchW()) / 1.5); }
+export function sketchColor() { const c = SKETCH_COLORS.find((x) => x[0] === sketchStyle.color); return c && c[2] != null ? c[2] : theme.c.sketch; }

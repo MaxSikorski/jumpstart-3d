@@ -149,13 +149,13 @@
   },
   "advanced-thread.json": {
     "volumes": {
-      "b1 b1": 1378.6
+      "b1 b1": 1291.1
     },
-    "stlTriangles": 10838,
-    "stl": "14da495c6c804c60188f7bed1114218cee485657d493bc3a0526591230b4d69a",
-    "obj": "dd5fe1deddd34c03f70058aad32557bdf710dd2a3d82140bd8da16b219da6d21",
-    "3mf": "490bf64b2c801d4bf52e8826a440d3c828b3568a2d4f6bffe6c12b3bdb6cd8ac",
-    "step": "eb0693f693230fc920e3dfaaff58b883f7028e722590411ba32bdeb6a57f81c2"
+    "stlTriangles": 12618,
+    "stl": "5b8f4b84c7064801d2eca3d2be3fba9ea2ffc5200b40a8d2affe8a49b202b54e",
+    "obj": "2b263ce99e9769d1af96485a0309047630427daa2d18a37b8129ba0503c1e0d6",
+    "3mf": "a08b350663f6d67b80a73ba02c6f35d01e1d4471ed7d51e18be8c33ebdf3b9d8",
+    "step": "9710adbb9afb764816f9e6d70c550f893ee3f66478c9f92ec6ea86c33bd6aed3"
   },
   "advanced-wall-bracket.json": {
     "volumes": {
@@ -222,13 +222,13 @@
   },
   "advanced-tapped-hole.json": {
     "volumes": {
-      "b1 b1": 23366.9
+      "b1 b1": 23339.1
     },
-    "stlTriangles": 8448,
-    "stl": "e6570a7825b6e3897b8db58b922e0547368e94016851281e6ae6d6fa8ff3a7fa",
-    "obj": "bf9f66bf6dc42a47a9f6e857a123d26907ee2b56c149c8e851a38bbcd58a2453",
-    "3mf": "f2283a07677a90a5d93756c51fd2d1e94daf9503be070eb8f8b924eedd39f1f5",
-    "step": "4739d13ca563c3f2942b3be727f2432789b1c1d0aa531da4f3fa1fd7fc347f07"
+    "stlTriangles": 11312,
+    "stl": "5fbd76a0ba654049da0d4726011eac2e4e0464155e0a88abaddfa9637a47cecb",
+    "obj": "22a8881ef2b5a8827148fdb6b6678d1f2c1288a66268376d1c3c087269b99c70",
+    "3mf": "298d982121ed232069c1767dbebc30f9580e8bb4616997fe14c6b1d027c1b1d7",
+    "step": "bdca41897c222031044b751e8a0b7ed74ba3f7fe2b8795cd08f5ee4bcc15810d"
   },
   "parametric-plate.json": {
     "volumes": {
@@ -333,16 +333,16 @@
   },
   "fasteners.json": {
     "volumes": {
-      "b1 M8×30 bolt": 2095.6,
-      "b2 M8 nut": 727.2,
-      "b3 1/4-20×40 threaded rod": 1064.6,
-      "b4 M8 tapped block": 5341.8
+      "b1 M8×30 bolt": 2010.1,
+      "b2 M8 nut": 714,
+      "b3 1/4-20×40 threaded rod": 973.7,
+      "b4 M8 tapped block": 5385.4
     },
-    "stlTriangles": 34698,
-    "stl": "bfb2d05a5f51289cac31ea515b5d102d667801f562a38d0fc5397fd527679795",
-    "obj": "d8621bcba7a8aa170da27023d4b16fd5ef5721eca9dfbf77a0d99fc132ef17f3",
-    "3mf": "57151e73afaf316ddb520c4ecbe14cf76fa58f1d32f0d535c7401f9038a073ba",
-    "step": "504da8c42ab3a10e8751e44e5f6c974607738e38e16394e84b380258e620143f"
+    "stlTriangles": 45288,
+    "stl": "f6717b691191a0c135cf7c23138a8c3fba0d8c431a0815daebfb855da98615c0",
+    "obj": "113f4f30a7efe91c37a5b1e8fc4191889e48946e9ba2fa74b7ed9d5b25652476",
+    "3mf": "4865e427f4e18349021d002bbd2b9df8016b89206697f82140dab3e17763468d",
+    "step": "1a9c05c7fc2e60f8fb95feeb1550fa687c888d55007439e1246c0ff4ee79a4f8"
   },
   "holepattern.json": {
     "volumes": {
@@ -446,6 +446,16 @@
     "3mf": "7f3611d2e87a60fc010ab24778df008b6aeb0b455a4b9289694f913a98a79ef2",
     "step": "2a013002c11f0cb943cee78ec7a16466c163e0d07d47df2b164781a645aba774",
     "dxf": "eb6326c48fc24821a54cef40fcca977d1a16e73cfbc61245e8f3b0ecee58b174"
+  },
+  "codecad.json": {
+    "volumes": {
+      "b1 L bracket 1": 13213.8
+    },
+    "stlTriangles": 532,
+    "stl": "4b2dd98fda4ba9187bc7cd2c2065858657bf8cb335195e8d6a15d21ae764f099",
+    "obj": "8c393a0f5d2b291fab031894528d65999e537ce614467a616e56b4602f7f474a",
+    "3mf": "53b1d3627ded9a6e0698d0d713a80a8ec6f24547f2f7f328772f1a24aaae3e6c",
+    "step": "94ad7d1a5420b1d72993c45a7a2225872e9b568cc87badb14c4c557c1cfb0c2a"
   },
   "spring.json": {
     "volumes": {

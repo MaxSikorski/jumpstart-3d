@@ -44,9 +44,8 @@ test.describe("version 2.5.1", () => {
     return page.evaluate(() => window.__app.cam._ui().result.gcode);
   };
 
-  test("the splash and About show version 2.5.1 with its notes", async () => {
-    expect(VERSION).toBe("2.5.1");
-    const label = `Version 2.5.1 · community build ${BUILD}`;
+  test("About keeps the 2.5.1 notes and the credit (the current version is checked in upstream271.spec.mjs)", async () => {
+    const label = `Version ${VERSION} · community build ${BUILD}`; // later releases keep the 2.5.1 notes; the version itself moves on
     expect(await page.locator("#sp-ver").textContent()).toBe(label);
     await page.click("#btn-about");
     const about = page.locator(".modal", { hasText: "Created by J.Siwek" });

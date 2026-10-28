@@ -341,6 +341,7 @@ button,.btn,.tool,.bru,.chip,label,select{touch-action:manipulation}
 @supports not (background:color-mix(in srgb,red 50%,blue)){#rubber{background:rgba(80,140,255,.08)}#rubber.crossing{background:rgba(60,180,110,.08)}}
 @media (max-width:820px){#top{overflow-x:auto;scrollbar-width:none}#top::-webkit-scrollbar{display:none}#top .btn,#top .tb,#top .brand{flex-shrink:0}#top .btn{padding:0 8px}#panelToggle{position:sticky;right:0;background:var(--panel);box-shadow:-10px 0 10px var(--panel)}}
 html.ios input[type=number],html.ios input[type=text],html.ios input[type=search],html.ios select,html.ios textarea{font-size:16px}
+.hrow{display:flex;align-items:center;gap:8px;margin:8px 0}.hrow label{flex:1}.hrow input{width:76px}
 </style>
 
 <div id="app">
@@ -4832,6 +4833,7 @@ const S = {
   hole: { shape: 'round', r: 0.22, depth: 0.5, through: true },
   cut: { mode: 'remove', all: false },
   slice: { axis: 1, off: 0.35, keep: 'below', split: false },
+  hollow: { th: 2 },
   detail: 1, remeshRes: 120, keepTool: false, remeshAfter: false, lockScale: true, boolWith: null, libQuery: '',
   bs: {},
 };
@@ -4844,6 +4846,7 @@ const OTHER_TOOLS = [
   { id: 'hole', g: 'cut', name: 'Hole punch', key: 'h', hint: 'Click a surface to punch a hole along its normal. Shape, size and depth are in the panel.', icon: '<circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.8"/>' },
   { id: 'lasso', g: 'cut', name: 'Lasso cut', key: 'l', hint: 'Draw a loop around what to cut. The loop is pushed straight through the object along your view.', icon: '<path d="M6 15.5c-2.5-1-3.5-3.5-2.5-6 1.2-3.2 5.5-5.2 9-4.3 3.4.9 4.4 4 2.5 6.4-1.9 2.5-6 3.4-8.4 2.3" stroke-dasharray="2.2 2"/><path d="M6 15.5l-1 2"/>' },
   { id: 'box', g: 'cut', name: 'Box cut', key: 'b', hint: 'Drag a rectangle across the view to cut that block out of the object.', icon: '<rect x="3.5" y="5" width="13" height="10" rx="1" stroke-dasharray="2.2 2"/>' },
+  { id: 'hollow', g: 'cut', name: 'Hollow', hint: 'Click a model, set the wall thickness, then make it hollow inside (saves material when 3D printing).', icon: '<rect x="3" y="3" width="14" height="14" rx="3"/><rect x="6.5" y="6.5" width="7" height="7" rx="1.5" stroke-dasharray="2 1.6"/>' },
   { id: 'slice', g: 'cut', name: 'Plane slice', key: 'v', hint: 'Position the red plane with the panel, then slice off one side or split the object in two.', icon: '<rect x="4" y="4" width="12" height="12" rx="1.5" opacity=".5"/><path d="M2 14L18 6"/>' },
 ];
 const TOOLS = [...BRUSHES.map(b => ({ ...b, g: 'sculpt', icon: IC[b.ic] })), ...OTHER_TOOLS];
@@ -4859,6 +4862,7 @@ const EASY = [
   { id: 'e-paint', tool: 'paint', name: 'Paint', icon: IC.paint, hint: 'Pick a color, then paint on your model.' },
   { id: 'e-move', tool: 'xform', name: 'Move', icon: OTHER_TOOLS.find(t => t.id === 'xform').icon, hint: 'Drag a model to move it. The black arrow on top lifts it up or down (or Ctrl + arrow keys). Drag a box on empty space to pick several.' },
   { id: 'e-sketch', tool: 'sketch', name: 'Sketch', icon: '<path d="M4 16l2.6-.7 8.6-8.6-1.9-1.9-8.6 8.6z"/><path d="M12.4 5.7l1.9 1.9"/><path d="M3 18.5h14" opacity=".5"/>', hint: 'Draw a rectangle, circle or polygon on a plane, then pull it up into 3D.' },
+  { id: 'e-hollow', tool: 'hollow', name: 'Hollow', icon: '<rect x="3" y="3" width="14" height="14" rx="3"/><rect x="6.5" y="6.5" width="7" height="7" rx="1.5" stroke-dasharray="2 1.6"/>', hint: 'Click a model, then make it hollow inside with a wall as thick as you choose.' },
   { id: 'e-combine', tool: 'combine', name: 'Combine', icon: '<circle cx="7.5" cy="10" r="5"/><circle cx="12.5" cy="10" r="5"/>', hint: 'Join two models, or cut one out of the other.' },
 ];
 const EASY_COLORS = ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#f06292', '#8d6e63', '#ffffff', '#263238'];
@@ -5747,6 +5751,68 @@ function applySlice() {
     refreshAll();
   });
 }
+// one Chisel unit is 20 mm
+const HOLLOW_MM = 20;
+function renderHollowSec() {
+  const sec = $('#toolSec');
+  const t = toolById('hollow');
+  let h = `<h2><span class="dot"></span>Hollow</h2><p class="hint">${t.hint}</p>`;
+  h += `<div class="hrow"><label for="hTh">Wall thickness</label><input type="number" id="hTh" min="0.2" max="50" step="0.5" value="${S.hollow.th}"><span>mm</span></div>`;
+  h += `<div class="toggles" role="group" aria-label="Wall thickness presets">${[1, 2, 3, 5].map((v) => `<button type="button" data-hth="${v}" aria-pressed="${S.hollow.th === v}">${v} mm</button>`).join('')}</div>`;
+  h += `<button class="action" id="hollowGo" ${sel ? '' : 'disabled'}>Hollow ${sel ? esc(sel.name) : 'the model'}</button>`;
+  h += `<p class="hint">The outside stays the same; a hollow space is left inside. For 3D printing, a wall of 1.5 to 3 mm is usual. Very thin parts of a model may not have room for a hollow.</p>`;
+  sec.innerHTML = h;
+  const inp = $('#hTh', sec);
+  inp.addEventListener('change', () => { const v = +inp.value; if (v > 0) S.hollow.th = Math.min(50, Math.max(0.2, v)); renderToolSec(); });
+  $$('[data-hth]', sec).forEach((b) => b.addEventListener('click', () => { S.hollow.th = +b.dataset.hth; renderToolSec(); }));
+  $('#hollowGo', sec).addEventListener('click', applyHollow);
+}
+function hollowTris(T, th) {
+  const w = Core.weldTris(T, 1e-5), pos = w.pos, idx = w.idx, nv = pos.length / 3;
+  let n = new Float32Array(nv * 3);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
+    for (const k of [a, b, c]) { n[k] += fx; n[k + 1] += fy; n[k + 2] += fz; }
+  }
+  // smooth the directions a little so sharp corners don't fold the inside wall over itself
+  const nb = Array.from({ length: nv }, () => []);
+  for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) { const a = idx[t + e], b = idx[t + (e + 1) % 3]; nb[a].push(b); nb[b].push(a); }
+  const norm = (A) => { for (let i = 0; i < nv; i++) { const L = Math.hypot(A[i * 3], A[i * 3 + 1], A[i * 3 + 2]) || 1; A[i * 3] /= L; A[i * 3 + 1] /= L; A[i * 3 + 2] /= L; } };
+  norm(n);
+  for (let it = 0; it < 3; it++) {
+    const m = new Float32Array(nv * 3);
+    for (let i = 0; i < nv; i++) { let x = n[i * 3] * 2, y = n[i * 3 + 1] * 2, z = n[i * 3 + 2] * 2; for (const j of nb[i]) { x += n[j * 3]; y += n[j * 3 + 1]; z += n[j * 3 + 2]; } m[i * 3] = x; m[i * 3 + 1] = y; m[i * 3 + 2] = z; }
+    norm(m); n = m;
+  }
+  const sgn = Core.signedVolume(T) >= 0 ? 1 : -1;
+  const inner = new Float32Array(idx.length * 3);
+  for (let t = 0; t < idx.length; t += 3) {
+    // reversed winding: the inside wall faces into the hollow
+    const tri = [idx[t], idx[t + 2], idx[t + 1]];
+    for (let k = 0; k < 3; k++) { const v = tri[k] * 3; for (let d = 0; d < 3; d++) inner[(t + k) * 3 + d] = pos[v + d] - sgn * n[v + d] * th; }
+  }
+  return inner;
+}
+function applyHollow() {
+  const o = sel; if (!o) { toast('Click a model to hollow', true); return; }
+  const th = S.hollow.th / HOLLOW_MM / objScale(o);
+  const box = worldBox(o).getSize(new V3()), thin = Math.min(box.x, box.y, box.z);
+  if ((S.hollow.th / HOLLOW_MM) * 2.2 >= thin) { toast('That wall is too thick for this model. Try a thinner wall.', true); return; }
+  busy('Hollowing', () => {
+    const L = Core.toTris(o.pos, o.idx), V0 = Math.abs(Core.signedVolume(L));
+    const inner = hollowTris(L, th), Vi = Math.abs(Core.signedVolume(inner));
+    if (!(Vi > V0 * 0.01) || Vi >= V0) { toast('This model has no room inside for a hollow at that thickness', true); return; }
+    pushUndo();
+    const all = new Float32Array(L.length + inner.length); all.set(L); all.set(inner, L.length);
+    const m = Core.cleanMesh(all);
+    if (!m.idx.length) { undoStack.pop(); updateUndoBtns(); toast('Could not hollow this model', true); return; }
+    setGeometry(o, m.pos, m.idx);
+    refreshAll(); renderToolSec();
+    toast('Hollow: ' + S.hollow.th + ' mm wall · ' + Math.round((100 * Vi) / V0) + '% less material');
+  });
+}
 function applyBoolean(op) {
   const a = sel, b = objects.find(o => o.id === S.boolWith);
   if (!a || !b || a === b) { toast('Pick a second object to combine with', true); return; }
@@ -5917,6 +5983,7 @@ glc.addEventListener('pointerdown', e => {
   if (!hit && t === 'xform' && e.pointerType !== 'touch') { action = { type: 'rubber', x0: p.x, y0: p.y, add: e.shiftKey || e.ctrlKey || e.metaKey, rect: null }; return; }
   if (hit && t === 'hole') { action = { type: 'click' }; punch(hit); return; }
   if (hit && t === 'slice' && hit.obj !== sel) { select(hit.obj); refreshAll(); }
+  if (hit && t === 'hollow' && hit.obj !== sel) { select(hit.obj); refreshAll(); renderToolSec(); }
   action = { type: e.shiftKey ? 'pan' : 'orbit', x: p.x, y: p.y };
 });
 glc.addEventListener('pointermove', e => {
@@ -6149,6 +6216,7 @@ function drawFalloff(cv, name) {
 }
 function renderToolSec() {
   if (S.tool === 'sketch' || S.tool === 'combine') { CAD.renderSec(); return; }
+  if (S.tool === 'hollow') { renderHollowSec(); return; }
   if (S.easy) { renderEasyToolSec(); return; }
   const t = toolById(S.tool), cut = t.g === 'cut', sec = $('#toolSec');
   let h = `<h2><span class="dot${cut ? ' cut' : ''}"></span>${t.name}<em>${t.key ? t.key.toUpperCase() : ''}</em></h2><p class="hint">${t.hint}</p>`;
@@ -6369,7 +6437,7 @@ function refreshStatus() {
   const tris = objects.reduce((a, o) => a + triCount(o), 0);
   $('#stCount').textContent = `${objects.length} obj · ${fmt(tris)} tris`;
 }
-function refreshAll() { if (typeof TEX !== 'undefined' && TEX._sel !== sel) { TEX._sel = sel; TEX.renderSec(); } updateTints(); refreshObjects(); renderObjSec(); renderBoolSec(); refreshStatus(); if (S.tool === 'lasso' || S.tool === 'box' || S.tool === 'slice') renderToolSec(); updateSlicePreview(); updateUndoBtns(); }
+function refreshAll() { if (typeof TEX !== 'undefined' && TEX._sel !== sel) { TEX._sel = sel; TEX.renderSec(); } updateTints(); refreshObjects(); renderObjSec(); renderBoolSec(); refreshStatus(); if (S.tool === 'lasso' || S.tool === 'box' || S.tool === 'slice' || S.tool === 'hollow') renderToolSec(); updateSlicePreview(); updateUndoBtns(); }
 function deleteSel() {
   const L = selList(); if (!L.length) return;
   pushUndo(); let gone = 0, hid = 0;
@@ -7132,7 +7200,7 @@ const CAD = (() => {
   }
   function hideFields() { if (sk.fields) { sk.fields.box.remove(); sk.fields = null; } }
   // ---- what the sketch looks like
-  function lineObj(P, color, closed = true, opacity = 1, w = 2.5) {
+  function lineObj(P, color, closed = true, opacity = 1, w = COL.skW || 1.5) {
     const pts = P.map((q) => toW(q[0], q[1]));
     if (w) { const seg = []; for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) seg.push(pts[i], pts[(i + 1) % pts.length]); return thick(seg, color, w); }
     const g = new THREE.BufferGeometry().setFromPoints(closed ? [...pts, pts[0]] : pts);
@@ -7535,7 +7603,7 @@ const CAD = (() => {
   // the workplane in the design's colors (like Beginner), and the sketch colors
   function theme(c) {
     if (!c) return;
-    Object.assign(COL, { sketch: c.sketch, fill: c.sketchFill, minor: c.wp.minor, major: c.wp.major, preview: c.preview || COL.preview });
+    Object.assign(COL, { sketch: c.sketch, fill: c.sketchFill, minor: c.wp.minor, major: c.wp.major, preview: c.preview || COL.preview, skW: c.sketchW || 1.5 });
     floorMat.color.set(c.wp.bg);
     const g = gridGeo(c.wp.minor, c.wp.major); grid.geometry.dispose(); grid.geometry = g;
     grid.material.vertexColors = true; grid.material.opacity = 0.85; grid.material.needsUpdate = true;
