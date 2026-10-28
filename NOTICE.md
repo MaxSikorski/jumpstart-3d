@@ -74,4 +74,5 @@ The bundled libraries and fonts keep their own licenses, listed in
   kernel inside is LGPL 2.1)
 - opentype.js 1.3.4 (MIT)
 - Flatbush and Flatqueue (ISC)
+- Manifold 3.5.4 (Apache-2.0; the mesh-boolean engine for joins and cuts with an imported mesh, in `third_party/manifold-3d/`) and Clipper2 (Boost Software License 1.0), which is compiled into it
 - Poppins, Liberation, IBM Plex and Barlow fonts (SIL Open Font License 1.1)
