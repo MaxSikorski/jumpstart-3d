@@ -1,12 +1,14 @@
 // Talks to the geometry worker; caches meshes by body key.
 export class KernelClient {
-  constructor({ parts, workerUrl, workerType, onReady, onProgress, onResults, onFail }) {
-    Object.assign(this, { parts, workerUrl, workerType, onReady, onProgress, onResults, onFail });
+  // jumpstart-3d: build stages have their own callback.
+  constructor({ parts, workerUrl, workerType, onReady, onProgress, onBuildProgress, onResults, onFail }) {
+    Object.assign(this, { parts, workerUrl, workerType, onReady, onProgress, onBuildProgress, onResults, onFail });
     this.meshes = new Map(); // key -> {ok, mesh|error}
     this.queue = new Map(); // key -> {id,key,node}
     this.inflight = null;
     this.ready = false;
-    this.bad = new Set();
+    // jumpstart-3d: retain stall details after mesh-cache eviction.
+    this.bad = new Map();
     this.solo = new Set(); // jumpstart-3d: keys of bodies a timed-out batch is retrying one at a time
     this.req = 0;
     this.stepWaiters = new Map();
@@ -54,9 +56,19 @@ export class KernelClient {
     this.worker.postMessage({ type: "init", parts: this.parts });
   }
   handle(msg) {
-    if (msg.type === "progress") this.onProgress && this.onProgress(msg);
+    // jumpstart-3d: build stages never satisfy readiness or touch the watchdog.
+    if (msg.type === "progress") {
+      if (msg.req !== undefined) {
+        if (msg.req === this.inflightReq && this.inflight?.some(b => b.id === msg.id && b.key === msg.rev)) {
+          this.lastBuildStage = msg.detail === "repairing" ? "repairing" : msg.stage;
+          this.onBuildProgress?.(msg);
+        }
+      } else this.onProgress?.(msg);
+    }
     else if (msg.type === "ready") { this.ready = true; for (const id of this.assets.keys()) this.sendAsset(id); this.onReady && this.onReady(); this.pump(); }
     else if (msg.type === "built") {
+      // jumpstart-3d: late results cannot complete a newer batch.
+      if (msg.req !== undefined && (msg.req !== this.inflightReq || !this.inflight)) return;
       clearTimeout(this.watchdog);
       clearTimeout(this.noteTimer); // jumpstart-3d: clear the long-build note when results arrive
       for (const r of msg.results) {
@@ -78,6 +90,8 @@ export class KernelClient {
     } else if (msg.type === "error") {
       const w = this.stepWaiters.get(msg.req);
       if (w) { this.stepWaiters.delete(msg.req); w.reject(new Error(msg.error)); return; }
+      // jumpstart-3d: scoped errors must also belong to the current batch.
+      if (msg.req !== undefined && this.ready && (msg.req !== this.inflightReq || !this.inflight)) return;
       if (!this.ready) { this.onFail && this.onFail(msg.error); return; }
       clearTimeout(this.watchdog);
       clearTimeout(this.noteTimer); // jumpstart-3d: clear the long-build note when results arrive
@@ -107,7 +121,7 @@ export class KernelClient {
     for (const it of items) {
       if (this.meshes.has(it.key) || this.isPending(it.key)) continue;
       if (this.bad.has(it.key)) {
-        const r = { id: it.id, key: it.key, ok: false, error: "This shape stalled the geometry engine. Undo the last change or adjust its values." };
+        const r = { ...this.bad.get(it.key), id: it.id };
         this.meshes.set(it.key, r);
         continue;
       }
@@ -136,12 +150,16 @@ export class KernelClient {
     }
     this.inflight = batch;
     this.perf && this.perf.start(); // jumpstart-3d: perf panel
-    const req = ++this.req;
+    // jumpstart-3d: identify the active batch separately from export requests.
+    const req = this.inflightReq = ++this.req;
+    this.lastBuildStage = "waiting";
     this.worker.postMessage({ type: "build", req, quality: this.quality || 1, bodies: batch.map((b) => ({ id: b.id, rev: b.key, node: b.node })) });
     // map results back by rev = key
     clearTimeout(this.watchdog);
     // imported meshes take longer to turn into solids: give them more time
     const slow = batch.some(heavy);
+    // jumpstart-3d: wording uses production time, even when tests shorten scheduling.
+    this.buildLimitMs = (slow ? 120000 : 25000) * (this.quality || 1);
     this.watchdog = setTimeout(() => this.stalled(batch), this.watchdogMs || (slow ? 120000 : 25000) * (this.quality || 1)); // jumpstart-3d: watchdogMs is a test-only override
     // jumpstart-3d: a long build gets its note in the status bar after 3 s
     this.inflightAt = Date.now(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => this.onBusy && this.onBusy(true), 3000);
@@ -165,10 +183,13 @@ export class KernelClient {
     }
     this.solo.delete(batch[0].key);
     const res = batch.map((b) => {
-      this.bad.add(b.key);
-      return { id: b.id, key: b.key, ok: false, error: "This shape stalled the geometry engine. Undo the last change or adjust its values." };
+      // jumpstart-3d: import UI reports the actual production deadline and last stage.
+      return { id: b.id, key: b.key, ok: false, error: "This shape stalled the geometry engine. Undo the last change or adjust its values.", limitMs: this.buildLimitMs, stage: this.lastBuildStage };
     });
-    res.forEach((r) => this.meshes.set(r.key, r));
+    res.forEach((r) => {
+      this.bad.set(r.key, r);
+      this.meshes.set(r.key, r);
+    });
     this.inflight = null;
     this.settleProbes(res); // jumpstart-3d: Code CAD
     this.onResults && this.onResults(res);
