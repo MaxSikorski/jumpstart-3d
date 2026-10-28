@@ -984,7 +984,10 @@ app.sketchHint = function () {
     trim: "Click a segment to cut it back to the nearest intersections.",
     dim: "Sketch dimension: click a line, circle or arc (or two points or lines for a distance or angle), click again to place it, then type the value. Double-click a dimension to change it.",
     mirror: app.sketcher.mirrorHint(), // jumpstart-3d: sketch mirror
-    select: "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
+    // jumpstart-3d: Fusion-style. An empty sketch, including projected face edges, needs a drawing hint.
+    select: app.sketcher.sketch && !app.sketcher.sketch.ents.some((x) => !x.proj)
+      ? "Pick a tool to draw: Line (L), Rectangle (R), Circle (C), or another in the Create group."
+      : "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
   }[t] || "";
 };
 
