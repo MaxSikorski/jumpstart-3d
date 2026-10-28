@@ -719,11 +719,12 @@ export function initBeginner(app) {
   let multi = false;
   const handler = {
     hover(e) {
-      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot
+      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); app.directEdit.leave(); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot, direct edit
       const h = pickHandle(e);
       if (h !== hot) { hot = h; vp.request(); }
-      if (h) { app.scene.setHovered(null); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
-      if (!multi && app.directEdit.hover(e)) { app.scene.setHovered(null); return; } // jumpstart-3d: direct edit. a finished sketch's shape lights up
+      if (h) { app.scene.setHovered(null); app.directEdit.leave(); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
+      if (multi) app.directEdit.leave();
+      else if (app.directEdit.hover(e)) { app.scene.setHovered(null); return; } // jumpstart-3d: direct edit. a finished sketch's shape lights up
       const f = app.scene.pickFace(e);
       app.scene.setHovered(f ? f.body : null);
       vp.canvas.style.cursor = f ? "move" : "default";
@@ -818,7 +819,7 @@ export function initBeginner(app) {
       if (d.kind === "pivot" && vp.touchMode && !d.moved()) return "tap"; // a finger on the dot that did not move: the viewport treats it as a tap on what is under it
       if (d.kind === "rot" && vp.touchMode && !d.moved) return "tap"; // jumpstart-3d: rotation access. a finger on an arc that did not move: the viewport treats it as a tap on what is under it
     },
-    cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
+    cancel() { app.directEdit.cancel(); if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching

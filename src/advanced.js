@@ -219,9 +219,9 @@ export function initAdvanced(app) {
   const defaultHandler = {
     wantsTouch: (e) => !!(live.pick(e) || app.beginner.pickHandle(e) || app.directEdit.regionAt(e)), // jumpstart-3d: direct edit
     hover(e) {
-      if (live.hover(e, "dot")) { scene.setHovered(null); return; }
-      if (app.beginner.hoverHandle(e)) { live.unhot(); scene.setHovered(null); return; }
-      if (live.hover(e, "parts")) { scene.setHovered(null); return; }
+      if (live.hover(e, "dot")) { scene.setHovered(null); app.directEdit.leave(); return; } // jumpstart-3d: direct edit (leave, here and in the next two)
+      if (app.beginner.hoverHandle(e)) { live.unhot(); scene.setHovered(null); app.directEdit.leave(); return; }
+      if (live.hover(e, "parts")) { scene.setHovered(null); app.directEdit.leave(); return; }
       if (app.directEdit.hover(e)) { scene.setHovered(null); return; } // jumpstart-3d: direct edit. a finished sketch's shape lights up
       const f = scene.pickFace(e);
       scene.setHovered(f ? f.body : null);
@@ -230,6 +230,7 @@ export function initAdvanced(app) {
     leave() { scene.setHovered(null); app.directEdit.leave(); }, // jumpstart-3d: direct edit
     down(e) {
       selSketch = null;
+      direct = false; // jumpstart-3d: direct edit. a press left over from before a mode switch is not this one
       // jumpstart-3d: pivot. The dot first, then the resize handles, then the arrows and rings. Not with Shift, Ctrl or Meta held (that toggles
       // the body) and not for the tap a finger lets the viewport route after pressing a handle without moving
       const plain = !(e.shiftKey || e.ctrlKey || e.metaKey) && !vp.tapping;
@@ -274,7 +275,7 @@ export function initAdvanced(app) {
       }
       if (delegated) { delegated = false; app.beginner.handler.up(e); renderBrowser(); }
     },
-    cancel() { pressOn = null; direct = false; if (liveOn) { liveOn = false; live.cancel(); } if (delegated) { delegated = false; app.beginner.handler.cancel(); } }, // jumpstart-3d: pivot (live)
+    cancel() { pressOn = null; direct = false; app.directEdit.cancel(); if (liveOn) { liveOn = false; live.cancel(); } if (delegated) { delegated = false; app.beginner.handler.cancel(); } }, // jumpstart-3d: pivot (live)
     dblclick(e) {
       const hits = vp.pick(e, scene.regionMeshes());
       if (hits.length) { app.enterSketch(hits[0].object.userData.region.sketch); return; }
@@ -964,20 +965,21 @@ export function initAdvanced(app) {
       return bb && bb.intersectsBox(tb);
     }).map((b) => b.id);
   }
-  function deepParticipants(doc, st) { // jumpstart-3d: direct edit. participants with the tool box shrunk instead of grown
-    const tb = toolBox(doc, st);
-    if (!tb) return [];
-    tb.expandByScalar(-0.01);
-    return store.doc.bodies.filter((b) => !b.hole && !b.hidden && !b.locked && (!st.editing || st.editing.body !== b.id)).filter((b) => { const bb = scene.bodyTightBox(b.id); return bb && bb.intersectsBox(tb); }).map((b) => b.id);
+  // jumpstart-3d: direct edit. The bodies a one-sided extrude pulled down really passes into, judged on the saved bodies (never the preview, which already shows the cut)
+  function cutTargets(doc, st) {
+    if (st.kind !== "extrude" || st.mode !== "one" || !(st.dist < 0) || st.editing) return [];
+    const sk = findSk(doc, st.sketchId);
+    if (!sk) return [];
+    const regs = regionsFor(sk);
+    return app.directEdit.cutTargets(app, { regions: [...st.profiles.values()].map((p) => regs[p.index]).filter(Boolean), M: planeMatrix(sk.plane), n: new THREE.Vector3(...sk.plane.n).normalize(), dist: st.dist, pointIn, bodies: store.doc.bodies.filter((b) => !b.hole && !b.hidden && !b.locked) });
   }
   function resolvedOp(doc, st) {
     if (st.op !== "auto") return st.op;
     const parts = participants(doc, st);
     const sk = findSk(doc, st.sketchId);
+    // jumpstart-3d: direct edit. Pulled down (one side) into a body cuts it, like Fusion, for any sketch, not only one drawn on a body. Judged on the saved bodies, before the preview-based test below
+    if (cutTargets(doc, st).length) return "cut";
     if (!parts.length) return "new";
-    // jumpstart-3d: direct edit. Pulled down (one side) into a body cuts it, like Fusion, for any sketch, not only one drawn on a body.
-    // Bodies whose box only touches the tool (a plate sketch pulled below the plate) do not count: the tool box is shrunk by 0.01 mm.
-    if (st.kind === "extrude" && st.mode === "one" && st.dist < 0 && deepParticipants(doc, st).length) return "cut";
     if (sk && sk.onBody) return (st.kind === "extrude" && st.dist < 0 && st.mode === "one") ? "cut" : "join";
     return "new";
   }
@@ -1081,7 +1083,8 @@ export function initAdvanced(app) {
       st.sketchId = r.sketch;
       st.profiles.set(profileKey(r.sketch, r.index), { index: r.index, ref: { key: r.region.key, pt: r.region.pt } });
       if (opts.dist) st.dist = opts.dist;
-      if (opts.drag) { st.dist = 0; st.tilted = true; } // jumpstart-3d: direct edit. a drag starts from 0 and the camera stays put
+      if (opts.drag) st.dist = 0; // jumpstart-3d: direct edit. a drag starts from 0
+      if (opts.drag || opts.clicked) st.tilted = true; // jumpstart-3d: direct edit. the camera stays put, so the shape stays under the pointer
       scene.state.forceSketch = r.sketch;
       scene.syncSketches(store.view);
     }
@@ -1133,8 +1136,9 @@ export function initAdvanced(app) {
         if (op === "new" || (op === "join" && !parts.length)) {
           doc.bodies.push({ id: st.newId || (st.newId = uid("b")), name: nextName(doc, "Body"), seq: nextSeq(doc), color: app.mode === "beginner" ? nextColor() : BODY_COLORS[doc.bodies.length % BODY_COLORS.length], hole: false, hidden: false, m: IDENTITY.slice(), node: { ...node, mods: [] }, ...(app.previewing ? { cmdPreview: true } : {}) });
         } else {
-          if (!parts.length) throw new Error(op === "cut" ? "The profile doesn't reach any body to cut." : "The profile doesn't reach any body.");
-          const targets = op === "join" ? [parts[0]] : parts;
+          const cutIds = st.op === "auto" && op === "cut" ? cutTargets(doc, st) : []; // jumpstart-3d: direct edit. an automatic cut changes only the bodies it really passes into
+          if (!parts.length && !cutIds.length) throw new Error(op === "cut" ? "The profile doesn't reach any body to cut." : "The profile doesn't reach any body.");
+          const targets = cutIds.length ? cutIds : op === "join" ? [parts[0]] : parts;
           const seq = nextSeq(doc);
           for (const id of targets) {
             const b = findBody(doc, id);
@@ -1229,7 +1233,7 @@ export function initAdvanced(app) {
           if (k !== hoverKey) { hoverKey = k; scene.highlightRegions(new Set(st.profiles.keys()), hoverKey); }
         },
         dblclick(e) {
-          if (def.openedBy && performance.now() - def.openedBy.at < 800) { closeCmd(false); app.enterSketch(def.openedBy.sketch); return; } // jumpstart-3d: direct edit. a double-click on a shape opens its sketch
+          if (def.openedBy && e.timeStamp - def.openedBy.at < 800 && Math.hypot(e.clientX - def.openedBy.x, e.clientY - def.openedBy.y) < 6) { closeCmd(false); app.enterSketch(def.openedBy.sketch); return; } // jumpstart-3d: direct edit. a double-click where the shape was clicked opens its sketch
           if (st.pickAxis || st.pickPath) return;
           const hits = vp.pick(e, scene.regionMeshes());
           if (!hits.length) return;
@@ -1246,7 +1250,7 @@ export function initAdvanced(app) {
         },
         down(e) {
           // jumpstart-3d: direct edit. The second press of a double-click on the shape that just opened Extrude: ignored (a finger's double-tap opens the sketch here)
-          if (def.openedBy && performance.now() - def.openedBy.at < 500) { if (vp.touchMode) setTimeout(() => { if (app.command === def) { closeCmd(false); app.enterSketch(def.openedBy.sketch); } }, 0); return true; }
+          if (def.openedBy && e.timeStamp - def.openedBy.at < 500 && Math.hypot(e.clientX - def.openedBy.x, e.clientY - def.openedBy.y) < (vp.touchMode ? 30 : 6)) { if (vp.touchMode) setTimeout(() => { if (app.command === def) { closeCmd(false); app.enterSketch(def.openedBy.sketch); } }, 0); return true; }
           const sweepCurve = kind === "sweep" ? sweepPathHit(e) : null;
           if (kind === "sweep" && (sweepCurve || st.pickPath)) {
             const h = sweepCurve;
@@ -1440,9 +1444,9 @@ export function initAdvanced(app) {
     if (opts.backToSketch && opts.sketch) def.onCancel = () => setTimeout(() => { if (!app.command && app.mode === "beginner" && findSketch(store.doc, opts.sketch)) app.enterSketch(opts.sketch); }, 0);
     openCmd(def);
     // jumpstart-3d: direct edit. Opened by a press on a finished sketch's shape: a drag pulls it at once (Extrude then stays open); a click notes when
-    // and where, so the second click of a double-click is ignored and the double-click opens the sketch
+    // and where, so the second click of a double-click at that spot is ignored and the double-click opens the sketch
     if (opts.drag && def.arrow) arrowDrag = { ...def.arrow, f: axisDragger(opts.drag, def.arrow.origin, def.arrow.n), v0: 0 };
-    if (opts.clicked) def.openedBy = { at: performance.now(), sketch: opts.region.sketch };
+    if (opts.clicked) def.openedBy = { at: opts.clicked.t, sketch: opts.region.sketch, x: opts.clicked.x, y: opts.clicked.y };
   }
   function pointIn(r, pt) {
     const inside = (poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if (a[1] > pt[1] !== b[1] > pt[1] && pt[0] < ((b[0] - a[0]) * (pt[1] - a[1])) / (b[1] - a[1]) + a[0]) c = !c; } return c; };

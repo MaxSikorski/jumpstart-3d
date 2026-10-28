@@ -32,6 +32,10 @@ const DOCS = {
   touching: (mode) => newDoc("touching", mode, { bodies: [body("b1", "Box", BOX)], sketches: [square(20, 0, 20, 20)] }),
   // a riser 20 x 20 x 20 under the plate (z from -20 to 0) with the square on its top
   riser: (mode) => newDoc("riser", mode, { bodies: [body("b1", "Riser", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), lifted(-20))], sketches: [square(0, 0, 10, 10)] }),
+  // a riser 20 x 20 x 20 under the plate with a 20 x 20 square on its top (it matches the riser exactly), and a box 10 x 10 x 10 standing on the plate beside it, touching the tool's edge
+  riserPlus: (mode) => newDoc("riser plus", mode, { bodies: [body("b1", "Riser", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), lifted(-20)), body("b2", "Stand", prim("box", { w: 10, d: 10, h: 10, r: 0, c: 0 }), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 15, 0, 0, 1])], sketches: [square(0, 0, 20, 20)] }),
+  // the same riser with a circle of radius 5 at (14, 14): its box overlaps the riser's box, the circle itself misses the riser by 0.66 mm
+  circleBeside: (mode) => newDoc("circle beside", mode, { bodies: [body("b1", "Riser", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), lifted(-20))], sketches: [{ id: "s1", name: "Sketch 1", seq: 1, hidden: false, cons: [], plane: { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1] }, pts: [{ id: "pc", x: 14, y: 14 }], ents: [{ id: "ec", t: "circle", c: "pc", r: 5 }] }] }),
   // a big square on the plate under the box: the box is in front of it
   under: (mode) => newDoc("under", mode, { bodies: [body("b1", "Box", BOX)], sketches: [square(0, 0, 60, 60)] }),
 };
@@ -128,11 +132,42 @@ for (const mode of ["beginner", "advanced"]) {
     expect(await undoDepth()).toBe(depth + 1);
   });
 
+  test(`${mode}: the height follows the drag: a short drag gives less than a long one, and neither is the 10 mm a plain click starts with`, async () => {
+    await open(DOCS.beside(mode));
+    const on = await clientOf([30, 0, 0]);
+    await dragFrom(on, -40);
+    await expect.poll(command).toBe("Extrude");
+    const short = await distNow();
+    await page.keyboard.press("Escape");
+    await expect.poll(command).toBeNull();
+    await dragFrom(on, -130);
+    await expect.poll(command).toBe("Extrude");
+    const long = await distNow();
+    expect(short, "a short drag up").toBeGreaterThan(0);
+    expect(long, "a longer drag gives more").toBeGreaterThan(short);
+    expect([short, long], "a click would start at 10 in Beginner").not.toContain(10);
+  });
+
+  test(`${mode}: the camera does not move during a drag, even looking straight down at the sketch`, async () => {
+    await open(DOCS.beside(mode));
+    await page.evaluate(() => window.__app.vp.setView("top"));
+    await settle();
+    const view = () => page.evaluate(() => { const v = window.__app.vp.view; return [v.az, v.el, v.dist, ...v.target.toArray()]; });
+    const before = await view();
+    await dragFrom(await clientOf([30, 0, 0]), -100);
+    await expect.poll(command).toBe("Extrude");
+    await settle();
+    expect(Math.abs(await distNow()), "the height changed").toBeGreaterThan(0);
+    const after = await view();
+    after.forEach((v, i) => expect(v, `camera value ${i}`).toBeCloseTo(before[i], 6));
+  });
+
   test(`${mode}: Esc after a drag cancels it and leaves the design as it was`, async () => {
     await open(DOCS.beside(mode));
     const depth = await undoDepth();
     await dragFrom(await clientOf([30, 0, 0]), -100);
     await expect.poll(command).toBe("Extrude");
+    expect(await distNow(), "it was a drag, not a click").not.toBe(mode === "beginner" ? 10 : 0);
     await page.keyboard.press("Escape");
     await expect.poll(command).toBeNull();
     expect(await undoDepth()).toBe(depth);
@@ -181,6 +216,70 @@ for (const mode of ["beginner", "advanced"]) {
     expect((await volumes()).b1).toBeCloseTo(8000 - 500, 0);
   });
 
+  test(`${mode}: pulling down into a body that matches it stays a cut once the preview has built, and Enter cuts the riser`, async () => {
+    await open(DOCS.riserPlus(mode));
+    const on = await clientOf([0, 0, 0]);
+    await page.mouse.click(on.x, on.y);
+    await expect.poll(command).toBe("Extrude");
+    await page.locator("#ex-dist").fill("-5");
+    await page.locator("#ex-dist").press("Tab");
+    for (let i = 0; i < 3; i++) { // the preview builds and the status redraws; the answer must not flip back to a new body
+      await waitIdle(page);
+      await page.waitForTimeout(500);
+      await expect(page.locator("#ex-hint")).toContainText("cut");
+    }
+    await keep();
+    const v = await volumes();
+    expect(Object.keys(v), "no new body").toHaveLength(2);
+    expect(v.b1).toBeCloseTo(8000 - 20 * 20 * 5, 0);
+    const mods = await page.evaluate(() => Object.fromEntries(window.__store.doc.bodies.map((b) => [b.id, (b.node.mods || []).length])));
+    expect(mods, "only the riser is cut; the box that only touches the tool is left alone").toEqual({ b1: 1, b2: 0 });
+  });
+
+  test(`${mode}: a circle whose box overlaps a body but which misses it makes a new body, not an empty cut`, async () => {
+    await open(DOCS.circleBeside(mode));
+    const on = await clientOf([14, 14, 0]);
+    await page.mouse.click(on.x, on.y);
+    await expect.poll(command).toBe("Extrude");
+    await page.locator("#ex-dist").fill("-5");
+    await page.locator("#ex-dist").press("Tab");
+    await expect(page.locator("#ex-hint")).toContainText("create a new body");
+    await keep();
+    const v = await volumes();
+    expect(Object.keys(v)).toHaveLength(2);
+    expect(v.b1, "the riser is untouched").toBeCloseTo(8000, 0);
+    expect(Object.entries(v).find(([id]) => id !== "b1")[1]).toBeCloseTo(Math.PI * 25 * 5, -1);
+  });
+
+  test(`${mode}: pressing the arrow soon after the click that opened Extrude still drags the arrow`, async () => {
+    await open(DOCS.beside(mode));
+    const on = await clientOf([30, 0, 0]);
+    await page.mouse.click(on.x, on.y);
+    await page.waitForFunction(() => window.__app.command && window.__app.command.arrow);
+    const head = await page.evaluate(() => { const { vp, command } = window.__app, r = vp.canvas.getBoundingClientRect(), s = vp.project(command.arrow.head); return { x: r.left + s[0], y: r.top + s[1] }; });
+    const before = await distNow();
+    // (this machine's software rendering can hold the page for a second: make the click "just now", as it is for a person)
+    await page.evaluate(() => { window.__app.command.openedBy.at = performance.now(); });
+    await dragFrom(head, -50); // inside the 500 ms in which a second press at the click's own spot is taken for a double-click; the arrow is somewhere else
+    expect(Math.abs((await distNow()) - before), "the arrow moved the height").toBeGreaterThan(0.5);
+    expect(await command()).toBe("Extrude");
+  });
+
+  test(`${mode}: a press held while the mode is switched is forgotten; clicking a body afterwards opens nothing`, async () => {
+    await open(DOCS.beside(mode));
+    const on = await clientOf([30, 0, 0]);
+    await page.mouse.move(on.x, on.y);
+    await page.mouse.down();
+    await page.evaluate((m) => window.__app.setMode(m === "beginner" ? "advanced" : "beginner", true), mode);
+    await page.mouse.up();
+    await page.evaluate((m) => window.__app.setMode(m, true), mode);
+    await settle();
+    const box = await clientOf([0, 0, 10]);
+    await page.mouse.click(box.x, box.y);
+    expect(await command(), "no Extrude from the old press").toBeNull();
+    expect(await page.evaluate(() => window.__app.sel.join(","))).toBe("b1");
+  });
+
   test(`${mode}: a double-click opens the sketch, not Extrude, and changes nothing`, async () => {
     await open(DOCS.beside(mode));
     const depth = await undoDepth();
@@ -226,6 +325,10 @@ for (const mode of ["beginner", "advanced"]) {
 test("beginner: closing a shape no longer opens Extrude; a note says to finish the sketch and click the shape, and that works", async () => {
   await loadDoc(page, newDoc("draw", "beginner"));
   await settle();
+  await page.evaluate(() => { // (a toast lives 2.6 s and a slow machine can miss it between two looks: keep a record)
+    window.__toastText = "";
+    new MutationObserver(() => { window.__toastText += document.getElementById("toasts").textContent + "|"; }).observe(document.getElementById("toasts"), { childList: true, subtree: true });
+  });
   await page.click("#bb-sketch");
   await page.locator("#plane-seg button").first().click();
   await page.waitForSelector("#sk-rect");
@@ -234,7 +337,7 @@ test("beginner: closing a shape no longer opens Extrude; a note says to finish t
   await page.click("#sk-rect");
   await page.mouse.click(a.x, a.y);
   await page.mouse.click(b.x, b.y);
-  await expect(page.locator("#toasts")).toContainText("click the shape");
+  await expect.poll(() => page.evaluate(() => window.__toastText)).toContain("click the shape");
   await page.waitForTimeout(400); // the old behaviour opened Extrude on the next tick
   expect(await command(), "no Extrude by itself").toBeNull();
   expect(await sketching(), "still in the sketch").not.toBeNull();
@@ -272,9 +375,31 @@ for (const mode of ["beginner", "advanced"]) {
       await settle(p);
       const again = await clientOf([30, 0, 0], p);
       await p.touchscreen.tap(again.x, again.y);
+      // (opening Extrude can hold this machine's software renderer for a second, which a person's second tap does not wait for: make the first tap "just now")
+      await p.evaluate(() => { const c = window.__app.command; if (c && c.openedBy) c.openedBy.at = performance.now(); });
       await p.touchscreen.tap(again.x, again.y);
       await expect.poll(() => sketching(p)).toBe("s1");
       expect(await command(p)).toBeNull();
+      expect(errs).toEqual([]);
+    } finally { await ctx.close(); }
+  });
+
+  test(`touch (tablet, ${mode}): an interrupted touch (cancelled) on the shape opens nothing`, async ({ browser, browserName }, info) => {
+    test.skip(browserName !== "chromium", "touch emulation is Chromium only");
+    const ctx = await browser.newContext(tablet);
+    const p = await ctx.newPage();
+    const errs = watchErrors(p);
+    try {
+      await boot(p, info);
+      await open(DOCS.beside(mode), p);
+      await p.evaluate(() => { const { vp, scene } = window.__app, c = scene.allBox().getCenter(vp.view.target.clone()), y = vp.project(c)[1]; vp.panBy(0, 0.25 * vp.h - y); });
+      await settle(p);
+      const on = await clientOf([30, 0, 0], p);
+      const cdp = await ctx.newCDPSession(p);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: on.x, y: on.y, id: 0 }] });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+      await p.waitForTimeout(500);
+      expect(await command(p), "a cancelled touch is not a tap").toBeNull();
       expect(errs).toEqual([]);
     } finally { await ctx.close(); }
   });

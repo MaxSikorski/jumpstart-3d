@@ -72,8 +72,13 @@ test("Beginner: L draws a line, then R draws four lines and a closed profile", a
   await clickPoint(page, [10, -10, 0]);
   await clickPoint(page, [30, 10, 0]);
   await expect.poll(async () => (await entities(page)).map((e) => e.t)).toEqual(Array(5).fill("line"));
-  // Beginner's existing automatic Extrude leaves the sketch and exposes its profile meshes.
-  await expect.poll(() => page.evaluate(() => window.__app.command?.title)).toBe("Extrude");
+  // Beginner no longer opens Extrude by itself when a shape closes (direct edit): the sketch stays open and a note says what to do.
+  await expect.poll(() => page.evaluate(() => window.__app.shapeClosedTold)).toBe(true); // (the note itself shows for 2.6 s)
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.__app.command)).toBeNull();
+  expect(await page.evaluate(() => window.__app.sketcher.active)).not.toBeNull();
+  await page.click("#sk-finish");
+  await expect.poll(() => page.evaluate(() => window.__app.sketcher.active)).toBeNull();
   await expect.poll(() => page.evaluate(() => {
     const id = window.__store.doc.sketches[0].id;
     return window.__app.scene.regionMeshes().filter((m) => m.userData.region.sketch === id).length;
