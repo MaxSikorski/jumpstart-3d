@@ -31,6 +31,7 @@ import { sketchesDXF } from "./dxf.js";
 import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
+import { initFaceBox } from "./facebox.js"; // jumpstart-3d: box on face
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
 import { snapSwitch, fine, makeGizmo, axisAlong, ringDrag, turnFeedback, placePill } from "./rotationui.js"; // jumpstart-3d: rotation access
 import { liveGizmo, onEscape } from "./pivot.js"; // jumpstart-3d: pivot
@@ -6415,6 +6416,7 @@ export function initAdvanced(app) {
   const { pipeCmd, coilCmd } = initPipeCoil(app, { vp, scene, openCmd, closeCmd, commit, schedulePreview, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawDot, clearOv, row, seg, pickbox, pickSketchCurve, pathPts, deleteFeature, frameFrom });
   const fasteners = initFasteners(app, { openCmd, commit, row, seg, offsetSelect, STD }); // jumpstart-3d: fasteners
   const holePattern = initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv, offsetSelect, pitchRow, planeFromFace, CLEAR, CBORE, CSINK, TAP, isInchKey }); // jumpstart-3d: hole pattern
+  const faceBox = initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, pickBaseFace, drawFace, ov, clearOv, planeFromFace }); // jumpstart-3d: box on face
   const gears = initGears(app, { openCmd, commit, row, seg }); // jumpstart-3d: gears
   const namePlate = initNamePlate(app, { openCmd, commit, row, seg }); // jumpstart-3d: name plates
   const knurl = initKnurl(app, { openCmd, commit, row, seg }); // jumpstart-3d: knurl
@@ -6555,6 +6557,7 @@ export function initAdvanced(app) {
     paramRows, // jumpstart-3d: parameters
     fastener: () => fasteners.cmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
+    faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
     namePlate: () => namePlate.cmd(), addNamePlate: (spec) => namePlate.add(spec), // jumpstart-3d: name plates
     knurl: () => knurl.cmd(), addKnurl: (spec) => knurl.add(spec), // jumpstart-3d: knurl
