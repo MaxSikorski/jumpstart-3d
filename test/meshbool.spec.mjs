@@ -26,10 +26,11 @@ const bytes = (a) => (ArrayBuffer.isView(a) ? Buffer.from(a.buffer, a.byteOffset
 const near = (a, b, tol) => expect(Math.abs(a - b), `${a} vs ${b} (±${tol})`).toBeLessThanOrEqual(tol);
 
 // Binary STL: the volume the triangles enclose and how many edges are not shared by exactly two triangles (0 = closed)
-function readStl(buf) {
+// (exact: corners match only when their float32 values are equal; by default they match on a 0.0001 mm grid)
+function readStl(buf, exact = false) {
   const n = buf.readUInt32LE(80), ids = new Map(), edges = new Map();
   let volume = 0;
-  const vid = (p) => { const k = p.map((v) => Math.round(v * 10000)).join(","); let i = ids.get(k); if (i === undefined) { i = ids.size; ids.set(k, i); } return i; };
+  const vid = (p) => { const k = p.map((v) => (exact ? v : Math.round(v * 10000))).join(","); let i = ids.get(k); if (i === undefined) { i = ids.size; ids.set(k, i); } return i; };
   for (let t = 0; t < n; t++) {
     const o = 84 + t * 50 + 12, p = [0, 1, 2].map((v) => [0, 1, 2].map((c) => buf.readFloatLE(o + v * 12 + c * 4)));
     volume += (p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) - p[0][1] * (p[1][0] * p[2][2] - p[1][2] * p[2][0]) + p[0][2] * (p[1][0] * p[2][1] - p[1][1] * p[2][0])) / 6;
@@ -43,7 +44,7 @@ function readStl(buf) {
   }
   return { volume, open: [...edges.values()].filter((c) => c !== 2).length };
 }
-const stlOf = async () => readStl(bytes(await run(() => JS3D.export("stl"))));
+const stlOf = async (exact) => readStl(bytes(await run(() => JS3D.export("stl"))), exact);
 const list = () => run(async () => { await JS3D.ready(60000); return JS3D.list(); });
 const engineOf = (id) => run((id) => { const v = window.__app.scene.views.get(id); return v && v.data ? v.data.meshEngine || null : null; }, id);
 
@@ -204,4 +205,31 @@ test("Max's Pi lid: Join a flush fill box, then Cut the opening", async () => {
   near(out.volume, 13927.16, 0.1);
   expect(join.ms).toBeLessThan(5000);
   expect(cut.ms).toBeLessThan(5000);
+});
+
+test("Max's Pi lid at Fine detail: a thin oval hole stays on Manifold, closed and quick", async () => {
+  test.slow();
+  const lid = await importFile("Canakit_Pi_4_case_lid.stl", readFileSync(lidFile));
+  expect(lid.error).toBeNull();
+  await run(() => { JS3D.add("box", { size: { w: 64, d: 31, h: 3 }, at: [-5.25, 0, 0] }); return JS3D.ready(); });
+  const join = await groupAll();
+  try {
+    await run(() => window.__app.setMeshDetail("fine", true));
+    await waitIdle(page, 120_000);
+    // a 0.01 x 12 mm oval (what a cylinder with d 12 and no width gives); its tip is the sharp curve Manifold used to refuse at Fine
+    const hole = await run(async () => { const id = JS3D.add("cylinder", { size: { w: 0.01, d: 12, h: 20 }, at: [-30, 0, -5], hole: true }); await JS3D.ready(); return JS3D.get(id).node.p; });
+    expect(hole).toMatchObject({ w: 0.01, d: 12, h: 20 });
+    const cut = await groupAll();
+    console.log(`meshbool-timing: ${buildOf(info0)} lid Fine oval hole ${cut.ms} ms`);
+    expect(await engineOf(cut.body.id)).toBe("manifold");
+    // the joined lid is 18261.36 mm3 (test/meshbool.test.mjs, Fine); that test measures the oval removing 0.280 mm3 at x -30, so 18261.08
+    near(cut.body.volume, 18261.08, 0.05);
+    expect(cut.body.volume).toBeLessThan(join.body.volume);
+    // the oval is 0.01 mm wide and its tip is far narrower, so the 0.0001 mm grid would join its two walls: count by exact position
+    expect((await stlOf(true)).open, "open edges in the exported STL").toBe(0);
+    expect(cut.ms).toBeLessThan(5000);
+  } finally {
+    await run(() => window.__app.setMeshDetail("normal", true));
+    await waitIdle(page, 120_000);
+  }
 });

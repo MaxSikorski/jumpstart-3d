@@ -1,7 +1,7 @@
 // Manifold, the mesh-boolean engine for joins and cuts with an imported mesh (src/meshbool.js, third_party/manifold-3d/).
 // Block 1 (the engine): the vendored files are the ones the README names, and the engine, bundled the way build.mjs bundles the
 // worker (IIFE, minified), starts in a sandbox that has no `process`, no `import.meta.url` and no fetch, and cuts a cylinder out of a cube.
-import { test, describe } from "node:test";
+import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -789,5 +789,66 @@ describe("a thin enclosed cavity is a cavity, not a film", () => {
     const shape = K.evalNode(node);
     approx(K._test.safeVolume(shape), 1000 - 8 * 8 * 0.0005, 1e-3, "lazy B-rep volume");
     shape.delete();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Block 9 (fine detail): at Fine and Extra fine, a hole shaped like a very thin oval through the joined Pi lid went to OpenCascade (1-10 s).
+// The oval's tip puts tessellation vertices about 1e-6 mm apart, Manifold's cut points there round to one float32, and the result was pinched by position.
+describe("a sharp curve at Fine detail stays on Manifold", () => {
+  const nodeAt = (join, tool, x) => group([kid(join), kid(tool, I(x, 0, -5), true)]);
+  // a 0.01 x 12 mm oval, what `p: { d: 12 }` without a width gives (the width clamps to 0.01 mm)
+  const oval = { t: "prim", kind: "cylinder", p: { w: 0.01, d: 12, h: 20 }, mods: [] };
+  const round = { t: "prim", kind: "cylinder", p: { w: 12, d: 12, h: 20 }, mods: [] };
+  // OpenCascade's volumes of these holes through the joined lid (K._test.withoutManifold, measured 2026-10-28). To re-measure one, build the
+  // same node inside K._test.withoutManifold after K.clearCache() (the lid's B-rep alone takes over 20 s, which is why they are recorded here).
+  const OCCT = {
+    oval: { 2: { [-30]: 18261.07888, [-12]: 18261.07888, 6: 18261.07887, 24: 18261.07887 }, 4: { [-30]: 18261.07888, 24: 18261.07887 } },
+    round: { 2: { [-30]: 17922.06961, 24: 17922.09761 } },
+  };
+  let join;
+  before(async () => { join = group([kid(await importStl(readFileSync(lidFile), "pi-lid.stl")), kid(box(64, 31, 3), I(-5.25, 0, 0))]); });
+
+  test("at Fine, a 0.01 x 12 mm oval hole at 20 places through the joined Pi lid stays on Manifold: closed, one piece, quick", () => {
+    const joinVol = build1(join, 2).mesh.volume, times = [];
+    for (let x = -30; x <= 27; x += 3) {
+      const r = build1(nodeAt(join, oval, x), 2);
+      assert.ok(r.ok, `x ${x}: ${r.error}`);
+      assert.equal(r.mesh.meshEngine, "manifold", `x ${x}: engine (${K._test.meshBoolReason()})`);
+      assert.deepEqual(edgeCheck(r.mesh), { open: 0, nonManifold: 0 }, `x ${x}: open and non-manifold edges`);
+      assert.equal(r.mesh.solidCount, 1, `x ${x}: one piece`);
+      assert.ok(r.ms < 5000, `x ${x}: took ${r.ms.toFixed(0)} ms`);
+      assert.ok(joinVol - r.mesh.volume > 0, `x ${x}: it really cut`);
+      times.push(r.ms);
+    }
+    console.log(`meshbool-timing: fine oval holes: max ${Math.max(...times).toFixed(0)} ms, mean ${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(0)} ms`);
+  });
+
+  test("... and its volume is OpenCascade's (Fine and Extra fine)", () => {
+    let worst = 0, worstRemoved = 0;
+    for (const q of [2, 4]) {
+      const joinVol = build1(join, q).mesh.volume;
+      for (const [x, want] of Object.entries(OCCT.oval[q])) {
+        const mf = build1(nodeAt(join, oval, +x), q);
+        assert.equal(mf.mesh.meshEngine, "manifold", `q ${q}, x ${x}: engine (${K._test.meshBoolReason()})`);
+        const rel = Math.abs(mf.mesh.volume - want) / want;
+        const removedMf = joinVol - mf.mesh.volume, removedOcct = joinVol - want;
+        worst = Math.max(worst, rel); worstRemoved = Math.max(worstRemoved, Math.abs(removedMf - removedOcct) / removedOcct);
+        assert.ok(rel <= 1e-3, `q ${q}, x ${x}: volume ${mf.mesh.volume} vs OpenCascade ${want} (${(rel * 100).toFixed(4)} %)`);
+        assert.ok(Math.abs(removedMf - removedOcct) <= 0.02 * removedOcct, `q ${q}, x ${x}: removed ${removedMf} vs OpenCascade ${removedOcct}`);
+      }
+    }
+    console.log(`meshbool-volume: oval holes vs OpenCascade: max volume difference ${(worst * 100).toExponential(2)} %, max removed-volume difference ${(worstRemoved * 100).toFixed(3)} %`);
+  });
+
+  test("[guard] round 12 mm holes at Fine stay on Manifold with OpenCascade's volume", () => {
+    const joinVol = build1(join, 2).mesh.volume;
+    for (const [x, want] of Object.entries(OCCT.round[2])) {
+      const mf = build1(nodeAt(join, round, +x), 2);
+      assert.equal(mf.mesh.meshEngine, "manifold", `x ${x}: engine (${K._test.meshBoolReason()})`);
+      assert.deepEqual(edgeCheck(mf.mesh), { open: 0, nonManifold: 0 }, `x ${x}: open and non-manifold edges`);
+      approx(mf.mesh.volume, want, 1e-3 * want, `x ${x}: volume against OpenCascade`);
+      approx(joinVol - mf.mesh.volume, joinVol - want, 0.01 * (joinVol - want), `x ${x}: removed volume against OpenCascade's`);
+    }
   });
 });
