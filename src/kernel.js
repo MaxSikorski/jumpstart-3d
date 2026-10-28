@@ -1440,9 +1440,9 @@ function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
 }
 // jumpstart-3d: shell hang guard (wall equals a fillet radius). When the offset distance matches the radius of a round
 // face (a fillet's cylinder, a corner's sphere, a torus tube), that face shrinks to nothing and OpenCascade's offset
-// loops for minutes while it eats gigabytes (box with 2 mm fillets and a 2 mm wall, 2026-10-27). Walls 0.5% off the radius
-// offset in half a second, so within 0.25% of a radius the wall is made 0.5% thinner (0.01 mm on a 2 mm wall). The slice
-// method was tried instead and was wrong there (inner hollow 30% too big, walls too thin), the distance field took 30 s.
+// loops for minutes while it eats gigabytes. Within 0.25% of a radius the wall is made 0.5% thinner, or 0.5% thicker
+// when the thinner wall meets another round face's radius. The slice method is 5x slower there, with rough fillet walls
+// and a kernel volume about 11% low; the distance field took 30 s.
 function offsetHitsRadius(shape, d) {
   let hit = false;
   for (const f of shape.faces) {
@@ -1461,10 +1461,15 @@ function offsetHitsRadius(shape, d) {
 }
 // end jumpstart-3d
 function shellSolidOffset(shape, t, open, dir, vIn) {
-  if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) { // jumpstart-3d: shell hang guard (wall equals a fillet radius)
-    t *= 0.995;
-    if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) return null; // another round face at the new size: leave it to the slice and field methods
+  // jumpstart-3d: shell hang guard (wall equals a fillet radius): 0.5% thinner, else 0.5% thicker; both hit another
+  // radius: leave it to the slice and field methods
+  const hits = (w) => offsetHitsRadius(shape, dir === "both" ? w / 2 : w);
+  if (hits(t)) {
+    if (!hits(t * 0.995)) t *= 0.995;
+    else if (!hits(t * 1.005)) t *= 1.005;
+    else return null;
   }
+  // end jumpstart-3d
   const ok = (sh, more) => { const v = safeVolume(sh); return v > 1e-6 && (more ? v > vIn * 1.002 : v < vIn * 0.998); };
   // a wall can't hold much more than (area of the kept surface) x thickness; OpenCascade
   // sometimes "succeeds" by hollowing only part of a body, which this catches
@@ -1686,7 +1691,8 @@ function drainHoles(walls, shape, t, dir, dr) {
   if (!best) best = { c: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, bb.min[2]], w: [bb.size[0] * 0.5, bb.size[1] * 0.5] };
   const r = Math.max(0.25, (dr.d || 3) / 2), n = dr.n || 1;
   const below = dir === "out" ? t : dir === "both" ? t / 2 : 0, above = dir === "in" ? t : dir === "both" ? t / 2 : 0;
-  const z0 = best.c[2] - below - 1, h = below + above + 2;
+  const m = Math.max(1, t * 0.01); // jumpstart-3d: covers the shell hang guard's 0.5% thicker wall
+  const z0 = best.c[2] - below - m, h = below + above + 2 * m; // jumpstart-3d: was - 1 and + 2
   const dx = Math.min(best.w[0] / 4, 30), dy = Math.min(best.w[1] / 4, 30);
   const spots = n >= 4 ? [[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]] : n === 2 ? [[-dx, 0], [dx, 0]] : [[0, 0]];
   const v0 = safeVolume(walls);
