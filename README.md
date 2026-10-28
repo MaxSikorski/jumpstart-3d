@@ -184,6 +184,7 @@ groups of features: J.Siwek's own, and the ones this community build adds.
   changes.
 - **Code CAD** (Open/Export › Code CAD…): write replicad code that builds one solid, and keep the code with the part.
 - **Bolts, nuts, gears, hole patterns, name plates, knurled knobs and springs**, ready to drop into a design.
+- **Insert a real part** (Open/Export): open a supplier, then drop or choose its downloaded model; Chrome and Edge can watch a chosen folder inside Downloads.
 - **Turning shapes** by typed angle or in fine steps, around a pivot you can move.
 - **Your printer's plate size**, with steep undersides shaded red.
 - **glTF and OBJ export, OBJ import**, and a pre-painted 3MF for multi-colour printing.

@@ -1,6 +1,7 @@
 // Advanced mode: Fusion-style ribbon, browser, timeline and feature commands.
 import * as THREE from "three";
 import { store, findBody, findSketch, nextSeq, IDENTITY, timeline, regionsFor, regionOwners, shapeGroup, userLoops, resolveNode, bodyKey, primName, pathChain, orderPath } from "./store.js";
+import { holdImport, importBusy } from "./dropimport.js"; // jumpstart-3d: insert supplier parts
 import { el, fmt, uid, round, clone, nextColor, fileAccept } from "./util.js";
 import { getUnit, withUnit, showLen } from "./units.js";
 import { ICON } from "./icons.js";
@@ -2244,7 +2245,8 @@ export function initAdvanced(app) {
     const accept = kind === "svg" ? ".svg,image/svg+xml" : kind === "dxf" ? ".dxf" : kind === "image" ? "image/png,image/jpeg,image/webp,image/gif,image/bmp" : kind === "model" ? MODELS : ".svg,.dxf,image/png,image/jpeg,image/webp,image/gif," + MODELS;
     const f = await pickFile(accept);
     if (!f) return;
-    return openModelFile(f); // jumpstart-3d: drop import. the picker and the page-wide drop share one entry
+    if (importBusy()) { app.toast("Still opening the last file. Choose it again in a moment.", "err"); return; } // jumpstart-3d: insert supplier parts
+    return holdImport(() => openModelFile(f)); // jumpstart-3d: insert supplier parts. Hold the shared import lock for picked files.
   }
   // jumpstart-3d: drop import. What a file is, by its ending in any letter case: "model" (STL, OBJ, 3MF, STEP, STP), "svg", "dxf",
   // "image" (by its type), or null. Shared by the picker and the page-wide drop so they accept the same files.
@@ -2258,7 +2260,10 @@ export function initAdvanced(app) {
   // (the dialog it opens may still be showing); never rejects.
   async function openModelFile(f) {
     const type = fileKind(f);
-    if (type === "model") return importModel(f);
+    if (type === "model") {
+      if (app.insertPart?.noteFile(f)) { app.toast(`Already brought in from ${app.insertPart.folderName()}.`); return; } // jumpstart-3d: insert supplier parts
+      return importModel(f);
+    }
     if (!type) { app.toast("Pick an SVG, DXF or picture file.", "err"); return; }
     try {
       if (type === "image") {
@@ -6042,11 +6047,14 @@ export function initAdvanced(app) {
       ] },
     ]);
     group("Insert", "", [
-      { id: "ad-insert", label: "Insert", title: "Insert an SVG, DXF or picture", icon: "import", dropdown: [
+      // jumpstart-3d: insert supplier parts
+      { id: "ad-insert", label: "Insert", title: "Insert an SVG, DXF, picture, model or supplier part", icon: "import", dropdown: [
         { id: "ad-ins-svg", label: "SVG drawing", title: "Insert an SVG drawing as a sketch", icon: "svgfile", fn: () => insertFile("svg") },
         { id: "ad-ins-dxf", label: "DXF drawing", title: "Insert a DXF drawing as a sketch", icon: "dxffile", fn: () => insertFile("dxf") },
         { id: "ad-ins-img", label: "Image to trace", title: "Place a picture to trace over (canvas)", icon: "image", fn: () => insertFile("image") },
         { id: "ad-ins-model", label: "STL / OBJ / 3MF / STEP model", title: "Import a 3D model: an STL, OBJ or 3MF mesh, or a STEP solid", icon: "import", fn: () => insertFile("model") }, // jumpstart-3d: OBJ import
+        // jumpstart-3d: insert supplier parts
+        { id: "ad-ins-realpart", label: "Real part from a supplier…", title: "Find a supplier part and import its downloaded model", icon: "import", fn: () => app.insertPart.open() },
       ] },
     ]);
     group("Modify", "", [

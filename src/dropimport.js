@@ -18,6 +18,23 @@ const WORDS = "STL, 3MF, OBJ, STEP, SVG or DXF";
 const DROPPABLE = new Set(["model", "svg", "dxf"]); // fileKind() values a drop opens; pictures (kind "image") are for the Insert menu, not the drop
 const STALE_MS = 3000; // a drag over the page fires dragover every fraction of a second; silence this long means the drag ended without a dragleave
 
+let busy = 0; // jumpstart-3d: insert supplier parts. Shared by dropped and watched imports.
+
+// "" when a model can be imported right now, otherwise the plain sentence that says what to do first
+export function reason(app, ignoreBusy = false) {
+  if (app.mode !== "beginner" && app.mode !== "advanced") return "Switch to Beginner or Advanced to import a model.";
+  if (document.body.classList.contains("s3d-on") || document.querySelector(".flexigen")) return "Close this tool first, then drop the file in Beginner or Advanced.";
+  if (document.querySelector(".modal-back") || app.simLock || app.command) return "Finish or close the open dialog first, then drop the file again.";
+  if (busy > 0 && !ignoreBusy) return "Still opening the last files. Drop this one again in a moment.";
+  return "";
+}
+
+// jumpstart-3d: insert supplier parts
+export function importBusy() { return busy > 0; }
+
+// jumpstart-3d: insert supplier parts
+export async function holdImport(fn) { busy++; try { return await fn(); } finally { busy--; } }
+
 export function initDropImport(app) {
   const style = document.createElement("style");
   style.id = "drop-css";
@@ -30,22 +47,13 @@ export function initDropImport(app) {
 
   let depth = 0; // dragenter minus dragleave; an element removed mid-drag never fires its dragleave, so it is a hint, not the truth
   let stale = 0;
-  let busy = false; // files from an earlier drop are still being opened
   let inside = false; // a drag that started in this page (a picture dragged out of the chat or a texture thumbnail carries "Files" too): not ours
 
-  // "" when a model can be imported right now, otherwise the plain sentence that says what to do first
-  function reason(ignoreBusy) {
-    if (app.mode !== "beginner" && app.mode !== "advanced") return "Switch to Beginner or Advanced to import a model.";
-    if (document.body.classList.contains("s3d-on") || document.querySelector(".flexigen")) return "Close this tool first, then drop the file in Beginner or Advanced.";
-    if (document.querySelector(".modal-back") || app.simLock || app.command) return "Finish or close the open dialog first, then drop the file again.";
-    if (busy && !ignoreBusy) return "Still opening the last files. Drop this one again in a moment.";
-    return "";
-  }
   const hasFiles = (e) => !inside && !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
   const lastEdit = () => store.undoStack[store.undoStack.length - 1];
 
   function show() {
-    const why = reason();
+    const why = reason(app);
     overlay.classList.toggle("no", !!why);
     const t = why ? "Can't import here" : "Drop to import", s = why || WORDS;
     if (title.textContent !== t) title.textContent = t;
@@ -62,17 +70,17 @@ export function initDropImport(app) {
 
   async function openDropped(files) {
     if (!files.length) return;
-    const why = reason();
+    const why = reason(app);
     if (why) { app.toast(why, "err"); return; }
     const A = app.advanced;
     const wanted = files.filter((f) => DROPPABLE.has(A.fileKind(f)));
     const other = files.filter((f) => !wanted.includes(f));
     if (other.length) app.toast(`Can't open ${other[0].name || "that file"}${other.length > 1 ? ` and ${other.length - 1} other file${other.length > 2 ? "s" : ""}` : ""}: drop an ${WORDS} file.`, "err");
     const notOpened = (n) => { if (n > 0) app.toast(`${n} file${n > 1 ? "s" : ""} not opened.`, "err"); };
-    busy = true;
+    busy++; // jumpstart-3d: insert supplier parts
     try {
       for (let i = 0; i < wanted.length; i++) {
-        if (i > 0 && reason(true)) { notOpened(wanted.length - i); return; } // the mode or a dialog changed while the earlier files were opening
+        if (i > 0 && reason(app, true)) { notOpened(wanted.length - i); return; } // the mode or a dialog changed while the earlier files were opening
         await A.openModelFile(wanted[i]);
         const before = lastEdit(); // after the file is handed over: an SVG or DXF dropped outside a sketch starts one (an undo entry) before its dialog opens
         // a mesh, SVG or DXF opens a dialog (units, size); the next file waits until it is closed
@@ -86,7 +94,7 @@ export function initDropImport(app) {
           if (lastEdit() === before) { notOpened(wanted.length - i - 1); return; } // Cancel or Esc: the person has had enough of this drop
         }
       }
-    } finally { busy = false; }
+    } finally { busy--; } // jumpstart-3d: insert supplier parts
   }
 
   // The handlers are shared with the helper frames (Chisel, FlexiGen, Mesh to STEP), whose own documents never bubble a drag up to this window.
