@@ -1049,9 +1049,11 @@ export class Sketcher {
       return { x: q[0], y: q[1], nx, ny, sizes: ds.map(size) };
     });
     const spots = layoutBadges(groups, obstacles);
+    const pass = this.tool === "dim" && !!(this.dimPicks && this.dimPicks.length); // a dimension label click goes through the badges
     [...rows.values()].forEach((ds, i) => ds.forEach((d, j) => {
       d.style.transform = `translate(${spots[i][j][0]}px, ${spots[i][j][1]}px)`;
       d.classList.toggle("pair", this.conHover === d._c.id);
+      d.classList.toggle("pass", pass);
     }));
     // end jumpstart-3d
   }

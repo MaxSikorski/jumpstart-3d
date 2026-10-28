@@ -191,3 +191,27 @@ test("a plain rectangle's badges stay by their own lines, on the outside", async
     for (const [x, y] of cs) expect(x > r[0] + 1 && x < r[2] - 1 && y > r[1] + 1 && y < r[3] - 1, `${letter} badge covers a corner`).toBe(false);
   }
 });
+
+test("while the Dimension tool waits for its label click, a badge does not swallow it", async () => {
+  test.setTimeout(240_000);
+  await busyHexagon();
+  await fitAll();
+  const before = await sketch(), dims = before.cons.filter((c) => c.t === "dim").length;
+  const [lx, ly] = centre((await screen()).badges[0].rect);
+  const ab = await run(() => { // screen point on the middle of line AB
+    const s = window.__app.sketcher, vp = window.__app.vp, cb = vp.canvas.getBoundingClientRect(), sk = s.sketch, V = vp.camera.position.constructor;
+    const P = (id) => sk.pts.find((p) => p.id === id), e = sk.ents[0], a = P(e.a), b = P(e.b);
+    const q = vp.project(new V((a.x + b.x) / 2, (a.y + b.y) / 2, 0).applyMatrix4(s.mat));
+    return [cb.left + q[0], cb.top + q[1]];
+  });
+  await page.locator("#sk-dim").click({ force: true });
+  await page.mouse.move(...ab);
+  await page.mouse.click(...ab);
+  await expect.poll(() => run(() => window.__app.sketcher.dimPicks.length)).toBe(1);
+  await page.mouse.move(lx, ly);
+  await page.mouse.click(lx, ly);
+  await page.waitForSelector("#prompt-value");
+  expect((await sketch()).cons.filter((c) => c.t === "dim").length, "a new dimension was placed").toBe(dims + 1);
+  expect(await run(() => window.__app.sketcher.selCons.size), "no badge was selected").toBe(0);
+  await page.keyboard.press("Escape");
+});
