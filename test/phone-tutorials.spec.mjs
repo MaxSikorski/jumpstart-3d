@@ -485,7 +485,7 @@ const SIZES = [
   { w: 768, h: 1024, opts: () => ({ hasTouch: true, isMobile: true, deviceScaleFactor: 1, viewport: { width: 768, height: 1024 }, screen: { width: 768, height: 1024 } }) },
 ];
 
-// Both walks sit in one parallel describe so --shard can put each in a different nightly shard; they share nothing (each has its own context and page).
+// The two walks share nothing (each has its own context and page), so they run side by side on separate workers within a shard. --shard splits by test count, so both will usually land in one shard (about 7 minutes in parallel, 14 if run in turn; each nightly shard job has a 30 minute limit).
 test.describe("Show me walks", () => {
 test.describe.configure({ mode: "parallel" });
 for (const { w: W2, h: H2, opts } of SIZES) {
@@ -502,7 +502,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
     await p.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
     const phone = W2 < 700, size = `${W2}x${H2}`;
     const problems = [];
-    const c = { lessons: 0, started: 0, finished: 0, steps: 0, nothing: 0, offscreen: 0, byPanel: 0, byOther: 0, cube: 0, narrowMissing: 0, bubble: 0, other: 0, narrowNoted: 0, narrowOld: 0, known: 0, fine: 0 };
+    const c = { lessons: 0, started: 0, finished: 0, steps: 0, nothing: 0, offscreen: 0, byPanel: 0, byOther: 0, cube: 0, narrowMissing: 0, bubble: 0, other: 0, narrowNoted: 0, known: 0, fine: 0 };
     const t0 = Date.now();
     try {
       await boot(p, info);
@@ -594,7 +594,6 @@ for (const { w: W2, h: H2, opts } of SIZES) {
               const toast = await p.evaluate(() => [...document.querySelectorAll(".toast")].map((t) => t.textContent).join(" | "));
               // "hidden on a narrow screen" is only right when the lesson needs a wider screen and every button the step names exists but has no layout box
               const hidden = show.sel ? await p.evaluate((sel) => sel.split(",").every((q) => { const e = document.querySelector(q.trim()); return !!e && !e.getClientRects().length; }), show.sel) : false;
-              if (L.minWidth > W2 && /This button is hidden on a screen this narrow/.test(toast)) c.narrowOld++;
               if (L.minWidth > W2 && hidden && /This button is hidden on a screen this narrow/.test(toast)) c.narrowNoted++;
               else add("nothing", "Show me found nothing");
             } else {
@@ -642,7 +641,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
         } catch (e) { problems.push(`${L.id}: Finish did not open "Nice work" at ${size}`); }
       }
       for (const k of only.length ? [] : known) if (!knownSeen.has(k)) problems.push(`${size} ${k}: this KNOWN entry names a step that was not walked, delete it from KNOWN`);
-      console.log(`[${info.project.name}] ${size}: lessons started ${c.started}/${c.lessons}, finished ${c.finished}; steps walked ${c.steps}; Show me found nothing ${c.nothing}; centre off screen ${c.offscreen}; covered by the lesson panel ${c.byPanel}; covered by something else ${c.byOther}; view cube moved ${c.cube}; missing .tut-narrow ${c.narrowMissing}; pop-up off screen ${c.bubble}; other (tap would miss, small panel on the view cube, walk) ${c.other}; fine ${c.fine}; KNOWN steps still failing ${c.known}; excused by the narrow note ${c.narrowNoted} (${c.narrowOld} under the old, looser rule); ${problems.length} problems; ${Math.round((Date.now() - t0) / 1000)} s`);
+      console.log(`[${info.project.name}] ${size}: lessons started ${c.started}/${c.lessons}, finished ${c.finished}; steps walked ${c.steps}; Show me found nothing ${c.nothing}; centre off screen ${c.offscreen}; covered by the lesson panel ${c.byPanel}; covered by something else ${c.byOther}; view cube moved ${c.cube}; missing .tut-narrow ${c.narrowMissing}; pop-up off screen ${c.bubble}; other (tap would miss, small panel on the view cube, walk) ${c.other}; fine ${c.fine}; KNOWN steps still failing ${c.known}; excused by the narrow note ${c.narrowNoted}; ${problems.length} problems; ${Math.round((Date.now() - t0) / 1000)} s`);
       if (problems.length) console.log(`[${info.project.name}] ${size} problems:\n` + problems.join("\n"));
       expect(problems, `Show me problems at ${size}`).toEqual([]);
       expect(c.started, "every lesson started").toBe(c.lessons);
