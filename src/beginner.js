@@ -6,6 +6,7 @@ import { showLen, parseLen } from "./units.js";
 import { ICON, shapeTile } from "./icons.js";
 import { LIB, textureThumb } from "./texture.js";
 import { FACEPAT } from "./facepat.js";
+import { fillReportFor } from "./fillpick.js"; // jumpstart-3d: fill openings
 import { FONT_NAMES } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
@@ -193,6 +194,7 @@ export function initBeginner(app) {
     btn("fillet", "Fillet", "Round the edges of a shape: click edges or a face, or round all of its edges", () => app.advanced.fillet(), "bb-fillet", true);
     btn("shell", "Shell", "Make a shape hollow inside with a wall you choose, or open it up like a cup or box", () => app.advanced.shell(), "bb-shell", true);
     btn("facePattern", "Face pattern", "Raise or cut a hexagon, diamond plate or screen mesh pattern on a flat face", () => app.advanced.facePattern(), "bb-facepat", true);
+    btn("fillOpen", "Fill openings", "Make the openings in a flat face solid: vents, slots, holes, logos", () => app.advanced.fillOpenings(), "bb-fillopen", true); // jumpstart-3d: fill openings
     btn("measure", "Measure", "Measure sizes, distances and angles (I)", () => app.advanced.measure(), "bb-measure", true);
     btn("printsim", "3D Print Sim", "Simulate printing it: supports, layers, strength, print time", () => app.advanced.openPrintSim(), "bb-printsim", true);
     bar.append(el("span", { class: "sep" }));
@@ -1053,10 +1055,11 @@ export function initBeginner(app) {
     if (one) transformControls(body, one);
     if (one && !one.hole) textureControls(body, one);
     if (one && !one.hole) facePatControls(body, one);
+    if (one && !one.hole) fillOpenControls(body, one); // jumpstart-3d: fill openings
     if (one && !one.hole) shapeFeatControls(body, one);
     if (one && one.node.t === "group") body.append(el("button", { class: "btn", onclick: () => ungroup() }, "Ungroup"));
     if (sel.length > 1) body.append(el("button", { class: "btn primary", onclick: () => group() }, `Group ${sel.length} shapes`));
-    const feats = one ? (one.node.mods || []).filter((m) => !["scale", "facepat", "shell", "fillet", "chamfer"].includes(m.t)).length : 0;
+    const feats = one ? (one.node.mods || []).filter((m) => !["scale", "facepat", "shell", "fillet", "chamfer", "fillopen"].includes(m.t)).length : 0;
     if (feats) body.append(el("div", { class: "hint", style: { padding: 0 } }, `Has ${feats} more feature${feats > 1 ? "s" : ""} from Advanced mode (holes, cuts…).`));
     const pbox = el("div", { class: "tree", id: "insp-params" }); // jumpstart-3d: parameters
     app.advanced.paramRows(pbox);
@@ -1125,6 +1128,20 @@ export function initBeginner(app) {
         el("button", { class: "xbtn", "aria-label": "Remove pattern", title: "Remove pattern", html: ICON.close, onclick: () => store.update((doc) => { const x = findBody(doc, b.id); x.node.mods = (x.node.mods || []).filter((y) => y.id !== m.id); }, "Remove pattern") })));
     }
     body.append(el("button", { class: "btn", id: "insp-facepat", onclick: () => app.advanced.facePattern() }, list.length ? "Add another pattern" : "Add a face pattern…"));
+  }
+  // jumpstart-3d: fill openings. "Openings filled: N" for each Fill openings feature on this shape: edit or remove
+  function fillOpenControls(body, b) {
+    (b.node.mods || []).filter((x) => x.t === "fillopen").forEach((m, i) => {
+      body.append(el("div", { class: "texrow insp-fillopen", ...(i === 0 && { id: "insp-fillopen" }) },
+        el("span", {}, "Openings filled: ", el("b", { class: "insp-fillopen-n" }, String(fillCount(b, m)))),
+        el("button", { class: "btn", onclick: () => app.advanced.editFeature(b.id, m.id) }, "Edit"),
+        el("button", { class: "xbtn", "aria-label": "Remove filled openings", title: "Remove filled openings", html: ICON.close, onclick: () => store.update((doc) => { const x = findBody(doc, b.id); x.node.mods = (x.node.mods || []).filter((y) => y.id !== m.id); }, "Remove filled openings") })));
+    });
+  }
+  // how many openings a Fill openings feature filled: the kernel's report on the built body
+  function fillCount(b, m) {
+    const res = b._key && app.kernel.get(b._key), r = res && res.ok && fillReportFor(res.mesh, b.node, m.id);
+    return r ? r.filled : "…";
   }
   // fillets, chamfers and shells (hollow) on this shape: edit or remove
   function shapeFeatControls(body, b) {
