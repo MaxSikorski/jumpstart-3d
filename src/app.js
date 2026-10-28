@@ -1,3 +1,5 @@
+// jumpstart-3d: STEP sessions are initialized before the engine starts.
+import { initStepProgress } from "./stepprogress.js";
 // App core: wiring, modes, selection, keyboard, shared UI helpers.
 import { initProjector } from "./projector.js";
 import { initMedia } from "./media.js";
@@ -133,17 +135,21 @@ function boot() {
   }
   app.cube = new ViewCube(vpEl, vp, (name) => vp.setView(name, name === "home" ? app.scene.allBox() : null));
   const load = initLoadUI(app); // jumpstart-3d: load
+  // jumpstart-3d: stage panel lives beside the viewport status UI.
+  app.stepProgress = initStepProgress(app);
   const kernel = (app.kernel = new KernelClient({
     ...engineSources(),
     onProgress: (m) => load.progress(m, WASM_PARTS.reduce((s, p) => s + (p.size || 0), 0)), // jumpstart-3d: load
+    // jumpstart-3d: geometry progress is separate from engine download progress.
+    onBuildProgress: (m) => app.stepProgress.progress(m),
     onReady: () => { load.ready(); app.status(); }, // jumpstart-3d: load. no hold: the splash is already gone
     onResults: () => {
-      app.scene.refresh(); app.status(); app.onBuilt && app.onBuilt();
+      app.scene.refresh(); app.stepProgress.reconcile(); app.status(); app.onBuilt && app.onBuilt();
       app.advanced && app.advanced.showBuildErrors();
       // frame the design once its first meshes arrive
       if (app.needFit && !app.scene.busy()) { app.needFit = false; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }
     },
-    onFail: (msg) => load.fail(msg), // jumpstart-3d: load
+    onFail: (msg) => { app.stepProgress.clear(); load.fail(msg); }, // jumpstart-3d: load
   }));
   kernel.onBusy = () => app.status();
   kernel.start();
@@ -203,6 +209,8 @@ app.voxel = initVoxel(app);
     scene.state.hideSketch = app.sketcher.active;
     app.kernel.keepAlso = store.preview ? new Set(store.doc.bodies.map((b) => b._key).filter(Boolean)) : null; // jumpstart-3d: STEP parts (#173). while a preview is open, the saved bodies' meshes stay too (baseOf reads them)
     scene.sync(doc);
+    // jumpstart-3d: replacement and Undo remove sessions without waiting for a poll.
+    if (kind === "load") app.stepProgress.clear(); else app.stepProgress.reconcile();
     // a command can show its own picks as the selection (Combine's target)
     scene.setSelected(app.command && app.command.sceneSel ? app.command.sceneSel() : app.sel);
     if (app.sketcher.active) app.sketcher.redraw();
@@ -946,7 +954,8 @@ app.refreshUI = function (kind) {
 
 app.status = function () {
   const busy = app.scene && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size);
-  $("busy").hidden = !busy || !app.kernel.ready;
+  // jumpstart-3d: a STEP row already describes this active build.
+  $("busy").hidden = !busy || !app.kernel.ready || app.stepProgress.represented();
   // jumpstart-3d: a hollow on a curved shape can take a minute; say so after 3 s instead of only "Rebuilding"
   { const k = app.kernel, long = busy && k.inflight && Date.now() - (k.inflightAt || 0) >= 2900 && k.inflight.some((b) => JSON.stringify(b.node).includes('"t":"shell"'));
     $("busy").textContent = long ? "Hollowing: on a curved shape this can take a minute" : "Rebuilding"; }

@@ -453,3 +453,66 @@ until the kernel queue is empty and every body has a mesh, read volumes from
 `__app.scene.views`, and catch downloads from the Export menu.
 
 `JS3D.group` in `src/bridge.js` keeps one group body; automatic piece splitting applies to the UI Group command only.
+
+### Checked STEP import and stage progress
+
+`node test/fixtures/make-step-speed-fixtures.mjs /tmp/step-speed-fixtures` creates our original stress fastener:
+a 6 mm × 30 mm pitch-1 modelled threaded shank, a 12 mm × 12.8 mm cylindrical head,
+and 100 intersecting toroidal ribs (major radius 5.99, minor radius 0.06,
+Z = 0.08 + i × 0.128 mm). The checked output has one solid, 432 faces including
+200 torus faces and 96 B-spline faces. The on-demand test generates the fixture and manifest (provenance, units, bounds and volume) in a temporary directory and removes both afterward. Neither is stored in the repository.
+No supplier/private STEP file belongs in this repository.
+
+The reader tries an empty `read.step.sequence`, then rejects a transfer with no roots,
+a null shape, no solids, or a failed **geometric** BRepCheck. Rejection starts a fresh
+reader with `FromSTEP`, once only. Healed surfaces remain supported; a healed invalid
+solid is returned as before; validity only decides whether to retry. Static values,
+readers, analyzers, rejected shapes and virtual files are restored/freed on exceptions too.
+Wasm traps and RangeErrors are never retried.
+
+A search of 63 generated candidates found no file that only healing makes valid, so retry is tested with the forced-rejection hook.
+The retained `step-unrepairable.step` assigns the first face the next face’s surface; it imports after two attempts even though both routes produce an invalid solid.
+
+At Normal only, untouched top-level STEP nodes (or import `keeppiece`) with more than
+400 faces use angular tolerance 0.35 instead of 0.2. Linear tolerance is unchanged.
+Fine, Extra fine and custom detail retain 0.2 / quality and can remain expensive.
+Display and STL/OBJ/3MF use that tessellation; STEP retains the analytic B-rep.
+All face centers remain exact: there are no deferred face details, approximate centers,
+new face-reference protocols, or changes to saved geometry/appearance/texture references.
+`golden.json` is unchanged; its imported box is outside the dense policy.
+
+Run the focused checks:
+
+```sh
+node build.mjs
+node --test test/stepload.test.mjs test/stepprogress.test.mjs
+node --test test/stepspeed.test.mjs
+npx playwright test test/stepspeed.spec.mjs test/step-import.spec.mjs test/step-parts.spec.mjs --project=site
+npx playwright test test/stepspeed.spec.mjs test/step-import.spec.mjs test/step-parts.spec.mjs --project=single
+```
+
+`stepload.test.mjs` runs in CI through `pretest`: dense-policy checks and the real
+checked-reader cases (restoration, fresh-reader retry, unreadable input, exceptions,
+SetCVal failure, surfaces, wire-only input, unrepairable input and cached stages).
+It uses small fixtures and does not build the dense fastener. `stepprogress.test.mjs`
+also stays in `pretest`. This keeps dense geometry work out of every merge-gate job.
+
+`stepspeed.test.mjs` runs **on demand**, outside `pretest`: generates the millimetre fixture in a temporary directory, then runs one fresh child with a
+30-second cold `buildBodies` budget and a 60-second child kill limit, followed by
+exact-center and closed-mesh checks using the millimetre fixture. Bundling, engine initialization,
+fixture generation and byte IO are excluded; checked reading, metadata, meshing and
+result construction are included. Reports include stage durations, platform/Node,
+fixture hash, triangle count and healing retry. These Node timings do not establish
+the five-second rendered-browser target. `stepprogress.test.mjs` uses fake workers/timers
+only for protocol and lifecycle races: stale requests, loading/build separation,
+unchanged watchdog deadlines, parts progress and cleanup. The browser spec observes
+real worker stages in Beginner/Advanced and both builds, plus malformed input, Undo,
+replacement, restart, 375px themes and Normal STL/3MF integrity using only small existing fixtures. Stage/export checks run once per build; only the cheap panel lifecycle check repeats per mode.
+
+Consumer invariants: triangle groups/paint indices and triangle hit normals retain
+face order; Split face/Offset/Shell/Thread, texture and appearance still receive exact
+centers; cylinder joint origins/axes and analytic measurements remain exact; curved
+measurements still use hits; planar tools and pivot caches need no new behavior.
+The Node suite checks exact curved centers, analytic fields, planar-only normals,
+face coverage and mesh closure. Browser export coverage is authored but must be run
+separately; no Playwright run was authorized during implementation.

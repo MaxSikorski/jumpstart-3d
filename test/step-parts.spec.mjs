@@ -200,12 +200,12 @@ test("a view zoomed in and panned far away is framed on all the parts", async ()
   expect(await inView()).toBe(true);
 });
 
-test("a read that stalls the engine says it took longer than 2 minutes", async () => {
+test("a build that stalls reports its production limit and last stage", async () => {
   await fresh("advanced");
   await page.evaluate(() => { window.__app.kernel.watchdogMs = 1; });
   // a file the engine has not read yet in this page (it keeps the result of every file it has built): the same fixture with a few spaces at the end
   await importFile("three parts.step", [...fixture("step-assembly-3-parts.step"), ...Array(7).fill(32)]);
-  await expect(toast("took longer than 2 minutes")).toBeVisible({ timeout: 30_000 });
+  await expect(toast("building it took longer than 2 minutes, so it was stopped. Last stage:")).toBeVisible({ timeout: 30_000 });
   await expect(toast("Couldn't import three parts")).toBeVisible();
   await page.evaluate(() => { delete window.__app.kernel.watchdogMs; });
   // the app still builds afterwards
@@ -250,14 +250,32 @@ test("a file with 201 parts stays one body and says so", async ({}, info) => {
   quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
   test.setTimeout(300_000);
   const bytes = await boxesFile(201);
-  await importFile("too many.step", bytes);
-  await expect(toast("has 201 parts")).toBeVisible({ timeout: 120_000 });
-  await whenBuilt(1);
-  const nodes = await page.evaluate(() => window.__store.doc.bodies.map((b) => b.node));
-  expect(nodes).toHaveLength(1);
-  expect(nodes[0].parts).toBeUndefined();
-  expect(nodes[0].mods).toEqual([]);
-  expect((await solidCounts())[0]).toBe(201);
+  await page.evaluate(() => {
+    window.partLimitToasts = 0;
+    const app = window.__app, toast = app.toast;
+    window.partLimitOriginalToast = toast;
+    app.toast = (...args) => {
+      if (String(args[0]).includes("has 201 parts")) window.partLimitToasts++;
+      return toast.apply(app, args);
+    };
+  });
+  try {
+    await importFile("too many.step", bytes);
+    await expect(toast("has 201 parts")).toBeVisible({ timeout: 120_000 });
+    await whenBuilt(1);
+    const nodes = await page.evaluate(() => window.__store.doc.bodies.map((b) => b.node));
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].parts).toBeUndefined();
+    expect(nodes[0].mods).toEqual([]);
+    expect((await solidCounts())[0]).toBe(201);
+    await expect(page.locator("#step-progress")).toBeHidden();
+    expect(await page.evaluate(() => window.partLimitToasts)).toBe(1);
+  } finally {
+    await page.evaluate(() => {
+      window.__app.toast = window.partLimitOriginalToast;
+      delete window.partLimitOriginalToast;
+    });
+  }
 });
 
 test("a body moved before its first build still splits, as its own undo step, and the parts keep the move", async () => {
@@ -284,9 +302,9 @@ test("an open edit is not wiped by the split: it waits for the preview to end", 
   await fresh("advanced");
   const id = await page.evaluate(async (bytes) => {
     await window.__app.advanced.importModel({ name: "waiting.step" }, new Uint8Array(bytes));
+    window.__store.setPreview(() => {}); // a drag or an open command holds a preview; set in the same step as the import, before any build result can arrive (a warm engine builds this file in a split second)
     return window.__store.doc.bodies[0].id;
-  }, fixture("step-assembly-3-parts.step"));
-  await page.evaluate(() => window.__store.setPreview(() => {})); // a drag or an open command holds a preview
+  }, [...fixture("step-assembly-3-parts.step"), 10]); // one extra line: a new asset, so the parts are not already built by an earlier test
   await page.waitForFunction((id) => { const v = window.__app.scene.views.get(id); return !!(v && v.data && !v.pending); }, id, { timeout: 60_000 });
   await page.waitForTimeout(1500); // the import's watcher looks every half second; a split would have cleared the preview by now
   expect(await page.evaluate(() => ({ bodies: window.__store.doc.bodies.length, preview: !!window.__store.preview }))).toEqual({ bodies: 1, preview: true });
