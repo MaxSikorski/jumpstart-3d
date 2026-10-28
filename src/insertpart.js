@@ -114,6 +114,14 @@ export function initInsertPart(app) {
     pill.style.maxWidth = `${Math.max(0, Math.min(300, vp.width - 24))}px`;
   }
 
+  function showOnline() {
+    if (!panel) return;
+    const online = navigator.onLine;
+    panel.querySelector("#insertpart-suppliers").hidden = !online;
+    panel.querySelector("#insertpart-help").hidden = !online;
+    panel.querySelector("#insertpart-offline").hidden = online;
+  }
+
   function renderWatch() {
     if (!panel) return;
     status.textContent = message;
@@ -316,6 +324,7 @@ export function initInsertPart(app) {
     panel = el("section", { id: "insertpart-panel", role: "region", "aria-labelledby": "insertpart-title", hidden: true },
       el("header", {}, el("h2", { id: "insertpart-title" }, "Insert a real part"), button("insertpart-close", "×", close, { title: "Close Insert a real part", "aria-label": "Close Insert a real part" })),
       suppliers, el("p", { id: "insertpart-help" }, "Find the part, download its STEP file, then drop it here."),
+      el("p", { id: "insertpart-offline", hidden: true }, "No internet connection. Drop a file you already downloaded."),
       el("p", { id: "insertpart-terms" }, "Supplier models are for designing around the real part. McMaster's terms don't allow printing or sharing their models."),
       el("div", { id: "insertpart-drop" }, "Drop a STEP, STL, 3MF or OBJ file here", button("insertpart-file", "Choose file…", () => {
         const why = reason(app);
@@ -330,6 +339,8 @@ export function initInsertPart(app) {
     resize = new ResizeObserver(schedulePlace);
     changes = new MutationObserver(schedulePlace);
     window.addEventListener("focus", () => checkFolder());
+    window.addEventListener("online", showOnline);
+    window.addEventListener("offline", showOnline);
     document.addEventListener("visibilitychange", () => checkFolder());
   }
   function open() {
@@ -338,6 +349,7 @@ export function initInsertPart(app) {
     panel.hidden = false;
     document.addEventListener("keydown", escape, true);
     renderWatch();
+    showOnline();
     panel.querySelector("#insertpart-close").focus();
     if (supported() && !read) {
       read = true;

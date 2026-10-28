@@ -710,3 +710,19 @@ test("manual imports during baseline reading are remembered", async ({ page }) =
   await tick(page, 2); await cubes(page, 1);
   await expect(page.locator("#insertpart-pill")).toBeVisible();
 });
+
+test("offline: the supplier links give way to a plain note and dropping still works", async ({ page }, info) => {
+  const single = info.project.name.startsWith("single"); // the served site loads engine parts on demand (its service worker caches them for real visitors), so only the single file imports with the network cut
+  await openPanel(page);
+  await expect(page.locator("#insertpart-mcmaster")).toBeVisible();
+  await expect(page.locator("#insertpart-offline")).toBeHidden();
+  await page.context().setOffline(true);
+  await expect(page.locator("#insertpart-offline")).toHaveText("No internet connection. Drop a file you already downloaded.");
+  await expect(page.locator("#insertpart-suppliers")).toBeHidden();
+  await expect(page.locator("#insertpart-help")).toBeHidden();
+  if (single) { await drop(page, STEP, "cube.step"); await cubes(page, 1); await openPanel(page); }
+  await expect(page.locator("#insertpart-offline")).toBeVisible();
+  await page.context().setOffline(false);
+  await expect(page.locator("#insertpart-mcmaster")).toBeVisible();
+  await expect(page.locator("#insertpart-offline")).toBeHidden();
+});
