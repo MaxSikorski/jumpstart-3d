@@ -34,6 +34,7 @@
   "holepattern-shapes.json": 1,
   "holepattern.json": 1,
   "import-step.json": 1,
+  "import-stl-mesh-join-cut.json": 2,
   "import-stl-mesh.json": 1,
   "knurl.json": 4,
   "nameplate.json": 5,
