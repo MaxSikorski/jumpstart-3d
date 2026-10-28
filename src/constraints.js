@@ -206,7 +206,7 @@ export function glyphSpots(sk) {
     const g = CONSTRAINT_BADGES[c.t].glyph;
     if (c.p1) { const a = P.get(c.p1), b = P.get(c.p2); if (a && b) out.push({ c, g, at: [(a.x + b.x) / 2, (a.y + b.y) / 2] }); continue; }
     if (c.p) { const p = P.get(c.p); if (p) out.push({ c, g, at: [p.x, p.y] }); continue; }
-    for (const id of [c.e1, c.e2]) { const m = mid(E.get(id)); if (m) out.push({ c, g, at: m }); }
+    for (const id of [c.e1, c.e2]) { const m = mid(E.get(id)); if (m) out.push({ c, g, at: m, on: id }); } // jumpstart-3d: badge layout (F10): which entity the badge belongs to
   }
   return out;
 }
