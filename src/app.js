@@ -1092,6 +1092,10 @@ app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit()
 };
 
 // ------------------------------------------------------------------ keyboard
+// jumpstart-3d: keyboard access. true from a mouse press until the next key press: a button focused this way still hands Tab to the size box (:focus-visible cannot tell, the browser has already seen the key)
+let focusByMouse = false, keyAfterMouse = false;
+document.addEventListener("pointerdown", () => { focusByMouse = true; }, true);
+document.addEventListener("keydown", () => { keyAfterMouse = focusByMouse; focusByMouse = false; }, true); // keyAfterMouse: this key is the first one since the press
 function onKey(e) {
   if (app.mode === "chisel") return; // Chisel has its own keys (in its frame)
   const tag = (e.target.tagName || "").toLowerCase();
@@ -1145,6 +1149,8 @@ function onKey(e) {
   // the open tool can use the arrow keys (Move / Copy moves with them, and turns with , and .)
   if (app.command && app.command.arrowKey && /^Arrow/.test(e.key) && app.command.arrowKey(e)) { e.preventDefault(); return; }
   if (app.command && app.command.turnKey && (e.code === "Comma" || e.code === "Period") && app.command.turnKey(e)) { e.preventDefault(); return; }
+  // jumpstart-3d: keyboard access. Tab (type a size on the selected shape) goes to the shape only while the view or the page has the focus, or a button the mouse just clicked; a button the keyboard reached, and anything in the import note, keeps Tab as the browser moves it
+  if (e.key === "Tab" && e.target !== app.vp.canvas && e.target !== document.body && e.target !== document.documentElement && (e.target.closest?.("#toasts") || !keyAfterMouse)) return;
   const handled = app.mode === "beginner" ? app.beginner.key(e) : app.advanced.key(e);
   if (handled) e.preventDefault();
 }
