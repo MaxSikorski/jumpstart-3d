@@ -48,6 +48,8 @@ import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 import { initFineTurn } from "./fineturn.js"; // jumpstart-3d: fine rotation
 import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
 import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
+// jumpstart-3d: insert supplier parts
+import { initInsertPart } from "./insertpart.js";
 import { initDropImport } from "./dropimport.js"; // jumpstart-3d: drop import
 
 /* global __WASM_PARTS__ */
@@ -241,6 +243,8 @@ app.voxel = initVoxel(app);
   initFineTurn(app); // jumpstart-3d: fine rotation
   initPerfPanel(app); // jumpstart-3d: perf panel
   initDropImport(app); // jumpstart-3d: drop import. a model file dropped anywhere on the page opens like the Import button
+  // jumpstart-3d: insert supplier parts
+  app.insertPart = initInsertPart(app);
   // jumpstart-3d: the top bar wraps to two rows on a narrow screen; Chisel and the Lathe message start below its real height
   new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px")).observe(document.querySelector(".topbar"));
   onUnit(() => {
@@ -984,7 +988,10 @@ app.sketchHint = function () {
     trim: "Click a segment to cut it back to the nearest intersections.",
     dim: "Sketch dimension: click a line, circle or arc (or two points or lines for a distance or angle), click again to place it, then type the value. Double-click a dimension to change it.",
     mirror: app.sketcher.mirrorHint(), // jumpstart-3d: sketch mirror
-    select: "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
+    // jumpstart-3d: Fusion-style. An empty sketch, including projected face edges, needs a drawing hint.
+    select: app.sketcher.sketch && !app.sketcher.sketch.ents.some((x) => !x.proj)
+      ? "Pick a tool to draw: Line (L), Rectangle (R), Circle (C), or another in the Create group."
+      : "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
   }[t] || "";
 };
 

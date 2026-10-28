@@ -10,6 +10,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
+| `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
 | `meshdetail.js` | Mesh detail menu: Normal, Fine, Extra fine, custom up to 32x |
 | `params.js` | Named parameters that drive sketch and feature sizes |
 | `projstore.js` | Designs kept in IndexedDB, with a localStorage fallback |
@@ -28,11 +29,12 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `spring.js` | Compression springs |
 | `sketchmirror.js` | Sketch Mirror (M, Modify group): copies picked shapes across a line, the X or Y axis or the origin; `mirrorEnts` is the pure maths, the rest is the tool's clicks and panel box |
 | `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
+| `badgelayout.js` | Constraint badges: where each sits on screen (`layoutBadges`) so none lands on another badge, a corner or a dimension label; pure maths, no DOM |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
 | `loadui.js` | Engine-load note, splash, service-worker registration |
-| `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts |
+| `helperfonts.js` | Gives the helper pages (FlexiGen, Mesh to STEP, Chisel) the self-hosted fonts and inserts the shared three.js |
 | `report.js` | Report a problem (prefilled GitHub issue link) |
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
 | `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
@@ -40,6 +42,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
+| `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
+| `sendslicer.js` | Send to slicer (Open/Export menu): the Export > 3MF bytes handed to the slicer: a download on a computer, the share sheet on a phone or tablet that can share files; a one-time tip on making .3mf open in OrcaSlicer, PrusaSlicer, Cura or Bambu Studio |
 | `importtoast.js` | Import units: a closed mesh of known units (3MF, OBJ and STL from 6 mm up) comes in at once; the note with its size, repairs and mm / cm / in buttons (one undo step); the dialog stays for open or non-manifold meshes and STL or OBJ under 6 mm; the note also has a CAD faces… shortcut to Mesh to STEP |
 | `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
@@ -59,7 +63,7 @@ No markers. On a port, take his new version whole. Do not "tidy" these.
 ## 4. Special files
 - `occt-gz.wasm` (7.2 MB): the OpenCascade kernel, gzipped. The worker fetches it on the site; the single file carries it as base64. If upstream's wasm changes, `tools/upstream-merge.mjs` only reports it: re-gzip with `gzip -9 -n`.
 - `../third_party/manifold-3d/`: the Manifold engine (manifold-3d 3.5.4), vendored: the package's glue, its wasm as a gzipped base64 string in `wasm.js`, our loader `index.js`. It rides inside `docs/worker.js` and the single file (about +225 KB gzipped); `build.mjs` and `sw.js` needed no change. Regenerate with `tools/vendor-manifold.mjs`; the README there has the hashes.
-- `flexigen.html`, `meshstep.html`, `chisel.html`: built helper pages, committed and imported as text. Rebuild steps: `tools/README-helpers.md`.
+- `flexigen.html`, `meshstep.html`, `chisel.html`: built helper pages, with `helper-three.html` as the generated shared three.js, all committed and imported as text. Rebuild steps: `tools/README-helpers.md`.
 - `sw.js`: site only. `build.mjs` copies it to `docs/sw.js` with a version hash. Never remove it from the site (a 404 keeps the old worker serving its cache forever).
 - `camworker.js`: `build.mjs` bundles it in memory for CAM Studio's Blob worker. `camworker.bundle.txt` is gitignored; a stale copy can never win.
 - Images, `manifest.webmanifest`, `webfonts.css`, `fonts/`: static assets that the build copies.
