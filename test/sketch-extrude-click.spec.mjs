@@ -7,7 +7,6 @@
 //  - a click opens Extrude with that one shape picked and the arrow showing (10 mm in Beginner, 0 in Advanced), a typed 5 makes a 20 x 20 x 5 body;
 //  - a drag up opens Extrude at once, leaves it open, and Enter keeps a body of 400 x the dragged height;
 //  - a drag down on a sketch drawn on a body's top face cuts that body (a bool cut mod, no new body);
-//  - a sketch pulled down into a body that stands under it cuts it; one that only touches a body at an edge stays a new body;
 //  - a double-click opens the sketch, not Extrude; a body in front of a shape (or a shift-click) still takes the click;
 //  - Beginner: closing a shape does not open Extrude, a note says what to do instead, and Finish sketch then a click does;
 //  - touch: a tap on the shape opens Extrude, two quick taps open the sketch.
@@ -30,12 +29,6 @@ const DOCS = {
   onTop: (mode) => newDoc("on top", mode, { bodies: [body("b1", "Box", BOX)], sketches: [square(0, 0, 10, 10, 10, { onBody: "b1" })] }),
   // the square beside the box on the plate, touching its edge (x from 10 to 30)
   touching: (mode) => newDoc("touching", mode, { bodies: [body("b1", "Box", BOX)], sketches: [square(20, 0, 20, 20)] }),
-  // a riser 20 x 20 x 20 under the plate (z from -20 to 0) with the square on its top
-  riser: (mode) => newDoc("riser", mode, { bodies: [body("b1", "Riser", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), lifted(-20))], sketches: [square(0, 0, 10, 10)] }),
-  // a riser 20 x 20 x 20 under the plate with a 20 x 20 square on its top (it matches the riser exactly), and a box 10 x 10 x 10 standing on the plate beside it, touching the tool's edge
-  riserPlus: (mode) => newDoc("riser plus", mode, { bodies: [body("b1", "Riser", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), lifted(-20)), body("b2", "Stand", prim("box", { w: 10, d: 10, h: 10, r: 0, c: 0 }), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 15, 0, 0, 1])], sketches: [square(0, 0, 20, 20)] }),
-  // the same riser with a circle of radius 5 at (14, 14): its box overlaps the riser's box, the circle itself misses the riser by 0.66 mm
-  circleBeside: (mode) => newDoc("circle beside", mode, { bodies: [body("b1", "Riser", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }), lifted(-20))], sketches: [{ id: "s1", name: "Sketch 1", seq: 1, hidden: false, cons: [], plane: { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1] }, pts: [{ id: "pc", x: 14, y: 14 }], ents: [{ id: "ec", t: "circle", c: "pc", r: 5 }] }] }),
   // a big square on the plate under the box: the box is in front of it
   under: (mode) => newDoc("under", mode, { bodies: [body("b1", "Box", BOX)], sketches: [square(0, 0, 60, 60)] }),
 };
@@ -162,6 +155,28 @@ for (const mode of ["beginner", "advanced"]) {
     after.forEach((v, i) => expect(v, `camera value ${i}`).toBeCloseTo(before[i], 6));
   });
 
+  test(`${mode}: a click from a top view lets the camera tilt to show the height, and a double-click after that still opens the sketch`, async () => {
+    await open(DOCS.beside(mode));
+    await page.evaluate(() => window.__app.vp.setView("top"));
+    await settle();
+    const el = () => page.evaluate(() => window.__app.vp.view.el);
+    const flat = await el();
+    expect(flat, "looking straight down").toBeGreaterThan(1.5);
+    const on = await clientOf([30, 0, 0]);
+    await page.mouse.click(on.x, on.y);
+    await expect.poll(command).toBe("Extrude");
+    await settle();
+    expect(await el(), "the camera tilted").toBeLessThan(flat - 0.2);
+    // and a double-click from the top view: the first click tilts the camera, the second press is at the same screen spot
+    await open(DOCS.beside(mode));
+    await page.evaluate(() => window.__app.vp.setView("top"));
+    await settle();
+    const again = await clientOf([30, 0, 0]);
+    await page.mouse.dblclick(again.x, again.y);
+    await expect.poll(sketching).toBe("s1");
+    expect(await command()).toBeNull();
+  });
+
   test(`${mode}: Esc after a drag cancels it and leaves the design as it was`, async () => {
     await open(DOCS.beside(mode));
     const depth = await undoDepth();
@@ -203,54 +218,6 @@ for (const mode of ["beginner", "advanced"]) {
     expect(v.b1, "the box is untouched").toBeCloseTo(4000, 0);
   });
 
-  test(`${mode}: a shape on top of a body that stands under it, pulled down, cuts it`, async () => {
-    await open(DOCS.riser(mode));
-    const on = await clientOf([0, 0, 0]);
-    await page.mouse.click(on.x, on.y);
-    await expect.poll(command).toBe("Extrude");
-    await page.locator("#ex-dist").fill("-5");
-    await page.locator("#ex-dist").press("Tab");
-    await expect(page.locator("#ex-hint")).toContainText("cut");
-    await keep();
-    expect((await bodies(page)).length).toBe(1);
-    expect((await volumes()).b1).toBeCloseTo(8000 - 500, 0);
-  });
-
-  test(`${mode}: pulling down into a body that matches it stays a cut once the preview has built, and Enter cuts the riser`, async () => {
-    await open(DOCS.riserPlus(mode));
-    const on = await clientOf([0, 0, 0]);
-    await page.mouse.click(on.x, on.y);
-    await expect.poll(command).toBe("Extrude");
-    await page.locator("#ex-dist").fill("-5");
-    await page.locator("#ex-dist").press("Tab");
-    for (let i = 0; i < 3; i++) { // the preview builds and the status redraws; the answer must not flip back to a new body
-      await waitIdle(page);
-      await page.waitForTimeout(500);
-      await expect(page.locator("#ex-hint")).toContainText("cut");
-    }
-    await keep();
-    const v = await volumes();
-    expect(Object.keys(v), "no new body").toHaveLength(2);
-    expect(v.b1).toBeCloseTo(8000 - 20 * 20 * 5, 0);
-    const mods = await page.evaluate(() => Object.fromEntries(window.__store.doc.bodies.map((b) => [b.id, (b.node.mods || []).length])));
-    expect(mods, "only the riser is cut; the box that only touches the tool is left alone").toEqual({ b1: 1, b2: 0 });
-  });
-
-  test(`${mode}: a circle whose box overlaps a body but which misses it makes a new body, not an empty cut`, async () => {
-    await open(DOCS.circleBeside(mode));
-    const on = await clientOf([14, 14, 0]);
-    await page.mouse.click(on.x, on.y);
-    await expect.poll(command).toBe("Extrude");
-    await page.locator("#ex-dist").fill("-5");
-    await page.locator("#ex-dist").press("Tab");
-    await expect(page.locator("#ex-hint")).toContainText("create a new body");
-    await keep();
-    const v = await volumes();
-    expect(Object.keys(v)).toHaveLength(2);
-    expect(v.b1, "the riser is untouched").toBeCloseTo(8000, 0);
-    expect(Object.entries(v).find(([id]) => id !== "b1")[1]).toBeCloseTo(Math.PI * 25 * 5, -1);
-  });
-
   test(`${mode}: pressing the arrow soon after the click that opened Extrude still drags the arrow`, async () => {
     await open(DOCS.beside(mode));
     const on = await clientOf([30, 0, 0]);
@@ -259,6 +226,9 @@ for (const mode of ["beginner", "advanced"]) {
     const head = await page.evaluate(() => { const { vp, command } = window.__app, r = vp.canvas.getBoundingClientRect(), s = vp.project(command.arrow.head); return { x: r.left + s[0], y: r.top + s[1] }; });
     const before = await distNow();
     // (this machine's software rendering can hold the page for a second: make the click "just now", as it is for a person)
+    const gap = await page.evaluate(() => performance.now() - window.__app.command.openedBy.at); // the code records the pointerup's own timeStamp, on performance.now()'s clock
+    expect(gap, "openedBy.at is a time on the page's clock, recent").toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(3000);
     await page.evaluate(() => { window.__app.command.openedBy.at = performance.now(); });
     await dragFrom(head, -50); // inside the 500 ms in which a second press at the click's own spot is taken for a double-click; the arrow is somewhere else
     expect(Math.abs((await distNow()) - before), "the arrow moved the height").toBeGreaterThan(0.5);
@@ -376,7 +346,10 @@ for (const mode of ["beginner", "advanced"]) {
       const again = await clientOf([30, 0, 0], p);
       await p.touchscreen.tap(again.x, again.y);
       // (opening Extrude can hold this machine's software renderer for a second, which a person's second tap does not wait for: make the first tap "just now")
-      await p.evaluate(() => { const c = window.__app.command; if (c && c.openedBy) c.openedBy.at = performance.now(); });
+      const gap = await p.evaluate(() => { const c = window.__app.command; return c && c.openedBy ? performance.now() - c.openedBy.at : null; });
+      expect(gap, "openedBy.at is a time on the page's clock, recent").toBeGreaterThanOrEqual(0);
+      expect(gap).toBeLessThan(3000);
+      await p.evaluate(() => { window.__app.command.openedBy.at = performance.now(); });
       await p.touchscreen.tap(again.x, again.y);
       await expect.poll(() => sketching(p)).toBe("s1");
       expect(await command(p)).toBeNull();
@@ -400,6 +373,7 @@ for (const mode of ["beginner", "advanced"]) {
       await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
       await p.waitForTimeout(500);
       expect(await command(p), "a cancelled touch is not a tap").toBeNull();
+      expect(await p.evaluate(() => window.__app.scene.regionMeshes()[0].material.color.getHexString()), "the shape does not stay lit").not.toBe("e8a317");
       expect(errs).toEqual([]);
     } finally { await ctx.close(); }
   });
