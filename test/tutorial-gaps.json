@@ -30,6 +30,7 @@
       "mode-arch"
     ],
     "top bar menus": [
+      "btn-import-menu",
       "btn-plate",
       "btn-report",
       "export-scope-all",
