@@ -90,7 +90,6 @@ tools/              helper page sources and the scripts that rebuild them
 BRIDGE.md           the `JS3D` calls and the project file format
 docs/               built website: not on `main` (gitignored); the maintainer's release step builds it onto the
                     `release` branch, which GitHub Pages serves
-jumpstart_3d_v2.0.htm      historical upstream v2.0 build (src/ now uses 2.3)
 UPSTREAM-README.md         the author's README from the source release
 ```
 
