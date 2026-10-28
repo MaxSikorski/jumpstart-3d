@@ -20,11 +20,13 @@ export function layoutBadges(groups, obstacles) {
       const d = s * (base + k * step), cx = x + nx * d - ny * t * slide, cy = y + ny * d + nx * t * slide;
       cand.push({ away: Math.hypot(cx - x - nx * base, cy - y - ny * base), r: [cx - W / 2, cy - H / 2, cx + W / 2, cy + H / 2] });
     }
+    // only boxes a candidate could reach matter: keeps a busy sketch fast
+    const reach = base + (STEPS - 1) * step + slide + Math.max(W, H), near = taken.filter((o) => o[2] > x - reach && o[0] < x + reach && o[3] > y - reach && o[1] < y + reach);
     cand.sort((p, q) => p.away - q.away); // nearest to the preferred spot first; ties keep the order above (k, side, slide)
     let best = null, bestCost = Infinity;
     for (const { r } of cand) {
-      if (!taken.some((o) => clash(r, o))) { best = r; break; }
-      const cost = taken.reduce((c, o) => c + area(r, o), 0);
+      if (!near.some((o) => clash(r, o))) { best = r; break; }
+      const cost = near.reduce((c, o) => c + area(r, o), 0);
       if (cost < bestCost) { bestCost = cost; best = r; }
     }
     taken.push(best);

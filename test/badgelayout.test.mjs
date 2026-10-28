@@ -33,3 +33,14 @@ test("same input, same output; the inputs are not changed", () => {
   assert.deepEqual(a, b);
   assert.equal(JSON.stringify([groups, obstacles]), before);
 });
+
+test("no free spot anywhere: still returns a spot for every badge and does not throw", () => {
+  const groups = [{ x: 100, y: 200, nx: 0, ny: -1, sizes: [[18, 18], [18, 18]] }], wall = [[-1000, -1000, 1000, 1000]];
+  const [[a, b]] = layoutBadges(groups, wall);
+  assert.ok(a.every(Number.isFinite) && b.every(Number.isFinite));
+});
+
+test("far-away obstacles do not change where a badge goes", () => {
+  const groups = [{ x: 100, y: 200, nx: 0, ny: -1, sizes: [[18, 18]] }];
+  assert.deepEqual(layoutBadges(groups, [[5000, 5000, 5100, 5100]]), layoutBadges(groups, []));
+});

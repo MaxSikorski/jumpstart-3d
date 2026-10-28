@@ -989,6 +989,7 @@ export class Sketcher {
     this.glyphSig = sig;
     for (const g of this.glyphEls || []) g.remove();
     this.glyphEls = [];
+    this.conHover = null; // jumpstart-3d: badge layout (F10): the old badges are gone, so none can send pointerleave
     if (!spots.length) return;
     for (const s2 of spots) {
       const d = el("button", { class: "cglyph" + (this.selCons.has(s2.c.id) ? " on" : ""), title: CONSTRAINT_BADGES[s2.c.t].label + " (click, then Delete to remove)", "aria-label": CONSTRAINT_BADGES[s2.c.t].label + " constraint" }, s2.g);
@@ -1012,15 +1013,26 @@ export class Sketcher {
     }
     if (!this.glyphEls || !this.glyphEls.length || !this.mat) return;
     // jumpstart-3d: badge layout (F10): one row of badges per line (or per spot), none on another badge, a corner or a dimension label
+    const sk = this.sketch;
+    if (!sk) return;
     const proj = (x, y) => this.vp.project(new THREE.Vector3(x, y, 0).applyMatrix4(this.mat));
+    let guessed = false;
     const size = (d) => {
       if (d._sz) return d._sz;
       const w = d.offsetWidth, h = d.offsetHeight;
-      if (!w || !h) return [18, 18];
+      if (!w || !h) { guessed = true; return [18, 18]; }
       return (d._sz = [w, h]);
     };
-    const sk = this.sketch, P = new Map(sk.pts.map((p) => [p.id, proj(p.x, p.y)]));
-    const obstacles = [...P.values()].map((q) => [q[0] - 6, q[1] - 6, q[0] + 6, q[1] + 6]);
+    // the layout only changes with the camera, the sketch, the badges or the dimension labels: skip it otherwise (it runs on every render)
+    const cam = this.vp.camera, key = [...this.mat.elements, ...cam.matrixWorldInverse.elements, ...cam.projectionMatrix.elements, this.vp.w, this.vp.h, this.glyphSig, this.dimSig, sk.pts.map((p) => p.x + "," + p.y).join(";")].join("|");
+    const pass = this.tool === "dim" && !!(this.dimPicks && this.dimPicks.length); // a dimension label click goes through the badges
+    const done = this.badgeLay;
+    if (done && done.key === key && done.els === this.glyphEls) {
+      done.rows.forEach((ds) => ds.forEach((d) => { d.classList.toggle("pair", this.conHover === d._c.id); d.classList.toggle("pass", pass); }));
+      return;
+    }
+    const P = new Map(sk.pts.map((p) => [p.id, proj(p.x, p.y)]));
+    const obstacles = [...P.values()].map((q) => [q[0] - 9, q[1] - 9, q[0] + 9, q[1] + 9]); // 9 px: a lit corner's halo is wider than 6
     for (const d of this.dimEls || []) if (!d.classList.contains("preview")) {
       const q = proj(d._at[0], d._at[1]), [w, h] = size(d);
       obstacles.push([q[0] - w / 2, q[1] - h / 2, q[0] + w / 2, q[1] + h / 2]);
@@ -1049,7 +1061,7 @@ export class Sketcher {
       return { x: q[0], y: q[1], nx, ny, sizes: ds.map(size) };
     });
     const spots = layoutBadges(groups, obstacles);
-    const pass = this.tool === "dim" && !!(this.dimPicks && this.dimPicks.length); // a dimension label click goes through the badges
+    this.badgeLay = guessed ? null : { key, els: this.glyphEls, rows: [...rows.values()] }; // sizes read from a hidden panel are guesses: do not keep them
     [...rows.values()].forEach((ds, i) => ds.forEach((d, j) => {
       d.style.transform = `translate(${spots[i][j][0]}px, ${spots[i][j][1]}px)`;
       d.classList.toggle("pair", this.conHover === d._c.id);
@@ -1410,7 +1422,7 @@ export class Sketcher {
     for (const c of curves) {
       if (c.t === "point") continue;
       const pts = sampleCurve(c);
-      const k = this.sel.has(c.id) ? "sel" : this.hover === c.id || lit.has(c.id) ? "hover" : c.proj ? "proj" : c.cons ? "cons" : "line";
+      const k = this.sel.has(c.id) ? "sel" : this.hover === c.id || lit.has(c.id) /* jumpstart-3d: badge layout (F10) */ ? "hover" : c.proj ? "proj" : c.cons ? "cons" : "line";
       pushPoly(segs[k], pts);
     }
     for (const { id, pts } of textOutlines(sk)) pushPoly(segs[this.sel.has(id) ? "sel" : this.hover === id ? "hover" : "line"], pts);
@@ -1510,7 +1522,7 @@ export class Sketcher {
     mk(segs.sel, C.sel, { w: Math.max(SW(2.4), SW(1.5) + 0.8) }); mk(segs.hover, C.hover, { w: Math.max(SW(2.4), SW(1.5) + 0.8) }); mk(segs.preview, C.preview, { w: SW(1.5) });
     // points
     const pp = [], ps = [];
-    for (const p of sk.pts) (this.sel.has("pt:" + p.id) || this.hover === "pt:" + p.id || lit.has("pt:" + p.id) ? ps : pp).push(p.x, p.y, 0);
+    for (const p of sk.pts) (this.sel.has("pt:" + p.id) || this.hover === "pt:" + p.id || lit.has("pt:" + p.id) /* jumpstart-3d: badge layout (F10) */ ? ps : pp).push(p.x, p.y, 0);
     const pts = (arr, color, size) => {
       if (!arr.length) return;
       const geo = new THREE.BufferGeometry();

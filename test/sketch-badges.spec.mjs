@@ -150,6 +150,12 @@ test("hovering a badge lights its pair: the same constraint's other end, and bot
   await page.mouse.move(5, 5);
   await expect.poll(async () => (await screen()).badges.some((b) => b.pair)).toBe(false);
   expect(await run(() => window.__app.sketcher.litByCons().size)).toBe(0);
+  // click twice (select, unselect: each click rebuilds the badges), then leave: nothing may stay lit
+  await page.mouse.click(cx, cy);
+  await page.mouse.click(cx, cy);
+  await page.mouse.move(5, 5);
+  await expect.poll(async () => (await screen()).badges.some((b) => b.pair)).toBe(false);
+  expect(await run(() => window.__app.sketcher.litByCons().size)).toBe(0);
 });
 
 test("with the 120 degree angle (R09 step 2): still no badge on a badge, a corner or either label", async ({}, info) => {
