@@ -485,10 +485,14 @@ const SIZES = [
   { w: 768, h: 1024, opts: () => ({ hasTouch: true, isMobile: true, deviceScaleFactor: 1, viewport: { width: 768, height: 1024 }, screen: { width: 768, height: 1024 } }) },
 ];
 
+// Both walks sit in one parallel describe so --shard can put each in a different nightly shard; they share nothing (each has its own context and page).
+test.describe("Show me walks", () => {
+test.describe.configure({ mode: "parallel" });
 for (const { w: W2, h: H2, opts } of SIZES) {
   test(`${W2} x ${H2} touch: every lesson starts and Show me points at something a finger can reach`, async ({ browser, browserName }, info) => {
     test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
-    test.skip(buildOf(info) !== "site", "the single file runs the same tutorial code, and the first test in this file already covers it there; this walk takes about 4 minutes per size");
+    test.skip(buildOf(info) !== "site", "the single file runs the same tutorial code, and the first test in this file already covers it there; this walk takes about 7 minutes per size");
+    test.skip(process.env.GITHUB_JOB === "changed-specs", "the walks run nightly (about 7 minutes each); prove a branch with gh workflow run nightly.yml -f specs=test/phone-tutorials.spec.mjs -f projects=site");
     test.setTimeout(600_000);
     const ctx = await browser.newContext({ ...opts(), serviceWorkers: "block", reducedMotion: "reduce" });
     ctx.setDefaultTimeout(8_000);
@@ -498,7 +502,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
     await p.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
     const phone = W2 < 700, size = `${W2}x${H2}`;
     const problems = [];
-    const c = { lessons: 0, started: 0, finished: 0, steps: 0, nothing: 0, offscreen: 0, byPanel: 0, byOther: 0, cube: 0, narrowMissing: 0, bubble: 0, other: 0, narrowNoted: 0, known: 0, fine: 0 };
+    const c = { lessons: 0, started: 0, finished: 0, steps: 0, nothing: 0, offscreen: 0, byPanel: 0, byOther: 0, cube: 0, narrowMissing: 0, bubble: 0, other: 0, narrowNoted: 0, narrowOld: 0, known: 0, fine: 0 };
     const t0 = Date.now();
     try {
       await boot(p, info);
@@ -538,7 +542,11 @@ for (const { w: W2, h: H2, opts } of SIZES) {
         const press = async (synthetic = false) => { // a finger on Show me; `synthetic` when a menu is open (a real tap would close the menu first)
           if (synthetic) await p.evaluate(() => { const m = document.querySelector("#tut-panel .tut-mini-line"); if (m) m.click(); });
           else await openPanel();
-          await p.evaluate(() => { window.__showDone = false; document.getElementById("tut-show").addEventListener("click", () => { window.__showDone = true; }, { once: true }); });
+          await p.evaluate(() => { // heard on the document, so a re-render of the panel between here and the tap cannot lose it
+            window.__showDone = false;
+            const h = (e) => { if (e.target.closest && e.target.closest("#tut-show")) { window.__showDone = true; document.removeEventListener("click", h, true); } };
+            document.addEventListener("click", h, true);
+          });
           if (synthetic) await p.evaluate(() => document.getElementById("tut-show").click()); else await tapOnce(p.locator("#tut-show"));
           await p.waitForFunction(() => window.__showDone, null, { timeout: 3000 });
         };
@@ -584,7 +592,10 @@ for (const { w: W2, h: H2, opts } of SIZES) {
             };
             if (!m) {
               const toast = await p.evaluate(() => [...document.querySelectorAll(".toast")].map((t) => t.textContent).join(" | "));
-              if (L.minWidth > W2 && /This button is hidden on a screen this narrow/.test(toast)) c.narrowNoted++;
+              // "hidden on a narrow screen" is only right when the lesson needs a wider screen and every button the step names exists but has no layout box
+              const hidden = show.sel ? await p.evaluate((sel) => sel.split(",").every((q) => { const e = document.querySelector(q.trim()); return !!e && !e.getClientRects().length; }), show.sel) : false;
+              if (L.minWidth > W2 && /This button is hidden on a screen this narrow/.test(toast)) c.narrowOld++;
+              if (L.minWidth > W2 && hidden && /This button is hidden on a screen this narrow/.test(toast)) c.narrowNoted++;
               else add("nothing", "Show me found nothing");
             } else {
               judge(m, "");
@@ -622,6 +633,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
             await tapOnce(p.locator("#tut-next"));
           } catch (e) { problems.push(`${L.id}: Next could not be tapped at step ${n} at ${size} (${String(e.message).split("\n").slice(0, 6).join(" ").replace(/\s+/g, " ").slice(0, 800)})`); ok = false; }
         }
+        if (process.env.PHONE_TUT_VERBOSE) console.log(`${size} ${L.id}: ${L.steps.length} steps, ${Math.round((Date.now() - t0) / 1000)} s in, ${problems.length} problems so far`);
         if (!ok) continue;
         try {
           await expect(p.locator(".tut-done h2"), `${L.id}: Finish did not open the finished pop-up`).toHaveText(/Nice work/, { timeout: 5000 });
@@ -630,7 +642,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
         } catch (e) { problems.push(`${L.id}: Finish did not open "Nice work" at ${size}`); }
       }
       for (const k of only.length ? [] : known) if (!knownSeen.has(k)) problems.push(`${size} ${k}: this KNOWN entry names a step that was not walked, delete it from KNOWN`);
-      console.log(`[${info.project.name}] ${size}: lessons started ${c.started}/${c.lessons}, finished ${c.finished}; steps walked ${c.steps}; Show me found nothing ${c.nothing}; centre off screen ${c.offscreen}; covered by the lesson panel ${c.byPanel}; covered by something else ${c.byOther}; view cube moved ${c.cube}; missing .tut-narrow ${c.narrowMissing}; pop-up off screen ${c.bubble}; other (tap would miss, small panel on the view cube, walk) ${c.other}; fine ${c.fine}; KNOWN steps still failing ${c.known}; ${problems.length} problems; ${Math.round((Date.now() - t0) / 1000)} s`);
+      console.log(`[${info.project.name}] ${size}: lessons started ${c.started}/${c.lessons}, finished ${c.finished}; steps walked ${c.steps}; Show me found nothing ${c.nothing}; centre off screen ${c.offscreen}; covered by the lesson panel ${c.byPanel}; covered by something else ${c.byOther}; view cube moved ${c.cube}; missing .tut-narrow ${c.narrowMissing}; pop-up off screen ${c.bubble}; other (tap would miss, small panel on the view cube, walk) ${c.other}; fine ${c.fine}; KNOWN steps still failing ${c.known}; excused by the narrow note ${c.narrowNoted} (${c.narrowOld} under the old, looser rule); ${problems.length} problems; ${Math.round((Date.now() - t0) / 1000)} s`);
       if (problems.length) console.log(`[${info.project.name}] ${size} problems:\n` + problems.join("\n"));
       expect(problems, `Show me problems at ${size}`).toEqual([]);
       expect(c.started, "every lesson started").toBe(c.lessons);
@@ -638,6 +650,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
     } finally { await ctx.close(); }
   });
 }
+});
 
 // PR 1b, the focused one: on a 375 x 812 phone the open lesson panel covers the colour swatches. Show me makes the panel small and moves it to the
 // top of the 3D view (not the automatic pointer: its pop-up stays off the open panel), and tapping the small panel's line opens it again where it was.
@@ -656,6 +669,17 @@ test("375 x 812 touch: Show me makes the lesson panel small when it covers the t
     await p.locator("#tut-tab-beginner").tap();
     await p.locator("#tut-b-keychain").tap();
     await expect(p.locator("#tut-panel .tut-stepno")).toHaveText(/Step 1 of/);
+    // step 2 points at the Box tile in the shape strip at the bottom, and its pop-up would land on the open panel: the automatic pointer keeps the outline and drops the pop-up
+    await p.locator("#tut-next").tap();
+    await expect(p.locator("#tut-panel .tut-stepno")).toHaveText(/Step 2 of/);
+    await p.waitForTimeout(500);
+    const auto = await p.evaluate(() => {
+      const b = document.getElementById("tut-bubble"), pn = document.getElementById("tut-panel").getBoundingClientRect(), e = document.querySelector(".tut-spot");
+      const a = b && b.getBoundingClientRect();
+      return { spot: !!e && e.matches('.tile[data-kind="box"]'), bubbleOnPanel: !!a && a.bottom > pn.top && a.top < pn.bottom && a.right > pn.left && a.left < pn.right };
+    });
+    expect(auto.spot, "the automatic pointer outlines the Box tile").toBe(true);
+    expect(auto.bubbleOnPanel, "the automatic pointer's pop-up sits on the open lesson panel").toBe(false);
     // a box is selected (its colours are in the right panel), then step 7 ("Pick a color") is opened from the checklist
     await p.evaluate(() => {
       window.__store.update((d) => d.bodies.push({ id: "pbox", name: "Box", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "prim", kind: "box", p: { w: 20, d: 20, h: 20, r: 0, c: 0 }, mods: [] } }), "a box for the test");

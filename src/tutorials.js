@@ -453,7 +453,7 @@ export function initTutorials(app) {
     hideSpot();
     if (!step.show) return;
     const t = target(step.show);
-    if (!t) { if (loud) app.toast(cur.tut.minWidth && innerWidth < cur.tut.minWidth ? "This button is hidden on a screen this narrow. Turn your device sideways, or tick “I did this” and go on." /* jumpstart-3d: lessons that need a wider screen (phone tutorials) */ : step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
+    if (!t) { if (loud) app.toast(cur.tut.minWidth && innerWidth < cur.tut.minWidth && step.show.sel && step.show.sel.split(",").every((q) => { const e = document.querySelector(q.trim()); return e && !e.getClientRects().length; }) ? "This button is hidden on a screen this narrow. Turn your device sideways, or tick “I did this” and go on." /* jumpstart-3d: lessons that need a wider screen (phone tutorials): only when every button the step names exists but is hidden by the narrow layout */ : step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
     spot = t;
     t.classList.add("tut-spot");
     try { if (t.closest(".bbar, #ribbon")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now) scrolls into view before the pop-up points at it
@@ -480,7 +480,7 @@ export function initTutorials(app) {
       el("b", {}, step.tool), el("span", {}, via ? (t.matches(".panel-toggle") ? "Open this panel, then tap Show me again." : "Open this menu, then pick it from the list.") : step.show.name ? (t.id === "tut-last" ? "Type your name in these boxes, then tap Use this name." : "Click here and type your name.") : bubbleText(step))); // jumpstart-3d: the Browser panel and the quick name boxes (phone tutorials)
     document.body.append(bubble);
     // below the target when there's room, otherwise above
-    const bw = Math.min(260, innerWidth - 16), below = r.bottom + 120 < innerHeight;
+    const bw = Math.min(260, innerWidth - 40 /* jumpstart-3d: room for the box's 24 px of padding, so it fits a screen under 276 px too */), below = r.bottom + 120 < innerHeight;
     bubble.style.width = bw + "px";
     bubble.style.left = Math.max(8, Math.min(innerWidth - bw - 32 /* jumpstart-3d: the box is bw + 24 px of padding wide, so on a phone its right edge ran 16 px off the screen */, r.left + r.width / 2 - bw / 2)) + "px";
     bubble.style.top = (below ? r.bottom + 12 : Math.max(8, r.top - 12 - 70)) + "px";
