@@ -278,6 +278,30 @@ for (const mode of ["beginner", "advanced"]) {
   });
 }
 
+// the Open/Export menu (top right) carries Import in its first group, next to Open a project file…
+for (const mode of ["beginner", "advanced"]) {
+  test(`${mode}: the Open/Export menu opens with the project file and Import entries, and Import opens the picker and lands the model`, async () => {
+    await fresh(mode);
+    await page.click("#btn-export");
+    await expect(page.locator("#btn-export")).toHaveAttribute("title", /import a model/);
+    // top to bottom: Open a project file…, Import…, a rule, the export-scope picker, a rule, then STL
+    const order = await page.evaluate(() => [...document.getElementById("menu-export").children].filter((el) => el.offsetParent !== null)
+      .map((el) => el.tagName === "HR" ? "HR" : el.id === "export-scope" ? "SCOPE" : el.textContent.trim().slice(0, 14)));
+    expect(order.slice(0, 7)).toEqual(["Open a project", "Import a model", "HR", "SCOPE", "HR", "STL for 3D pri", "OBJ for Blende"]);
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#btn-import-menu")]);
+    await expect(page.locator("#menu-export")).toBeHidden();
+    const f = await modelFile("stl", "FromMenu.stl");
+    await chooser.setFiles({ name: f.name, mimeType: f.type, buffer: Buffer.from(f.bytes) });
+    await waitIdle(page);
+    expectOnPlate(await state(), /^FromMenu/);
+    // Open a project file… is still in the menu and still opens its own picker
+    await page.click("#btn-export");
+    const [chooser2] = await Promise.all([page.waitForEvent("filechooser"), page.click('#menu-export button[data-act="import"]')]);
+    expect(chooser2.isMultiple()).toBe(false);
+    await expect(page.locator("#menu-export")).toBeHidden();
+  });
+}
+
 // ---- review fixes: framing, drags from inside the page, the queue, the helper frames, a real drag
 
 const inView = () => page.evaluate(() => {
