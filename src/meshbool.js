@@ -137,6 +137,10 @@ function guarded(fn) {
 // Manifold's result was no longer closed.)
 const PINCH_TOLERANCE = 1e-5; // mm: simplify() merges the zero-area pinches where flush faces meet edges
 const DECIMAL_TOLERANCE = 1e-4; // mm: the most decimalOf() may move a corner
+// An app shape is already a tessellation, off its true surface by up to its mesh tolerance (at least 0.005 mm). A very sharp curve (the tip of a
+// 0.01 mm oval) at Fine puts vertices about 1e-6 mm apart, the cut's points there round to the same float32 and the result is pinched by position.
+// So simplify() merges detail below 0.1 micron first: every surface moves less than that, and the vertices it keeps are original ones, so flush faces stay flush.
+const DETAIL_TOLERANCE = 1e-4; // mm: an app shape's tessellation detail finer than this is merged before a boolean
 function decimalOf(f) {
   if (f === 0 || !Number.isFinite(f)) return f;
   for (let p = 6; p <= 7; p++) { const d = +f.toPrecision(p); if (Math.fround(d) === f && Math.abs(d - f) <= DECIMAL_TOLERANCE) return d; }
@@ -198,7 +202,9 @@ function fromShape(node, m, q) {
     const tol = Math.max(0.005, diag * 0.0006 / q); // meshShape's own tolerances
     const r = shape.mesh({ tolerance: tol, angularTolerance: 0.2 / q });
     if (!r.triangles.length) return null;
-    return newManifold(place(r.vertices, m, r.vertices.length / 3), Uint32Array.from(r.triangles));
+    const mf = newManifold(place(r.vertices, m, r.vertices.length / 3), Uint32Array.from(r.triangles));
+    if (!mf) return null;
+    try { return mf.simplify(DETAIL_TOLERANCE); } finally { mf.delete(); }
   } finally { shape.delete(); }
 }
 
