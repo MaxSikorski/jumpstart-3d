@@ -1,17 +1,17 @@
 // Fill openings (Pi-lid ranked fix #4): click a flat face, see every opening outlined, keep some open, press Fill, and the part is a
 // closed plate. The whole job is done with real clicks on both builds: a generated "mini lid" (60 x 40 x 3 mm plate, six openings, one clip
-// standing on it; test/fixtures/lidgen.mjs) and, when the file is present, Max's Raspberry Pi lid (test/fixtures/pi-lid.stl, local only,
-// never committed). Volumes and "closed" come from the exported STL bytes, not from what the panel says. Only the camera is moved
+// standing on it; test/fixtures/lidgen.mjs) and Max's Raspberry Pi lid (examples/pi-lid/raspberry-pi-4-case-lid.stl, committed as a
+// reference model). Volumes and "closed" come from the exported STL bytes, not from what the panel says. Only the camera is moved
 // by script (as holepattern.spec.mjs does); the group of the lid with a window box uses the bridge to place the box.
 import { test, expect } from "@playwright/test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { boot, watchErrors, loadDoc, newDoc, waitIdle, exportBytes } from "./helpers.mjs";
 import { miniLid } from "./fixtures/lidgen.mjs";
 
-const LID = fileURLToPath(new URL("./fixtures/pi-lid.stl", import.meta.url));
+const LID = fileURLToPath(new URL("../examples/pi-lid/raspberry-pi-4-case-lid.stl", import.meta.url));
 const lid = miniLid();
 const hole1 = lid.openings.find((o) => o.name === "hole1");
 const WAIT = 5000; // the bar: face click to preview, and Fill to finished, each under 5 s
@@ -272,7 +272,6 @@ test("Fill all and Keep all open do every opening at once", async () => {
 });
 
 test("Max's Pi lid: all 25 openings filled in a minute of clicks, then the 38 x 38 mm window (step 8)", async () => {
-  test.skip(!existsSync(LID), "test/fixtures/pi-lid.stl is missing (Max's Pi lid, not in the public repo): copy it there to run this test");
   test.setTimeout(240_000);
   const lidId = await fresh(LID);
   await look(1.4, 220);

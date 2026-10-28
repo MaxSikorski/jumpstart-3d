@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { openingAt, fillReportFor } from "../src/fillpick.js";
 import { miniLid } from "./fixtures/lidgen.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
+const lidFile = root + "examples/pi-lid/raspberry-pi-4-case-lid.stl";
 const thirdParty = root + "third_party/";
 const bundle = await build({
   stdin: { contents: 'export { initKernel, evalNode, setAsset, buildBodies, _test, fillReportCacheForTest } from "./src/kernel.js"; export * as R from "replicad"; export { readMeshFile, packMesh } from "./src/meshimport.js"; export * from "./src/fillopen.js";', resolveDir: root },
@@ -257,9 +258,9 @@ test("mini lid import, keep, scale and kernel reports", async () => {
     }
   }
 });
-for (const top of [true, false]) test(`Max lid ${top ? "top" : "bottom"}`, { skip: existsSync(root + "test/fixtures/pi-lid.stl") ? false : "test/fixtures/pi-lid.stl missing (local-only fixture)" }, async () => {
+for (const top of [true, false]) test(`Max lid ${top ? "top" : "bottom"}`, async () => {
   const started = performance.now();
-  const modifiedNode = await importMesh("max", readFileSync(root + "test/fixtures/pi-lid.stl"));
+  const modifiedNode = await importMesh("max", readFileSync(lidFile));
   const shape = K.evalNode(modifiedNode);
   const original = shape.clone();
   const start = performance.now();
@@ -275,10 +276,8 @@ for (const top of [true, false]) test(`Max lid ${top ? "top" : "bottom"}`, { ski
   result.shape.delete();
   assert.ok(elapsed < 5e3, `${elapsed} ms`);
 });
-for (const z of [2.998, 3.0004]) test(`Max lid clicked plane z=${z}`, {
-  skip: existsSync(root + "test/fixtures/pi-lid.stl") ? false : "test/fixtures/pi-lid.stl missing (local-only fixture)",
-}, async () => {
-  const node = await importMesh("max-clicked", readFileSync(root + "test/fixtures/pi-lid.stl"));
+for (const z of [2.998, 3.0004]) test(`Max lid clicked plane z=${z}`, async () => {
+  const node = await importMesh("max-clicked", readFileSync(lidFile));
   const original = K.evalNode(node);
   const result = fill(original.clone(), { o: [39.656, 11.5548, z], n: [0, 0, 1] });
   assert.equal(result.report.openings.length, 25);
