@@ -8,12 +8,11 @@ def R(a, b, count=1):
     global s
     assert a in s, a[:100]
     s = s.replace(a, b, count)
-# its own three.js (with orbit controls), bundled so it works offline
-three = open(ROOT + '/tools/three-global-orbit.min.js').read().replace('</script', '<\\/script')
 # jumpstart-3d: no Google Fonts request; the app puts its own copy of the fonts into the page when it opens the helper (src/helperfonts.js)
 s = re.sub(r'<link rel="preconnect" href="https://fonts.g[a-z]+.com"[^>]*>\n', '', s)
 s = re.sub(r'<link rel="stylesheet" href="https://fonts.googleapis.com/css2[^"]*">\n', '', s)
-R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '<script>' + three + '</script>')
+# The shared three.js copy is inserted by src/helperfonts.js when the page opens.
+R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '<script>/*js3d:three*/</script>')
 R('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>', '')
 # newer three.js lights are dimmer at the same numbers
 R("scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.75));", "scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.75 * Math.PI));")
