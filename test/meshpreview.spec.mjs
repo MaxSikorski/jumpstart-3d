@@ -66,7 +66,8 @@ function stl(T) {
 }
 const volumeOf = (T) => Math.abs(T.reduce((s, [a, b, c]) => s + (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6, 0));
 // Every test imports its own torus (R 30, 30.01, ...): the geometry worker keeps what it built, so the same file twice would be instant and show no preview.
-const torus = (n) => { const T = torusTriangles(200, 50, 30 + n * 0.01); return { T, bytes: stl(T) }; }; // 20,000 triangles
+// The outcome test and the in-flight test use the big one (200 x 50 = 20,000 triangles, about 20 s to build); the held tests the small one (60 x 30 = 3,600 triangles, a second or two).
+const torus = (n, big = false) => { const T = big ? torusTriangles(200, 50, 30 + n * 0.01) : torusTriangles(60, 30, 30 + n * 0.01); return { T, bytes: stl(T) }; };
 // the same kind of torus as the app's own packed mesh (u32 vertices, u32 triangles, f32 positions, u32 indices), as a design's stored file
 function packedTorus(nu, nv, R, r) {
   const V = [], I = [];
@@ -87,8 +88,8 @@ async function fresh(mode = "beginner") {
 }
 const hold = () => page.evaluate(() => window.__t.hold());
 const release = () => page.evaluate(() => window.__t.release());
-async function openTorus(n, name = "Torus.stl") {
-  await page.evaluate(({ bytes, name }) => window.__app.advanced.openModelFile(new File([new Uint8Array(bytes)], name, { type: "model/stl" })), { bytes: Array.from(torus(n).bytes), name });
+async function openTorus(n, name = "Torus.stl", big = false) {
+  await page.evaluate(({ bytes, name }) => window.__app.advanced.openModelFile(new File([new Uint8Array(bytes)], name, { type: "model/stl" })), { bytes: Array.from(torus(n, big).bytes), name });
   return page.evaluate(() => window.__store.doc.bodies[window.__store.doc.bodies.length - 1].id);
 }
 const previewOf = (id) => page.evaluate((id) => window.__t.preview(id), id);
@@ -131,7 +132,7 @@ test("a dropped 20,000-triangle mesh shows at once, then becomes the solid; the 
     await done;
     app.scene.refresh = refresh;
     return out;
-  }, Array.from(torus(0).bytes));
+  }, Array.from(torus(0, true).bytes));
   console.log(`mesh preview timings (ms): made ${Math.round(r.created)}, seen ${Math.round(r.preview)}, label ${Math.round(r.label)}, solid ${Math.round(r.solid)}`);
   // made = the preview exists; seen = the page could answer again (the first frame with a new shader and 20,000 see-through triangles takes about a second in the software renderer)
   expect(r.created, "the preview is made well under a second after the drop").toBeLessThan(1500);
@@ -257,12 +258,12 @@ test("Export while preparing says 'Still building' and downloads the solid once 
 test("reopening a design with an imported mesh shows the preview before the solid is built", async () => {
   await fresh();
   await hold();
-  const doc = newDoc("Reopen", "beginner", { assets: { atestreopen1: { kind: "mesh", name: "Ring", data: packedTorus(100, 40, 31, 9) } } });
+  const doc = newDoc("Reopen", "beginner", { assets: { atestreopen1: { kind: "mesh", name: "Ring", data: packedTorus(60, 30, 31, 9) } } });
   doc.bodies.push({ id: "b_ring", name: "Ring", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 25, 0, 0, 1], node: { t: "mesh", asset: "atestreopen1", mods: [] } });
   await page.evaluate((doc) => { window.__store.load(doc); window.__app.setMode("beginner", true); window.__app.select([]); }, doc);
   await previewShown("b_ring");
   const p = await previewOf("b_ring");
-  expect(p.tris).toBe(8000);
+  expect(p.tris).toBe(3600);
   expect((p.min[0] + p.max[0]) / 2, "centred on the plate, then moved by the body's own place").toBeCloseTo(25, 2);
   expect(p.min[2]).toBeCloseTo(0, 3);
   await release();
@@ -275,7 +276,7 @@ test("reopening a design with an imported mesh shows the preview before the soli
 test("a mesh body with a feature on it, and a STEP import, get no preview", async () => {
   await fresh("advanced");
   await hold();
-  const asset = packedTorus(100, 40, 31, 9);
+  const asset = packedTorus(60, 30, 31, 9);
   const doc = newDoc("NoPreview", "advanced", { assets: { atestplain1: { kind: "mesh", name: "Ring", data: asset }, atestplain2: { kind: "step", name: "Part", data: Buffer.from("ISO-10303-21;\nEND-ISO-10303-21;\n").toString("base64") } } });
   const m = (x) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0, 0, 1];
   const mk = (id, x, node) => ({ id, name: id, seq: 1, color: "#3b82c4", hole: false, hidden: false, m: m(x), node });
@@ -289,4 +290,71 @@ test("a mesh body with a feature on it, and a STEP import, get no preview", asyn
   expect(await previewOf("b_step")).toBeNull();
   expect(await page.evaluate(() => window.__t.labels())).toBe(1);
   await fresh(); // loads an empty design: the held work is dropped, never built
+});
+
+test("a damaged mesh file has no preview and breaks nothing; a good one next to it still previews", async () => {
+  await fresh();
+  await hold();
+  const header = (nv, nt, floats, idx) => { const b = Buffer.alloc(8 + floats.length * 4 + idx.length * 4); b.writeUInt32LE(nv, 0); b.writeUInt32LE(nt, 4); floats.forEach((x, k) => b.writeFloatLE(x, 8 + 4 * k)); idx.forEach((x, k) => b.writeUInt32LE(x, 8 + floats.length * 4 + 4 * k)); return b.toString("base64"); };
+  const tri = [0, 0, 0, 10, 0, 0, 0, 10, 0];
+  const assets = {
+    atestbadgood: { kind: "mesh", name: "Good", data: packedTorus(60, 30, 32, 9) },
+    atestbadcut: { kind: "mesh", name: "Cut", data: "AAAAAA==" }, // four bytes: not even a header
+    atestbadlong: { kind: "mesh", name: "Long", data: header(3, 5000, tri, [0, 1, 2]) }, // the header promises more triangles than the file holds
+    atestbadindex: { kind: "mesh", name: "Index", data: header(3, 1, tri, [0, 1, 7]) }, // a corner that does not exist
+  };
+  const doc = newDoc("Damaged", "beginner", { assets });
+  const m = (x) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0, 0, 1];
+  [["b_good", "atestbadgood"], ["b_cut", "atestbadcut"], ["b_long", "atestbadlong"], ["b_index", "atestbadindex"]].forEach(([id, asset], i) =>
+    doc.bodies.push({ id, name: id, seq: i + 1, color: "#3b82c4", hole: false, hidden: false, m: m(i * 100), node: { t: "mesh", asset, mods: [] } }));
+  await page.evaluate((doc) => { window.__store.load(doc); window.__app.setMode("beginner", true); window.__app.select([]); }, doc);
+  await previewShown("b_good");
+  // a few more refreshes (hover, select) must not retry or throw
+  await page.evaluate(() => { window.__app.select(["b_cut"]); window.__app.select(["b_good"]); window.__app.select([]); });
+  for (const id of ["b_cut", "b_long", "b_index"]) expect(await previewOf(id), id).toBeNull();
+  expect(await page.evaluate(() => window.__t.labels())).toBe(1);
+  expect((await previewOf("b_good")).tris).toBe(3600);
+  // the same body id switching damaged -> good -> damaged file (designs reloaded while the worker waits): the damaged one never shows the good one's preview
+  const swap = (asset) => { const d = newDoc("Swap", "beginner", { assets }); d.bodies.push({ id: "b_swap", name: "Swap", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: m(0), node: { t: "mesh", asset, mods: [] } }); return d; };
+  const load = (d) => page.evaluate((d) => { window.__store.load(d); window.__app.setMode("beginner", true); window.__app.select([]); }, d);
+  await load(swap("atestbadcut"));
+  expect(await previewOf("b_swap")).toBeNull();
+  await load(swap("atestbadgood"));
+  await previewShown("b_swap");
+  await load(swap("atestbadcut"));
+  await page.waitForFunction(() => window.__t.labels() === 0);
+  expect(await previewOf("b_swap"), "no stale preview of the other file").toBeNull();
+  await fresh(); // an empty design: no preview and no tag is left, and the held work is dropped
+  expect(await page.evaluate(() => [...window.__app.scene.views.values()].filter((v) => v.preview).length + window.__t.labels())).toBe(0);
+});
+
+test("the Preparing tag is not drawn over the Architect floor plan, and comes back with Beginner", async () => {
+  await fresh();
+  await hold();
+  const id = await openTorus(7);
+  await previewShown(id);
+  await page.evaluate(() => window.JS3D.setMode("arch"));
+  await page.waitForFunction(() => window.__app.scene.root.visible === false);
+  await page.waitForFunction(() => window.__t.labels() === 0);
+  await page.evaluate(() => window.JS3D.setMode("beginner"));
+  await page.waitForFunction((id) => !!window.__t.label(id), id);
+  await fresh();
+});
+
+test("Undo while the solid is already being built: nothing is left, and the late answer harms nothing", async () => {
+  await fresh();
+  const id = await openTorus(6, "Late.stl", true);
+  await previewShown(id);
+  await page.waitForFunction(() => !!window.__app.kernel.inflight, null, { timeout: 5000 }); // the worker has the job
+  await page.evaluate(() => window.JS3D.undo());
+  await page.waitForFunction(() => window.__t.labels() === 0 && ![...window.__app.scene.views.values()].some((v) => v.preview) && window.__store.doc.bodies.length === 0);
+  expect(await page.evaluate((id) => window.__app.scene.views.has(id), id), "the view is gone at once").toBe(false);
+  expect(await page.evaluate(() => !!window.__app.kernel.inflight), "the worker is still busy with the undone body").toBe(true);
+  await nothingLeft(); // waits for the late reply
+  expect(await page.evaluate(() => window.__store.doc.bodies.length + window.__app.scene.views.size + window.__app.scene.errors.size)).toBe(0);
+  // and the app builds normally afterwards
+  const next = await openTorus(8, "After.stl");
+  await waitIdle(page);
+  expect(await page.evaluate((id) => !!window.__app.scene.views.get(id).data && !window.__app.scene.errors.has(id), next)).toBe(true);
+  await nothingLeft();
 });
