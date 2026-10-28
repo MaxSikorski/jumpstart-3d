@@ -17,7 +17,7 @@ const alias = {
   "manifold-3d": tp + "manifold-3d/index.js",
   "replicad-opencascadejs": tp + "replicad-opencascadejs/dist/replicad_single.js",
 };
-const source = `export * from "./kernel.js"; export { makeBox, makeCylinder } from "replicad";`;
+const source = `export * from "./kernel.js"; export { makeBox, makeCylinder, getOC } from "replicad";`;
 const bundle = await build({
   stdin: { contents: source, resolveDir: root + "src", sourcefile: "shellhang-wrapper.js", loader: "js" },
   bundle: true, minify: true, target: "es2020", format: "esm", platform: "node", write: false, alias, logLevel: "silent",
@@ -46,7 +46,50 @@ function thickness(shape, direction) {
     finally { cut.delete(); }
   } finally { bar.delete(); }
 }
-function measure(n, id) {
+// the length of a thin bar from the middle of the shape along d that lies inside the shape (the wall along that ray)
+function along(shape, d) {
+  const [lo, hi] = shape.boundingBox.bounds, c = lo.map((v, i) => (v + hi[i]) / 2);
+  const len = Math.hypot(...d), u = d.map(v => v / len);
+  let bar = k.makeBox([0, -.01, -.01], [200, .01, .01]);
+  const ax = [0, -u[2], u[1]], s = Math.hypot(...ax);
+  if (s > 1e-9) bar = bar.rotate(Math.atan2(s, u[0]) * 180 / Math.PI, [0, 0, 0], ax.map(v => v / s));
+  else if (u[0] < 0) bar = bar.rotate(180, [0, 0, 0], [0, 0, 1]);
+  bar = bar.translate(c);
+  try {
+    const cut = shape.intersect(bar);
+    try { return +(k._test.safeVolume(cut) / .0004).toFixed(3); }
+    finally { cut.delete(); }
+  } finally { bar.delete(); }
+}
+// nearest distance between the hollow's shell(s) and the outer shell (the one with the largest box); between the
+// solids themselves it would read 0. null when the shape has no hollow.
+function hollowGap(shape) {
+  const OC = k.getOC(), shells = [];
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SHELL, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try {
+    for (; ex.More(); ex.Next()) {
+      const box = new OC.Bnd_Box();
+      OC.BRepBndLib.AddOptimal(ex.Current(), box, false, false);
+      const a = box.CornerMin(), b = box.CornerMax();
+      shells.push({ shell: ex.Current(), diag: Math.hypot(b.X() - a.X(), b.Y() - a.Y(), b.Z() - a.Z()) });
+      box.delete();
+    }
+    if (shells.length < 2) return null;
+    const outer = shells.reduce((m, x) => x.diag > m.diag ? x : m);
+    let best = Infinity;
+    for (const x of shells) {
+      if (x === outer) continue;
+      const dss = new OC.BRepExtrema_DistShapeShape();
+      try {
+        dss.LoadS1(x.shell); dss.LoadS2(outer.shell);
+        if (dss.Perform() && dss.IsDone()) best = Math.min(best, dss.Value());
+      } finally { dss.delete(); }
+    }
+    return Number.isFinite(best) ? +best.toFixed(4) : null;
+  } finally { ex.delete(); shells.forEach(x => x.shell.delete && x.shell.delete()); }
+}
+const rays = (shape) => ({ x: along(shape, [1, 0, 0]), y: along(shape, [0, 1, 0]), z: along(shape, [0, 0, 1]), diag: along(shape, [1, 1, 1]) });
+function measure(n, id, probe) {
   const start = Date.now();
   const [result] = k.buildBodies([{ id, rev: "shell", node: n }]);
   const ms = Date.now() - start;
@@ -54,7 +97,7 @@ function measure(n, id) {
   const shape = k.evalNode(n);
   try {
     return { ok: true, ms, volume: k._test.safeVolume(shape),
-      wall: n.mods.at(-1).t === "shell" ? ["x", "z", "fillet"].map(d => thickness(shape, d)) : [],
+      ...(probe ? probe(shape) : { wall: n.mods.at(-1).t === "shell" ? ["x", "z", "fillet"].map(d => thickness(shape, d)) : [] }),
       open: meshReport(tris(result.mesh)).open };
   } finally { shape.delete(); }
 }
@@ -72,9 +115,30 @@ function shaft(radii) {
     return shape;
   } catch (error) { shape.delete(); throw error; }
 }
-for (const name of ["guard", "outside", "thicker", "bothhit", "presspull"]) {
+const prim = (kind, p) => ({ t: "prim", kind, p, mods: [{ id: "s", seq: 2, t: "shell", th: 2, faces: [] }] });
+for (const name of ["guard", "outside", "thicker", "bothhit", "presspull", "capsule", "flatcap", "unchanged"]) {
   console.error("start " + name);
   try {
+    // Auto method on free-form (capsule) and on other shapes, through the real build path
+    if (name === "capsule") {
+      console.log(JSON.stringify({ case: name, ...measure(prim("capsule", { w: 40, d: 20, h: 12 }), name, shape => ({ gap: hollowGap(shape), rays: rays(shape) })) }));
+      continue;
+    }
+    if (name === "flatcap") {
+      console.log(JSON.stringify({ case: name, ...measure(prim("capsule", { w: 20, d: 20, h: 8 }), name, () => ({})) }));
+      continue;
+    }
+    if (name === "unchanged") {
+      const plain = prim("box", { w: 40, d: 30, h: 20, r: 0, c: 0 });
+      const results = {
+        roundbox: measure(node(2), "roundbox", () => ({})),
+        box: measure(plain, "box", () => ({})),
+        sphere: measure(prim("sphere", { w: 30, d: 30, h: 30 }), "sphere", () => ({})),
+        torus: measure(prim("torus", { w: 40, d: 40, h: 10, tube: 10 }), "torus", () => ({})),
+      };
+      console.log(JSON.stringify({ case: name, results }));
+      continue;
+    }
     if (name === "bothhit") {
       const start = Date.now();
       const both = shaft([2.01, 2, 1.99]);

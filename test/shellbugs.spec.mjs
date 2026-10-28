@@ -1,4 +1,4 @@
-// Both builds: Auto hollow finishes with a status note, the torus field exports closed, and slice shells report their real volume.
+// Both builds: Auto hollow of an oval capsule gets true walls quickly, a flat capsule (offset folds) falls back to slices with a status note, the torus field exports closed, and slice shells report their real volume.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc, body, prim } from "./helpers.mjs";
 import { readStl, meshReport } from "./fuzz-checks.mjs";
@@ -25,19 +25,39 @@ const fillet = { id: "f1", seq: 1, t: "fillet", edges, r: 2 };
 const OUTER = 36 * 26 * 16 + 4 * (36 * 26 + 26 * 16 + 36 * 16) + Math.PI * 4 * (36 + 26 + 16) + (4 / 3) * Math.PI * 8;
 const wall = (t) => OUTER - (40 - 2 * t) * (30 - 2 * t) * (20 - 2 * t);
 
-test("an oval capsule's Auto hollow builds (no stall) and the status bar says it is hollowing", async () => {
+const capsuleDoc = (w, d, h) => newDoc("Capsule", "advanced", { bodies: [body("b1", "Capsule", prim("capsule", { w, d, h },
+  [{ id: "s", seq: 2, t: "shell", th: 2, faces: [] }]))] });
+const load = (doc) => run((doc) => { window.__store.load(doc); window.__app.setMode(doc.mode || "beginner", true); window.__app.select([]); }, doc);
+
+test("an oval capsule's Auto hollow has true 2 mm walls and builds quickly", async () => {
   test.setTimeout(180_000);
-  const doc = newDoc("Capsule", "advanced", { bodies: [body("b1", "Capsule", prim("capsule", { w: 40, d: 20, h: 12 },
-    [{ id: "s", seq: 2, t: "shell", th: 2, faces: [] }]))] });
-  await run((doc) => { window.__store.load(doc); window.__app.setMode(doc.mode || "beginner", true); window.__app.select([]); }, doc);
+  const start = Date.now();
+  await load(capsuleDoc(40, 20, 12));
+  await waitIdle(page, 170_000);
+  const ms = Date.now() - start;
+  test.info().annotations.push({ type: "build ms", description: String(ms) });
+  expect(ms, "well under the 20-30 s the slice method took").toBeLessThan(30_000);
+  await okAll();
+  // the offset wall (about 1 s in node): a true 2 mm wall is 3491.4 mm3, the slice wall was only 2918
+  const volume = await vol("b1");
+  near(volume, 3491.4, .01);
+  const report = meshReport(readStl(bytes(await run(() => JS3D.export("stl")))));
+  expect(report.open).toBe(0);
+  near(report.volume, volume, .01);
+});
+
+test("a flat capsule's Auto hollow (offset folds, slices used) shows the hollowing note", async () => {
+  test.setTimeout(180_000);
+  const start = Date.now();
+  await load(capsuleDoc(20, 20, 8));
   await expect(page.locator("#busy")).toHaveText(/Hollowing/, { timeout: 15_000 });
   await waitIdle(page, 170_000);
+  test.info().annotations.push({ type: "build ms", description: String(Date.now() - start) });
   await okAll();
+  // the offset of this tight curve folds (1504 mm3, walls under 2 mm); Auto keeps the slice wall, 1294.5 mm3
   const volume = await vol("b1");
-  // Auto takes the slice method here (the ends are free-form), and its walls are only as thick as asked across each slice:
-  // about 2918 mm3 against 3490 for a true 2 mm wall (the offset and field methods); a wall, not nothing or the whole capsule
-  expect(volume).toBeGreaterThan(3490 * .8);
-  expect(volume).toBeLessThan(3490 * 1.03);
+  near(volume, 1294.5, .02);
+  expect(volume).toBeLessThan(1450);
   await expect(page.locator("#busy")).toBeHidden();
   const report = meshReport(readStl(bytes(await run(() => JS3D.export("stl")))));
   expect(report.open).toBe(0);

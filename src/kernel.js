@@ -1421,11 +1421,25 @@ function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
   // up, so the slice method goes first there
   let freeform = false;
   for (const f of shape.faces) { const g = f.geomType; if (g === "BSPLINE_SURFACE" || g === "BEZIER_SURFACE" || g === "OFFSET_SURFACE" || g === "OTHER_SURFACE") freeform = true; f.delete(); }
+  // jumpstart-3d: closed free-form hollows try the offset first (1 s on the oval capsule against 20-30 s for slices, whose
+  // walls came out as thin as 0.9 mm for 2), kept only when it passes the wall check. Open faces keep the order below:
+  // the check needs the offset hollow, which the open-face path (a thick solid) does not build.
+  let offsetTried = false;
+  if (freeform && !open.size) {
+    offsetTried = true;
+    const r0 = shellSolidOffset(shape, t, open, dir, vIn, true);
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("offset shell first", r0 ? "ok" : "failed", Date.now() - T0, "ms");
+    if (r0) return r0;
+  }
+  // end jumpstart-3d
   if (freeform) {
     const s0 = sliceShell(shape, t, open, dir);
     if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("slice shell first", s0 ? "ok" : "failed", Date.now() - T0, "ms");
     if (s0) return s0;
   }
+  // jumpstart-3d: the offset already ran (failed or was rejected by the wall check): straight to the field
+  if (offsetTried) return sdfShell(shape, t, open, dir);
+  // end jumpstart-3d
   const r = shellSolidOffset(shape, t, open, dir, vIn);
   if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("offset shell", r ? "ok" : "failed", Date.now() - T0, "ms");
   if (r) return r;
@@ -1460,7 +1474,30 @@ function offsetHitsRadius(shape, d) {
   return hit;
 }
 // end jumpstart-3d
-function shellSolidOffset(shape, t, open, dir, vIn) {
+// jumpstart-3d: an offset wall is right when the offset surface stays the full distance d from the original surface
+// everywhere; where a curve is tighter than d the offset folds and comes closer (oval capsule ends: 1.3-1.9 mm for 2).
+// Measured between shells: between nested solids the distance is 0.
+function wallClear(a, b, d) {
+  const shellsOf = (solid) => { const ex = new OC.TopExp_Explorer(solid.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SHELL, OC.TopAbs_ShapeEnum.TopAbs_SHAPE), list = []; for (; ex.More(); ex.Next()) list.push(ex.Current()); ex.delete(); return list; };
+  const made = [];
+  let builder = null, dss = null;
+  try {
+    builder = new OC.TopoDS_Builder();
+    const compound = (solid) => { const c = new OC.TopoDS_Compound(); made.push(c); builder.MakeCompound(c); for (const sh of shellsOf(solid)) { made.push(sh); builder.Add(c, sh); } return c; };
+    const ca = compound(a), cb = compound(b);
+    dss = new OC.BRepExtrema_DistShapeShape();
+    dss.LoadS1(ca); dss.LoadS2(cb);
+    return !!(dss.Perform() && dss.IsDone() && dss.Value() >= d * 0.99);
+  } catch (e) {
+    return false;
+  } finally {
+    if (dss) dss.delete();
+    if (builder) builder.delete();
+    made.forEach((x) => x.delete && x.delete());
+  }
+}
+// end jumpstart-3d
+function shellSolidOffset(shape, t, open, dir, vIn, check = false) {
   // jumpstart-3d: shell hang guard (wall equals a fillet radius): 0.5% thinner, else 0.5% thicker; both hit another
   // radius: leave it to the slice and field methods
   const hits = (w) => offsetHitsRadius(shape, dir === "both" ? w / 2 : w);
@@ -1504,6 +1541,12 @@ function shellSolidOffset(shape, t, open, dir, vIn) {
       walls = outer.cut(inner);
     }
     if (!walls || !(safeVolume(walls) > 1e-6)) return null;
+    // jumpstart-3d: the wall check of the closed free-form hollow (t is the guard-adjusted wall the offset used)
+    if (check) {
+      const clear = dir === "in" ? wallClear(inner, shape, t) : dir === "out" ? wallClear(outer, shape, t) : wallClear(inner, shape, t / 2) && wallClear(outer, shape, t / 2);
+      if (!clear) return null;
+    }
+    // end jumpstart-3d
     if (!open.size) { const w = walls; walls = null; return w; }
     // the hollow inside, which each opening reaches
     const cavity = dir === "out" ? shape : inner;

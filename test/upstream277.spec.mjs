@@ -123,8 +123,8 @@ test("Shell with the 'Any shape' method hollows a torus (distance-field wall)", 
   const v = await vol("b1");
   expect(v, "a wall, not the whole ring").toBeLessThan(solid * 0.8);
   expect(v, "a wall, not nothing").toBeGreaterThan(solid * 0.25);
-  // the field wall's STL has some unmatched edges (128 on this ring, seen 2026-10-27; not asserted closed here), but it does keep the volume
   const rep = meshReport(readStl(bytes(await run(() => JS3D.export("stl")))));
+  expect(rep.open, "the field wall's STL is closed").toBe(0);
   near(rep.volume, v, 0.02);
 });
 

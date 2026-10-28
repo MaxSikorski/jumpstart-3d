@@ -1,4 +1,5 @@
-// A shell wall equal to a fillet radius can hang the engine. A timed child keeps the test run bounded.
+// Shell with the Auto method: a wall equal to a fillet radius can hang the engine, and free-form shapes (the oval capsule)
+// must get true walls quickly or fall back to slices when the offset folds. A timed child keeps the test run bounded.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -70,4 +71,35 @@ test("Press Pull of a rounded edge by exactly its radius ends quickly (no engine
   quick(r);
   assert.ok(r.ok || /isn't supported yet|would close/.test(r.error), r.error);
   if (r.ok) assert.ok(r.volume < r.base, `volume ${r.volume}, expected below base ${r.base}`);
+});
+
+test("Auto hollow of the oval capsule makes true 2 mm walls quickly", () => {
+  const r = result("capsule");
+  assert.ok(r.ok, r.error);
+  assert.ok(r.ms < 10000, `build took ${r.ms} ms (the slice method needs 20-30 s)`);
+  near(r.volume, 3491.4, .005);
+  assert.ok(r.gap >= 1.98 && r.gap <= 2.02, `nearest hollow-to-outside distance ${r.gap} mm, expected 2 ± 0.02`);
+  for (const d of ["x", "y", "z"]) assert.ok(Math.abs(r.rays[d] - 2) <= .02, `wall along +${d} measured ${r.rays[d]} mm, expected 2 ± 0.02`);
+  // the ray along (1, 1, 1) meets the slanted wall at an angle, so it reads longer than 2 (measured 2.763 on the true offset wall)
+  assert.ok(Math.abs(r.rays.diag - 2.763) <= .03, `wall along (1, 1, 1) measured ${r.rays.diag} mm, expected 2.763 ± 0.03`);
+  assert.equal(r.open, 0);
+});
+test("Auto hollow where the offset folds falls back to slices (the folded wall is not used)", () => {
+  const r = result("flatcap");
+  assert.ok(r.ok, r.error);
+  assert.ok(r.ms < 60000, `build took ${r.ms} ms`);
+  near(r.volume, 1294.5, .02);
+  assert.ok(r.volume < 1450, `volume ${r.volume} is the folded offset's (1504), not the slice wall's`);
+  assert.equal(r.open, 0);
+});
+test("Auto hollow of shapes that are not free-form is unchanged", () => {
+  const r = result("unchanged");
+  assert.equal(Object.keys(r.results || {}).length, 4, r.error);
+  for (const [name, want, tol] of [["roundbox", wall(1.99), .003], ["box", 9024, .001], ["sphere", 4934.4, .002], ["torus", 4737.4, .002]]) {
+    const x = r.results[name];
+    assert.ok(x.ok, name + ": " + x.error);
+    quick(x);
+    near(x.volume, want, tol);
+    assert.equal(x.open, 0, name);
+  }
 });
