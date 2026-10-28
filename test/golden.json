@@ -469,5 +469,16 @@
     "obj": "a1db5a21bf4a206318583f3be2119750ea36b6317a907c004f3cbc92bc0c2478",
     "3mf": "b6374cb8a815367fa877fd83791b7e8372830d8615cb7764f26d54b5aa7e4af8",
     "step": "1299eae9c78158bca6be4ab803ed872c147d5e1144b664c8e74b2035890917f0"
+  },
+  "import-stl-mesh-join-cut.json": {
+    "volumes": {
+      "b1 b1": 5255.1,
+      "b2 b2": 5260.2
+    },
+    "stlTriangles": 420,
+    "stl": "2a52e58bbb9ba2497f2aa3a55b398a0e31de63f52371fe4adda46b0f70ab91ba",
+    "obj": "96601ba666b8f4dce6df9b47c75d67cb870eb463e5825d9760d2c50619e3deb0",
+    "3mf": "f11b2647343857ce72c049b48af3d0446f727f8fa37cc71ff521e13500f7f5b4",
+    "step": "4ef12cc8b54bba2a1225dcba97af3155e72f0226d0f4e03f9643f470ff13be23"
   }
 }

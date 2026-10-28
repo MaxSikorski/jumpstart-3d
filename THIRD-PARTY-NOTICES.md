@@ -38,6 +38,21 @@ JumpStart 3D includes the open-source software and fonts below. Their full licen
 - License: ISC
 - Project: https://github.com/mourner/flatbush
 
+## Manifold (manifold-3d 3.5.4)
+
+- Used for: Joins and cuts that involve an imported mesh (STL, 3MF, OBJ). The WebAssembly file is kept, gzipped, inside the geometry worker (`third_party/manifold-3d/`); it starts only when a design has an imported mesh.
+- Copyright 2021 The Manifold Authors
+- License: Apache-2.0 (`LICENSES/Apache-2.0-manifold.txt`)
+- Project: https://github.com/elalish/manifold
+- Source code: the npm package https://registry.npmjs.org/manifold-3d/-/manifold-3d-3.5.4.tgz (the glue is included unchanged; `third_party/manifold-3d/README.md` says how the WebAssembly string is made from it).
+
+## Clipper2 (inside the Manifold WebAssembly file)
+
+- Used for: The 2D polygon operations inside Manifold; JumpStart 3D does not call them.
+- Copyright (c) Angus Johnson
+- License: Boost Software License 1.0 (`LICENSES/BSL-1.0-clipper2.txt`)
+- Project: https://github.com/AngusJohnson/Clipper2
+
 ## Poppins Bold (font, subset)
 
 - Used for: The "Rounded sans" font of the Text tool.

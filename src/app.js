@@ -842,7 +842,8 @@ app.showAbout = function () {
           c.src ? el("div", { class: "ab-oss-meta" }, c.src) : null))),
         el("details", { class: "ab-oss-texts", id: "ab-licenses" },
           el("summary", {}, "Full license texts"),
-          ...[["MIT License: three.js", "mit-three"], ["MIT License: replicad", "mit-replicad"], ["MIT License: opentype.js", "mit-opentype"], ["ISC License: Flatbush", "isc"], ["GNU Lesser General Public License 2.1: Open CASCADE Technology / opencascade.js / replicad-opencascadejs", "lgpl"], ["SIL Open Font License 1.1: Poppins, Liberation, IBM Plex, Barlow", "ofl"]]
+          ...[["MIT License: three.js", "mit-three"], ["MIT License: replicad", "mit-replicad"], ["MIT License: opentype.js", "mit-opentype"], ["ISC License: Flatbush", "isc"], ["GNU Lesser General Public License 2.1: Open CASCADE Technology / opencascade.js / replicad-opencascadejs", "lgpl"], ["SIL Open Font License 1.1: Poppins, Liberation, IBM Plex, Barlow", "ofl"],
+            ["Apache License 2.0: Manifold", "apache-manifold"], ["Boost Software License 1.0: Clipper2 (inside Manifold)", "bsl-clipper2"]] // jumpstart-3d: the two texts licenses.js adds for the mesh-boolean engine
             .map(([t, k]) => el("div", { class: "ab-lic" }, el("b", {}, t), el("pre", {}, LICENSE_TEXTS[k]))))),
       // jumpstart-3d: use the same community build label as the splash.
       el("div", { class: "ab-update" }, el("span", { class: "ab-ver", id: "ab-ver" }, "Version " + BUILD_LABEL),

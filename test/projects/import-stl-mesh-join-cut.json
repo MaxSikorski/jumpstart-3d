@@ -1,0 +1,209 @@
+{
+ "v": 1,
+ "id": "g_import_stl_mesh_join_cut",
+ "name": "Imported mesh joined and cut",
+ "mode": "beginner",
+ "created": 1,
+ "seq": 2,
+ "grid": 1,
+ "sketches": [],
+ "planes": [],
+ "joints": [],
+ "bodies": [
+  {
+   "id": "b1",
+   "name": "b1",
+   "seq": 1,
+   "color": "#3b82c4",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "group",
+    "mods": [],
+    "children": [
+     {
+      "node": {
+       "t": "mesh",
+       "asset": "atray",
+       "k": 1,
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "hole": false
+     },
+     {
+      "node": {
+       "t": "prim",
+       "kind": "box",
+       "p": {
+        "w": 24,
+        "d": 14,
+        "h": 3
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       -2,
+       0,
+       0,
+       1
+      ],
+      "hole": false
+     },
+     {
+      "node": {
+       "t": "prim",
+       "kind": "box",
+       "p": {
+        "w": 8,
+        "d": 8,
+        "h": 5
+       },
+       "mods": []
+      },
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       -10,
+       4,
+       -1,
+       1
+      ],
+      "hole": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "b2",
+   "name": "b2",
+   "seq": 2,
+   "color": "#c4653b",
+   "hole": false,
+   "hidden": false,
+   "m": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    60,
+    0,
+    0,
+    1
+   ],
+   "node": {
+    "t": "mesh",
+    "asset": "atray",
+    "k": 1,
+    "mods": [
+     {
+      "id": "f1",
+      "seq": 2,
+      "t": "bool",
+      "op": "cut",
+      "m": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       8,
+       -1,
+       1
+      ],
+      "tool": {
+       "t": "prim",
+       "kind": "cylinder",
+       "p": {
+        "w": 8,
+        "d": 8,
+        "h": 12
+       },
+       "mods": []
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "assets": {
+  "atray": {
+   "kind": "mesh",
+   "name": "tray",
+   "data": "IAAAAEAAAAAAAKDBAABwwQAAAAAAAKBBAABwwQAAAAAAAKDBAABwwQAAAEEAAKDBAABwQQAAAAAAAKDBAABwQQAAAEEAAIjBAABAwQAAAEEAAIjBAABAQQAAAEEAAKBBAABwwQAAAEEAAABBAABAQAAAAAAAAABBAABAwAAAAAAAAKBBAABwQQAAAEEAAIhBAABAQQAAAEEAAGBBAABAwAAAAAAAAKBBAABwQQAAAAAAAIhBAABAwQAAAEEAAGBBAABAQAAAAAAAAIjBAABAwTvfP0AAAGDBAACgwDvfP0AAAIjBAABAQTvfP0AAAIDAAACgwDvfP0AAAIhBAABAwTvfP0AAAGDBAACgQDvfP0AAAIDAAACgQDvfP0AAAIhBAABAQTvfP0AAAABBAABAwDvfP0AAAGBBAABAwDvfP0AAAGBBAABAQDvfP0AAAABBAABAQDvfP0AAAGDBAACgwAAAQEAAAGDBAACgQAAAQEAAAIDAAACgwAAAQEAAAIDAAACgQAAAQEAAAAAAAQAAAAIAAAAAAAAAAwAAAAEAAAAAAAAAAgAAAAQAAAACAAAABQAAAAYAAAACAAAABwAAAAUAAAAAAAAABAAAAAMAAAADAAAACAAAAAkAAAACAAAABgAAAAQAAAADAAAABAAAAAoAAAAEAAAABgAAAAsAAAADAAAACQAAAAEAAAABAAAACQAAAAwAAAABAAAADAAAAA0AAAABAAAADQAAAAcAAAACAAAAAQAAAAcAAAAFAAAABwAAAA4AAAAOAAAABwAAAAoAAAADAAAADQAAAAgAAAADAAAACgAAAA0AAAANAAAADwAAAAgAAAANAAAADAAAAA8AAAAEAAAACwAAAAoAAAAHAAAADQAAAAoAAAAOAAAACgAAAAsAAAAQAAAAEQAAABIAAAAQAAAAEwAAABEAAAAQAAAAFAAAABMAAAAQAAAABgAAAAUAAAAQAAAABQAAABQAAAARAAAAFQAAABIAAAAVAAAAFgAAABcAAAAVAAAAFwAAABIAAAAQAAAAEgAAAAYAAAASAAAACwAAAAYAAAATAAAAFAAAABYAAAAWAAAAFAAAABgAAAAUAAAAGQAAABgAAAAUAAAAGgAAABkAAAAFAAAADgAAABQAAAAUAAAADgAAABcAAAAWAAAAGAAAABsAAAAWAAAAGwAAABcAAAAXAAAAGwAAABoAAAAUAAAAFwAAABoAAAASAAAAFwAAAAsAAAAOAAAACwAAABcAAAARAAAAEwAAABwAAAARAAAAHAAAAB0AAAAcAAAAHgAAAB0AAAAcAAAAEwAAAB4AAAATAAAAFgAAAB4AAAARAAAAHQAAABUAAAAVAAAAHQAAAB8AAAAeAAAAHwAAAB0AAAAVAAAAHwAAABYAAAAeAAAAFgAAAB8AAAAYAAAACQAAABsAAAAJAAAAGAAAAAwAAAAMAAAAGQAAAA8AAAAMAAAAGAAAABkAAAAJAAAACAAAABsAAAAIAAAADwAAABoAAAAbAAAACAAAABoAAAAPAAAAGQAAABoAAAA="
+  }
+ }
+}
