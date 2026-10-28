@@ -38,6 +38,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `gltf.js`, `paint3mf.js`, `objimport.js` | glTF export, pre-painted 3MF, OBJ import |
 | `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
 | `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
+| `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (down into a body cuts); the idle handlers of both modes call it, the Extrude panel does the work |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
