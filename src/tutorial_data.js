@@ -1517,7 +1517,7 @@ export const TUTORIALS = [
         check: (t) => t.sketchLines(4),
       },
       {
-        title: "Add two parameters", tool: "Parameters list (+)", icon: "text", show: { sel: "#browser .param-add" },
+        title: "Add two parameters", tool: "Parameters list (+)", icon: "text", show: { sel: "#browser .param-add", via: "#ribbon .panel-toggle" }, // jumpstart-3d: the Browser panel is closed at 860 px and below
         how: [
           "In the browser on the left, find <b>Parameters</b> and click <b>+</b>. Rename <b>p1</b> to <b>w</b> and type <b>60</b> as its value.",
           "Click <b>+</b> again. Name it <b>h</b> and type <b>w/2</b> as its value. It shows <b>30 mm</b>.",
@@ -1550,7 +1550,7 @@ export const TUTORIALS = [
         check: (t) => t.bodies().some((b) => b.node.exprs && b.node.exprs.dist),
       },
       {
-        title: "Change one number", tool: "Parameters list", icon: "text", show: { sel: "#browser .param-expr" },
+        title: "Change one number", tool: "Parameters list", icon: "text", show: { sel: "#browser .param-expr", via: "#ribbon .panel-toggle" }, // jumpstart-3d: the Browser panel is closed at 860 px and below
         how: [
           "In <b>Parameters</b>, click the value box of <b>w</b>, type <b>80</b> and press <b>Enter</b>.",
           "The rectangle is wider, <b>h</b> follows to 40, and the bracket rebuilds. Press <b>Ctrl+Z</b> to take it back, or <b>Ctrl+Y</b> to redo.",
@@ -1559,7 +1559,7 @@ export const TUTORIALS = [
         check: (t) => { const w = (t.doc().params || []).find((q) => q.name.toLowerCase() === "w"); return !!w && t.near(w.value, 80, 0.01); },
       },
       {
-        title: "Export the parameters", tool: "Parameters → CSV", icon: "import", show: { sel: "#browser .param-csv-out" },
+        title: "Export the parameters", tool: "Parameters → CSV", icon: "import", show: { sel: "#browser .param-csv-out", via: "#ribbon .panel-toggle" }, // jumpstart-3d: the Browser panel is closed at 860 px and below
         how: [
           "Next to <b>Parameters</b>, click <b>CSV ↓</b>. The names and values are saved as a small spreadsheet file.",
           "<b>CSV ↑</b> reads a file like it back in: names that exist take the new value, new names are added.",

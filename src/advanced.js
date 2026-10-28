@@ -6153,6 +6153,8 @@ export function initAdvanced(app) {
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", esc, true);
     document.body.append(menu);
+    // jumpstart-3d: a menu under a button near the right edge (a phone or tablet scrolls the ribbon) stays on screen
+    { const mw = menu.offsetWidth; if (r.left + mw > innerWidth - 8) menu.style.left = Math.max(8, innerWidth - mw - 8) + "px"; }
     anchor.setAttribute("aria-expanded", "true");
     const first = menu.querySelector("[aria-checked=true]") || menu.querySelector("button");
     first && first.focus();

@@ -184,6 +184,7 @@ async function prepareFor(sel, mode) {
 async function checkShowMe(tutId, i, show, mode) {
   const at = `${tutId} step ${i + 1}`;
   const showMe = () => page.evaluate(({ sel, via, tile }) => {
+    document.querySelector("#tut-panel .tut-mini-line")?.click(); // Show me can make the lesson panel small when it covers the target (jumpstart-3d: phone tutorials); the next press opens it first
     document.getElementById("tut-show").click(); // the same handler a mouse click runs
     const e = document.querySelector(".tut-spot");
     if (!e) return null;
@@ -271,6 +272,7 @@ async function walk(tut) {
       await page.evaluate(() => { document.getElementById("menu-export").hidden = true; });
     }
     stats.steps++;
+    if (await visible("#tut-panel .tut-mini-line")) await page.click("#tut-panel .tut-mini-line");
     if (s.strict) await page.check("#tut-check"); // "I did this": a strict step stops Next until its check passes (browser test F7)
     await page.click("#tut-next"); // "Next →", and "Finish ✓" on the last step
   }
