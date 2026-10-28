@@ -416,7 +416,7 @@ export function initProjects(app) {
   };
   function renderScope() {
     let box = $("export-scope");
-    if (!box) { box = el("div", { id: "export-scope", class: "exscope", role: "radiogroup", "aria-label": "Bodies to export" }); menu.prepend(box, el("hr")); }
+    if (!box) { box = el("div", { id: "export-scope", class: "exscope", role: "radiogroup", "aria-label": "Bodies to export" }); const first = menu.querySelector('button[data-act="stl"]'); if (first) first.before(box, el("hr")); else menu.prepend(box, el("hr")); } // jumpstart-3d: import in the file menu (the picker sits just above the exports)
     const nSel = selectedSolids().length, nAll = allSolids().length;
     box.innerHTML = "";
     box.append(el("div", { class: "exhead" }, "Bodies to export"));

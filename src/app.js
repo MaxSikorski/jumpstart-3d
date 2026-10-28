@@ -184,6 +184,7 @@ app.voxel = initVoxel(app);
   $("btn-save").onclick = () => app.projects.saveVersion();
   $("btn-tutorials").onclick = () => app.tutorials.open();
   $("btn-tutorials-menu").onclick = () => { $("menu-export").hidden = true; app.tutorials.open(); }; // jumpstart-3d: phone entry
+  $("btn-import-menu").onclick = () => { $("menu-export").hidden = true; app.insertFile("any"); }; // jumpstart-3d: import in the file menu
   app.flexigen = initFlexiGen(app);
   app.meshstep = initMeshStep(app);
   app.cosforge = initCosForge(app);
