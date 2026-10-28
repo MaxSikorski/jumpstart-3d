@@ -93,6 +93,7 @@ test("Auto hollow where the offset folds falls back to slices (the folded wall i
   assert.equal(r.open, 0);
 });
 test("Auto hollow of shapes that are not free-form is unchanged", () => {
+  // none of these has a free-form face, so this guards the free-form detection: they never take the new offset-first path
   const r = result("unchanged");
   assert.equal(Object.keys(r.results || {}).length, 4, r.error);
   for (const [name, want, tol] of [["roundbox", wall(1.99), .003], ["box", 9024, .001], ["sphere", 4934.4, .002], ["torus", 4737.4, .002]]) {
@@ -102,4 +103,20 @@ test("Auto hollow of shapes that are not free-form is unchanged", () => {
     near(x.volume, want, tol);
     assert.equal(x.open, 0, name);
   }
+});
+const sideCapsule = (name, want) => () => {
+  const r = result(name);
+  assert.ok(r.ok, r.error);
+  assert.ok(r.ms < 10000, `build took ${r.ms} ms (the slice method needs 20-30 s)`);
+  near(r.volume, want, .005);
+  assert.equal(r.open, 0);
+};
+test("Auto shell of the oval capsule with the wall outside makes true 2 mm walls quickly", sideCapsule("capsuleout", 4946.3));
+test("Auto shell of the oval capsule with the wall centred on the surface makes true walls quickly", sideCapsule("capsuleboth", 4193.7));
+test("the curvature gate sees the tightest curve of an oval capsule (the 40 x 36 x 12 capsule's offset pinches at 2 mm and is never tried)", () => {
+  // With the gate open, the 40 x 36 x 12 Auto hollow read 18 mm of material along +y (no hollow there): verified once by hand,
+  // but too slow for every CI job (44 s, the slice method builds it).
+  const r = result("gate");
+  assert.ok(r.radii, r.error);
+  for (const [d, want] of [[20, 3.6], [34, 36 / 17], [36, 2]]) near(r.radii[d], want, .005);
 });

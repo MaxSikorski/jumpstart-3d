@@ -115,13 +115,26 @@ function shaft(radii) {
     return shape;
   } catch (error) { shape.delete(); throw error; }
 }
-const prim = (kind, p) => ({ t: "prim", kind, p, mods: [{ id: "s", seq: 2, t: "shell", th: 2, faces: [] }] });
-for (const name of ["guard", "outside", "thicker", "bothhit", "presspull", "capsule", "flatcap", "unchanged"]) {
+const prim = (kind, p, dir) => ({ t: "prim", kind, p, mods: [{ id: "s", seq: 2, t: "shell", th: 2, faces: [], ...(dir ? { dir } : {}) }] });
+for (const name of ["guard", "outside", "thicker", "bothhit", "presspull", "capsule", "flatcap", "unchanged", "capsuleout", "capsuleboth", "gate"]) {
   console.error("start " + name);
   try {
     // Auto method on free-form (capsule) and on other shapes, through the real build path
     if (name === "capsule") {
       console.log(JSON.stringify({ case: name, ...measure(prim("capsule", { w: 40, d: 20, h: 12 }), name, shape => ({ gap: hollowGap(shape), rays: rays(shape) })) }));
+      continue;
+    }
+    if (name === "capsuleout" || name === "capsuleboth") { // wall outside / centred on the surface, with the same wall check
+      console.log(JSON.stringify({ case: name, ...measure(prim("capsule", { w: 40, d: 20, h: 12 }, name === "capsuleout" ? "out" : "both"), name, () => ({})) }));
+      continue;
+    }
+    if (name === "gate") { // the curvature gate's radius for three oval capsules (no shell)
+      const radii = {};
+      for (const d of [20, 34, 36]) {
+        const shape = k.evalNode({ t: "prim", kind: "capsule", p: { w: 40, d, h: 12 }, mods: [] });
+        try { radii[d] = k._test.tightestRadius(shape); } finally { shape.delete(); }
+      }
+      console.log(JSON.stringify({ case: name, radii }));
       continue;
     }
     if (name === "flatcap") {
