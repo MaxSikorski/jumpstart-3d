@@ -475,7 +475,8 @@ test("STEP parts (#173): a step node may carry parts: true and keeppiece pieces 
   bad(part((n) => { n.mods[0].t = "fillet"; }), "damaged", /modifier source/, "import-step"); // only the keeppiece of an import
 });
 
-test("STEP parts (#173): the parts of an imported file make a link and read back unchanged", async () => {
+// The schema only: a real STEP file is too big for a link (4096 characters), so this asset is a stand-in and the parts would not build. That they build is test/step-parts.spec.mjs.
+test("STEP parts (#173): the parts fields make a link and read back unchanged (schema only, no real file)", async () => {
   const doc = fixture("import-step");
   const first = doc.bodies[0];
   doc.bodies = [0, 1, 2].map((i) => { const b = structuredClone(first); b.id = "p" + i; b.name = "box part " + (i + 1); b.node.parts = true; b.node.mods = [{ id: "k" + i, seq: i + 2, t: "keeppiece", piece: i, count: 3, src: "import" }]; return b; });

@@ -2333,6 +2333,8 @@ export function initAdvanced(app) {
     const watch = setInterval(() => {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
       if (plate && !framed && v && v.preview) { framed = true; frameIfOffScreen(bodyId); } // jumpstart-3d: import preview. frame it as soon as the preview shows
+      // jumpstart-3d: STEP parts (#173). a drag or an open command holds a preview that a split would wipe: wait for it to end, then split
+      if (kind === "step" && store.preview && v && v.data && v.data.stepParts > 1 && stepStillPlain(bodyId, id)) return;
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
         if (kind === "step" && v && v.data && v.data.stepParts > 1 && splitStepParts({ bodyId, assetId: id, name, parts: v.data.stepParts, imported, plate, t0 })) return; // jumpstart-3d: STEP parts (#173). the parts' own watcher takes over
@@ -2347,13 +2349,20 @@ export function initAdvanced(app) {
   }
   // jumpstart-3d: STEP parts (#173). The STEP body the import just made holds several parts: replace it with one body per part, in the one undo step the
   // import already is, select them all, and watch them build. Returns false (nothing changed) when the file is too big for that or the body was edited meanwhile.
-  function splitStepParts({ bodyId, assetId, name, parts, imported, plate, t0 }) {
+  function stepStillPlain(bodyId, assetId) { // the body is still a top-level plain import of this file
     const at = store.doc.bodies.find((b) => b.id === bodyId);
-    if (!at || at.node.t !== "step" || at.node.asset !== assetId || at.node.parts || (at.node.mods || []).length) return false;
+    return !!at && at.node.t === "step" && at.node.asset === assetId && !at.node.parts && !(at.node.mods || []).length;
+  }
+  function splitStepParts({ bodyId, assetId, name, parts, imported, plate, t0 }) {
+    if (!stepStillPlain(bodyId, assetId)) return false;
     if (parts > MAX_SPLIT_PARTS) { app.toast(`${name} has ${parts} parts. Files with more than ${MAX_SPLIT_PARTS} parts come in as one body.`); return false; }
-    const untouched = store.doc === imported; // nothing happened since the import: the split joins its undo step
+    // nothing happened since the import: the split joins its undo step. The import's own entry is taken off first and put back in place of the split's,
+    // so a full history (120 entries) never drops an unrelated step.
+    const own = store.doc === imported ? store.undoStack.pop() : null;
     const ids = [];
-    const next = store.update((doc) => {
+    let next;
+    try {
+    next = store.update((doc) => {
       const i0 = doc.bodies.findIndex((b) => b.id === bodyId), first = doc.bodies[i0];
       const taken = new Set(doc.bodies.filter((b) => b !== first).map((b) => b.name));
       const made = [];
@@ -2369,8 +2378,9 @@ export function initAdvanced(app) {
       }
       doc.bodies.splice(i0, 1, ...made);
     }, "Import " + name);
+    } finally { if (own && !next) store.undoStack.push(own); } // the import's undo entry comes back if the update threw
+    if (own && next) store.undoStack[store.undoStack.length - 1] = own; // one Undo removes the whole import; Redo brings every part back
     if (!next) return false;
-    if (untouched) store.undoStack.pop(); // one Undo removes the whole import; Redo brings every part back
     app.select(ids);
     const watchParts = setInterval(() => {
       const there = ids.filter((id) => store.doc.bodies.some((b) => b.id === id));
@@ -5817,6 +5827,7 @@ export function initAdvanced(app) {
     else if (m.t === "facepat") facePatternCmd({ body: b.id, mod: m.id });
     else if (m.t === "fillopen") fillOpen.cmd({ body: b.id, mod: m.id }); // jumpstart-3d: fill openings
     else if (m.t === "pattern") patternCmd({ body: b.id, mod: m.id }); // jumpstart-3d: pattern
+    else if (m.t === "keeppiece" && m.src === "import") app.toast(`This body is part ${m.piece + 1} of ${m.count} of an imported STEP file.`); // jumpstart-3d: STEP parts (#173)
     else if (m.t === "keeppiece") app.toast(`This body keeps piece ${m.piece + 1} of ${m.count}. Its earlier features are independent copies. Undo Combine or Group to restore the inputs.`); // jumpstart-3d: split pieces
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
     else if (m.t === "bool" && m.src === "combine") combineCmd({ body: b.id, mod: m.id });
@@ -5853,6 +5864,11 @@ export function initAdvanced(app) {
     if (it.joint) { store.update((doc) => { doc.joints = doc.joints.filter((x) => x.id !== it.joint); }, "Delete joint"); return; }
     if (it.tex) { store.update((doc) => { const b = findBody(doc, it.body); b.textures = (b.textures || []).filter((x) => x.id !== it.tex); }, "Remove texture"); return; }
     if (!it.mod) { deleteBodies([it.body]); return; }
+    // jumpstart-3d: STEP parts (#173). taking the piece selector off would turn this body into the whole assembly, on top of the other parts
+    if ((findBody(store.doc, it.body)?.node.mods || []).some((m) => m.id === it.mod && m.t === "keeppiece" && m.src === "import")) {
+      app.toast("This body is one part of an imported STEP file. Delete the body instead.", "err");
+      return;
+    }
     // jumpstart-3d: a piece selector depends on the Combine that produced its pieces.
     if (hasLaterKeepPiece(findBody(store.doc, it.body)?.node.mods, it.mod)) {
       app.toast("Delete the split pieces, or undo Combine to restore the inputs.", "err");

@@ -7,7 +7,7 @@
 //   step-2-touching-cubes.step  two 10 mm cubes that touch face to face
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, newDoc, waitIdle } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, IDENTITY, quarantine } from "./helpers.mjs";
 
 let page, errors, info0;
 test.describe.configure({ mode: "serial" });
@@ -64,6 +64,19 @@ test("three parts come in as three bodies named after the file, centred on the p
   THREE_PARTS.forEach((want, i) => near(v[i], want));
   const total = v.reduce((a, b) => a + b, 0);
   near(total, 49043, 0.005); // the parts counted one by one; fused they are 48515
+  // each part where the file puts it (the plate 0-10, the pin -5 to 25 and the block 10-20 in the file; the assembly rests on Z 0, so all rise by 5)
+  const at = (b, x, y, z0, z1, vol) => {
+    near(b.volume, vol);
+    expect(Math.abs((b.bbox.min[0] + b.bbox.max[0]) / 2), b.name + " centre X").toBeLessThan(0.01);
+    expect(Math.abs((b.bbox.min[1] + b.bbox.max[1]) / 2), b.name + " centre Y").toBeLessThan(0.01);
+    expect(Math.abs(b.bbox.max[0] - b.bbox.min[0] - x), b.name + " width").toBeLessThan(0.01);
+    expect(Math.abs(b.bbox.max[1] - b.bbox.min[1] - y), b.name + " depth").toBeLessThan(0.01);
+    expect(Math.abs(b.bbox.min[2] - z0), b.name + " bottom").toBeLessThan(0.01);
+    expect(Math.abs(b.bbox.max[2] - z1), b.name + " top").toBeLessThan(0.01);
+  };
+  at(l[0], 60, 40, 5, 15, 23497.3); // the plate with its hole
+  at(l[1], 8.1, 8.1, 0, 30, 1545.9); // the pin
+  at(l[2], 60, 40, 15, 25, 24000); // the block
   const u = union(l);
   expect(Math.abs((u.min[0] + u.max[0]) / 2)).toBeLessThan(0.01);
   expect(Math.abs((u.min[1] + u.max[1]) / 2)).toBeLessThan(0.01);
@@ -111,20 +124,22 @@ test("moving one part moves only that part", async () => {
 
 // (A share link cannot carry a STEP file: even two small solids are 22 KB, the link holds 4096 characters. The parts' share-link checks are in
 // test/sharelink.test.mjs.)
-test("the parts survive save and reopen", async () => {
+test("the parts survive save and reopen, with the engine started again", async () => {
   await fresh("advanced");
   await importFile("three parts.step", fixture("step-assembly-3-parts.step"));
   await whenBuilt(3);
-  const want = sorted(await list());
-  // saved and reopened: the design's JSON, loaded under new ids so nothing of the old pictures is reused
-  const json = await page.evaluate(() => JSON.stringify(window.__store.doc));
-  const doc = JSON.parse(json);
-  doc.bodies.forEach((b, i) => { b.id = "re" + i; });
+  const byName = (l) => Object.fromEntries(l.map((b) => [b.name, { volume: b.volume, bbox: b.bbox }]));
+  const want = byName(await list());
+  const doc = JSON.parse(await page.evaluate(() => JSON.stringify(window.__store.doc)));
+  doc.bodies.forEach((b, i) => { b.id = "re" + i; }); // new ids, as a design read back from storage
+  // a new engine that has built nothing: the parts are read from the file again, and each must come out as the part it was
+  await page.evaluate(() => { const k = window.__app.kernel; k.worker.terminate(); k.meshes.clear(); k.queue.clear(); k.inflight = null; k.start(); });
+  await page.waitForFunction(() => window.__app.kernel.ready, null, { timeout: 90_000 });
   await loadDoc(page, doc);
   const re = await list();
   expect(re).toHaveLength(3);
   expect(re.map((b) => b.error)).toEqual([null, null, null]);
-  expect(sorted(re)).toEqual(want);
+  expect(byName(re)).toEqual(want);
 });
 
 test("Beginner: the three parts can be grouped and the group taken apart again", async () => {
@@ -200,3 +215,126 @@ test("a read that stalls the engine says it took longer than 2 minutes", async (
   await whenBuilt(2);
 });
 
+// 200 boxes (201 for the limit test) written as one STEP file by the app itself, as step-import.spec's 200-part test does; the design is cleared again
+async function boxesFile(count) {
+  const side = 15;
+  await loadDoc(page, newDoc("many boxes", "advanced", {
+    bodies: Array.from({ length: count }, (_, i) => {
+      const m = [...IDENTITY]; m[12] = (i % side) * 12; m[13] = Math.floor(i / side) * 12;
+      return body("p" + i, "Part " + i, prim("box", { w: 8, d: 8, h: 8 + (i % 5), r: 0, c: 0 }), m);
+    }),
+  }));
+  const bytes = await page.evaluate(async () => Array.from(await window.JS3D.export("step")));
+  await fresh("advanced");
+  return bytes;
+}
+const boxVolume = (count) => Array.from({ length: count }, (_, i) => 8 * 8 * (8 + (i % 5))).reduce((a, b) => a + b, 0);
+
+// quarantined: the single file in WebKit cannot read the STEP blob back out of the engine worker (see booleans.spec.mjs)
+test("a file with 200 parts splits into 200 bodies that all build", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
+  test.setTimeout(300_000);
+  const bytes = await boxesFile(200);
+  await importFile("two hundred.step", bytes);
+  await whenBuilt(200, 240_000);
+  const l = await list();
+  expect(l.filter((b) => b.error)).toEqual([]);
+  expect(l.filter((b) => b.volume === null)).toEqual([]);
+  expect(l[0].name).toBe("two hundred part 1");
+  expect(l[199].name).toBe("two hundred part 200");
+  near(l.reduce((a, b) => a + b.volume, 0), boxVolume(200), 0.002);
+  expect(await page.evaluate(() => window.JS3D.selection().length)).toBe(200);
+});
+
+test("a file with 201 parts stays one body and says so", async ({}, info) => {
+  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
+  test.setTimeout(300_000);
+  const bytes = await boxesFile(201);
+  await importFile("too many.step", bytes);
+  await expect(toast("has 201 parts")).toBeVisible({ timeout: 120_000 });
+  await whenBuilt(1);
+  const nodes = await page.evaluate(() => window.__store.doc.bodies.map((b) => b.node));
+  expect(nodes).toHaveLength(1);
+  expect(nodes[0].parts).toBeUndefined();
+  expect(nodes[0].mods).toEqual([]);
+  expect((await solidCounts())[0]).toBe(201);
+});
+
+test("a body moved before its first build still splits, as its own undo step, and the parts keep the move", async () => {
+  await fresh("advanced");
+  const before = await page.evaluate(async (bytes) => {
+    await window.__app.advanced.importModel({ name: "moved.step" }, new Uint8Array(bytes));
+    window.__store.update((doc) => { doc.bodies[0].m[12] += 50; }, "Move"); // in the same tick, before anything is built
+    return window.__store.doc.bodies.length;
+  }, fixture("step-assembly-3-parts.step"));
+  expect(before).toBe(1);
+  await whenBuilt(3);
+  const l = await list();
+  const u = union(l);
+  expect((u.min[0] + u.max[0]) / 2).toBeCloseTo(50, 1);
+  await page.evaluate(() => window.JS3D.undo());
+  expect((await list()).length, "one Undo takes the split back").toBe(1);
+  await page.evaluate(() => window.JS3D.undo());
+  expect((await list()).length, "the second Undo takes the move back").toBe(1);
+  await page.evaluate(() => window.JS3D.undo());
+  expect((await list()).length, "the third Undo removes the import").toBe(0);
+});
+
+test("an open edit is not wiped by the split: it waits for the preview to end", async () => {
+  await fresh("advanced");
+  const id = await page.evaluate(async (bytes) => {
+    await window.__app.advanced.importModel({ name: "waiting.step" }, new Uint8Array(bytes));
+    return window.__store.doc.bodies[0].id;
+  }, fixture("step-assembly-3-parts.step"));
+  await page.evaluate(() => window.__store.setPreview(() => {})); // a drag or an open command holds a preview
+  await page.waitForFunction((id) => { const v = window.__app.scene.views.get(id); return !!(v && v.data && !v.pending); }, id, { timeout: 60_000 });
+  await page.waitForTimeout(1500); // the import's watcher looks every half second; a split would have cleared the preview by now
+  expect(await page.evaluate(() => ({ bodies: window.__store.doc.bodies.length, preview: !!window.__store.preview }))).toEqual({ bodies: 1, preview: true });
+  await page.evaluate(() => window.__store.setPreview(null));
+  await whenBuilt(3);
+  expect((await list()).map((b) => b.error)).toEqual([null, null, null]);
+});
+
+test("the split never costs an unrelated undo step when the history is full", async () => {
+  await fresh("advanced");
+  await page.evaluate(() => { for (let i = 0; i < 119; i++) window.__store.update((d) => { d.name = "Edit " + i; }, "Edit " + i); });
+  await importFile("full.step", fixture("step-2-touching-cubes.step"));
+  await whenBuilt(2);
+  expect(await page.evaluate(() => ({ n: window.__store.undoStack.length, first: window.__store.undoStack[0].label, last: window.__store.undoStack[window.__store.undoStack.length - 1].label }))).toEqual({ n: 120, first: "Edit 0", last: "Import full" });
+});
+
+test("the timeline names an import part and explains it; the body keeps its volume", async () => {
+  await fresh("advanced");
+  await importFile("three parts.step", fixture("step-assembly-3-parts.step"));
+  await whenBuilt(3);
+  const before = await list();
+  const item = page.locator('.tl-item[aria-label="Part 1 of the file"]');
+  await expect(item).toHaveCount(1);
+  await item.dblclick();
+  await expect(toast("This body is part 1 of 3 of an imported STEP file")).toBeVisible();
+  const after = await list();
+  expect(after).toHaveLength(3);
+  expect(after[0].volume).toBe(before[0].volume);
+  // (the refusal to delete the piece selector, "Delete the body instead", is a guard in deleteFeature: no timeline control reaches it for this feature today)
+});
+
+test("a design of more than 160 bodies keeps the saved meshes of the body being edited while its preview is open", async () => {
+  test.setTimeout(240_000);
+  await loadDoc(page, newDoc("many prims", "advanced", { bodies: Array.from({ length: 170 }, (_, i) => {
+    const m = [...IDENTITY]; m[12] = (i % 15) * 12; m[13] = Math.floor(i / 15) * 12;
+    return body("q" + i, "Q" + i, prim("box", { w: 5 + i * 0.1, d: 5, h: 5, r: 0, c: 0 }), m);
+  }) }));
+  await whenBuilt(170, 180_000);
+  const savedKey = await page.evaluate(() => window.__store.doc.bodies[0]._key);
+  expect(savedKey).toBeTruthy();
+  // an edit in progress (a command's preview, a drag) shows another version of the first body: its key is new, and the design shown holds 171 results
+  await page.evaluate(() => window.__store.setPreview((doc) => { doc.bodies[0].node.p.w += 1; }));
+  await page.waitForFunction(() => {
+    const k = window.__app.kernel, b = window.__store.view.bodies[0];
+    return !!(b._key && k.has(b._key) && !k.inflight && !k.queue.size);
+  }, null, { timeout: 60_000 });
+  expect(await page.evaluate((k) => ({ saved: window.__app.kernel.has(k), size: window.__app.kernel.meshes.size }), savedKey), "the saved body's mesh (baseOf reads it) while the preview is open").toMatchObject({ saved: true });
+  await page.evaluate(() => window.__store.setPreview(null));
+  await whenBuilt(170);
+  expect(await page.evaluate(() => window.__app.kernel.keepAlso)).toBeNull();
+});

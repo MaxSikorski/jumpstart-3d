@@ -3248,7 +3248,7 @@ function fuseSolids(solids) {
   return acc;
 }
 // jumpstart-3d: STEP parts (#173). How many solids each STEP file holds (asset id -> count, before any fuse): buildBodies puts it on the mesh of a plain
-// import, so the Import code knows to split a file with several parts into one body per part. Both this and stepPartOrder live as long as the cache.
+// import, so the Import code knows to split a file with several parts into one body per part. Both this and stepPartOrder live as long as the worker (clearCache() does not clear them).
 const stepSolids = new Map();
 const stepPartOrder = new Map(); // asset id + ":" + k -> the permutation (sorted index -> explorer index) of that file's solids
 function buildStepAsset(node) {
@@ -3675,24 +3675,32 @@ function compareKeys(ka, kb) {
 // later calls only walk the compound.
 function importPart(shape, mod, node) {
   const pieces = [];
-  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
-  try { for (; ex.More(); ex.Next()) pieces.push(R.cast(OC.TopoDS.Solid(ex.Current()))); }
-  finally { ex.delete(); }
-  shape.delete();
-  const key = node.asset + ":" + (node.k || 1);
-  let perm = stepPartOrder.get(key);
-  if (!perm || perm.length !== pieces.length) {
-    const keys = pieces.map(pieceKey);
-    perm = pieces.map((_, i) => i).sort((a, b) => compareKeys(keys[a], keys[b]));
-    stepPartOrder.set(key, perm);
+  let keep = null;
+  try {
+    const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    try {
+      for (; ex.More(); ex.Next()) {
+        // R.cast downcasts into a copy of its own, so the two raw handles are ours to free
+        let current = null, solid = null;
+        try { current = ex.Current(); solid = OC.TopoDS.Solid(current); pieces.push(R.cast(solid)); } finally { if (solid) solid.delete(); if (current) current.delete(); }
+      }
+    } finally { ex.delete(); }
+    const key = node.asset + ":" + (node.k || 1);
+    let perm = stepPartOrder.get(key);
+    if (!perm || perm.length !== pieces.length) {
+      const keys = pieces.map(pieceKey);
+      perm = pieces.map((_, i) => i).sort((a, b) => compareKeys(keys[a], keys[b]));
+      stepPartOrder.set(key, perm);
+    }
+    if (perm.length !== mod.count || !Number.isInteger(mod.piece) || mod.piece < 0 || mod.piece >= perm.length) {
+      throw new Error(`Part ${mod.piece + 1} of this imported STEP file is missing: the file now reads as ${perm.length} parts, not ${mod.count}. Import the file again.`);
+    }
+    keep = pieces[perm[mod.piece]];
+    return keep;
+  } finally {
+    shape.delete();
+    pieces.forEach(p => { if (p !== keep) p.delete(); });
   }
-  if (perm.length !== mod.count || !Number.isInteger(mod.piece) || mod.piece < 0 || mod.piece >= perm.length) {
-    pieces.forEach(p => p.delete());
-    throw new Error(`Part ${mod.piece + 1} of this imported STEP file is missing: the file now reads as ${perm.length} parts, not ${mod.count}. Import the file again.`);
-  }
-  const keep = pieces[perm[mod.piece]];
-  pieces.forEach(p => { if (p !== keep) p.delete(); });
-  return keep;
 }
 
 export function buildBodies(bodies, quality = 1) {

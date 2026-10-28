@@ -199,6 +199,7 @@ app.voxel = initVoxel(app);
     app.sel = app.sel.filter((id) => findBody(doc, id));
     if (app.sketcher.active && !doc.sketches.some((s) => s.id === app.sketcher.active)) app.exitSketch();
     scene.state.hideSketch = app.sketcher.active;
+    app.kernel.keepAlso = store.preview ? new Set(store.doc.bodies.map((b) => b._key).filter(Boolean)) : null; // jumpstart-3d: STEP parts (#173). while a preview is open, the saved bodies' meshes stay too (baseOf reads them)
     scene.sync(doc);
     // a command can show its own picks as the selection (Combine's target)
     scene.setSelected(app.command && app.command.sceneSel ? app.command.sceneSel() : app.sel);
