@@ -1,15 +1,16 @@
 // Box on face: draw a rectangle on a flat face and add one plain box along its normal.
 import * as THREE from "three";
-import { el, uid } from "./util.js";
+import { el, uid, nextColor } from "./util.js";
 import { arr, makePrimBody } from "./ops.js";
-import { withUnit } from "./units.js";
+import { withUnit, showLen } from "./units.js";
 
 const clean = (v) => { const r = Math.round(v * 1e4) / 1e4; return Math.abs(v - r) < 1e-6 ? r + 0 : v; };
 
 export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, pickBaseFace, drawFace, ov, clearOv, planeFromFace }) {
   function cmd() {
     const st = { face: null, a: null, sx: 1, sy: 1, w: 20, d: 20, h: 10, dir: "out", hole: false, hTyped: false, id: uid("b") };
-    let dragging = false, hover = null, plane, o, n, ex, ey, anchorWorld;
+    st.color = nextColor();
+    let dragging = false, hover = null, plane, o, n, ex, ey, anchorWorld, prev;
     const labels = ["w", "d"].map((k) => {
       const l = app.vp.addLabel("fb-dim");
       l.dataset.k = k;
@@ -27,15 +28,28 @@ export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, p
     }
     // A box face microns inside the body next to a flush face makes the join open.
     function outermost(dir, level) {
-      const f = st.face;
+      const f = st.face, data = f.base.data;
+      const [au, av] = st.a, bu = au + st.sx * st.w, bv = av + st.sy * st.d;
+      const umin = Math.min(au, bu), umax = Math.max(au, bu), vmin = Math.min(av, bv), vmax = Math.max(av, bv);
       let outer = level;
-      for (const info of f.base.data.faceInfo) {
+      for (let k = 0; k < data.faceInfo.length; k++) {
+        const info = data.faceInfo[k];
         if (!info || info.t !== "PLANE") continue;
         const nk = new THREE.Vector3(...info.n).transformDirection(f.base.m);
         if (nk.dot(dir) <= 1 - 1e-6) continue;
         const ck = new THREE.Vector3(...info.c).applyMatrix4(f.base.m);
         const d = ck.dot(dir);
-        if (Math.abs(d - level) <= 0.01) outer = Math.max(outer, d);
+        if (Math.abs(d - level) > 0.01) continue;
+        const [s, cnt] = data.faceGroups[k];
+        let loU = Infinity, hiU = -Infinity, loV = Infinity, hiV = -Infinity;
+        for (let j = s; j < s + cnt; j++) {
+          const i = data.triangles[j];
+          const p = new THREE.Vector3().fromArray(data.vertices, 3 * i).applyMatrix4(f.base.m).sub(o);
+          const u = p.dot(ex), v = p.dot(ey);
+          loU = Math.min(loU, u); hiU = Math.max(hiU, u);
+          loV = Math.min(loV, v); hiV = Math.max(hiV, v);
+        }
+        if (loU <= umax + 1e-6 && hiU >= umin - 1e-6 && loV <= vmax + 1e-6 && hiV >= vmin - 1e-6) outer = Math.max(outer, d);
       }
       return outer;
     }
@@ -47,20 +61,23 @@ export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, p
       const hit = ray.intersectObject(mesh, false)[0];
       if (hit) {
         const bottom = anchorWorld.dot(n) - (hit.distance + 1e-4);
-        st.h = Math.round((o.dot(n) + outermost(n.clone().negate(), -bottom)) * 1e4) / 1e4;
+        const d0 = o.dot(n);
+        st.h = Math.round((outermost(n, d0) + outermost(n.clone().negate(), -bottom)) * 1e4) / 1e4;
       }
     }
     function matrix() {
       st.w = clean(st.w); st.d = clean(st.d); st.h = clean(st.h);
       const origin = world(st.a[0] + st.sx * st.w / 2, st.a[1] + st.sy * st.d / 2);
+      const d0 = o.dot(n), top = outermost(n, d0);
       const off = st.dir === "into" ? -st.h : st.dir === "both" ? -st.h / 2 : 0;
-      origin.addScaledVector(n, off);
+      origin.addScaledVector(n, top - d0 + off);
       const m = new THREE.Matrix4().makeBasis(ex, ey, n).setPosition(origin);
       m.elements = m.elements.map(clean);
       return m;
     }
     function draw() {
       clearOv();
+      labels.forEach((l) => { l.hidden = true; });
       if (st.face && st.a) {
         drawFace(st.face.base, st.face.face, 0x2f66c8);
         const [u, v] = st.a, du = st.sx * st.w, dv = st.sy * st.d;
@@ -89,19 +106,28 @@ export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, p
     }
     const length = (k) => app.numField({
       id: `fb-${k}`, value: st[k], live: true, len: true, min: 0.01, step: 1,
-      onCommit: (v) => { st[k] = clean(v); if (k === "h") st.hTyped = true; refresh(); },
+      onCommit: (v) => {
+        st[k] = clean(v);
+        if (k === "h") st.hTyped = true;
+        else if (st.dir !== "out" && !st.hTyped) { // the top level follows the rectangle, so the height to the far side must too
+          autoHeight();
+          const hf = document.getElementById("fb-h");
+          if (hf) hf.value = showLen(st.h, 3);
+        }
+        refresh();
+      },
     });
     const def = {
       title: "Box on face",
       okLabel: "Add box",
-      valid: () => !!st.face && st.w > 0 && st.d > 0 && st.h > 0,
+      valid: () => !dragging && !!st.face && st.w > 0 && st.d > 0 && st.h > 0,
       canOk: () => def.valid(),
       apply(doc) {
-        const b = makePrimBody(doc, "box", arr(matrix()), { p: { w: st.w, d: st.d, h: st.h }, hole: st.hole });
+        const b = makePrimBody(doc, "box", arr(matrix()), { p: { w: st.w, d: st.d, h: st.h }, hole: st.hole, color: st.color });
         b.id = st.id;
         doc.bodies.push(b);
       },
-      ok() { commit(def, "Add box on face"); app.select([st.id]); },
+      ok() { commit(def, "Add box on face"); if (app.command !== def) app.select([st.id]); },
       build(body) {
         body.append(el("div", { class: "hint" }, "Click a flat face of any shape, then drag a rectangle on it. You can type exact sizes afterwards."));
         if (!st.face) return;
@@ -133,14 +159,14 @@ export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, p
           const f = pick(e);
           if (!f) return false;
           if (!flat(f)) { app.toast("Pick a flat face."); return true; }
+          prev = { face: st.face, a: st.a?.slice() ?? null, sx: st.sx, sy: st.sy, w: st.w, d: st.d, h: st.h,
+            o: o?.clone(), n: n?.clone(), ex: ex?.clone(), ey: ey?.clone(), plane: plane?.clone(), anchorWorld: anchorWorld?.clone() };
           st.face = f;
           hover = null;
           const frame = planeFromFace(f);
           o = new THREE.Vector3(...frame.o);
           n = new THREE.Vector3(...frame.n).normalize();
           anchorWorld = new THREE.Plane().setFromNormalAndCoplanarPoint(n, o).projectPoint(f.point, new THREE.Vector3()); // on the face clicked, so the thickness is measured through material
-          const d0 = o.dot(n), dTop = outermost(n, d0);
-          if (dTop > d0) o.addScaledVector(n, dTop - d0);
           ex = new THREE.Vector3().setFromMatrixColumn(f.base.m, 0).normalize();
           ex.addScaledVector(n, -ex.dot(n));
           if (ex.length() < 0.1) {
@@ -151,11 +177,10 @@ export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, p
           ey = new THREE.Vector3().crossVectors(n, ex).normalize();
           plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, o);
           st.a = coords(f.point);
-          st.b = st.a;
           st.sx = st.sy = 1;
           st.w = st.d = 0;
-          schedulePreview(def);
           dragging = true;
+          schedulePreview(def);
           def.render();
           draw();
           def.refreshOk();
@@ -165,13 +190,22 @@ export function initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, p
           if (!dragging) return;
           const p = app.vp.rayPlane(e, plane);
           if (!p) return;
-          st.b = coords(p);
-          const du = st.b[0] - st.a[0], dv = st.b[1] - st.a[1];
+          const b = coords(p);
+          const du = b[0] - st.a[0], dv = b[1] - st.a[1];
           st.sx = Math.sign(du) || 1; st.sy = Math.sign(dv) || 1;
           st.w = clean(Math.abs(du)); st.d = clean(Math.abs(dv));
           draw();
         },
-        up() {
+        cancel() {
+          if (!dragging) return;
+          dragging = false;
+          const { face, a, sx, sy, w, d, h } = prev;
+          Object.assign(st, { face, a, sx, sy, w, d, h });
+          ({ o, n, ex, ey, plane, anchorWorld } = prev);
+          def.render(); draw(); def.refreshOk(); schedulePreview(def);
+        },
+        up(e) {
+          if (e && e.type === "pointercancel") { def.handler.cancel(); return; }
           if (!dragging) return;
           dragging = false;
           const threshold = app.gridStep() > 0 ? app.gridStep() : 0.5;

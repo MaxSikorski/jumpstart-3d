@@ -171,6 +171,27 @@ test("faces at nearly the same level (2.998 and 3 mm): the box takes the outermo
   expect((await stlOf(joined.id)).open).toBe(0);
 });
 
+test("Into: typing a width that reaches the other level keeps the bottom flush, and Group stays closed", async () => {
+  await importPlate(true);
+  await look([0, 0, 1.5], 30, 55, 90);
+  await openTool();
+  const before = (await doc()).bodies.map((b) => b.id);
+  await drag([-18, -12, 2.998], [-6, 12, 2.998]); // all on the 2.998 mm half
+  await pickDir("Into");
+  await expect(field("fb-h")).toHaveValue(/^2\.998$/);
+  await field("fb-w").fill("26"); // now reaches x = 8, over the opening and onto the 3 mm half
+  await field("fb-w").press("Tab");
+  await expect(field("fb-h")).toHaveValue(/^3(\.0+)?$/);
+  await page.click("#cmd-ok");
+  await waitIdle(page);
+  const bb = await boxOf((await added(before)).id);
+  nearAll(bb.min, [-18, -12, 0], 1e-4);
+  nearAll(bb.max, [8, 12, 3], 1e-4);
+  const joined = await groupAll();
+  near(joined.volume, 3418.86 + 1872 - (18 * 24 * 2.998 - 89.94) - (8 * 24 * 3 - 90), 0.5);
+  expect((await stlOf(joined.id)).open).toBe(0);
+});
+
 test("a vertical face of an app box: default height grows out of the face, and Group stays closed", async () => {
   await loadDoc(page, newDoc("Face box side", "beginner", { bodies: [body("cube", "Cube", prim("box", { w: 20, d: 20, h: 20 }))] }));
   await look([10, 0, 10], 60, 15, 80);
@@ -222,13 +243,61 @@ test("a tilted face: typed sizes, Both ways, and the box lines up with the face 
   const M = box.m, X = [M[0], M[1], M[2]], Z = [M[8], M[9], M[10]], O = [M[12], M[13], M[14]];
   const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
   near(dot(Z, n), 1, 1e-6); // stands on the face
-  near(Math.abs(dot(X, ex)), 1, 1e-6); // and lines up with the slab's edges
-  // both ways: the box's middle (its origin plus half its height) lies in the face's plane
+  near(dot(X, ex), 1, 1e-6); // and lines up with the slab's edges, the same way round
+  // both ways: the box's middle (its origin plus half its height) lies in the face's plane. The drag started at (-6, -4) from the
+  // face centre, which is (-6, 6) on the 1 mm grid of the face's plane (its origin is the world origin seen along the normal, 10 mm
+  // from the centre along ey); the typed 12 x 7 keep that corner, so the middle is 0.5 mm back from the face centre along ey.
   const mid = O.map((o, i) => o + Z[i] * 2);
-  near(dot(mid.map((q, i) => q - top[i]), n), 0, 1e-4);
+  nearAll(mid, top.map((t, i) => t - 0.5 * ey[i]), 1e-4);
   const ids = (await list()).map((e) => e.id);
   expect(ids).toContain(box.id);
   expect((await list()).find((e) => e.id === box.id).error).toBeNull();
+});
+
+test("Esc cancels: nothing is added, and the preview and the labels go away", async () => {
+  await loadDoc(page, newDoc("Face box esc", "beginner", { bodies: [body("cube", "Cube", prim("box", { w: 20, d: 20, h: 20 }))] }));
+  await look([0, 0, 20], 30, 55, 80);
+  await openTool();
+  await drag([-4, -4, 20], [4, 4, 20]);
+  await expect.poll(() => run(() => window.__store.view.bodies.length)).toBe(2); // the preview box
+  expect(await liveLabels()).toHaveLength(2);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#cmd")).toBeHidden();
+  await waitIdle(page);
+  expect(await run(() => [window.__store.doc.bodies.length, window.__store.view.bodies.length])).toEqual([1, 1]);
+  expect(await liveLabels()).toEqual([]);
+});
+
+test("a click without a drag makes a 20 x 20 box centred where you clicked", async () => {
+  await loadDoc(page, newDoc("Face box click", "beginner", { bodies: [body("slab", "Slab", prim("box", { w: 40, d: 40, h: 10 }))] }));
+  await look([0, 0, 10], 30, 55, 100);
+  await openTool();
+  const before = (await doc()).bodies.map((b) => b.id);
+  const [x, y] = await screen([3, 2, 10]);
+  await page.mouse.click(x, y);
+  await expect(field("fb-w")).toHaveValue(/^20(\.0+)?$/);
+  await expect(field("fb-d")).toHaveValue(/^20(\.0+)?$/);
+  await page.click("#cmd-ok");
+  await waitIdle(page);
+  const bb = await boxOf((await added(before)).id);
+  nearAll(bb.min, [-7, -8, 10], 1e-4);
+  nearAll(bb.max, [13, 12, 20], 1e-4);
+});
+
+test("Out of the face on one level of a two-level top sits exactly on that level and fuses closed", async () => {
+  await importPlate(true);
+  await look([0, 0, 1.5], 30, 55, 90);
+  await openTool();
+  const before = (await doc()).bodies.map((b) => b.id);
+  await drag([-18, -12, 2.998], [-6, 12, 2.998]); // all on the 2.998 mm half
+  await page.click("#cmd-ok");
+  await waitIdle(page);
+  const bb = await boxOf((await added(before)).id);
+  nearAll(bb.min, [-18, -12, 2.998], 1e-4); // not lifted to the 3 mm half next to it
+  nearAll(bb.max, [-6, 12, 12.998], 1e-4);
+  const joined = await groupAll();
+  near(joined.volume, 3418.86 + 12 * 24 * 10, 0.5);
+  expect((await stlOf(joined.id)).open).toBe(0);
 });
 
 test("Max's Pi lid: a box drawn on the lid's floor, flush with both faces, joins closed", async () => {
@@ -236,6 +305,7 @@ test("Max's Pi lid: a box drawn on the lid's floor, flush with both faces, joins
   test.setTimeout(240_000);
   await loadDoc(page, newDoc("Face box lid", "beginner"));
   await page.selectOption("#snap", "0.25");
+  try {
   const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#bb-import")]);
   await chooser.setFiles({ name: "Canakit_Pi_4_case_lid.stl", mimeType: "model/stl", buffer: readFileSync(lidFile) });
   await expect.poll(async () => (await list()).length, { timeout: 120_000 }).toBe(1);
@@ -268,5 +338,5 @@ test("Max's Pi lid: a box drawn on the lid's floor, flush with both faces, joins
   const m = await stlOf(joined.id);
   expect(m.open, "open or non-manifold edges in the joined lid").toBe(0);
   expect(joined.volume).toBeGreaterThan(lid.volume + 100); // the openings under the box are filled
-  await page.selectOption("#snap", "1");
+  } finally { await page.selectOption("#snap", "1"); }
 });
