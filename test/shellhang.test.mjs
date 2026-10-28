@@ -113,10 +113,22 @@ const sideCapsule = (name, want) => () => {
 };
 test("Auto shell of the oval capsule with the wall outside makes true 2 mm walls quickly", sideCapsule("capsuleout", 4946.3));
 test("Auto shell of the oval capsule with the wall centred on the surface makes true walls quickly", sideCapsule("capsuleboth", 4193.7));
-test("the curvature gate sees the tightest curve of an oval capsule (the 40 x 36 x 12 capsule's offset pinches at 2 mm and is never tried)", () => {
+test("Auto Outside of a convex oval sphere keeps the exact offset", () => {
+  // an outward offset of a convex surface never pinches, so the curvature gate must not send it to the slices or the field
+  const r = result("sphereout");
+  assert.ok(r.ok, r.error);
+  assert.ok(r.ms < 10000, `build took ${r.ms} ms`);
+  near(r.volume, 4066.2, .005);
+  assert.equal(r.open, 0);
+});
+test("the curvature gate sees the tightest curve of an oval capsule, by side (the 40 x 36 x 12 capsule's inward offset pinches at 2 mm and is never tried)", () => {
   // With the gate open, the 40 x 36 x 12 Auto hollow read 18 mm of material along +y (no hollow there): verified once by hand,
-  // but too slow for every CI job (44 s, the slice method builds it).
+  // but too slow for every CI job (44 s, the slice method builds it). The capsule is convex all round, so no outward offset
+  // pinches (no concave curve: null here).
   const r = result("gate");
   assert.ok(r.radii, r.error);
-  for (const [d, want] of [[20, 3.6], [34, 36 / 17], [36, 2]]) near(r.radii[d], want, .005);
+  for (const [d, want] of [[20, 3.6], [34, 36 / 17], [36, 2]]) {
+    near(r.radii[d].in, want, .005);
+    assert.equal(r.radii[d].out, null, `capsule 40 x ${d} x 12 has no concave curve`);
+  }
 });

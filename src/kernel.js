@@ -1421,16 +1421,16 @@ function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
   // up, so the slice method goes first there
   let freeform = false;
   for (const f of shape.faces) { const g = f.geomType; if (g === "BSPLINE_SURFACE" || g === "BEZIER_SURFACE" || g === "OFFSET_SURFACE" || g === "OTHER_SURFACE") freeform = true; f.delete(); }
-  // jumpstart-3d: for closed hollows the order above is replaced: the offset goes first (only its two quick Arc-join attempts;
+  // jumpstart-3d: for closed hollows the order above is replaced: the offset goes first (only its quick attempts, no Intersection join;
   // 1 s on the oval capsule against 20-30 s for slices, whose walls came out as thin as 0.9 mm for 2) and is kept only
   // when every curve is wider than the wall (curvature gate) and it passes the wall check; then slices, then the field. With open faces the slices still go first: the check
   // needs the offset hollow, which the open-face path (a thick solid) does not build.
   let offsetTried = false;
   if (freeform && !open.size) {
     offsetTried = true;
-    // a curve as tight as the wall (radius within 3%) pinches the offset into a broken solid that still measures right
-    // (capsule 40 x 36 x 12): no offset there
-    const radius = tightestRadius(shape), wide = radius * 0.97 > (dir === "both" ? t / 2 : t);
+    // a curve bending the dangerous way (convex for an inward wall, concave for an outward one) as tight as the wall
+    // (radius within 3%) pinches the offset into a broken solid that still measures right (capsule 40 x 36 x 12): no offset
+    const radius = tightestRadius(shape, dir), wide = radius * 0.97 > (dir === "both" ? t / 2 : t);
     const r0 = wide ? shellSolidOffset(shape, t, open, dir, vIn, true) : null;
     if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("offset shell first", wide ? (r0 ? "ok" : "failed") : "skipped, tightest curve radius " + radius.toFixed(3), Date.now() - T0, "ms");
     if (r0) return r0;
@@ -1479,32 +1479,57 @@ function offsetHitsRadius(shape, d) {
 }
 // end jumpstart-3d
 // jumpstart-3d: an offset by d is only regular where every curve is wider than d; at d equal to a curve's radius the offset
-// pinches and the solid is broken even though it measures right (capsule 40 x 36 x 12). The smallest principal radius of
-// curvature over the non-planar faces, sampled on a 17 x 17 grid of each face's parameter range (both signs of curvature
-// count: a skipped offset only means the slices run). Infinity when every face is planar.
-function tightestRadius(shape) {
-  const n = 16;
+// pinches and the solid is broken even though it measures right (capsule 40 x 36 x 12). Only curves that bend the dangerous
+// way pinch: an inward offset (side "in") folds where the surface is convex, an outward one ("out") where it is concave,
+// and "both" counts every curve. The smallest such principal radius of curvature over the non-planar faces: a 17 x 17 grid
+// per face, then the worst sample refined twice (a 9 x 9 grid over its neighbouring cells), since a coarse grid misses the
+// tight tip of a stretched ellipsoid or paraboloid. Infinity when no curve bends that way. With the outward normal
+// (D1U x D1V, reversed on a REVERSED face) a convex curve has a negative curvature and a concave one a positive.
+// The outputs of D2 are made once: EvalD2 leaks wasm memory on every call.
+function tightestRadius(shape, side = "both") {
+  const P = new OC.gp_Pnt(), V = [0, 1, 2, 3, 4].map(() => new OC.gp_Vec()), [D1U, D1V, D2U, D2V, D2UV] = V;
   let kmax = 0;
-  for (const f of shape.faces) {
-    if (f.geomType !== "PLANE") {
-      const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
-      try {
-        const u0 = ad.FirstUParameter(), u1 = ad.LastUParameter(), v0 = ad.FirstVParameter(), v1 = ad.LastVParameter();
-        for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
-          const r = ad.EvalD2(u0 + (u1 - u0) * i / n, v0 + (v1 - v0) * j / n);
-          const a = r.D1U, b = r.D1V, nn = a.Crossed(b);
-          try {
-            const nl = nn.Magnitude(), E = a.Dot(a), F = a.Dot(b), G = b.Dot(b), den = E * G - F * F;
-            if (nl < 1e-9 || den < 1e-12) continue;
-            const L = r.D2U.Dot(nn) / nl, M = r.D2UV.Dot(nn) / nl, N = r.D2V.Dot(nn) / nl;
-            const K = (L * N - M * M) / den, H = (E * N - 2 * F * M + G * L) / (2 * den), q = Math.sqrt(Math.max(0, H * H - K));
-            kmax = Math.max(kmax, Math.abs(H + q), Math.abs(H - q));
-          } finally { for (const v of [a, b, nn, r.D2U, r.D2V, r.D2UV]) v.delete(); }
-        }
-      } catch (e) {} finally { ad.delete(); }
+  try {
+    for (const f of shape.faces) {
+      if (f.geomType !== "PLANE") {
+        const sg = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
+        const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+        try {
+          const danger = (u, v) => {
+            ad.D2(u, v, P, D1U, D1V, D2U, D2V, D2UV);
+            const nn = D1U.Crossed(D1V);
+            try {
+              const nl = nn.Magnitude(), E = D1U.Dot(D1U), F = D1U.Dot(D1V), G = D1V.Dot(D1V), den = E * G - F * F;
+              if (nl < 1e-9 || den < 1e-12) return 0;
+              const L = sg * D2U.Dot(nn) / nl, M = sg * D2UV.Dot(nn) / nl, N = sg * D2V.Dot(nn) / nl;
+              const K = (L * N - M * M) / den, H = (E * N - 2 * F * M + G * L) / (2 * den), q = Math.sqrt(Math.max(0, H * H - K));
+              return side === "in" ? -(H - q) : side === "out" ? H + q : Math.max(Math.abs(H + q), Math.abs(H - q));
+            } finally { nn.delete(); }
+          };
+          let u0 = ad.FirstUParameter(), u1 = ad.LastUParameter(), v0 = ad.FirstVParameter(), v1 = ad.LastVParameter(), best = 0;
+          // a grid over [u0, u1] x [v0, v1] with n cells a side; returns the worst sample's cell indices
+          const scan = (n) => {
+            let bi = 0, bj = 0, bk = -Infinity;
+            for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+              const k = danger(u0 + (u1 - u0) * i / n, v0 + (v1 - v0) * j / n);
+              if (k > bk) { bk = k; bi = i; bj = j; }
+            }
+            best = Math.max(best, bk);
+            return [bi, bj, n];
+          };
+          for (let pass = 0; pass < 3; pass++) {
+            const [i, j, n] = scan(pass ? 8 : 16);
+            if (pass < 2) { // the next, finer grid covers the cells next to the worst sample
+              const du = (u1 - u0) / n, dv = (v1 - v0) / n, nu0 = Math.max(u0, u0 + (i - 1) * du), nv0 = Math.max(v0, v0 + (j - 1) * dv);
+              u1 = Math.min(u1, u0 + (i + 1) * du); v1 = Math.min(v1, v0 + (j + 1) * dv); u0 = nu0; v0 = nv0;
+            }
+          }
+          kmax = Math.max(kmax, best);
+        } catch (e) {} finally { ad.delete(); }
+      }
+      f.delete();
     }
-    f.delete();
-  }
+  } finally { P.delete(); V.forEach((v) => v.delete()); }
   return kmax > 0 ? 1 / kmax : Infinity;
 }
 // an offset wall is right when the offset surface stays the full distance d from the original surface
@@ -1566,7 +1591,7 @@ function shellSolidOffset(shape, t, open, dir, vIn, check = false) {
   // offset-and-subtract
   let outer = null, inner = null, walls = null;
   try {
-    // jumpstart-3d: the checked first try (check) runs only offsetSolid's first two attempts (firstOnly), in the three calls below
+    // jumpstart-3d: the checked first try (check) runs only offsetSolid's quick attempts (firstOnly), in the three calls below
     if (dir === "in") { inner = offsetSolid(shape, -t, vIn, false, check); if (!inner) return null; walls = shape.cut(inner); }
     else if (dir === "out") { outer = offsetSolid(shape, t, vIn, true, check); if (!outer) return null; walls = outer.cut(shape); }
     else {
@@ -1941,7 +1966,7 @@ function thickSolid(shape, d, openHashes, vIn, grows) {
 function validSolid(sh) {
   try { const a = new OC.BRepCheck_Analyzer(sh.wrapped, true, false); const v = a.IsValid(); a.delete(); return v; } catch (e) { return true; }
 }
-// The whole body grown (d > 0) or shrunk (d < 0) by |d|, as a solid. (jumpstart-3d: firstOnly = only the first two attempts, the Arc joins)
+// The whole body grown (d > 0) or shrunk (d < 0) by |d|, as a solid. (jumpstart-3d: firstOnly = only the two Arc joins and the simple offset, not the Intersection join)
 function offsetSolid(shape, d, vIn, grows, firstOnly = false) {
   let vol; // the volume good() measured last, for inFixedOrder
   const good = (sh) => { const v = vol = safeVolume(sh); return v > 1e-6 && (grows ? v > vIn * 1.0005 : v < vIn * 0.9995); };
@@ -1951,7 +1976,7 @@ function offsetSolid(shape, d, vIn, grows, firstOnly = false) {
     (b) => b.PerformByJoin(shape.wrapped, d, 1e-2, OC.BRepOffset_Mode.BRepOffset_Skin, true, false, OC.GeomAbs_JoinType.GeomAbs_Intersection, false),
     (b) => b.PerformBySimple(shape.wrapped, d),
   ];
-  for (const run of firstOnly ? attempts.slice(0, 2) : attempts) { // jumpstart-3d: firstOnly = the two Arc joins
+  for (const run of firstOnly ? [attempts[0], attempts[1], attempts[3]] : attempts) { // jumpstart-3d: firstOnly = the two Arc joins and the simple offset
     const b = new OC.BRepOffsetAPI_MakeOffsetShape();
     let res = null;
     try {

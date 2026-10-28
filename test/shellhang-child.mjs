@@ -116,7 +116,7 @@ function shaft(radii) {
   } catch (error) { shape.delete(); throw error; }
 }
 const prim = (kind, p, dir) => ({ t: "prim", kind, p, mods: [{ id: "s", seq: 2, t: "shell", th: 2, faces: [], ...(dir ? { dir } : {}) }] });
-for (const name of ["guard", "outside", "thicker", "bothhit", "presspull", "capsule", "flatcap", "unchanged", "capsuleout", "capsuleboth", "gate"]) {
+for (const name of ["guard", "outside", "thicker", "bothhit", "presspull", "capsule", "flatcap", "unchanged", "capsuleout", "capsuleboth", "sphereout", "gate"]) {
   console.error("start " + name);
   try {
     // Auto method on free-form (capsule) and on other shapes, through the real build path
@@ -128,11 +128,15 @@ for (const name of ["guard", "outside", "thicker", "bothhit", "presspull", "caps
       console.log(JSON.stringify({ case: name, ...measure(prim("capsule", { w: 40, d: 20, h: 12 }, name === "capsuleout" ? "out" : "both"), name, () => ({})) }));
       continue;
     }
-    if (name === "gate") { // the curvature gate's radius for three oval capsules (no shell)
+    if (name === "sphereout") { // convex all round: an outward offset never pinches, so the curvature gate lets the offset run
+      console.log(JSON.stringify({ case: name, ...measure(prim("sphere", { w: 30, d: 30, h: 10 }, "out"), name, () => ({})) }));
+      continue;
+    }
+    if (name === "gate") { // the curvature gate's radius, seen from inside and from outside, for three oval capsules (no shell)
       const radii = {};
       for (const d of [20, 34, 36]) {
         const shape = k.evalNode({ t: "prim", kind: "capsule", p: { w: 40, d, h: 12 }, mods: [] });
-        try { radii[d] = k._test.tightestRadius(shape); } finally { shape.delete(); }
+        try { radii[d] = { in: k._test.tightestRadius(shape, "in"), out: k._test.tightestRadius(shape, "out") }; } finally { shape.delete(); } // Infinity (no such curve) prints as null
       }
       console.log(JSON.stringify({ case: name, radii }));
       continue;
