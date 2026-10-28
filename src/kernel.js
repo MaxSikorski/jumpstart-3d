@@ -997,7 +997,7 @@ function attachFillReports(node, mesh) {
     (mesh.fillReports ||= {})[mod.id] = report;
   }
 }
-function applyMod(shape, mod) {
+function applyMod(shape, mod, node) { // jumpstart-3d: STEP parts (#173). node: only keeppiece with src "import" reads it
   switch (mod.t) {
     // jumpstart-3d: fill openings
     case "fillopen": {
@@ -1079,6 +1079,7 @@ function applyMod(shape, mod) {
     }
     // jumpstart-3d: a persisted piece selector re-evaluates the copied history.
     case "keeppiece": {
+      if (mod.src === "import" && node) return importPart(shape, mod, node); // jumpstart-3d: STEP parts (#173)
       const pieces = solidPieces(shape);
       shape.delete();
       if (mod.sole && pieces.length !== mod.count) {
@@ -3246,6 +3247,10 @@ function fuseSolids(solids) {
   let acc = solids[0]; for (const x of solids.slice(1)) { const f = acc.fuse(x); acc.delete(); x.delete(); acc = f; }
   return acc;
 }
+// jumpstart-3d: STEP parts (#173). How many solids each STEP file holds (asset id -> count, before any fuse): buildBodies puts it on the mesh of a plain
+// import, so the Import code knows to split a file with several parts into one body per part. Both this and stepPartOrder live as long as the worker (clearCache() does not clear them).
+const stepSolids = new Map();
+const stepPartOrder = new Map(); // asset id + ":" + k -> the permutation (sorted index -> explorer index) of that file's solids
 function buildStepAsset(node) {
   const bytes = assetBytes(node);
   const name = "import_" + Math.random().toString(36).slice(2);
@@ -3265,7 +3270,9 @@ function buildStepAsset(node) {
     const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
     for (; ex.More(); ex.Next()) solids.push(R.cast(OC.TopoDS.Solid(ex.Current())));
     ex.delete();
+    stepSolids.set(node.asset, solids.length); // jumpstart-3d: STEP parts (#173)
     if (solids.length === 1) { shape.delete(); shape = solids[0]; }
+    else if (solids.length > 1 && node.parts) { shape.delete(); { const parts = R.makeCompound(solids); solids.forEach((x) => x.delete()); shape = parts; } } // jumpstart-3d: STEP parts (#173). one body per part: the solids stay apart in a compound
     else if (solids.length > 1) { shape.delete(); shape = fuseSolids(solids); } // jumpstart-3d: was the one-after-another fuse loop, now the fallback in fuseSolids
     if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
     return shape;
@@ -3317,7 +3324,7 @@ export function evalNode(node) {
     // evaluate prefix (node without last mod) so editing the last feature is cheap
     const prefix = { ...node, mods: mods.slice(0, -1) };
     shape = evalNode(prefix);
-    shape = solidsOnly(applyMod(shape, mods[mods.length - 1]));
+    shape = solidsOnly(applyMod(shape, mods[mods.length - 1], node)); // jumpstart-3d: STEP parts (#173). node
     // jumpstart-3d: fill openings
     if (last.t === "fillopen") {
       rememberFillReport(key, lastFillReport); // key = fillKey(node)
@@ -3651,16 +3658,49 @@ function solidPieces(shape) {
   const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
   try { for (; ex.More(); ex.Next()) pieces.push(R.cast(OC.TopoDS.Solid(ex.Current()))); }
   finally { ex.delete(); }
-  const keys = new Map(pieces.map(p => {
-    const bb = bboxOf(p);
-    // Quantize centres to 0.01 mm; bounds resolve centre ties.
-    return [p, [...[2, 1, 0].map(i => Math.round((bb.min[i] + bb.max[i]) / 2 / 0.01)), ...bb.min, ...bb.max]];
-  }));
-  return pieces.sort((a, b) => {
-    const ka = keys.get(a), kb = keys.get(b);
-    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
-    return 0;
-  });
+  const keys = new Map(pieces.map(p => [p, pieceKey(p)]));
+  return pieces.sort((a, b) => compareKeys(keys.get(a), keys.get(b)));
+}
+function pieceKey(p) { // jumpstart-3d: STEP parts (#173). was inline in solidPieces
+  const bb = bboxOf(p);
+  // Quantize centres to 0.01 mm; bounds resolve centre ties.
+  return [...[2, 1, 0].map(i => Math.round((bb.min[i] + bb.max[i]) / 2 / 0.01)), ...bb.min, ...bb.max];
+}
+function compareKeys(ka, kb) {
+  for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+  return 0;
+}
+// jumpstart-3d: STEP parts (#173). The part a body of an imported STEP file keeps, in the same order as solidPieces. Sorting the pieces is slow (about 4 s for
+// 200 filleted cylinders), and every part of the file asks for its own piece, so the order is worked out once per file and remembered (stepPartOrder);
+// later calls only walk the compound.
+function importPart(shape, mod, node) {
+  const pieces = [];
+  let keep = null;
+  try {
+    const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    try {
+      for (; ex.More(); ex.Next()) {
+        // R.cast downcasts into a copy of its own, so the two raw handles are ours to free
+        let current = null, solid = null;
+        try { current = ex.Current(); solid = OC.TopoDS.Solid(current); pieces.push(R.cast(solid)); } finally { if (solid) solid.delete(); if (current) current.delete(); }
+      }
+    } finally { ex.delete(); }
+    const key = node.asset + ":" + (node.k || 1);
+    let perm = stepPartOrder.get(key);
+    if (!perm || perm.length !== pieces.length) {
+      const keys = pieces.map(pieceKey);
+      perm = pieces.map((_, i) => i).sort((a, b) => compareKeys(keys[a], keys[b]));
+      stepPartOrder.set(key, perm);
+    }
+    if (perm.length !== mod.count || !Number.isInteger(mod.piece) || mod.piece < 0 || mod.piece >= perm.length) {
+      throw new Error(`Part ${mod.piece + 1} of this imported STEP file is missing: the file now reads as ${perm.length} parts, not ${mod.count}. Import the file again.`);
+    }
+    keep = pieces[perm[mod.piece]];
+    return keep;
+  } finally {
+    shape.delete();
+    pieces.forEach(p => { if (p !== keep) p.delete(); });
+  }
 }
 
 export function buildBodies(bodies, quality = 1) {
@@ -3676,6 +3716,7 @@ export function buildBodies(bodies, quality = 1) {
       if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
       const mesh = meshShape(shape, quality);
       { const engine = engineOf(b.node); if (engine) mesh.meshEngine = engine; } // jumpstart-3d: which engine built it (tests read this)
+      if (b.node.t === "step" && !b.node.parts && stepSolids.has(b.node.asset)) mesh.stepParts = stepSolids.get(b.node.asset); // jumpstart-3d: STEP parts (#173). how many parts the file holds
       // jumpstart-3d: fill openings
       attachFillReports(b.node, mesh);
       // jumpstart-3d: only new Combine/Group actions use the count to create bodies.
@@ -3716,9 +3757,13 @@ function isEmptyShape(shape) {
   try { return !ex.More(); } finally { ex.delete(); }
 }
 
+// jumpstart-3d: STEP parts (#173). A file too big for the engine's memory (4 GB at most) ends in a wasm trap, a RangeError or an out-of-memory text.
+const OUT_OF_MEMORY = "This model needs more memory than the browser gives the geometry engine (at most 4 GB). Try a smaller file, or one with fewer or simpler parts.";
+function nearMemoryCeiling() { try { return OC.HEAPU8.length > 3.5 * 2 ** 30; } catch (x) { return false; } }
 function friendly(e) {
   if (typeof e === "number") return "The geometry kernel couldn't build this shape";
   const msg = errorText(e);
+  if ((e instanceof RangeError && /memory|alloc/i.test(msg)) || (/out of bounds|out of memory|Cannot enlarge memory|unreachable|allocation/i.test(msg) && nearMemoryCeiling())) return OUT_OF_MEMORY; // jumpstart-3d: STEP parts (#173)
   if (/BRep|Standard_|StdFail|NotDone/i.test(msg)) return "The geometry kernel couldn't build this shape";
   // jumpstart-3d: the engine bindings' own errors (a wrong argument type, a deleted object, a wasm trap) are not for users
   if (/called with an invalid signature|Expected null or instance of|Cannot pass deleted object|table index is out of bounds|memory access out of bounds|null function or function signature mismatch/i.test(msg)) return "The geometry kernel couldn't build this shape";

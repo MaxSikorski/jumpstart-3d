@@ -64,7 +64,7 @@ export class KernelClient {
         r.key = r.rev;
         delete r.rev;
         this.meshes.set(r.key, r);
-        if (this.meshes.size > 160) this.meshes.delete(this.meshes.keys().next().value);
+        this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       }
       this.inflight = null;
       this.perf && this.perf.done(msg.results); // jumpstart-3d: perf panel
@@ -92,6 +92,14 @@ export class KernelClient {
       this.pump();
     }
   }
+  // jumpstart-3d: STEP parts (#173). Over 160 results, the oldest ones that no body of the open design needs go. A design of 200 bodies used to lose its first
+  // 40 meshes to this and leave them unbuilt; now the cache grows only while all of it is needed, and shrinks back when a smaller design is shown.
+  trimMeshes() {
+    for (const k of this.meshes.keys()) {
+      if (this.meshes.size <= 160) break;
+      if (!(this.needed && this.needed.has(k)) && !(this.keepAlso && this.keepAlso.has(k))) this.meshes.delete(k); // keepAlso: the saved design's keys while a preview is open (app.js)
+    }
+  }
   has(key) { return this.meshes.has(key); }
   get(key) { return this.meshes.get(key); }
   isPending(key) { return this.queue.has(key) || (this.inflight || []).some((b) => b.key === key); }
@@ -111,6 +119,7 @@ export class KernelClient {
   prune(neededKeys) {
     this.needed = neededKeys; // jumpstart-3d: stalled() skips timed-out bodies that a newer edit replaced
     for (const k of [...this.queue.keys()]) if (!neededKeys.has(k) && !this.queue.get(k).pinned) { this.queue.delete(k); this.solo.delete(k); }
+    this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
