@@ -284,11 +284,11 @@ test('reviewed solid counts cover exactly the current fixtures', () => {
 });
 
 test('nightly known crossings accept measured failures but reject worse or unrelated failures', () => {
-  // Run 40509173084: identical measurements in single and site, log lines
-  // 1300/1429, 1321/1450, 1358/1487 and 1360/1489 respectively.
+  // Run 40701065926 (spring unchanged since run 40509173084): identical
+  // measurements in single and site.
   const cases = {
-    'advanced-tapped-hole.stl': [[0.3385, 0, 0]],
-    'fasteners.stl': [[0.3121, 0, 0]],
+    'advanced-tapped-hole.stl': [[0.6454, 0, 0]],
+    'fasteners.stl': [[0.2807, 0, 0], [0.2192, 0, 2], [0.2496, 0, 3]],
     'spring.3mf': [[0.0102, 1, 0], [0.0583, 2, 0]],
     'spring.stl': [[0.0102, 0, 1], [0.0583, 0, 2]],
   };

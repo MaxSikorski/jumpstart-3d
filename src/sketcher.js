@@ -113,9 +113,8 @@ export class Sketcher {
     this.vp.grid.visible = false; // the sketch draws its own grid on its plane
     this.sel.clear();
     this.state = null;
-    // like Fusion: going back into a sketch that has shapes starts with Select (click a shape to
-    // change its size); a new, empty sketch starts with Line, ready to draw
-    { const s0 = this.sketch; this.setTool(s0 && s0.ents.some((x) => !x.proj) ? "select" : "line"); }
+    // jumpstart-3d: Fusion-style. A sketch always opens with Select; L, R, C or the Create buttons start drawing (a tool asked for before the plane was picked is set after, in makeSketch)
+    this.setTool("select");
     const sk = this.sketch;
     this.mat = planeMatrix(sk.plane);
     this.inv = this.mat.clone().invert();

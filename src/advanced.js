@@ -8,6 +8,7 @@ import { ICON } from "./icons.js";
 import { FONT_NAMES } from "./fonts.js";
 import { planeMatrix } from "./scene.js";
 import { thickLines } from "./thickline.js";
+import { drawDragArrow, overDragArrow } from "./dragarrow.js"; // jumpstart-3d: shared pull arrow
 import { SKETCH_TOOLS, normalizeSketch, arcFrom3, addImportedCurves } from "./sketcher.js";
 import { parseSVG, parseDXF, curvesBounds } from "./importers.js";
 import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, exprOf, exprsOf, paramsToCsv, parseParamsCsv, importParams, PARAM_ERROR } from "./params.js";
@@ -1035,6 +1036,7 @@ export function initAdvanced(app) {
   function extrudeCmd(kind = "extrude", editing = null, opts = {}) {
     // a new extrude starts at 0, like Fusion 360: picking a profile only highlights it; the
     // body appears once the arrow is dragged or a distance typed
+    const arrowZoom = () => { if (def.arrow) drawArrow(); }; // jumpstart-3d: preserve face hover when no arrow is shown.
     const big = app.mode === "beginner"; // Beginner: starts pulled up 10 mm, with a big arrow (easier to see and grab)
     const st = { kind, profiles: new Map(), sketchId: null, dist: kind === "extrude" && !editing && !big ? 0 : 10, mode: "one", dist2: 5, op: "auto", angle: 360, axis: null, axisLine: null, pickAxis: false, path: null, pickPath: false, orient: "perp", sdist: 1, taper: 0, twist: 0, chain: true, extent: "dist", toRef: null, pickTo: false, hoverPlane: null, hoverPlaneKey: "", editing };
     // coming straight from a sketch: show it and pick its profile when there is only one
@@ -1173,11 +1175,17 @@ export function initAdvanced(app) {
         scene.syncSketches(store.view);
         if (!scene.regionMeshes().length && !editing && kind !== "extrude") app.toast("No visible sketch profiles. Create a sketch with a closed shape first.");
         refresh();
+        if (kind === "extrude") vp.onViewChange = arrowZoom; // jumpstart-3d: keep the arrow sized in pixels during zoom.
       },
-      cleanup() { scene.state.forceSketch = null; pendingSketch = null; vp.afterRender.delete(placeTag); tag.remove(); },
+      cleanup() {
+        if (vp.onViewChange === arrowZoom) vp.onViewChange = null; // jumpstart-3d: release only our arrow zoom hook.
+        scene.state.forceSketch = null; pendingSketch = null; vp.afterRender.delete(placeTag); tag.remove();
+      },
       // typing a number anywhere goes straight into the distance (or revolve angle), like Fusion
       typeInto: () => (!st.profiles.size ? null : kind === "extrude" ? def.distInput : kind === "revolve" ? document.getElementById("rv-angle") : null),
       handler: {
+        // jumpstart-3d: clear the highlight when the pointer leaves the canvas.
+        leave() { if (st.arrowHot) { st.arrowHot = false; drawArrow(); } },
         wantsTouch: (e) => !!overArrow(e),
         hover(e) {
           if (arrowDrag) return;
@@ -1189,7 +1197,10 @@ export function initAdvanced(app) {
             if (key !== st.hoverPath) { st.hoverPath = key; st.hoverPathPts = h ? pathPts(h) : null; drawArrow(); }
             if (h || st.pickPath) { vp.canvas.style.cursor = h ? "pointer" : "default"; return; }
           }
-          if (overArrow(e)) { vp.canvas.style.cursor = "grab"; return; }
+          // jumpstart-3d: redraw only when arrow hover changes.
+          const hot = !!overArrow(e);
+          if (hot !== !!st.arrowHot) { st.arrowHot = hot; drawArrow(); }
+          if (hot) { vp.canvas.style.cursor = "grab"; return; }
           const hits = vp.pick(e, scene.regionMeshes());
           const k = hits.length ? profileKey(hits[0].object.userData.region.sketch, hits[0].object.userData.region.index) : null;
           // no sketch profile here: a flat face of a body can be pushed or pulled directly
@@ -1238,7 +1249,8 @@ export function initAdvanced(app) {
             return true;
           }
           const ad = overArrow(e);
-          if (ad) { arrowDrag = { ...ad, f: axisDragger(e, ad.origin, ad.n), v0: st.mode === "sym" ? st.dist / 2 : st.dist }; return true; }
+          // jumpstart-3d: highlight on press, including touch without a preceding hover.
+          if (ad) { arrowDrag = { ...ad, f: axisDragger(e, ad.origin, ad.n), v0: st.mode === "sym" ? st.dist / 2 : st.dist }; drawArrow(); return true; }
           const hits = vp.pick(e, scene.regionMeshes());
           if (!hits.length) {
             if (kind === "extrude" && st.profiles.size) {
@@ -1281,7 +1293,8 @@ export function initAdvanced(app) {
           def.distInput && def.distInput.setValue(st.dist);
           refresh(false);
         },
-        up() { arrowDrag = null; },
+        // jumpstart-3d: release the drag colour even when the pointer ends off the arrow.
+        up(e) { arrowDrag = null; st.arrowHot = !!overArrow(e); drawArrow(); },
       },
     };
     // "To object": the distance from the profile to a parallel face or plane
@@ -1335,17 +1348,8 @@ export function initAdvanced(app) {
       st.hoverFace = null;
       refresh();
     }
-    function overArrow(e) {
-      const a = def.arrow;
-      if (!a) return null;
-      const [mx, my] = vp.local(e);
-      const s = vp.project(a.head || a.tip);
-      if (Math.hypot(s[0] - mx, s[1] - my) < vp.tol(big ? 30 : 14)) return a;
-      if (!big) return null;
-      // Beginner: the whole (thick) shaft can be grabbed too
-      const o = vp.project(a.tip), dx = s[0] - o[0], dy = s[1] - o[1], t = Math.max(0, Math.min(1, ((mx - o[0]) * dx + (my - o[1]) * dy) / (dx * dx + dy * dy || 1)));
-      return Math.hypot(o[0] + dx * t - mx, o[1] + dy * t - my) < vp.tol(10) ? a : null;
-    }
+    // jumpstart-3d: grab the head or the whole shaft in either mode.
+    function overArrow(e) { return overDragArrow(vp, def.arrow, e); }
     // a sweep path pick: a sketch curve, unless the click is inside a profile of the same sketch
     function sweepPathHit(e) {
       const h = pickSketchCurve(e);
@@ -1410,19 +1414,8 @@ export function initAdvanced(app) {
       const origin = new THREE.Vector3(cx / n0, cy / n0, 0).applyMatrix4(M);
       const n = new THREE.Vector3(...sk.plane.n).normalize();
       const len = st.mode === "sym" ? st.dist / 2 : st.dist;
-      const tip = origin.clone().addScaledVector(n, len);
-      const ps = vp.pixelSize(tip);
-      // Beginner: a big handle standing out from the extruded face, the same size at any zoom
-      const head = big ? tip.clone().addScaledVector(n, (Math.sign(len) || 1) * ps * 58) : tip;
-      if (big) { const o = thickLines([origin.x, origin.y, origin.z, head.x, head.y, head.z], 0x1f4fa8, 7, false); o.renderOrder = 999; ov.add(o); }
-      else drawLine([origin, tip], 0x1f4fa8);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(1, 2.6, 16), new THREE.MeshBasicMaterial({ color: 0x1f4fa8, depthTest: false, transparent: true }));
-      cone.scale.setScalar(ps * (big ? 11 : 6));
-      cone.position.copy(head);
-      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().multiplyScalar(Math.sign(len) || 1));
-      cone.renderOrder = big ? 1000 : 14; // (Beginner's big arrow is drawn over the workplane)
-      ov.add(cone);
-      def.arrow = { origin, n, tip, head };
+      // jumpstart-3d: one bold, theme-aware arrow in both modes.
+      def.arrow = drawDragArrow(ov, vp, { origin, n, len, hot: !!arrowDrag || st.arrowHot, cut: resolvedOp(store.doc, st) === "cut", touch: vp.touchMode });
       if (st.toRef) { drawRefPlane(st.toRef, 0x1f4fa8); if (st.toRef.face) drawFace(st.toRef.face.base, st.toRef.face.face, 0x1f4fa8); }
       if (st.hoverPlane) { drawRefPlane(st.hoverPlane, 0xe8a317); if (st.hoverPlane.face) drawFace(st.hoverPlane.face.base, st.hoverPlane.face.face, 0xe8a317); }
     }
@@ -4220,12 +4213,19 @@ export function initAdvanced(app) {
         body.append(row("Distance", (def.distInput = app.numField({ value: st.d, id: "of-d", step: 0.5, live: true, onCommit: (v) => { st.d = v; refresh(false); } })), "of-d"));
         body.append(el("div", { class: "hint", style: { padding: 0 } }, "Positive adds material, negative removes it. On a hole, positive makes the hole smaller."));
       },
-      start() { refresh(); },
+      // jumpstart-3d: keep the arrow sized in pixels during zoom, and release the hook.
+      start() { refresh(); vp.onViewChange = draw; },
+      cleanup() { if (vp.onViewChange === draw) vp.onViewChange = null; }, // jumpstart-3d: release only our arrow zoom hook.
       handler: {
+        // jumpstart-3d: clear the highlight when the pointer leaves the canvas.
+        leave() { if (st.arrowHot) { st.arrowHot = false; draw(); } },
         wantsTouch: (e) => !!overArrow(e),
         hover(e) {
           if (arrowDrag) return;
-          if (overArrow(e)) { vp.canvas.style.cursor = "grab"; return; }
+          // jumpstart-3d: redraw only when arrow hover changes.
+          const hot = !!overArrow(e);
+          if (hot !== !!st.arrowHot) { st.arrowHot = hot; draw(); }
+          if (hot) { vp.canvas.style.cursor = "grab"; return; }
           const f = pickBaseFace(e, (b) => !b.hole && !b.locked && (!st.body || b.id === st.body));
           hover = f && f.info ? f : null;
           draw();
@@ -4233,7 +4233,8 @@ export function initAdvanced(app) {
         },
         down(e) {
           const a = overArrow(e);
-          if (a) { arrowDrag = { a, d0: st.d, f: axisDragger(e, a.origin, a.n) }; return true; }
+          // jumpstart-3d: highlight on press, including touch without a preceding hover.
+          if (a) { arrowDrag = { a, d0: st.d, f: axisDragger(e, a.origin, a.n) }; draw(); return true; }
           // a sketch profile drawn on the face (say a circle on a cylinder's top): pull just
           // that profile, like Fusion's Press Pull, instead of the whole face
           if (!editing && !st.faces.length) {
@@ -4266,7 +4267,8 @@ export function initAdvanced(app) {
           def.distInput && def.distInput.setValue(st.d);
           refresh(false);
         },
-        up() { arrowDrag = null; },
+        // jumpstart-3d: release the drag colour even when the pointer ends off the arrow.
+        up(e) { arrowDrag = null; st.arrowHot = !!overArrow(e); draw(); },
       },
     };
     function pickExtrudeFace(e, tell) {
@@ -4294,13 +4296,8 @@ export function initAdvanced(app) {
       st.hoverFace = null;
       refresh();
     }
-    function overArrow(e) {
-      const a = def.arrow;
-      if (!a) return null;
-      const [mx, my] = vp.local(e);
-      const s = vp.project(a.tip);
-      return Math.hypot(s[0] - mx, s[1] - my) < vp.tol(14) ? a : null;
-    }
+    // jumpstart-3d: grab the head or the whole shaft in either mode.
+    function overArrow(e) { return overDragArrow(vp, def.arrow, e); }
     function draw() {
       clearOv();
       def.arrow = null;
@@ -4310,15 +4307,8 @@ export function initAdvanced(app) {
       if (f0) {
         const origin = f0.at ? f0.at.clone() : new THREE.Vector3(...f0.c).applyMatrix4(f0.base.m);
         const n = f0.dir ? f0.dir.clone() : new THREE.Vector3(...f0.n).transformDirection(f0.base.m).normalize();
-        const tip = origin.clone().addScaledVector(n, st.d);
-        drawLine([origin, tip], 0x1f4fa8);
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(1, 2.6, 16), new THREE.MeshBasicMaterial({ color: 0x1f4fa8, depthTest: false, transparent: true }));
-        cone.scale.setScalar(vp.pixelSize(tip) * 6);
-        cone.position.copy(tip);
-        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().multiplyScalar(Math.sign(st.d) || 1));
-        cone.renderOrder = 14;
-        ov.add(cone);
-        def.arrow = { origin, n, tip };
+        // jumpstart-3d: Offset face shares Extrude's pull handle and cut colour.
+        def.arrow = drawDragArrow(ov, vp, { origin, n, len: st.d, hot: !!arrowDrag || st.arrowHot, cut: st.d < 0, touch: vp.touchMode });
       }
     }
     function refresh(rerender = true) { if (rerender) def.render(); draw(); schedulePreview(def); }
@@ -6363,7 +6353,9 @@ export function initAdvanced(app) {
     palette.append(el("header", {}, el("h4", {}, "Sketch palette · " + (sk ? sk.name : ""))));
     const body = el("div", { class: "body" });
     body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pal-snap", checked: sketcher.snapOn, onchange: (e) => { sketcher.snapOn = e.target.checked; } }), (sketcher.snapOn ? "Snap to grid points (" + withUnit(sketcher.gridSpacing(), 3) + " at this zoom)" : "Snap to grid points")));
-    if (sketcher.tool === "select") body.append(el("div", { class: "hint", id: "pal-select-hint", style: { padding: "2px 0 6px" } }, "Editing: click a line, circle or arc to type its size (it becomes a dimension). Drag shapes to move them. Double-click a dimension to change it."));
+    // jumpstart-3d: Fusion-style. Projected edges alone still leave a new sketch ready for its first drawing tool.
+    if (sketcher.tool === "select") body.append(el("div", { class: "hint", id: "pal-select-hint", style: { padding: "2px 0 6px" } },
+      sk && !sk.ents.some((x) => !x.proj) ? "Pick a tool to draw: Line (L), Rectangle (R), Circle (C), or another in the Create group." : "Editing: click a line, circle or arc to type its size (it becomes a dimension). Drag shapes to move them. Double-click a dimension to change it."));
     if (sketcher.tool === "mirror") body.append(mirrorBox(sketcher)); // jumpstart-3d: sketch mirror
     if (["rect", "rect3", "rectc"].includes(sketcher.tool)) body.append(row("Rectangle", seg([["rect", "2-point"], ["rect3", "3-point"], ["rectc", "Center"]], sketcher.tool, (v) => sketcher.setTool(v), "pal-rect")));
     if (sk && sk.image) {
