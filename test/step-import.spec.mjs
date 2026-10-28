@@ -3,7 +3,8 @@
 // far, so 200 parts took 45 s on a fast machine (a minute or more on a slower one; the watchdog stops any build at 120 s). It now fuses them all
 // in one boolean. The result is the same shape (touching and overlapping parts become one solid, separate parts stay separate solids in one body).
 // Keeping the parts apart in a compound was tried and refused: a boolean never intersects the solids inside one argument, so a hole through an
-// overlapping pin removed a third of what it should and a cut across the parts removed nothing. One body per part comes in a later piece.
+// overlapping pin removed a third of what it should and a cut across the parts removed nothing. The Import button now splits a file into one body per
+// part (test/step-parts.spec.mjs); this spec covers the plain, fused STEP body (a design that holds the file as one body, as a saved design does).
 // The fixtures are made with the app's own kernel (nothing downloaded; test/fixtures/make-step-fixtures.mjs writes them):
 //   step-assembly-3-parts.step  an assembly of three parts as other CAD programs write one: a 60x40x10 plate with a 4 mm hole, a pin 0.05 mm wider
 //                               than the hole pressed into it, and a 60x40x10 block lying on the plate; fused they are one solid of 48515 mm3
