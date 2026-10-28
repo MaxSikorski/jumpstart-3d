@@ -284,17 +284,10 @@ for (const mode of ["beginner", "advanced"]) {
     await fresh(mode);
     await page.click("#btn-export");
     await expect(page.locator("#btn-export")).toHaveAttribute("title", /import a model/);
-    // the project-file group comes right after the export-scope picker: Open a project file…, Import…, then a rule, before any export
-    const group = await page.evaluate(() => {
-      const kids = [...document.getElementById("menu-export").children].filter((el) => el.offsetParent !== null);
-      const at = kids.findIndex((el) => el.dataset.act === "import");
-      return { at, next: kids.slice(at, at + 3).map((el) => el.tagName === "HR" ? "HR" : el.textContent.trim()), before: kids.slice(0, at).map((el) => el.tagName) };
-    });
-    expect(group.at).toBeGreaterThanOrEqual(0);
-    expect(group.before, "only the export-scope picker and its rule come before").toEqual(["DIV", "HR"]);
-    expect(group.next[0]).toMatch(/^Open a project file/);
-    expect(group.next[1]).toMatch(/^Import a model, drawing or picture…/);
-    expect(group.next[2]).toBe("HR");
+    // top to bottom: Open a project file…, Import…, a rule, the export-scope picker, a rule, then STL
+    const order = await page.evaluate(() => [...document.getElementById("menu-export").children].filter((el) => el.offsetParent !== null)
+      .map((el) => el.tagName === "HR" ? "HR" : el.id === "export-scope" ? "SCOPE" : el.textContent.trim().slice(0, 14)));
+    expect(order.slice(0, 7)).toEqual(["Open a project", "Import a model", "HR", "SCOPE", "HR", "STL for 3D pri", "OBJ for Blende"]);
     const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#btn-import-menu")]);
     await expect(page.locator("#menu-export")).toBeHidden();
     const f = await modelFile("stl", "FromMenu.stl");
