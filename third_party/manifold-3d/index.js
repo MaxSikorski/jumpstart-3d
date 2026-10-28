@@ -12,10 +12,12 @@ export default function loadManifold() {
   return (ready ??= (async () => {
     const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const bytes = await gunzip(bin);
+    // the bytes go in as wasmBinary: the glue then instantiates them itself and REJECTS if that fails (its instantiateWasm hook has no way to fail,
+    // so a broken start used to hang forever). With the bytes in hand it makes no fetch.
     const M = await Module({
       // the glue would build "manifold.wasm" from import.meta.url, which does not exist in the single file's worker
       locateFile: () => "manifold.wasm",
-      instantiateWasm(info, receive) { WebAssembly.instantiate(bytes, info).then((r) => receive(r.instance, r.module)); return {}; },
+      wasmBinary: bytes,
     });
     M.setup();
     return M;
