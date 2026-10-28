@@ -43,6 +43,7 @@
       "export:json",
       "export:obj",
       "export:runscript",
+      "export:slicer",
       "export:step",
       "theme:agent",
       "theme:detail:extra",
