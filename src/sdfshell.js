@@ -117,8 +117,10 @@ export function isoSurface(G, F) {
     if (a < 0 || b < 0 || c < 0 || d < 0) return;
     const P = (m) => [V[m * 3], V[m * 3 + 1], V[m * 3 + 2]];
     const A = P(a), B = P(b), C = P(c), Dd = P(d);
-    const nX = (B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]), nY = (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]), nZ = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
-    const flip = nX * dx + nY * dy + nZ * dz < 0;
+    // jumpstart-3d: winding from the grid edge, not from triangle A, B, C's own normal: a quad bent by the projection above
+    // could face the wrong way, which flipped its two triangles (a torus wall's STL had 64 such edges and booleans on it failed).
+    // a, b, c, d go round the edge counter-clockwise seen from +x (x edges), -y (y edges) and +z (z edges)
+    const flip = dx < 0 || dy > 0 || dz < 0;
     const dAC = (A[0] - C[0]) ** 2 + (A[1] - C[1]) ** 2 + (A[2] - C[2]) ** 2, dBD = (B[0] - Dd[0]) ** 2 + (B[1] - Dd[1]) ** 2 + (B[2] - Dd[2]) ** 2;
     if (dAC <= dBD) { if (!flip) I.push(a, b, c, a, c, d); else I.push(a, c, b, a, d, c); }
     else { if (!flip) I.push(a, b, d, b, c, d); else I.push(a, d, b, b, d, c); }

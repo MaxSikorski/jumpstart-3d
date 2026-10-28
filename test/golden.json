@@ -460,8 +460,8 @@
   "spring.json": {
     "volumes": {
       "b0 Open spring": 892.6,
-      "b1 Flat spring": 880.3,
-      "b2 Fine left spring": 215.3,
+      "b1 Flat spring": 880.7,
+      "b2 Fine left spring": 215.4,
       "b3 Heavy spring": 2728.1
     },
     "stlTriangles": 219632,

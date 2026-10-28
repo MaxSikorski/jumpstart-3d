@@ -942,6 +942,9 @@ app.refreshUI = function (kind) {
 app.status = function () {
   const busy = app.scene && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size);
   $("busy").hidden = !busy || !app.kernel.ready;
+  // jumpstart-3d: a hollow on a curved shape can take a minute; say so after 3 s instead of only "Rebuilding"
+  { const k = app.kernel, long = busy && k.inflight && Date.now() - (k.inflightAt || 0) >= 2900 && k.inflight.some((b) => JSON.stringify(b.node).includes('"t":"shell"'));
+    $("busy").textContent = long ? "Hollowing: on a curved shape this can take a minute" : "Rebuilding"; }
   let hint = "";
   if (app.mode === "arch") hint = app.arch.hint();
   else if (app.sketcher.active) hint = app.sketchHint();
