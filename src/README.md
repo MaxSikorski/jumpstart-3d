@@ -10,6 +10,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
+| `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
 | `meshdetail.js` | Mesh detail menu: Normal, Fine, Extra fine, custom up to 32x |
 | `params.js` | Named parameters that drive sketch and feature sizes |
 | `projstore.js` | Designs kept in IndexedDB, with a localStorage fallback |
