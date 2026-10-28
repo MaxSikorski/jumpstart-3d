@@ -298,6 +298,7 @@ export function initAdvanced(app) {
       if (def.okLabel !== "Cancel" && def.okLabel !== "Done") foot.append(el("button", { class: "btn", onclick: () => closeCmd(false) }, "Cancel"));
       foot.append(ok);
       panel.append(foot);
+      app.status(); // jumpstart-3d: stale hint. every redraw of a tool panel refreshes the status bar, since a hint can depend on what the panel just changed (Align: Moving face / Target face)
     };
     def.render();
     def.refreshOk = () => { const b = $("cmd-ok"); if (b) b.disabled = (def.canOk ? !def.canOk() : false) || !!def.buildError; };
@@ -4633,7 +4634,7 @@ export function initAdvanced(app) {
         // jumpstart-3d: sketch move. Every sketch, hidden ones too (like the offset plane's list).
         if (store.doc.sketches.length) body.append(row("Sketch", el("select", { class: "num", id: "mv-sketch", onchange: (e) => { st.sketch = e.target.value || null; if (st.sketch) st.ids = []; changed(); } },
           el("option", { value: "" }, "…or pick a sketch"), ...store.doc.sketches.map((k) => el("option", { value: k.id, selected: st.sketch === k.id }, k.name || "Sketch"))), "mv-sketch"));
-        body.append(row("Drag shape", seg([["screen", "Free in 3D"], ["ground", "Free on ground"]], st.drag, (v) => { st.drag = v; def.render(); app.status(); }, "mv-drag"))); // jumpstart-3d: Free in 3D first (#163); the hint follows the choice
+        body.append(row("Drag shape", seg([["screen", "Free in 3D"], ["ground", "Free on ground"]], st.drag, (v) => { st.drag = v; def.render(); }, "mv-drag"))); // jumpstart-3d: Free in 3D first (#163); the hint follows the choice (def.render refreshes the status bar)
         body.append(row("Ring turn", snapSwitch())); // jumpstart-3d: rotation access
         body.append(el("div", { class: "subhead" }, "Move by (" + getUnit() + ")"));
         const r3 = el("div", { class: "row3" });
