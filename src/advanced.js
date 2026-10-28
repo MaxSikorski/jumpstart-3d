@@ -21,6 +21,7 @@ import { renderImage, QUALITY, LIGHT_COLORS, LIGHT_TYPES, BACKGROUNDS } from "./
 import { LIB, TEX_CATS, TEXTURE_DEFAULTS, textureThumb, texByKey, registerImageTexture, bytesToB64 } from "./texture.js";
 import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
+import { previewWorldBox } from "./meshpreview.js"; // jumpstart-3d: import preview
 import { importsAtOnce, showImportToast } from "./importtoast.js"; // jumpstart-3d: import units
 import { initMeasure } from "./measure.js";
 import { commitCombine, hasLaterKeepPiece } from "./combinesplit.js"; // jumpstart-3d: separate Combine pieces
@@ -31,6 +32,7 @@ import { initPipeCoil } from "./pipecoil.js";
 import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
 import { initFillOpenings } from "./fillopenings.js"; // jumpstart-3d: fill openings
+import { initFaceBox } from "./facebox.js"; // jumpstart-3d: box on face
 import { initGears } from "./gears.js"; // jumpstart-3d: gears
 import { snapSwitch, fine, makeGizmo, axisAlong, ringDrag, turnFeedback, placePill } from "./rotationui.js"; // jumpstart-3d: rotation access
 import { liveGizmo, onEscape } from "./pivot.js"; // jumpstart-3d: pivot
@@ -2324,8 +2326,10 @@ export function initAdvanced(app) {
     // big meshes take a few seconds to turn into a solid: say so, then say when it's there
     const t0 = Date.now();
     let told = false;
+    let framed = false;
     const watch = setInterval(() => {
       const v = app.scene.views.get(bodyId), err = app.scene.errors && app.scene.errors.get(bodyId);
+      if (plate && !framed && v && v.preview) { framed = true; frameIfOffScreen(bodyId); } // jumpstart-3d: import preview. frame it as soon as the preview shows
       if ((v && v.data) || err || Date.now() - t0 > 180000 || !store.doc.bodies.some((b) => b.id === bodyId)) {
         clearInterval(watch);
         if (plate && v && v.data && store.doc.bodies.some((b) => b.id === bodyId)) frameIfOffScreen(bodyId); // jumpstart-3d: drop import
@@ -2338,7 +2342,7 @@ export function initAdvanced(app) {
   // jumpstart-3d: drop import. A file import lands at the plate centre; a view that is zoomed in or panned away would not show it, so frame it then.
   // A body that is already fully in view leaves the camera alone.
   function frameIfOffScreen(id) {
-    const box = scene.bodyTightBox(id);
+    const box = scene.bodyTightBox(id) || previewWorldBox(scene.views.get(id)); // jumpstart-3d: import preview. the preview's box until the solid is built
     if (!box || box.isEmpty()) return;
     vp.updateCamera(); // the camera as the view says it is now, not as the last frame drew it
     vp.camera.updateMatrixWorld(true);
@@ -6416,6 +6420,7 @@ export function initAdvanced(app) {
   const fasteners = initFasteners(app, { openCmd, commit, row, seg, offsetSelect, STD }); // jumpstart-3d: fasteners
   const holePattern = initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv, offsetSelect, pitchRow, planeFromFace, CLEAR, CBORE, CSINK, TAP, isInchKey }); // jumpstart-3d: hole pattern
   const fillOpen = initFillOpenings(app, { openCmd, commit, schedulePreview, deleteFeature, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv }); // jumpstart-3d: fill openings
+  const faceBox = initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, pickBaseFace, drawFace, ov, clearOv, planeFromFace }); // jumpstart-3d: box on face
   const gears = initGears(app, { openCmd, commit, row, seg }); // jumpstart-3d: gears
   const namePlate = initNamePlate(app, { openCmd, commit, row, seg }); // jumpstart-3d: name plates
   const knurl = initKnurl(app, { openCmd, commit, row, seg }); // jumpstart-3d: knurl
@@ -6557,6 +6562,7 @@ export function initAdvanced(app) {
     fastener: () => fasteners.cmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
     fillOpenings: () => fillOpen.cmd(), // jumpstart-3d: fill openings
+    faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
     namePlate: () => namePlate.cmd(), addNamePlate: (spec) => namePlate.add(spec), // jumpstart-3d: name plates
     knurl: () => knurl.cmd(), addKnurl: (spec) => knurl.add(spec), // jumpstart-3d: knurl

@@ -21,6 +21,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `fillopen.js` | Fill openings, the geometry: finds the openings in a flat face (vents, slots, holes, logos) and rebuilds the part's faces without them, no boolean; runs in the worker and in Node |
 | `fillopenings.js` | Fill openings, the panel: click a flat face, outlines of every opening, click one to keep it open, Fill; one `fillopen` feature, editable from the timeline |
 | `fillpick.js` | Plain helpers for that panel (`openingAt`: which opening is under a point; the keep-open matching), with no DOM so Node tests import them |
+| `facebox.js` | Box on face (Beginner): click a flat face, drag a rectangle with live sizes, set the height (out, into or both ways); adds a plain box body on the face |
 | `gears.js` | Spur, rack and bevel gears |
 | `nameplate.js` | A plate sized to its text, raised or cut in |
 | `knurl.js` | Knurled knobs |
@@ -40,6 +41,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `importtoast.js` | Import units: a closed mesh of known units (3MF, OBJ and STL from 6 mm up) comes in at once; the note with its size, repairs and mm / cm / in buttons (one undo step); the dialog stays for open or non-manifold meshes and STL or OBJ under 6 mm; the note also has a CAD faces… shortcut to Mesh to STEP |
+| `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
 | `sw.js` | Service worker, site only (see section 4) |

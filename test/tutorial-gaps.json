@@ -18,6 +18,7 @@
       "bb-chipcarve",
       "bb-cosforge",
       "bb-extrude",
+      "bb-facebox",
       "bb-fillet",
       "bb-fillopen",
       "bb-import",
