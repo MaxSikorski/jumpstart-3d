@@ -18,6 +18,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sharelink.js` | Share link: a small design inside a web address |
 | `fasteners.js` | Bolts, nuts, threaded rods, tap cutters |
 | `holepattern.js` | Rows, staggered rows or a circle of holes on a face |
+| `facebox.js` | Box on face (Beginner): click a flat face, drag a rectangle with live sizes, set the height (out, into or both ways); adds a plain box body on the face |
 | `gears.js` | Spur, rack and bevel gears |
 | `nameplate.js` | A plate sized to its text, raised or cut in |
 | `knurl.js` | Knurled knobs |
