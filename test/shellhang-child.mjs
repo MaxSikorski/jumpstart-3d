@@ -17,7 +17,7 @@ const alias = {
   "manifold-3d": tp + "manifold-3d/index.js",
   "replicad-opencascadejs": tp + "replicad-opencascadejs/dist/replicad_single.js",
 };
-const source = `export * from "./kernel.js"; export { makeBox } from "replicad";`;
+const source = `export * from "./kernel.js"; export { makeBox, makeCylinder } from "replicad";`;
 const bundle = await build({
   stdin: { contents: source, resolveDir: root + "src", sourcefile: "shellhang-wrapper.js", loader: "js" },
   bundle: true, minify: true, target: "es2020", format: "esm", platform: "node", write: false, alias, logLevel: "silent",
@@ -58,9 +58,38 @@ function measure(n, id) {
       open: meshReport(tris(result.mesh)).open };
   } finally { shape.delete(); }
 }
-for (const name of ["guard", "outside", "thicker", "presspull"]) {
+function shaft(radii) {
+  let shape = k.makeCylinder(radii[0], 5);
+  try {
+    for (let i = 1; i < radii.length; i++) {
+      const piece = k.makeCylinder(radii[i], 5, [0, 0, 5 * i]);
+      try {
+        const joined = shape.fuse(piece);
+        shape.delete();
+        shape = joined;
+      } finally { piece.delete(); }
+    }
+    return shape;
+  } catch (error) { shape.delete(); throw error; }
+}
+for (const name of ["guard", "outside", "thicker", "bothhit", "presspull"]) {
   console.error("start " + name);
   try {
+    if (name === "bothhit") {
+      const start = Date.now();
+      const both = shaft([2.01, 2, 1.99]);
+      const two = shaft([3, 2, 1.99]);
+      let resultBoth, resultTwo;
+      try {
+        resultBoth = k._test.shellSolid(both, 2, [], "in", "exact");
+        resultTwo = k._test.shellSolid(two, 2, [], "in", "exact");
+        console.log(JSON.stringify({ case: name, nullBoth: resultBoth === null,
+          okTwo: !!resultTwo && k._test.safeVolume(resultTwo) > 0, ms: Date.now() - start }));
+      } finally {
+        resultBoth?.delete(); resultTwo?.delete(); both.delete(); two.delete();
+      }
+      continue;
+    }
     let n = node(0);
     if (name === "thicker") {
       const vertical = edges.filter(e => e.a[2] !== e.b[2]);
@@ -82,12 +111,16 @@ for (const name of ["guard", "outside", "thicker", "presspull"]) {
       console.log(JSON.stringify({ case: name, results }));
       continue;
     }
+    let baseVolume;
     if (name === "presspull") {
+      const plain = k.evalNode(n);
+      try { baseVolume = k._test.safeVolume(plain); }
+      finally { plain.delete(); }
       const face = base.mesh.faceInfo.find(f => f.t === "TORUS");
       if (!face) throw new Error("Expected a torus fillet face");
       n.mods.push({ id: "offset", seq: 10, t: "offset", d: -2, faces: [face] });
     } else n.mods.push({ id: "shell", seq: 10, t: "shell", th: 2, faces: [] });
-    console.log(JSON.stringify({ case: name, ...measure(n, name) }));
+    console.log(JSON.stringify({ case: name, ...measure(n, name), ...(name === "presspull" ? { base: baseVolume } : {}) }));
   } catch (error) {
     console.log(JSON.stringify({ case: name, ok: false, error: error.message || k.errorText(error) }));
   }

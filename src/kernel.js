@@ -1691,7 +1691,8 @@ function drainHoles(walls, shape, t, dir, dr) {
   if (!best) best = { c: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, bb.min[2]], w: [bb.size[0] * 0.5, bb.size[1] * 0.5] };
   const r = Math.max(0.25, (dr.d || 3) / 2), n = dr.n || 1;
   const below = dir === "out" ? t : dir === "both" ? t / 2 : 0, above = dir === "in" ? t : dir === "both" ? t / 2 : 0;
-  const z0 = best.c[2] - below - 1, h = below + above + 2;
+  const m = Math.max(1, t * 0.01); // jumpstart-3d: covers the shell hang guard's 0.5% thicker wall
+  const z0 = best.c[2] - below - m, h = below + above + 2 * m;
   const dx = Math.min(best.w[0] / 4, 30), dy = Math.min(best.w[1] / 4, 30);
   const spots = n >= 4 ? [[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]] : n === 2 ? [[-dx, 0], [dx, 0]] : [[0, 0]];
   const v0 = safeVolume(walls);

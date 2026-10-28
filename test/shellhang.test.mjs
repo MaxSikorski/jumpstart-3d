@@ -9,13 +9,13 @@ const run = await new Promise(resolve => {
   execFile(process.execPath, [child], { timeout: 150000, killSignal: "SIGKILL", maxBuffer: 1 << 20 },
     (error, stdout, stderr) => resolve({ error, stdout, stderr }));
 });
-const cases = new Map(run.stdout.trim().split("\n").filter(Boolean).map(line => {
+const cases = new Map(run.stdout.trim().split("\n").filter(line => line.startsWith("{")).map(line => {
   const result = JSON.parse(line);
   return [result.case, result];
 }));
 const last = run.stderr.trim().split("\n").findLast(line => line.startsWith("start ")) || "start unknown";
-const failure = run.error?.killed
-  ? `the engine run was stopped after 150 s during case ${last.slice(6)}: a hang? (${last})`
+const failure = run.error?.killed && run.error.code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+  ? `the engine run was stopped after 150 s during case ${last.slice(6)}: a hang?`
   : `the engine run failed or a case is missing (${last}): ${run.error?.message || "no result"}`;
 function result(name) {
   assert.ok(!run.error, failure);
@@ -27,8 +27,11 @@ function walls(r, expected) {
   assert.ok(r.ok, r.error);
   quick(r);
   assert.equal(r.wall.length, 3);
-  for (const [i, value] of r.wall.entries()) assert.ok(Math.abs(value - expected) <= .02,
-    `wall ${["+x", "+z", "fillet"][i]} measured ${value} mm, expected ${expected} ± 0.02 mm`);
+  for (const [i, value] of r.wall.entries()) {
+    const tolerance = i < 2 ? .002 : .02;
+    assert.ok(Math.abs(value - expected) <= tolerance,
+      `wall ${["+x", "+z", "fillet"][i]} measured ${value} mm, expected ${expected} ± ${tolerance} mm`);
+  }
   assert.equal(r.open, 0);
 }
 // the rounded box (r = 2) and the sharp-cornered hollow a wall t inside it leaves (its corners are rounded by 2 - t)
@@ -51,13 +54,19 @@ test("walls just outside the guard (1.99 and 2.01 mm) keep their own thickness",
   }
 });
 test("a thinner wall hitting another fillet radius retries 0.5% thicker and stays closed", () => {
-  walls(result("thicker"), 2.01);
+  const r = result("thicker");
+  walls(r, 2.01);
+  assert.ok(r.volume > 8700, `volume ${r.volume}, expected > 8700`);
+});
+test("when both the thinner and the thicker wall meet another radius, the offset is not tried (no hang)", () => {
+  const r = result("bothhit");
+  assert.equal(r.nullBoth, true, r.error || "both matching radii must skip the offset");
+  assert.equal(r.okTwo, true, r.error || "the two-radius control must produce a positive-volume solid");
+  quick(r);
 });
 test("Press Pull of a rounded edge by exactly its radius ends quickly (no engine hang)", () => {
   const r = result("presspull");
   quick(r);
-  if (!r.ok) {
-    assert.equal(typeof r.error, "string");
-    assert.ok(r.error.trim().length > 0);
-  }
+  assert.ok(r.ok || /isn't supported yet|would close/.test(r.error), r.error);
+  if (r.ok) assert.ok(r.volume < r.base, `volume ${r.volume}, expected below base ${r.base}`);
 });
