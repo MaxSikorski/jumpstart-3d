@@ -6355,7 +6355,9 @@ export function initAdvanced(app) {
     palette.append(el("header", {}, el("h4", {}, "Sketch palette · " + (sk ? sk.name : ""))));
     const body = el("div", { class: "body" });
     body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pal-snap", checked: sketcher.snapOn, onchange: (e) => { sketcher.snapOn = e.target.checked; } }), (sketcher.snapOn ? "Snap to grid points (" + withUnit(sketcher.gridSpacing(), 3) + " at this zoom)" : "Snap to grid points")));
-    if (sketcher.tool === "select") body.append(el("div", { class: "hint", id: "pal-select-hint", style: { padding: "2px 0 6px" } }, "Editing: click a line, circle or arc to type its size (it becomes a dimension). Drag shapes to move them. Double-click a dimension to change it."));
+    // jumpstart-3d: Fusion-style. Projected edges alone still leave a new sketch ready for its first drawing tool.
+    if (sketcher.tool === "select") body.append(el("div", { class: "hint", id: "pal-select-hint", style: { padding: "2px 0 6px" } },
+      sk && !sk.ents.some((x) => !x.proj) ? "Pick a tool to draw: Line (L), Rectangle (R), Circle (C), or another in the Create group." : "Editing: click a line, circle or arc to type its size (it becomes a dimension). Drag shapes to move them. Double-click a dimension to change it."));
     if (sketcher.tool === "mirror") body.append(mirrorBox(sketcher)); // jumpstart-3d: sketch mirror
     if (["rect", "rect3", "rectc"].includes(sketcher.tool)) body.append(row("Rectangle", seg([["rect", "2-point"], ["rect3", "3-point"], ["rectc", "Center"]], sketcher.tool, (v) => sketcher.setTool(v), "pal-rect")));
     if (sk && sk.image) {
