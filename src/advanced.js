@@ -1077,7 +1077,6 @@ export function initAdvanced(app) {
       st.profiles.set(profileKey(r.sketch, r.index), { index: r.index, ref: { key: r.region.key, pt: r.region.pt } });
       if (opts.dist) st.dist = opts.dist;
       if (opts.drag) { st.dist = 0; st.tilted = true; } // jumpstart-3d: direct edit. a drag starts from 0 and the camera stays put (a click lets it tilt, as E does)
-
       scene.state.forceSketch = r.sketch;
       scene.syncSketches(store.view);
     }
