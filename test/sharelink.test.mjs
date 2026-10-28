@@ -464,3 +464,23 @@ test("fill openings survives sharing and validates nested keep entries", async (
     const bad=structuredClone(doc);bad.bodies[0].node.mods[0].keep=[entry];throwsShare(()=>validateEnvelope(env(bad)),entry.extra ? "unsupported" : "damaged");
   }
 });
+
+test("STEP parts (#173): a step node may carry parts: true and keeppiece pieces with src import; nothing else may", () => {
+  const part = (mutate) => (d) => { const n = d.bodies[0].node; n.parts = true; n.mods = [{ id: "f1", seq: 2, t: "keeppiece", piece: 0, count: 3, src: "import" }]; mutate?.(n, d); };
+  validateEnvelope(valid(part(), "import-step"));
+  bad(part((n) => { n.parts = false; }), "damaged", /parts flag/, "import-step"); // true or absent, never false
+  bad(part((n) => { n.parts = "yes"; }), "damaged", /parts flag/, "import-step");
+  bad((d) => { d.bodies[0].node.parts = true; d.bodies[0].node.t = "prim"; d.bodies[0].node.kind = "box"; d.bodies[0].node.p = { w: 1, d: 1, h: 1 }; delete d.bodies[0].node.asset; }, "damaged", /parts flag/, "import-step");
+  bad(part((n) => { n.mods[0].src = "other"; }), "damaged", /modifier source/, "import-step"); // a combine's source is not shareable here
+  bad(part((n) => { n.mods[0].t = "fillet"; }), "damaged", /modifier source/, "import-step"); // only the keeppiece of an import
+});
+
+test("STEP parts (#173): the parts of an imported file make a link and read back unchanged", async () => {
+  const doc = fixture("import-step");
+  const first = doc.bodies[0];
+  doc.bodies = [0, 1, 2].map((i) => { const b = structuredClone(first); b.id = "p" + i; b.name = "box part " + (i + 1); b.node.parts = true; b.node.mods = [{ id: "k" + i, seq: i + 2, t: "keeppiece", piece: i, count: 3, src: "import" }]; return b; });
+  const link = await makeLink(doc, BASE);
+  assert.equal(link.ok, true);
+  const read = await readFragment(extractFragment(link.url));
+  assert.deepEqual(read.bodies.map((b) => b.node), doc.bodies.map((b) => b.node));
+});

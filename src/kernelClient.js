@@ -64,7 +64,7 @@ export class KernelClient {
         r.key = r.rev;
         delete r.rev;
         this.meshes.set(r.key, r);
-        if (this.meshes.size > 160) this.meshes.delete(this.meshes.keys().next().value);
+        if (this.meshes.size > Math.max(160, (this.needed ? this.needed.size : 0) + 16)) this.meshes.delete(this.meshes.keys().next().value); // jumpstart-3d: STEP parts (#173). a design of 200 bodies kept only the last 160 meshes, and the first 40 stayed unbuilt
       }
       this.inflight = null;
       this.perf && this.perf.done(msg.results); // jumpstart-3d: perf panel
