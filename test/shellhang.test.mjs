@@ -9,10 +9,11 @@ const run = await new Promise(resolve => {
   execFile(process.execPath, [child], { timeout: 150000, killSignal: "SIGKILL", maxBuffer: 1 << 20 },
     (error, stdout, stderr) => resolve({ error, stdout, stderr }));
 });
-const cases = new Map(run.stdout.trim().split("\n").filter(line => line.startsWith("{")).map(line => {
-  const result = JSON.parse(line);
-  return [result.case, result];
-}));
+const cases = new Map();
+for (const line of run.stdout.split("\n")) {
+  if (!line.startsWith("{")) continue;
+  try { const result = JSON.parse(line); cases.set(result.case, result); } catch {} // a line cut off by a kill: that case counts as missing
+}
 const last = run.stderr.trim().split("\n").findLast(line => line.startsWith("start ")) || "start unknown";
 const failure = run.error?.killed && run.error.code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
   ? `the engine run was stopped after 150 s during case ${last.slice(6)}: a hang?`
