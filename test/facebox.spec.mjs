@@ -2,13 +2,13 @@
 // real mouse, see its width and depth live, type exact sizes, pick a height (out of the face, into it, or both ways) and get a
 // plain box body sitting exactly on the face, ready for Group. Pi-lid ranked fix #5 (.claude/real-tasks/pi-lid). The plate with
 // an opening is made by the app and imported back as an STL, so an imported mesh is covered in CI; Max's own lid
-// (test/fixtures/pi-lid.stl, or JS3D_PILID=<path>) is not in the public repo, so that test skips, saying so, while it is missing.
+// (examples/pi-lid/raspberry-pi-4-case-lid.stl, or JS3D_PILID=<path>) is committed as a reference model.
 import { test, expect } from "@playwright/test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { boot, watchErrors, loadDoc, newDoc, waitIdle, body, prim } from "./helpers.mjs";
 
-const lidFile = process.env.JS3D_PILID || fileURLToPath(new URL("./fixtures/pi-lid.stl", import.meta.url));
+const lidFile = process.env.JS3D_PILID || fileURLToPath(new URL("../examples/pi-lid/raspberry-pi-4-case-lid.stl", import.meta.url));
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -301,7 +301,6 @@ test("Out of the face on one level of a two-level top sits exactly on that level
 });
 
 test("Max's Pi lid: a box drawn on the lid's floor, flush with both faces, joins closed", async () => {
-  test.skip(!existsSync(lidFile), "test/fixtures/pi-lid.stl is missing (Max's Pi lid, not in the public repo): copy it there or set JS3D_PILID to run this test");
   test.setTimeout(240_000);
   await loadDoc(page, newDoc("Face box lid", "beginner"));
   await page.selectOption("#snap", "0.25");

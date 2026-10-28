@@ -43,6 +43,7 @@ See [NOTICE.md](NOTICE.md) for credit and licensing.
 - [What this repository adds on top of the original](#what-this-repository-adds-on-top-of-the-original)
 - [Setting up your server](#setting-up-your-server)
 - [Build it yourself](#build-it-yourself)
+- [Example models](#example-models)
 - [License](#license)
 
 ## Get started
@@ -604,6 +605,10 @@ hashes. [test/README.md](test/README.md) has the rest.
 
 The map of folders, the rules of thumb for changes and how to send a pull request are in
 [CONTRIBUTING.md](CONTRIBUTING.md); the review process is in [REVIEW.md](REVIEW.md).
+
+## Example models
+
+- [examples/pi-lid/](examples/pi-lid/): a Raspberry Pi 4 case lid (CanaKit case), the reference model for the "fill the openings" tests.
 
 ## License
 
