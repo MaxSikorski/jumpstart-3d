@@ -218,25 +218,29 @@ export function initAdvanced(app) {
   let delegated = false, pressOn = null, liveOn = false;
   // jumpstart-3d: pivot. The live gizmo: a click that selects bodies shows move / turn handles at once; only pressing one transforms
   const live = liveGizmo(app, { parent: vpEl, active: () => app.mode === "advanced" && workspace === "design" && !app.command && !sketcher.active && !app.simLock, design: () => app.mode === "advanced" && workspace === "design" && !app.simLock });
+  let direct = false; // jumpstart-3d: direct edit. a press on a finished sketch's shape that may still become a drag
   const defaultHandler = {
-    wantsTouch: (e) => !!(live.pick(e) || app.beginner.pickHandle(e)),
+    wantsTouch: (e) => !!(live.pick(e) || app.beginner.pickHandle(e) || app.directEdit.regionAt(e)), // jumpstart-3d: direct edit
     hover(e) {
-      if (live.hover(e, "dot")) { scene.setHovered(null); return; }
-      if (app.beginner.hoverHandle(e)) { live.unhot(); scene.setHovered(null); return; }
-      if (live.hover(e, "parts")) { scene.setHovered(null); return; }
+      if (live.hover(e, "dot")) { scene.setHovered(null); app.directEdit.leave(); return; } // jumpstart-3d: direct edit (leave, here and in the next two)
+      if (app.beginner.hoverHandle(e)) { live.unhot(); scene.setHovered(null); app.directEdit.leave(); return; }
+      if (live.hover(e, "parts")) { scene.setHovered(null); app.directEdit.leave(); return; }
+      if (app.directEdit.hover(e)) { scene.setHovered(null); return; } // jumpstart-3d: direct edit. a finished sketch's shape lights up
       const f = scene.pickFace(e);
       scene.setHovered(f ? f.body : null);
       vp.canvas.style.cursor = "default";
     },
-    leave() { scene.setHovered(null); },
+    leave() { scene.setHovered(null); app.directEdit.leave(); }, // jumpstart-3d: direct edit
     down(e) {
       selSketch = null;
+      direct = false; // jumpstart-3d: direct edit. a press left over from before a mode switch is not this one
       // jumpstart-3d: pivot. The dot first, then the resize handles, then the arrows and rings. Not with Shift, Ctrl or Meta held (that toggles
       // the body) and not for the tap a finger lets the viewport route after pressing a handle without moving
       const plain = !(e.shiftKey || e.ctrlKey || e.metaKey) && !vp.tapping;
       if (plain && live.down(e, "dot")) { liveOn = true; return true; }
       if (app.beginner.handleDown(e)) { delegated = true; return true; }
       if (plain && live.down(e, "parts")) { liveOn = true; return true; }
+      if (plain && app.directEdit.down(e)) { direct = true; return true; } // jumpstart-3d: direct edit. a click on a finished sketch's shape opens Extrude, a drag pulls it
       const f = scene.pickFace(e);
       const add = e.shiftKey || e.ctrlKey || e.metaKey;
       if (f) {
@@ -252,6 +256,7 @@ export function initAdvanced(app) {
     },
     move(e) {
       if (liveOn) { live.move(e); return; } // jumpstart-3d: pivot
+      if (direct) { if (app.directEdit.move(e)) direct = false; return; } // jumpstart-3d: direct edit
       if (pressOn) {
         const [x, y] = vp.local(e);
         if (Math.hypot(x - pressOn.start[0], y - pressOn.start[1]) < 5) return;
@@ -263,6 +268,7 @@ export function initAdvanced(app) {
     },
     up(e) {
       if (liveOn) { liveOn = false; const r = live.up(e); renderBrowser(); return r; } // jumpstart-3d: pivot
+      if (direct) { direct = false; app.directEdit.up(e); return; } // jumpstart-3d: direct edit
       if (pressOn) {
         const { id, add } = pressOn;
         pressOn = null;
@@ -272,7 +278,7 @@ export function initAdvanced(app) {
       }
       if (delegated) { delegated = false; app.beginner.handler.up(e); renderBrowser(); }
     },
-    cancel() { pressOn = null; if (liveOn) { liveOn = false; live.cancel(); } if (delegated) { delegated = false; app.beginner.handler.cancel(); } }, // jumpstart-3d: pivot (live)
+    cancel() { pressOn = null; direct = false; app.directEdit.cancel(); if (liveOn) { liveOn = false; live.cancel(); } if (delegated) { delegated = false; app.beginner.handler.cancel(); } }, // jumpstart-3d: pivot (live)
     dblclick(e) {
       const hits = vp.pick(e, scene.regionMeshes());
       if (hits.length) { app.enterSketch(hits[0].object.userData.region.sketch); return; }
@@ -1070,6 +1076,7 @@ export function initAdvanced(app) {
       st.sketchId = r.sketch;
       st.profiles.set(profileKey(r.sketch, r.index), { index: r.index, ref: { key: r.region.key, pt: r.region.pt } });
       if (opts.dist) st.dist = opts.dist;
+      if (opts.drag) { st.dist = 0; st.tilted = true; } // jumpstart-3d: direct edit. a drag starts from 0 and the camera stays put (a click lets it tilt, as E does)
       scene.state.forceSketch = r.sketch;
       scene.syncSketches(store.view);
     }
@@ -1217,6 +1224,7 @@ export function initAdvanced(app) {
           if (k !== hoverKey) { hoverKey = k; scene.highlightRegions(new Set(st.profiles.keys()), hoverKey); }
         },
         dblclick(e) {
+          if (def.openedBy && e.timeStamp - def.openedBy.at < 800 && Math.hypot(e.clientX - def.openedBy.x, e.clientY - def.openedBy.y) < 6) { closeCmd(false); app.enterSketch(def.openedBy.sketch); return; } // jumpstart-3d: direct edit. a double-click where the shape was clicked opens its sketch
           if (st.pickAxis || st.pickPath) return;
           const hits = vp.pick(e, scene.regionMeshes());
           if (!hits.length) return;
@@ -1232,6 +1240,9 @@ export function initAdvanced(app) {
           refresh();
         },
         down(e) {
+          // jumpstart-3d: direct edit. The second press of a double-click on the shape that just opened Extrude: ignored (a finger's double-tap opens the sketch here).
+          // The arrow starts at the shape's centre, so a quick grab of the arrow at that exact spot (within 6 px, 500 ms) cannot be told from a double-click; a deliberate grab there is unlikely
+          if (def.openedBy && e.timeStamp - def.openedBy.at < 500 && Math.hypot(e.clientX - def.openedBy.x, e.clientY - def.openedBy.y) < (vp.touchMode ? 20 : 6)) { if (vp.touchMode) setTimeout(() => { if (app.command === def) { closeCmd(false); app.enterSketch(def.openedBy.sketch); } }, 0); return true; }
           const sweepCurve = kind === "sweep" ? sweepPathHit(e) : null;
           if (kind === "sweep" && (sweepCurve || st.pickPath)) {
             const h = sweepCurve;
@@ -1424,6 +1435,10 @@ export function initAdvanced(app) {
     // opened by itself when a Beginner sketch closed a shape: Cancel goes back to the sketch
     if (opts.backToSketch && opts.sketch) def.onCancel = () => setTimeout(() => { if (!app.command && app.mode === "beginner" && findSketch(store.doc, opts.sketch)) app.enterSketch(opts.sketch); }, 0);
     openCmd(def);
+    // jumpstart-3d: direct edit. Opened by a press on a finished sketch's shape: a drag pulls it at once (Extrude then stays open); a click notes when
+    // and where, so the second click of a double-click at that spot is ignored and the double-click opens the sketch
+    if (opts.drag && def.arrow) arrowDrag = { ...def.arrow, f: axisDragger(opts.drag, def.arrow.origin, def.arrow.n), v0: 0 };
+    if (opts.clicked) def.openedBy = { at: opts.clicked.t, sketch: opts.region.sketch, x: opts.clicked.x, y: opts.clicked.y };
   }
   function pointIn(r, pt) {
     const inside = (poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if (a[1] > pt[1] !== b[1] > pt[1] && pt[0] < ((b[0] - a[0]) * (pt[1] - a[1])) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
@@ -6625,6 +6640,7 @@ export function initAdvanced(app) {
     openPrintSim,
     setWorkspace,
     handler: defaultHandler,
+    get workspace() { return workspace; }, // jumpstart-3d: direct edit
     key,
     refresh(kind) {
       vp.request(); // jumpstart-3d: pivot. the live gizmo follows the selection

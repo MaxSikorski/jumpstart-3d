@@ -49,6 +49,7 @@ captureShare(); // jumpstart-3d: share link. first thing: a design link's fragme
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 import { initFineTurn } from "./fineturn.js"; // jumpstart-3d: fine rotation
 import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
+import { initDirectEdit } from "./directedit.js"; // jumpstart-3d: direct edit
 import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
 // jumpstart-3d: insert supplier parts
 import { initInsertPart } from "./insertpart.js";
@@ -170,6 +171,7 @@ function boot() {
   app.pivot = initPivot(app); // jumpstart-3d: pivot. before the two modes: both draw and use it
   app.beginner = initBeginner(app);
   app.advanced = initAdvanced(app);
+  app.directEdit = initDirectEdit(app, { vp, scene }); // jumpstart-3d: direct edit. click or drag a finished sketch's shape to extrude it
   if (IS_IOS) document.documentElement.classList.add("ios");
   if (IS_MAC) document.documentElement.classList.add("mac");
   // iPhone / iPad: a pinch on the panels would zoom the whole page out of shape (the 3D view has its own pinch)
@@ -416,6 +418,7 @@ app.switchMode = function (mode) {
 };
 
 app.enterSketch = function (id) {
+  app.shapeClosedTold = false; // jumpstart-3d: direct edit. the "shape closed" note shows once per sketch visit
   if (app.command) app.command.cancel();
   app.select([]);
   app.sketcher.enter(id);
@@ -898,6 +901,11 @@ app.quickExtrude = function (opts = {}) {
 // Beginner: as soon as a sketch has a new closed shape, Extrude opens on it (already 10 mm up,
 // with the big arrow); Cancel goes back to the sketch to keep drawing
 app.onShapeClosed = function (skId, regionKeys) {
+  // jumpstart-3d: direct edit. Beginner no longer opens Extrude by itself: finish the sketch, then click the shape (or press E)
+  if (app.mode === "beginner") {
+    if (app.sketcher.active === skId && !app.shapeClosedTold) { app.shapeClosedTold = true; app.toast("Shape closed. Finish the sketch, then click the shape to extrude it (or press E now)."); }
+    return;
+  }
   if (app.mode !== "beginner" || app.sketcher.active !== skId) return;
   setTimeout(() => {
     if (app.mode !== "beginner" || app.sketcher.active !== skId) return;
@@ -963,6 +971,7 @@ app.status = function () {
   if (app.mode === "arch") hint = app.arch.hint();
   else if (app.sketcher.active) hint = app.sketchHint();
   else if (app.command) hint = app.command.hint ? app.command.hint() : "";
+  else if (app.directEdit && app.directEdit.hint()) hint = app.directEdit.hint(); // jumpstart-3d: direct edit
   else if (app.mode === "beginner") hint = app.vp.touchMode ? "Drag shapes onto the workplane. Drag empty space to orbit, two fingers to pan and zoom." : (IS_MAC ? "Drag shapes onto the workplane. Option-drag (or two-finger click and drag) to orbit, Option+Shift-drag to pan, pinch or scroll to zoom." : "Drag shapes onto the workplane. Right-drag to orbit, Shift+right-drag or middle-drag to pan, scroll to zoom.");
   else if (app.sel.length === 1 && !app.isLocked(app.sel[0])) hint = "Drag the white handles to scale the body. Double-click a body or timeline item to edit it.";
   else hint = app.vp.touchMode ? "Start with Sketch, or add a primitive. Drag to orbit, two fingers to pan and zoom, double-tap to edit." : (IS_MAC ? "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Option-drag orbits, Option+Shift-drag pans, pinch zooms." : "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Right-drag orbits, middle-drag pans.");

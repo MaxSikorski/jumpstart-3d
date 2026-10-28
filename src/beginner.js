@@ -719,22 +719,24 @@ export function initBeginner(app) {
   let multi = false;
   const handler = {
     hover(e) {
-      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot
+      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); app.directEdit.leave(); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot, direct edit
       const h = pickHandle(e);
       if (h !== hot) { hot = h; vp.request(); }
-      if (h) { app.scene.setHovered(null); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
+      if (h) { app.scene.setHovered(null); app.directEdit.leave(); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
+      if (multi) app.directEdit.leave();
+      else if (app.directEdit.hover(e)) { app.scene.setHovered(null); return; } // jumpstart-3d: direct edit. a finished sketch's shape lights up
       const f = app.scene.pickFace(e);
       app.scene.setHovered(f ? f.body : null);
       vp.canvas.style.cursor = f ? "move" : "default";
     },
-    leave() { app.scene.setHovered(null); hot = null; vp.request(); },
+    leave() { app.scene.setHovered(null); hot = null; app.directEdit.leave(); vp.request(); }, // jumpstart-3d: direct edit
     // touch: dragging a handle or a shape moves it; dragging empty space orbits
     dblclick(e) {
       // double-click a sketch shape to edit the sketch
       const hits = vp.pick(e, app.scene.regionMeshes());
       if (hits.length) app.enterSketch(hits[0].object.userData.region.sketch);
     },
-    wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e)); }, // jumpstart-3d: pivot
+    wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e) || (!multi && app.directEdit.regionAt(e))); }, // jumpstart-3d: pivot, direct edit
     down(e) {
       vpEl.querySelectorAll(".popover:not(.mirror-pop)").forEach((p) => p.remove());
       // jumpstart-3d: pivot. The dot first: it only moves the pivot. Not with Shift/Ctrl/Meta or Multi-select on (those pick bodies), and not for the tap a finger lets the viewport route
@@ -743,6 +745,8 @@ export function initBeginner(app) {
       const h = pickHandle(e);
       rotKeys = null; // a click ends arrow-key turning (a rotation arc starts it again)
       if (h) return startHandle(e, h);
+      // jumpstart-3d: direct edit. A press on a finished sketch's shape: a click opens Extrude on it, a drag pulls it (Shift, Ctrl, Cmd or Multi-select pass through)
+      if (!multi && app.directEdit.down(e)) { drag = { kind: "direct", move: (ev) => { if (app.directEdit.move(ev)) drag = null; }, up: (ev) => app.directEdit.up(ev) }; return true; }
       const f = app.scene.pickFace(e);
       if (f) {
         let sel = app.sel.slice();
@@ -815,7 +819,7 @@ export function initBeginner(app) {
       if (d.kind === "pivot" && vp.touchMode && !d.moved()) return "tap"; // a finger on the dot that did not move: the viewport treats it as a tap on what is under it
       if (d.kind === "rot" && vp.touchMode && !d.moved) return "tap"; // jumpstart-3d: rotation access. a finger on an arc that did not move: the viewport treats it as a tap on what is under it
     },
-    cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
+    cancel() { app.directEdit.cancel(); if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching
