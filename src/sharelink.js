@@ -190,8 +190,8 @@ const SKETCH_KEYS = new Set(["id", "name", "seq", "plane", "pts", "ents", "hidde
 const ENT_KEYS = {
   line: ["a", "b"], circle: ["c", "r"], arc: ["c", "a", "b"], spline: ["pts", "closed"], point: ["p"], text: ["p", "str", "size", "angle", "font"],
 };
-const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2", "sg"]); // sg: jumpstart-3d: sketch solver (an angle's turning direction)
-const CON_TYPES = new Set(["origin", "coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "concentric", "equal", "midpoint", "dim"]);
+const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2", "sg", "x", "y"]); // sg: jumpstart-3d: sketch solver (an angle's turning direction)
+const CON_TYPES = new Set(["fixed", "origin", "coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "concentric", "equal", "midpoint", "dim"]);
 const PLANE_KEYS = new Set(["id", "name", "seq", "kind", "def", "plane", "size", "hidden"]);
 const MEDIA_MAPS = new Set(["front", "wrap", "box", "ball"]);
 const UNITS = new Set(["mm", "cm", "m", "in", "ft", "deg"]);
@@ -351,6 +351,7 @@ export function validateEnvelope(env) {
       id(c.id, "a constraint id"); if (cid.has(c.id)) throw damaged("duplicate constraint id"); cid.add(c.id);
       for (const k of ["p", "p1", "p2"]) if (c[k] !== undefined && c[k] !== null) needP(c[k]);
       for (const k of ["e", "e1", "e2"]) if (c[k] !== undefined && c[k] !== null && (typeof c[k] !== "string" || !eid.has(c[k]))) throw damaged("a constraint points at a missing shape");
+      if (c.t === "fixed") { needP(c.p); num(c.x, "fixed x"); num(c.y, "fixed y"); }
       if (c.expr !== undefined) text(c.expr, "a dimension expression", LIMITS.EXPR);
       if (c.unit !== undefined && !UNITS.has(c.unit)) throw damaged("a dimension unit");
       if (c.name !== undefined) text(c.name, "a dimension name", 64);

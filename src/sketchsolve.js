@@ -42,6 +42,7 @@ function buildTerms(sk, store) {
   for (const c of sk.cons || []) {
     const e1 = E.get(c.e1), e2 = E.get(c.e2), e = E.get(c.e), p = P.get(c.p);
     if (c.t === "origin") { if (p) add(c, [c.p], () => [p.x, p.y], 2); continue; }
+    if (c.t === "fixed") { if (p) add(c, [c.p], () => [p.x - c.x, p.y - c.y], 2); continue; }
     if (c.t === "horizontal" || c.t === "vertical") {
       const ends = c.p1 ? [c.p1, c.p2] : e1 && isLine(e1) ? [e1.a, e1.b] : null;
       if (!ends || !P.has(ends[0]) || !P.has(ends[1])) continue;
@@ -222,6 +223,7 @@ export function solveSketch(sk, keep = new Set()) {
   const P = new Map(sk.pts.map((p) => [p.id, p]));
   // points on the origin sit at (0, 0) and never move
   for (const c of sk.cons) if (c.t === "origin") { const p = P.get(c.p); if (p) { p.x = 0; p.y = 0; fixed.add(c.p); } }
+  for (const c of sk.cons) if (c.t === "fixed") { const p = P.get(c.p); if (p) { p.x = c.x; p.y = c.y; fixed.add(c.p); } }
   const { terms } = buildTerms(sk, true);
   const vars = bindVars(sk, terms, P, fixed, false);
   const start = vars.map((v) => v.o[v.k]);

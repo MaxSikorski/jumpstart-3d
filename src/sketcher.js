@@ -503,7 +503,8 @@ export class Sketcher {
       if (d < bd) { bd = d; best = c.id; }
     }
     // points take priority in select mode and for point constraints
-    if (this.tool === "select" || this.tool === "dim" || this.tool === "c-coincident" || this.tool === "c-horizontal" || this.tool === "c-vertical" || this.tool === "c-midpoint") {
+    // jumpstart-3d: fixed constraint
+    if (this.tool === "c-fixed" || this.tool === "select" || this.tool === "dim" || this.tool === "c-coincident" || this.tool === "c-horizontal" || this.tool === "c-vertical" || this.tool === "c-midpoint") {
       const already = new Set((this.cpicks || []).map((k) => k.pid).filter(Boolean));
       for (const p of sk.pts) if (Math.hypot(p.x - raw[0], p.y - raw[1]) < tol && !sk.ents.some((e) => e.t === "text" && e.p === p.id) && !(this.tool === "c-coincident" && already.has(p.id) && Math.hypot(raw[0], raw[1]) < tol)) return "pt:" + p.id;
     }
@@ -850,6 +851,8 @@ export class Sketcher {
       if (ent && ent.t === "arc") pids = [ent.c, ent.a, ent.b];
     }
     if (pids.some((pid) => sk.ents.some((x) => x.proj && entPts(x).includes(pid)))) pids = [];
+    // jumpstart-3d: fixed constraint
+    if (pids.some((pid) => (sk.cons || []).some((c) => c.t === "fixed" && c.p === pid))) pids = [];
     const textEnt = !hit.startsWith("pt:") && sk.ents.find((x) => x.id === hit && x.t === "text");
     this.drag = { start: raw, pids, orig: new Map(sk.pts.filter((p) => pids.includes(p.id)).map((p) => [p.id, [p.x, p.y]])), moved: false, hit, add: e.shiftKey, text: textEnt ? textEnt.id : null };
     this.redraw();

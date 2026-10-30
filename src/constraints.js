@@ -2,6 +2,8 @@
 // perpendicular, tangent, concentric, equal and midpoint. They are stored on the sketch (sk.cons) and kept true by a small
 // iterative solver that runs after every sketch edit and while dragging.
 export const CONSTRAINTS = {
+  // jumpstart-3d: fixed constraint
+  fixed: { label: "Fixed", glyph: "📌", picks: "A point, line, arc or circle" },
   coincident: { label: "Coincident", glyph: "●", picks: "A point, then another point, a line/arc/circle or the origin" },
   horizontal: { label: "Horizontal", glyph: "H", picks: "A line (or two points)" },
   vertical: { label: "Vertical", glyph: "V", picks: "A line (or two points)" },
@@ -36,6 +38,8 @@ export function pickKind(sk, id) {
 export function wants(type, picks) {
   const k = picks.map((p) => p.kind);
   switch (type) {
+    // jumpstart-3d: fixed constraint
+    case "fixed": return k.length && k.every((x) => x === "pt" || x === "line" || x === "round") ? "done" : "bad";
     case "horizontal": case "vertical":
       if (k.length === 1) return k[0] === "line" ? "done" : k[0] === "pt" ? "more" : "bad";
       return k[0] === "pt" && k[1] === "pt" ? "done" : "bad";
@@ -78,12 +82,20 @@ export function mergePoints(sk, keep, drop) {
 export function addConstraint(sk, type, picks) {
   sk.cons = sk.cons || [];
   const P = (id) => sk.pts.find((q) => q.id === id);
-  const fixedPt = (pid) => sk.ents.some((e) => e.proj && entIds(e).includes(pid));
+  // jumpstart-3d: fixed constraint
+  const fixedPt = (pid) => sk.ents.some((e) => e.proj && entIds(e).includes(pid)) || sk.cons.some((c) => (c.t === "fixed" || c.t === "origin") && c.p === pid);
+  if (type === "fixed") {
+    const ids = [...new Set(picks.flatMap((p) => p.kind === "pt" ? [p.pid] : p.kind === "line" ? [p.e.a, p.e.b] : [p.e.c]))];
+    if (ids.every(fixedPt)) return "That point is already fixed.";
+    for (const id of ids.filter((id) => !fixedPt(id))) { const p = P(id); if (p) sk.cons.push({ id: cid(), t: "fixed", p: id, x: p.x, y: p.y }); }
+    return null;
+  }
   if (type === "coincident" && picks.some((p) => p.kind === "origin")) {
     // pin a point to the sketch's origin (it stays there, like a projected point)
     const pt = picks.find((p) => p.kind === "pt");
     if (!pt) return "Pick a point to put on the origin.";
-    if (fixedPt(pt.pid)) return "That point is fixed (projected from the body).";
+    // jumpstart-3d: fixed constraint
+    if (fixedPt(pt.pid)) return "That point is already fixed.";
     if (sk.cons.some((c) => c.t === "origin" && c.p === pt.pid)) return "That point is already on the origin.";
     if (sk.cons.some((c) => c.t === "origin")) {
       // only one point can sit on the origin: merge it with the one already there
@@ -109,7 +121,8 @@ export function addConstraint(sk, type, picks) {
       // two points become one: the first one picked moves onto the second (a fixed point never moves)
       const first = picks[0].pid, second = picks[1].pid;
       const [keep, drop] = fixedPt(first) && !fixedPt(second) ? [first, second] : [second, first];
-      if (fixedPt(keep) && fixedPt(drop)) return "Both points are fixed (projected from the body).";
+      // jumpstart-3d: fixed constraint
+      if (fixedPt(keep) && fixedPt(drop)) return "Both points are already fixed.";
       mergePoints(sk, keep, drop);
       return null;
     }
@@ -180,6 +193,8 @@ export function normalizeSketch(sk) {
     if (!c || !a || !b) continue;
     const r = Math.hypot(a.x - c.x, a.y - c.y);
     const ang = Math.atan2(b.y - c.y, b.x - c.x);
+    // jumpstart-3d: fixed constraint
+    if ((sk.cons || []).some((k) => k.t === "fixed" && k.p === e.b)) continue;
     b.x = c.x + r * Math.cos(ang);
     b.y = c.y + r * Math.sin(ang);
   }

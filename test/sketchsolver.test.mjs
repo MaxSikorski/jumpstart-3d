@@ -468,3 +468,43 @@ test("editVerdict: leftover error from the old clash spreading onto a constraint
   const newlyHard = v1.st.conflicting.filter((id) => !v1.pre.conflicting.includes(id));
   assert.ok(newlyHard.some((id) => v1.st.resid[id] > 0.15 * v1.pre.worst), "a real conflict moves a constraint by more than 15 % of the old worst error (" + v1.pre.worst.toFixed(3) + ")");
 });
+
+test("Fixed pins a circle centre while tangent changes its radius", () => {
+  const sk = { pts: [{ id: "c", x: 0, y: 5 }, { id: "a", x: -10, y: 0 }, { id: "b", x: 10, y: 0 }], ents: [{ id: "circle", t: "circle", c: "c", r: 2 }, { id: "line", t: "line", a: "a", b: "b" }], cons: [] };
+  addConstraint(sk, "fixed", [{ kind: "round", e: sk.ents[0] }, { kind: "line", e: sk.ents[1] }]);
+  addConstraint(sk, "tangent", [{ kind: "round", e: sk.ents[0] }, { kind: "line", e: sk.ents[1] }]);
+  assert.equal(solveSketch(sk).ok, true);
+  assert.deepEqual(sk.pts, [{ id: "c", x: 0, y: 5 }, { id: "a", x: -10, y: 0 }, { id: "b", x: 10, y: 0 }]);
+  assert.ok(Math.abs(sk.ents[0].r - 5) < 1e-6);
+});
+
+test("Fixed line ends resist pulls and dragging; each point removes two freedoms", () => {
+  const sk = { pts: [{ id: "a", x: 1, y: 2 }, { id: "b", x: 6, y: 2 }, { id: "c", x: 1, y: 7 }], ents: [{ id: "l", t: "line", a: "a", b: "b" }, { id: "p", t: "point", p: "c" }], cons: [] };
+  const before = sketchDof(sk).dof;
+  addConstraint(sk, "fixed", [{ kind: "line", e: sk.ents[0] }]);
+  assert.equal(sketchDof(sk).dof, before - 4);
+  sk.cons.push({ id: "d", t: "dim", k: "dist", p1: "a", p2: "c", v: 10 });
+  sk.pts[0].x = 20; sk.pts[1].y = 30;
+  assert.equal(solveSketch(sk, new Set(["a", "b"])).ok, true);
+  assert.deepEqual(sk.pts.slice(0, 2), [{ id: "a", x: 1, y: 2 }, { id: "b", x: 6, y: 2 }]);
+  assert.ok(Math.abs(sk.pts[2].y - 12) < 1e-6);
+  assert.match(addConstraint(sk, "fixed", [{ kind: "pt", pid: "a" }]), /already fixed/);
+  const copy = JSON.parse(JSON.stringify(sk)); solveSketch(copy);
+  assert.deepEqual(copy.cons, sk.cons);
+});
+
+test("Fixed records clashes, can pin a rectangle selection, and prunes deleted points", () => {
+  const sk = { pts: [{ id: "a", x: 0, y: 0 }, { id: "b", x: 4, y: 0 }, { id: "c", x: 4, y: 3 }, { id: "d", x: 0, y: 3 }], ents: ["a", "b", "c", "d"].map((p, i, all) => ({ id: "e" + i, t: "line", a: p, b: all[(i + 1) % 4] })), cons: [] };
+  addConstraint(sk, "fixed", sk.ents.map((e) => ({ kind: "line", e })));
+  assert.equal(sk.cons.length, 4); assert.equal(sketchDof(sk).dof, 0);
+  sk.cons.push({ id: "clash", t: "dim", k: "dist", p1: "a", p2: "b", v: 8 });
+  assert.deepEqual(solveSketch(sk).conflicting, ["clash"]);
+  sk.pts = sk.pts.filter((p) => p.id !== "a"); pruneConstraints(sk);
+  assert.equal(sk.cons.some((c) => c.p === "a"), false);
+});
+
+test("old design JSON solves exactly as before Fixed was added", () => {
+  const sk = JSON.parse('{"pts":[{"id":"a","x":1,"y":2},{"id":"b","x":8,"y":5}],"ents":[{"id":"l","t":"line","a":"a","b":"b"}],"cons":[{"id":"h","t":"horizontal","e1":"l"}]}');
+  const result = solveSketch(sk);
+  assert.deepEqual({ result, sk }, JSON.parse('{"result":{"ok":true,"worst":7.460698725481052e-14,"redundant":[],"conflicting":[],"dof":3,"resid":{"h":7.460698725481052e-14}},"sk":{"pts":[{"id":"a","x":1,"y":3.5000000000499227},{"id":"b","x":8,"y":3.5000000000499973}],"ents":[{"id":"l","t":"line","a":"a","b":"b"}],"cons":[{"id":"h","t":"horizontal","e1":"l"}]}}'));
+});
