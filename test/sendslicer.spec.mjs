@@ -91,7 +91,8 @@ test.describe("computer", () => {
     await page.click("#btn-export");
     const order = await page.evaluate(() => [...document.getElementById("menu-export").children].filter((el) => el.offsetParent !== null)
       .map((el) => el.tagName === "HR" ? "HR" : el.id === "export-scope" ? "SCOPE" : el.textContent.trim().slice(0, 14)));
-    expect(order.slice(0, 7)).toEqual(["Open a project", "Import a model", "HR", "SCOPE", "HR", "Send to slicer", "STL for 3D pri"]);
+    // "Insert a real part…" joined the import group in #232
+    expect(order.slice(0, 8)).toEqual(["Open a project", "Import a model", "Insert a real ", "HR", "SCOPE", "HR", "Send to slicer", "STL for 3D pri"]);
     await page.evaluate(() => { document.getElementById("menu-export").hidden = true; });
 
     const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), (await openMenuItem(page)).click()]);
