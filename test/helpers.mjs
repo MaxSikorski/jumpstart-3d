@@ -65,8 +65,10 @@ export async function navigateKeepingStorage(page, go) {
   }, MARKER);
   for (let attempt = 0; ; attempt++) {
     const token = `${Date.now()}-${attempt}`;
-    await page.evaluate(([marker, token]) => localStorage.setItem(marker, token), [MARKER, token]);
+    const origin = await page.evaluate(([marker, token]) => { localStorage.setItem(marker, token); return performance.timeOrigin; }, [MARKER, token]);
     await go();
+    // A retry that goes to the address the page is already on, fragment included (a share link on the single file), is only a same-document jump: no new document starts, the init script does not run and the retry can never succeed. Make it a real load.
+    if (await page.evaluate(() => performance.timeOrigin) === origin) await page.reload();
     const at = await page.evaluate(() => window.__storageAtStart);
     if (at && at.token === token) return;
     const where = `${test.info().titlePath.slice(1).join(" > ")} [${test.info().project.name}]`;
