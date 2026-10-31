@@ -135,8 +135,7 @@ export function parseArch(str) {
 }
 
 // ------------------------------------------------------------------ the building data
-function defaults() {
-  const inch = isInch();
+function defaults(inch = isInch()) { // jumpstart-3d: the unit can be passed (Architect makes a new building in its own units)
   return { v: 1, levels: [{ id: "L1", name: "Level 1", elev: 0 }], walls: [], openings: [], roofs: [], slabs: [], wallT: inch ? 165 : 200, wallH: inch ? 9 * FT : 2700, grid: inch ? 6 * IN : 100 };
 }
 const D2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -794,8 +793,8 @@ export function initArch(app) {
   // ------------------------------------------------------------ data
   const A = () => store.view.arch;
   const AC = () => store.doc.arch; // committed (not the live preview)
-  function ensure() {
-    if (!store.doc.arch) { store.doc.arch = defaults(); app.projects && app.projects.changed && app.projects.changed(); }
+  function ensure(inch) {
+    if (!store.doc.arch) { store.doc.arch = defaults(inch); app.projects && app.projects.changed && app.projects.changed(); }
     const a = store.doc.arch;
     if (!a.levels.some((l) => l.id === st.level)) st.level = a.levels[0].id;
   }
@@ -2443,7 +2442,7 @@ export function initArch(app) {
     if (!active) return;
     const a = AC(), inch = isInch(), D = defaults(), other = inch ? { wallT: 200, wallH: 2700, grid: 100 } : { wallT: 165, wallH: 9 * FT, grid: 6 * IN };
     const fix = {};
-    for (const k of ["wallT", "wallH", "grid"]) if (Math.abs((a[k] || 0) - other[k]) < 0.5 || (k === "grid" && (inch ? a.grid % IN > 0.01 : Math.abs(a.grid / 10 - Math.round(a.grid / 10)) > 0.01))) fix[k] = D[k];
+    for (const k of ["wallT", "wallH", "grid"]) if (Math.abs((a[k] || 0) - other[k]) < 0.5 || (k === "grid" && (inch ? Math.abs(a.grid / IN - Math.round(a.grid / IN)) > 0.0004 : /* jumpstart-3d: not "% IN", which is 25.4 for 6 * 25.4 and re-set the grid on every switch */ Math.abs(a.grid / 10 - Math.round(a.grid / 10)) > 0.01))) fix[k] = D[k];
     if (Object.keys(fix).length) update((aa) => { Object.assign(aa, fix); }, inch ? "Feet and inches" : "Metric");
     vp.gridBase = gridStep();
     renderRibbon(); renderPanel(); rebuild();
@@ -2611,7 +2610,9 @@ export function initArch(app) {
   let quietUnits = false, outsideUnit = null;
   function archUnit() { try { return localStorage.getItem("jumpstart3d.arch.units") || "in"; } catch (e) { return "in"; } }
   function enter() {
-    ensure();
+    // jumpstart-3d: a design with no building yet gets Architect's standard sizes for Architect's units (6" walls, 9' high) from the start;
+    // making them in the outside unit and switching afterwards logged a "Feet and inches" Undo step on every first entry
+    ensure(archUnit() === "in");
     active = true;
     outsideUnit = getUnit();
     if (archUnit() !== getUnit()) { quietUnits = true; try { setUnit(archUnit()); } finally { quietUnits = false; } }
