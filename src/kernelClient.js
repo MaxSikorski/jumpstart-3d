@@ -14,6 +14,7 @@ export class KernelClient {
     this.stepWaiters = new Map();
     this.assets = new Map(); // imported files (STL/STEP), sent to the worker once
     this.probes = new Map(); // jumpstart-3d: Code CAD. key -> function that takes the answer for a one-off build
+    this.stale = new Set(); // jumpstart-3d: extra fonts. keys built in flight before the fonts came in: the reply is dropped and the body built again
   }
   hasAsset(id) { return this.assets.has(id); }
   addAsset(id, kind, bytes) {
@@ -75,6 +76,7 @@ export class KernelClient {
         this.solo.delete(r.rev); // jumpstart-3d
         r.key = r.rev;
         delete r.rev;
+        if (this.dropStale(r.key)) continue; // jumpstart-3d: extra fonts
         this.meshes.set(r.key, r);
         this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       }
@@ -99,12 +101,19 @@ export class KernelClient {
       this.inflight = null;
       items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
-      res.forEach((r) => this.meshes.set(r.key, r));
+      res.forEach((r) => { if (!this.dropStale(r.key, items)) this.meshes.set(r.key, r); }); // jumpstart-3d: extra fonts
       this.perf && this.perf.done(res); // jumpstart-3d: perf panel
       this.settleProbes(res); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(res);
       this.pump();
     }
+  }
+  // jumpstart-3d: extra fonts. A reply for a key marked stale is not kept; the body goes back in the queue (pumped after the reply).
+  dropStale(key, items = this.inflight || []) {
+    if (!this.stale.delete(key)) return false;
+    const it = items.find((b) => b.key === key);
+    if (it) this.queue.set(key, it);
+    return true;
   }
   // jumpstart-3d: STEP parts (#173). Over 160 results, the oldest ones that no body of the open design needs go. A design of 200 bodies used to lose its first
   // 40 meshes to this and leave them unbuilt; now the cache grows only while all of it is needed, and shrinks back when a smaller design is shown.
@@ -156,7 +165,7 @@ export class KernelClient {
       batch.push(it); this.queue.delete(k);
       if (batch.length >= 4 || alone(it)) break;
     }
-    if (!batch.length) return; // jumpstart-3d: extra fonts (everything queued is waiting for them)
+    if (!batch.length) { this.onBusy && this.onBusy(true); return; } // jumpstart-3d: extra fonts (everything queued is waiting for them; the status bar says so)
     this.inflight = batch;
     this.perf && this.perf.start(); // jumpstart-3d: perf panel
     // jumpstart-3d: identify the active batch separately from export requests.

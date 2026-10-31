@@ -371,6 +371,24 @@ test("Beginner: a second Fastener from the dialog starts beside the first one, n
   expect(bolt.bbox.min[2]).toBeCloseTo(0, 2); // stands on the bed, not through it
 });
 
+test("Beginner: a bolt moved over bare ground with the mouse, then OK, stands on the bed, not through it", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
+  await fresh("beginner");
+  await page.click("#bb-fastener");
+  await choose({ kind: "hexbolt", size: "M6", len: 20, threads: false });
+  // the pointer crosses empty ground (the dialog follows it there) on its way to OK
+  const box = await page.locator("#viewport canvas").first().boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2 + 20, { steps: 4 });
+  expect(await run(() => window.__app.command && window.__app.command.title)).toBe("Fastener");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const [bolt] = await built();
+  expect(bolt.error).toBeNull();
+  expect(bolt.bbox.min[2]).toBeCloseTo(0, 2);
+  expect(bolt.bbox.max[2]).toBeCloseTo(20 + 4, 2); // the 20 mm shank under the 4 mm head
+});
+
 test("Beginner: a tap cutter from the dialog stays inside the box at 0,0 and Group cuts it (review of the F8 fix)", async ({}, info) => {
   quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
   await fresh("beginner");

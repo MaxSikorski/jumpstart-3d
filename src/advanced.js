@@ -5969,6 +5969,8 @@ export function initAdvanced(app) {
     const tm = existing && f0 && f0.kind !== "cutter" ? threadMods(existing.node)[0] : null;
     Object.assign(st, { clear: tm ? tm.clear || 0 : f0 && f0.clear != null ? f0.clear : store.doc.threadOffset || 0, left: tm ? !!tm.left : f0 ? !!f0.left : false, pointed: !!existing });
     const threaded = () => st.kind === "cutter" || (st.threads && !!fastKind(st.kind).thread);
+    // put on a body's face or in a round hole (placeOn also answers over bare ground, where the part should stand on the bed)
+    const onFace = (e, h) => !!h || !!scene.pickFace(e, (b) => b.id !== st.id && !b.hole);
     const pitchNow = () => { const sd = sizeData(st.std, st.size); return sd ? sd.p : 1; };
     const turns = () => (threaded() && fastKind(st.kind).len ? Math.round(st.len / pitchNow()) : 0);
     // end jumpstart-3d
@@ -6019,7 +6021,7 @@ export function initAdvanced(app) {
       ok() {
         try { localStorage.setItem("jumpstart3d.fastener", JSON.stringify({ kind: st.kind, std: st.std, size: st.size, threads: st.threads })); } catch (e) {}
         // jumpstart-3d: fasteners. A new part never put anywhere with the pointer starts beside the bodies already there (browser test F8).
-        if (!existing && !st.pointed && st.kind !== "cutter") {
+        if (!existing && !st.pointed && !st.placed && st.kind !== "cutter") {
           const sd = sizeData(st.std, st.size), rad = Math.max(sd.af / Math.cos(Math.PI / 6), sd.dk || 0, sd.wo || 0, sd.fd || 0, sd.bd || 0) / 2 + 2;
           const boxes = store.doc.bodies.filter((b) => !b.hidden && b.id !== st.id).map((b) => { const bb = scene.bodyTightBox(b.id); return bb && !bb.isEmpty() ? bb : { min: { x: b.m[12] - 15, y: b.m[13] - 15 }, max: { x: b.m[12] + 15, y: b.m[13] + 15 } }; });
           const hits = (x, y) => boxes.some((bb) => x + rad > bb.min.x && x - rad < bb.max.x && y + rad > bb.min.y && y - rad < bb.max.y);
@@ -6073,13 +6075,13 @@ export function initAdvanced(app) {
           if (st.placed) return;
           const h = holePlace(e);
           const mat = h ? h.m : placeOn(e, st.id);
-          if (mat) { st.m = arr(mat); st.pointed = true; schedulePreview(def); } // jumpstart-3d: fasteners (pointed)
+          if (mat) { st.m = arr(mat); st.pointed = onFace(e, h); schedulePreview(def); } // jumpstart-3d: fasteners (pointed: on a face or in a hole, not the bare ground)
           vp.canvas.style.cursor = h ? "copy" : "default";
         },
         down(e) {
           const h = holePlace(e);
           const mat = h ? h.m : placeOn(e, st.id);
-          if (mat) { st.m = arr(mat); st.placed = true; st.pointed = true; st.where = h ? h.label : null; def.render(); schedulePreview(def); } // jumpstart-3d: fasteners (pointed)
+          if (mat) { st.m = arr(mat); st.placed = true; st.pointed = onFace(e, h); st.where = h ? h.label : null; def.render(); schedulePreview(def); } // jumpstart-3d: fasteners (pointed: on a face or in a hole)
           return true;
         },
       },

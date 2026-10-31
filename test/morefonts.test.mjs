@@ -85,3 +85,22 @@ test("fonts that arrive after text was built in Rounded sans: that text is forgo
   assert.equal(r.posted.filter((m) => m.type === "asset" && m.kind === "font").length, 42);
   r.done();
 });
+
+test("fonts that arrive while a Rounded sans build of the text is with the worker: that reply is dropped and the text built again", async () => {
+  let online = false;
+  const r = rig(async () => { if (!online) throw new Error("offline"); return FONTS_TEXT; });
+  await r.fonts.load(); // offline: failed, so text in an extra font now builds in Rounded sans
+  r.done();
+  const t = item("t", textNode("bangers"));
+  r.k.request([t]);
+  assert.deepEqual(r.builds(), [["t"]]); // the fallback build is in flight
+  const req = r.k.inflightReq;
+  online = true;
+  assert.equal(await r.fonts.load(), true); // a picker gets the fonts before the reply
+  r.k.handle({ type: "built", req, results: [{ id: "t", rev: t.key, ok: true, mesh: "rounded sans" }] });
+  assert.equal(r.k.meshes.has(t.key), false); // the fallback shape is not kept
+  assert.deepEqual(r.builds(), [["t"], ["t"]]); // and the text went to the worker again (now with the fonts)
+  r.k.handle({ type: "built", req: r.k.inflightReq, results: [{ id: "t", rev: t.key, ok: true, mesh: "bangers" }] });
+  assert.equal(r.k.meshes.get(t.key).mesh, "bangers");
+  r.done();
+});
