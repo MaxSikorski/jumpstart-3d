@@ -1,8 +1,7 @@
 // FlexiGen: turns one body into a print-in-place articulated ("flexi") model.
 // It runs in its own window over the app, on a copy of the body's mesh, so the design is never changed.
 import * as THREE from "three";
-import FLEXI_HTML from "./flexigen.html";
-import { withFonts } from "./helperfonts.js";
+import { helperPage, helperLoadingNote, helperFailText } from "./helperpages.js"; // jumpstart-3d: helper pages load on demand
 import { store } from "./store.js";
 
 export function initFlexiGen(app) {
@@ -51,8 +50,10 @@ export function initFlexiGen(app) {
       w.__flexi.theme(t === "contrast" ? "contrast" : t === "dark" ? "dark" : "light");
       w.__flexi.load(soup, name);
     };
-    ifr.srcdoc = withFonts(FLEXI_HTML);
-    frame.append(ifr);
+    // jumpstart-3d: helper pages load on demand (the site fetches the page the first time; the single file has it inline)
+    const note = helperLoadingNote();
+    helperPage("flexigen").then((html) => { if (frame && ifr.isConnected) { note.remove(); ifr.srcdoc = html; } }, () => { if (frame && ifr.isConnected) { close(); app.toast(helperFailText("FlexiGen"), "err"); } });
+    frame.append(note, ifr);
     document.body.append(frame);
     app.flexiOpen = true;
   }

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { serve } from "../mcp/serve.mjs";
 import { watchErrors, buildOf, quarantine } from "./helpers.mjs";
 
+const HELPER_COUNT = readdirSync("docs/helpers").length; // the helper pages the service worker keeps (src/helperpages.js)
 const NOT_SINGLE = "the single file embeds the engine";
 const SITE_ONLY = "the install manifest is part of the site build";
 const meshes = (page) => page.evaluate(() => window.__app.scene.meshes().length);
@@ -139,7 +140,7 @@ test("a second visit loads from the service worker and works offline", async ({ 
       const names = (await caches.keys()).filter((k) => k.startsWith("jumpstart-3d-"));
       return { names, entries: names.length ? (await (await caches.open(names[0])).keys()).length : 0 };
     });
-    expect(cached).toEqual({ names: ["jumpstart-3d-" + version], entries: 4 + readdirSync("docs/fonts").filter((f) => f.endsWith(".woff2")).length }); // the page, app, worker, engine and the fonts
+    expect(cached).toEqual({ names: ["jumpstart-3d-" + version], entries: 4 + HELPER_COUNT + readdirSync("docs/fonts").filter((f) => f.endsWith(".woff2")).length }); // the page, app, worker, engine, the helper pages and the fonts
 
     await server.close();
     await context.setOffline(true);
@@ -158,7 +159,7 @@ test("a second visit loads from the service worker and works offline", async ({ 
   }
 });
 
-// Upgrades. The previous build's service worker kept four files and no fonts; its cache name came from a hash we do not have, so a copy of docs/
+// Upgrades. The previous build's service worker kept four files, no fonts and no helper pages; its cache name came from a hash we do not have, so a copy of docs/
 // with the worker written back to that shape stands in for it ("oldbuild00"). The same server and browser then switch to the real docs/.
 const OLD = "jumpstart-3d-oldbuild00";
 const FONT_COUNT = readdirSync("docs/fonts").filter((f) => f.endsWith(".woff2")).length;
@@ -168,7 +169,7 @@ const siteInto = (live, { old, without } = {}) => {
   cpSync("docs", live, { recursive: true });
   if (old) {
     rmSync(join(live, "fonts"), { recursive: true, force: true });
-    const sw = readFileSync(join(live, "sw.js"), "utf8").replace(/const VERSION = "[0-9a-f]{10}";/, 'const VERSION = "oldbuild00";').replace(/const FONTS = \[.*\];/, "const FONTS = [];");
+    const sw = readFileSync(join(live, "sw.js"), "utf8").replace(/const VERSION = "[0-9a-f]{10}";/, 'const VERSION = "oldbuild00";').replace(/const FONTS = \[.*\];/, "const FONTS = [];").replace(/const HELPERS = \[.*\];/, "const HELPERS = [];");
     writeFileSync(join(live, "sw.js"), sw);
   }
   if (without) rmSync(join(live, "fonts", without));
@@ -215,7 +216,7 @@ test("an upgrade from the previous service worker installs the fonts and works o
     // the new worker takes over and the old cache goes
     await expect.poll(async () => Object.keys(await cacheState(page)).filter((k) => k !== OLD).length === 1 && !(OLD in await cacheState(page)), { timeout: 60_000 }).toBe(true);
     const state = await cacheState(page);
-    expect(Object.values(state)).toEqual([4 + FONT_COUNT]);
+    expect(Object.values(state)).toEqual([4 + HELPER_COUNT + FONT_COUNT]);
     await offlineStillWorks(context, page, server);
     expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
     // the fonts come from the new cache: the face loads with the network gone

@@ -3,8 +3,7 @@
 // Advanced like an imported STL), each carrying its full sculpt data; only Chisel can sculpt
 // them. Bodies of the design can be copied (or converted) into Chisel to sculpt.
 import * as THREE from "three";
-import CHISEL_HTML from "./chisel.html";
-import { withFonts } from "./helperfonts.js";
+import { helperPage, helperLoadingNote, helperFailText } from "./helperpages.js"; // jumpstart-3d: helper pages load on demand
 import { store, findBody, nextSeq, IDENTITY, regionsFor } from "./store.js";
 import { uid, el, nextColor } from "./util.js";
 import { isInch } from "./units.js";
@@ -235,8 +234,16 @@ export function initChisel(app) {
     ifr = document.createElement("iframe");
     ifr.title = "Chisel sculpting";
     readyP = new Promise((r) => { readyRes = r; });
-    ifr.srcdoc = withFonts(CHISEL_HTML);
-    host.append(ifr);
+    // jumpstart-3d: helper pages load on demand. A failed load closes Chisel again and tells the user; the next try starts afresh.
+    const note = helperLoadingNote(), mine = host;
+    helperPage("chisel").then((html) => { if (host === mine) { note.remove(); ifr.srcdoc = html; } }, () => {
+      if (host !== mine) return;
+      host.remove(); host = ifr = readyP = null;
+      readyRes(false); readyRes = null;
+      app.toast(helperFailText("Chisel"), "err");
+      if (app.mode === "chisel") app.setMode("beginner");
+    });
+    host.append(note, ifr);
     document.body.append(host);
     return readyP;
   }
@@ -372,7 +379,7 @@ export function initChisel(app) {
 
   async function enter() {
     const first = !host;
-    await ensure();
+    if (await ensure() === false) return; // jumpstart-3d: the page could not be loaded
     host.hidden = false;
     showLevel(true);
     await load();
