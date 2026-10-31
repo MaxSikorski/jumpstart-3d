@@ -342,3 +342,51 @@ test("Fixed survives save and reload, and an old design without it loads unchang
   expect(old.cons.map((c) => c.t)).toEqual(["horizontal"]);
   expect(old.pts.map((p) => [p.x, p.y])).toEqual([[0, 0], [10, 0]]);
 });
+
+// the app's own toast, caught: returns a function that gives the toasts seen since
+async function catchToasts() { await run(() => { window.__toasts = []; const a = window.__app; if (!a.__toast0) a.__toast0 = a.toast; a.toast = (m) => { window.__toasts.push(m); }; }); return () => run(() => window.__toasts.slice()); }
+
+test("Fixed on a rectangle drawn with the real Rectangle tool (it adds H and V): no repeat toast, nothing redundant, 0 left once all four sides are fixed", async () => {
+  test.setTimeout(240_000);
+  const { sketchDof } = await import("../src/constraints.js");
+  await openBlank();
+  await page.locator("#sk-rect").click({ force: true });
+  const [x1, y1] = await screenOf(-20, -10), [x2, y2] = await screenOf(20, 10);
+  await page.mouse.move(x1, y1); await page.mouse.click(x1, y1);
+  await page.mouse.move(x2, y2); await page.mouse.click(x2, y2);
+  await page.keyboard.press("Escape");
+  let sk = await sketch();
+  expect(sk.ents.length, "four sides").toBe(4);
+  expect(sk.cons.filter((c) => c.t === "horizontal" || c.t === "vertical").length, "the tool added H and V").toBe(4);
+  const toasts = await catchToasts();
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("fixed", s.sketch.ents.map((e) => ({ kind: "line", e }))); }); // all four sides picked at once, as a selection does
+  sk = await sketch();
+  expect(sk.cons.filter((c) => c.t === "fixed").length, "all four corners").toBe(4);
+  expect(await toasts(), "no repeat toast").toEqual([]);
+  expect(sketchDof(sk).dof, "nothing left free").toBe(0);
+  expect(sketchDof(sk).redundant, "nothing redundant").toBe(0);
+});
+
+test("a fixed corner is not moved by the arrow keys or the inspector: nothing changes and the toast says why", async () => {
+  test.setTimeout(240_000);
+  await openBlank();
+  await polygon([[-20, -10], [20, -10], [20, 10], [-20, 10]]);
+  await run(() => { const s = window.__app.sketcher; s.edit("Arc", (sk) => { sk.pts.push({ id: "ac", x: 50, y: 0 }, { id: "aa", x: 55, y: 0 }, { id: "ab", x: 50, y: 5 }); sk.ents.push({ id: "arc1", t: "arc", c: "ac", a: "aa", b: "ab" }); }); });
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("fixed", [{ kind: "pt", pid: "p0" }]); s.applyConstraint("fixed", [{ kind: "round", e: s.sketch.ents.find((e) => e.id === "arc1") }]); });
+  const toasts = await catchToasts();
+  const before = await sketch();
+  // arrow key on the whole rectangle (one corner fixed)
+  await run(() => { const s = window.__app.sketcher; s.setTool("select"); s.sel.clear(); for (const e of s.sketch.ents.filter((e) => e.t === "line")) s.sel.add(e.id); });
+  await page.keyboard.press("ArrowRight");
+  expect((await sketch()).pts, "rectangle unchanged").toEqual(before.pts);
+  expect(await toasts()).toContain("That point is fixed.");
+  // a free corner alone still nudges
+  await run(() => { const s = window.__app.sketcher; s.sel.clear(); s.sel.add("pt:p2"); });
+  await page.keyboard.press("ArrowRight");
+  expect((await pin("p2"))[0], "a free corner moves").toBeGreaterThan(20);
+  // the inspector: the arc with a fixed centre, and the fixed corner's own fields
+  const mid = await sketch();
+  await run(() => { const s = window.__app.sketcher; s.setEntProps("arc1", { cx: 60 }); s.setPointProps("p0", 3, 3); });
+  expect((await sketch()).pts, "arc and corner unchanged").toEqual(mid.pts);
+  expect((await toasts()).filter((m) => m === "That point is fixed.").length, "one toast for the nudge, the arc centre and the corner").toBe(3);
+});

@@ -42,7 +42,7 @@ function buildTerms(sk, store) {
   for (const c of sk.cons || []) {
     const e1 = E.get(c.e1), e2 = E.get(c.e2), e = E.get(c.e), p = P.get(c.p);
     if (c.t === "origin") { if (p) add(c, [c.p], () => [p.x, p.y], 2); continue; }
-    if (c.t === "fixed") { if (p) add(c, [c.p], () => [p.x - c.x, p.y - c.y], 2); continue; }
+    if (c.t === "fixed") { if (p && Number.isFinite(c.x) && Number.isFinite(c.y)) add(c, [c.p], () => [p.x - c.x, p.y - c.y], 2); continue; } // jumpstart-3d: fixed constraint (a hand-edited file may lack x or y)
     if (c.t === "horizontal" || c.t === "vertical") {
       const ends = c.p1 ? [c.p1, c.p2] : e1 && isLine(e1) ? [e1.a, e1.b] : null;
       if (!ends || !P.has(ends[0]) || !P.has(ends[1])) continue;
@@ -223,7 +223,7 @@ export function solveSketch(sk, keep = new Set()) {
   const P = new Map(sk.pts.map((p) => [p.id, p]));
   // points on the origin sit at (0, 0) and never move
   for (const c of sk.cons) if (c.t === "origin") { const p = P.get(c.p); if (p) { p.x = 0; p.y = 0; fixed.add(c.p); } }
-  for (const c of sk.cons) if (c.t === "fixed") { const p = P.get(c.p); if (p) { p.x = c.x; p.y = c.y; fixed.add(c.p); } }
+  for (const c of sk.cons) if (c.t === "fixed" && Number.isFinite(c.x) && Number.isFinite(c.y)) { const p = P.get(c.p); if (p) { p.x = c.x; p.y = c.y; fixed.add(c.p); } }
   const { terms } = buildTerms(sk, true);
   const vars = bindVars(sk, terms, P, fixed, false);
   const start = vars.map((v) => v.o[v.k]);
@@ -256,16 +256,20 @@ function analyze(sk) {
   const vars = bindVars(sk, terms, P, fixed, true);
   let arcs = 0, rank = 0, rows = 0;
   const repeated = new Set();
-  for (const t of terms) if (t.c) { rows += t.n; if (!t.vars.length) repeated.add(t.c); }
-  for (const ts of groupTerms(terms, vars.length)) {
+  // jumpstart-3d: fixed constraint. A Fixed pins where a point is; it is counted after the others, adds only the rows that are new, and never counts as a repeat (a rectangle with Horizontal and Vertical sides can have every corner fixed: 0 left, nothing redundant)
+  const isFix = (t) => t.c && t.c.t === "fixed";
+  for (const t of terms) if (t.c) { if (!isFix(t)) rows += t.n; if (!t.vars.length && !isFix(t)) repeated.add(t.c); }
+  for (const ts0 of groupTerms(terms, vars.length)) {
+    const ts = [...ts0.filter((t) => !isFix(t)), ...ts0.filter(isFix)];
     const loc = new Map(), basis = [];
     for (const t of ts) for (const j of t.vars) if (!loc.has(j)) loc.set(j, loc.size);
     for (const t of ts) { // arcs come first in the list: their rows are counted before the constraints'
       let g = false;
-      for (const row of jacobian([t], vars, loc, loc.size)) if (adds(row, basis)) { g = true; if (t.c) rank++; else arcs++; }
-      if (t.c && !g) repeated.add(t.c);
+      for (const row of jacobian([t], vars, loc, loc.size)) if (adds(row, basis)) { g = true; if (t.c) { rank++; if (isFix(t)) rows++; } else arcs++; }
+      if (t.c && !g && !isFix(t)) repeated.add(t.c);
     }
   }
+  // end jumpstart-3d
   return { free: vars.length - arcs, rank, dof: Math.max(0, vars.length - arcs - rank), redundant: rows - rank, repeated: (sk.cons || []).filter((c) => repeated.has(c)).map((c) => c.id) };
 }
 // does this row point somewhere the basis does not reach yet? (it is then added to the basis, as a unit vector)
@@ -293,6 +297,8 @@ export const conName = (c) => (c.t === "dim" ? DIM_NAMES[c.k] || "dimension" : c
 const andList = (a) => (a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]);
 const namesOf = (cons) => andList([...new Set(cons.map(conName))]);
 export const conNames = (sk, ids) => namesOf(sk.cons.filter((c) => ids.includes(c.id)));
+// jumpstart-3d: fixed constraint. A point that cannot be moved by hand: projected from a body, on the origin, or Fixed
+export const isPinned = (sk, pid) => sk.ents.some((e) => e.proj && entIds(e).includes(pid)) || (sk.cons || []).some((c) => (c.t === "origin" || c.t === "fixed") && c.p === pid);
 export const conKey = (c) => JSON.stringify({ ...c, sg: undefined }); // a constraint as it was saved, without the angle sign a solve may add
 // why an edit was refused: ids = the constraints that no longer hold; was = Map(constraint id -> its JSON before the edit), to tell which one was just added or changed
 export function clashNote(sk, ids, was) {

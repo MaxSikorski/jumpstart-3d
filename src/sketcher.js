@@ -9,7 +9,7 @@ import {
 } from "./regions.js";
 import { uid, parseLength, fmt, round, el } from "./util.js";
 import { getUnit } from "./units.js";
-import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, conKey, editVerdict, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain } from "./constraints.js";
+import { CONSTRAINTS, CONSTRAINT_BADGES, solveSketch, normalizeSketch, conKey, editVerdict, pruneConstraints, pickKind, wants, addConstraint, glyphSpots, autoConstrain, isPinned } from "./constraints.js";
 import { buildDim, dimGraphics, measureDim } from "./dims.js";
 import { evalExpr, exprScope } from "./params.js"; // jumpstart-3d: parameters
 import * as sketchMirror from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
@@ -850,9 +850,7 @@ export class Sketcher {
       if (ent && !ent.proj) pids = entPts(ent);
       if (ent && ent.t === "arc") pids = [ent.c, ent.a, ent.b];
     }
-    if (pids.some((pid) => sk.ents.some((x) => x.proj && entPts(x).includes(pid)))) pids = [];
-    // jumpstart-3d: fixed constraint
-    if (pids.some((pid) => (sk.cons || []).some((c) => c.t === "fixed" && c.p === pid))) pids = [];
+    if (pids.some((pid) => isPinned(sk, pid))) pids = []; // jumpstart-3d: fixed constraint (projected, on the origin or Fixed: it stays)
     const textEnt = !hit.startsWith("pt:") && sk.ents.find((x) => x.id === hit && x.t === "text");
     this.drag = { start: raw, pids, orig: new Map(sk.pts.filter((p) => pids.includes(p.id)).map((p) => [p.id, [p.x, p.y]])), moved: false, hit, add: e.shiftKey, text: textEnt ? textEnt.id : null };
     this.redraw();
@@ -1289,7 +1287,23 @@ export class Sketcher {
     this.redraw();
   }
   // used by the inspector
+  // jumpstart-3d: fixed constraint. A projected, origin-pinned or Fixed point is not moved by typing or by the arrow keys (the solver would snap it back and skew the shape)
+  pinnedNote(pids) {
+    const sk = this.sketch;
+    if (!sk || !pids.some((pid) => isPinned(sk, pid))) return false;
+    if (this.app.toast) this.app.toast("That point is fixed.");
+    return true;
+  }
   setEntProps(entId, props) {
+    const ent0 = this.sketch && this.sketch.ents.find((x) => x.id === entId);
+    if (ent0) {
+      const has = (...k) => k.some((q) => props[q] != null), t = ent0.t, touched = [];
+      if (t === "line") { if (has("ax", "ay")) touched.push(ent0.a); if (has("bx", "by", "len", "ang")) touched.push(ent0.b); }
+      else if (t === "circle") { if (has("cx", "cy")) touched.push(ent0.c); }
+      else if (t === "arc") { if (has("cx", "cy")) touched.push(ent0.c, ent0.a, ent0.b); if (props.r > 0) touched.push(ent0.a, ent0.b); }
+      else if ((t === "point" || t === "text") && has("x", "y")) touched.push(ent0.p);
+      if (this.pinnedNote(touched)) return;
+    }
     this.edit("Edit sketch geometry", (sk) => {
       const e = sk.ents.find((x) => x.id === entId);
       const P = (id) => sk.pts.find((p) => p.id === id);
@@ -1346,6 +1360,7 @@ export class Sketcher {
     const step = (e.shiftKey ? 10 : e.altKey ? 0.1 : 1) * (this.snapStep() || 1);
     const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0, dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
     if (!dx && !dy) return false;
+    if (this.pinnedNote([...pids])) return true; // jumpstart-3d: fixed constraint
     this.edit("Nudge sketch geometry", (s2) => { for (const p of s2.pts) if (pids.has(p.id)) { p.x += dx; p.y += dy; } solveSketch(s2, pids); normalizeSketch(s2); });
     this.redraw();
     this.app.onSketchSelection && this.app.onSketchSelection();
@@ -1363,6 +1378,7 @@ export class Sketcher {
     this.setEntProps(entId, { x: p.x + dx, y: p.y + dy });
   }
   setPointProps(pid, x, y) {
+    if (this.pinnedNote([pid])) return; // jumpstart-3d: fixed constraint
     this.edit("Move point", (sk) => { const p = sk.pts.find((q) => q.id === pid); if (p) { p.x = x; p.y = y; } });
   }
 

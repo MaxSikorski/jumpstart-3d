@@ -344,14 +344,19 @@ export function validateEnvelope(env) {
       else if (e.t === "point") needP(e.p);
       else if (e.t === "text") { needP(e.p); text(e.str, "text", LIMITS.STRING); num(e.size, "text size"); if (e.angle !== undefined) num(e.angle, "angle"); if (e.font !== undefined) text(e.font, "font", 32); }
     }
-    const cid = new Set();
+    const cid = new Set(), pinned = new Set(); // jumpstart-3d: fixed constraint (pinned: points already held by a Fixed or an origin pin)
     for (const c of cons) {
       obj(c, "a constraint"); allow(c, CON_KEYS, "a constraint");
       if (!CON_TYPES.has(c.t)) throw unsupported("a " + String(c.t).slice(0, 16).replace(/[^\w ]/g, "?") + " constraint");
       id(c.id, "a constraint id"); if (cid.has(c.id)) throw damaged("duplicate constraint id"); cid.add(c.id);
       for (const k of ["p", "p1", "p2"]) if (c[k] !== undefined && c[k] !== null) needP(c[k]);
       for (const k of ["e", "e1", "e2"]) if (c[k] !== undefined && c[k] !== null && (typeof c[k] !== "string" || !eid.has(c[k]))) throw damaged("a constraint points at a missing shape");
-      if (c.t === "fixed") { needP(c.p); num(c.x, "fixed x"); num(c.y, "fixed y"); }
+      if (c.t === "fixed" || c.t === "origin") { // jumpstart-3d: fixed constraint: a point is held once, and never one that is projected from a body
+        if (c.t === "fixed") { needP(c.p); num(c.x, "fixed x"); num(c.y, "fixed y"); }
+        if (pinned.has(c.p)) throw damaged("a point that is fixed twice");
+        pinned.add(c.p);
+        if (c.t === "fixed" && ents.some((e) => e.proj && [e.a, e.b, e.c, e.p].includes(c.p) || (e.pts || []).includes(c.p))) throw damaged("a fixed point on a shape projected from a body");
+      }
       if (c.expr !== undefined) text(c.expr, "a dimension expression", LIMITS.EXPR);
       if (c.unit !== undefined && !UNITS.has(c.unit)) throw damaged("a dimension unit");
       if (c.name !== undefined) text(c.name, "a dimension name", 64);

@@ -139,6 +139,7 @@ export function addConstraint(sk, type, picks) {
     const a = picks[0].e, b = picks[1].e;
     if (a.c === b.c) return "They already share a center.";
     const ca = P(a.c), cb = P(b.c);
+    if (fixedPt(a.c) && fixedPt(b.c)) return "Both centres are already fixed."; // jumpstart-3d: fixed constraint
     if (fixedPt(b.c) && !fixedPt(a.c)) return addConstraint(sk, type, [picks[1], picks[0]]);
     const dx = ca.x - cb.x, dy = ca.y - cb.y;
     if (b.t === "arc") for (const id of [b.a, b.b]) { const q = P(id); if (!fixedPt(id)) { q.x += dx; q.y += dy; } }
@@ -181,7 +182,8 @@ export function autoConstrain(sk, oldPts, oldEnts) {
 export function pruneConstraints(sk) {
   if (!sk.cons) return;
   const E = new Set(sk.ents.map((e) => e.id)), Pt = new Set(sk.pts.map((p) => p.id));
-  sk.cons = sk.cons.filter((c) => (!c.e1 || E.has(c.e1)) && (!c.e2 || E.has(c.e2)) && (!c.e || E.has(c.e)) && (!c.p || Pt.has(c.p)) && (!c.p1 || Pt.has(c.p1)) && (!c.p2 || Pt.has(c.p2)));
+  // jumpstart-3d: fixed constraint (a Fixed without a position is dropped)
+  sk.cons = sk.cons.filter((c) => (c.t !== "fixed" || (Number.isFinite(c.x) && Number.isFinite(c.y))) && (!c.e1 || E.has(c.e1)) && (!c.e2 || E.has(c.e2)) && (!c.e || E.has(c.e)) && (!c.p || Pt.has(c.p)) && (!c.p1 || Pt.has(c.p1)) && (!c.p2 || Pt.has(c.p2)));
 }
 
 // pull an arc's end point back onto its circle after the solver has moved things
@@ -201,7 +203,7 @@ export function normalizeSketch(sk) {
 }
 
 // jumpstart-3d: sketch solver. solveSketch, sketchDof and the plain-English clash words moved to sketchsolve.js (ours): one least-squares solve over the whole sketch.
-export { solveSketch, sketchDof, conName, conNames, conKey, clashNote, editVerdict } from "./sketchsolve.js";
+export { solveSketch, sketchDof, conName, conNames, conKey, clashNote, editVerdict, isPinned } from "./sketchsolve.js";
 // end jumpstart-3d
 
 // where to draw each constraint's little badge (sketch coordinates)
