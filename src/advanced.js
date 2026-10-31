@@ -112,7 +112,8 @@ export function initAdvanced(app) {
   function edgePickHint(e, kind, only) {
     const hit = vp.pick(e, scene.meshes())[0];
     if (!hit) return;
-    const b = hit.object.userData.bodyView.body;
+    const b = hit.object.userData.bodyView && hit.object.userData.bodyView.body;
+    if (!b) return;
     const now = performance.now();
     if (now - lastEdgePickHint < 3000) return;
     const verb = kind === "fillet" ? "round" : "chamfer";
