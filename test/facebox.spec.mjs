@@ -48,6 +48,18 @@ const doc = () => run(() => JSON.parse(JSON.stringify(window.__store.doc)));
 async function look(target, az, el, dist) {
   await run(([t, az, el, dist]) => { const vp = window.__app.vp; Object.assign(vp.view, { az: (az * Math.PI) / 180, el: (el * Math.PI) / 180, dist, roll: 0 }); vp.view.target.set(...t); vp.anim = null; vp.useOrtho = false; vp.render(); }, [target, az, el, dist]);
 }
+// an imported mesh is framed by the app up to half a second after it is built (advanced.js frameIfOffScreen, on a 500 ms timer), and that
+// 380 ms camera move would be stopped half way by the mouse press: keep setting the view until it has held for longer than the timer
+async function lookSteady(target, az, el, dist) {
+  await expect.poll(async () => {
+    await look(target, az, el, dist);
+    const held = () => run((d) => { const vp = window.__app.vp; return !vp.isMoving() && Math.abs(vp.view.dist - d) < 1e-6; }, dist);
+    await page.waitForTimeout(700);
+    if (!(await held())) return false;
+    await page.waitForTimeout(700); // twice, in case the timer ran late
+    return held();
+  }, { timeout: 30_000 }).toBe(true);
+}
 // a world point -> page pixels
 const screen = (p) => run((p) => { const vp = window.__app.vp, r = vp.canvas.getBoundingClientRect(); const [x, y] = vp.project(new vp.view.target.constructor(...p)); return [r.left + x, r.top + y]; }, p);
 // a real left-button drag between two world points; `during` runs with the button still down
@@ -312,7 +324,7 @@ test("Max's Pi lid: a box drawn on the lid's floor, flush with both faces, joins
   await run(() => document.getElementById("toasts").replaceChildren());
   const [lid] = await list();
   expect(lid.error).toBeNull();
-  await look([-5, 0, 3], 0, 89, 140);
+  await lookSteady([-5, 0, 3], 0, 89, 140);
   await openTool();
   const before = (await doc()).bodies.map((b) => b.id);
   // the fill box from Max's OrcaSlicer result: 64 x 31 at (-5.25, 0), the plate is z 0..3

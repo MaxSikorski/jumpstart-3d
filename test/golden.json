@@ -246,21 +246,21 @@
       "b1 3D sketch": 1893.1
     },
     "stlTriangles": 16316,
-    "stl": "24134cbb787eedb4879fa30b591ae3da0919f400915ca967cfbe76384c37f269",
-    "obj": "fccb4ce6e7b8475ae282d22c173a0728b002b7439837c755935e20250a7b8bec",
-    "3mf": "e712cfbf63de1c41f248441212353b3349dd3129ca1589f946db27572dcd5a2d",
-    "step": "978fb556abf43f058e5b26fd7bc926d7d3a47fb7e319744cac448b451106392f"
+    "stl": "eaa17c736b1f494693f3a044a46685a7cd761a5089c4a482c83bac17c6da3c40",
+    "obj": "569b2e502e649ba2a95849bbb3ff27d6705294bc348396967046c123c8dd1890",
+    "3mf": "0415bdeadf502f49dbb19ef0e6f4f28f85d352bb58ea1b929c1dddf1b62ee9c2",
+    "step": "56385fb2560078f9b65e628fe2c8f75bb7a1a6a1a89ad4b1bb7ac28c0955f762"
   },
   "advanced-bricks.json": {
     "volumes": {
       "b1 Brick 2x2 · layer 1": 1102.8,
       "b2 Brick 1x2 · layer 2": 681.5
     },
-    "stlTriangles": 2324,
-    "stl": "13083d41a4c336f4cc84b53aff828926b09a02b03351f4b07d57bb2a36639aec",
-    "obj": "45b373f2dcd35b205d48c1e8f1f98d05704b04ea143446e4d139dec5e995b836",
-    "3mf": "b8aee2150104c664f04152b6a7785730c8e8d44ebc7af2afb961932d214397e7",
-    "step": "e3b503eaca9fad732387e0f4ef5da03580054bdb1a2cb9999c72138d048f7dbb"
+    "stlTriangles": 2332,
+    "stl": "77891f7f3bd27140f510fad9157359f8060afc93f92c38a04c31a9b2a42def5f",
+    "obj": "192b463cd42ab332a2d8e25aeb1554fb8981f883ce5bf641fb09d71a6c818fda",
+    "3mf": "0e8b48fd44efb768a21191427b100db0e238dfc8930f446864a3bdb667b94ea7",
+    "step": "3c56ec8dfb369b156708c2d562d69291962f5986dbb945487e75b32312d79bc2"
   },
   "advanced-overlap-extrude.json": {
     "volumes": {
@@ -460,8 +460,8 @@
   "spring.json": {
     "volumes": {
       "b0 Open spring": 892.6,
-      "b1 Flat spring": 880.3,
-      "b2 Fine left spring": 215.3,
+      "b1 Flat spring": 880.7,
+      "b2 Fine left spring": 215.4,
       "b3 Heavy spring": 2728.1
     },
     "stlTriangles": 219632,

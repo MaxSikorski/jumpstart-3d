@@ -7,14 +7,15 @@
 //
 // This is the author's app/dist.sh + app/standalone.py from the v2.0 source
 // release, written in Node. The helper pages (src/flexigen.html,
-// src/meshstep.html, src/chisel.html) are committed already built; see
+// src/meshstep.html, src/chisel.html) are committed already built (the site fetches them from docs/helpers/; the single file has them inline); see
 // tools/helpers/README.md to regenerate them.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { createHash } from "node:crypto"; // jumpstart-3d: offline
 import { gzipSize, checkBudget } from "./tools/size-budget.mjs"; // jumpstart-3d: size budget
+import { HELPER_FILES, STAMP, helpersId, helperLists, fillHelperSlots } from "./tools/helper-files.mjs"; // jumpstart-3d: helper pages load on demand
 
 const root = new URL(".", import.meta.url).pathname;
 const src = join(root, "src");
@@ -45,9 +46,23 @@ const camWorkerPlugin = { name: "camworker", setup(b) {
   b.onLoad({ filter: /.*/, namespace: "camworker" }, () => ({ contents: camWorker.text, loader: "text" }));
 } };
 
+// jumpstart-3d: helper pages load on demand. The files below (in src/) are not part of the site's app.js: that build gets them as empty
+// strings, and they are written to docs/helpers/ for src/helperpages.js to fetch the first time one is needed (src/sw.js saves them for
+// offline). The single file's app.js keeps them inline. To add a page or data file, list it in tools/helper-files.mjs and in src/helperpages.js.
+// Any file type: both builds import them as text, so src/helperpages.js always gets a string (the caller parses it).
+// Each file in docs/helpers/ starts with a "js3d-build:<id>" line; the id is also built into the site's app.js, so a page that finds a
+// helper file of another version (a release went live while it was open) says so instead of mixing versions.
+const HELPERS_ID = helpersId((f) => readFileSync(join(src, f)));
+const helperRealPaths = new Set(Object.keys(HELPER_FILES).map((n) => realpathSync(join(src, n)))); // esbuild hands over real paths, so a symlinked checkout (macOS /tmp) must match too
+const helperImports = (inline) => ({ name: "helper-files", setup(b) {
+  b.onLoad({ filter: /./ }, (a) => helperRealPaths.has(a.path) ? { contents: inline ? readFileSync(a.path, "utf8") : "", loader: "text" } : undefined);
+} });
+
 rmSync(out, { recursive: true, force: true });
-await build({ ...common, entryPoints: [join(src, "app.js")], format: "esm", outfile: join(out, "app.js"),
-  plugins: [camWorkerPlugin], loader: { ".html": "text" }, define: { __WASM_PARTS__: JSON.stringify([{ url: "occt-gz.wasm", gz: true, size: wasmSize }]) } });
+const appBuild = { ...common, entryPoints: [join(src, "app.js")], format: "esm", loader: { ".html": "text" } };
+const wasmParts = JSON.stringify([{ url: "occt-gz.wasm", gz: true, size: wasmSize }]);
+await build({ ...appBuild, outfile: join(out, "app.js"), plugins: [camWorkerPlugin, helperImports(false)], define: { __WASM_PARTS__: wasmParts, __HELPERS_ID__: JSON.stringify(HELPERS_ID) } }); // the site
+await build({ ...appBuild, outfile: join(out, "app.single.js"), plugins: [camWorkerPlugin, helperImports(true)], define: { __WASM_PARTS__: wasmParts, __HELPERS_ID__: '""' } }); // the single file: helper pages inline, nothing to check
 await build({ ...common, entryPoints: [join(src, "worker.js")], format: "esm", outfile: join(out, "worker.js"), external: ["node:*"] });
 await build({ ...common, entryPoints: [join(src, "worker.js")], format: "iife", outfile: join(out, "worker.iife.js"), external: ["node:*"],
   logOverride: { "empty-import-meta": "silent" } }); // the loader's import.meta.url is never used in the single file
@@ -65,19 +80,24 @@ const appIcons = ["icon-192.png", "icon-512.png"];
 const dataUri = (f, mime) => "data:" + mime + ";base64," + readFileSync(join(src, f)).toString("base64");
 for (const [f] of icons) if (!shell.includes('href="' + f + '"')) throw new Error('src/index.html is missing href="' + f + '"');
 const app = read(join(out, "app.js"));
+const appSingle = read(join(out, "app.single.js"));
 const worker = read(join(out, "worker.iife.js"));
-for (const s of [app, worker]) if (/<\/script/i.test(s)) throw new Error("a bundle contains </script>, which would end the inline block");
+for (const s of [app, appSingle, worker]) if (/<\/script/i.test(s)) throw new Error("a bundle contains </script>, which would end the inline block");
 
 // jumpstart-3d: size budget. The gzipped app may grow 5 % over size-budget.json; node build.mjs --bump-budget records a deliberate growth.
 const budgetFile = join(root, "size-budget.json");
 const appGz = gzipSize(app);
-if (process.argv.includes("--bump-budget")) { writeFileSync(budgetFile, JSON.stringify({ "docs/app.js gzip bytes": appGz }, null, 2) + "\n"); console.log("size budget recorded:", appGz); }
+const stamped = (f) => STAMP + HELPERS_ID + "\n" + read(join(src, f)); // jumpstart-3d: helper pages load on demand: the file as docs/helpers/ gets it
+const helpersGz = Object.keys(HELPER_FILES).reduce((n, f) => n + gzipSize(stamped(f)), 0); // the gzipped total of docs/helpers/
+if (process.argv.includes("--bump-budget")) { writeFileSync(budgetFile, JSON.stringify({ "docs/app.js gzip bytes": appGz, "docs/helpers gzip bytes": helpersGz }, null, 2) + "\n"); console.log("size budget recorded:", appGz, "and helpers", helpersGz); }
 else {
-  let recorded;
-  try { recorded = JSON.parse(read(budgetFile))["docs/app.js gzip bytes"]; } catch (e) {}
-  const verdict = checkBudget(appGz, recorded);
-  if (!verdict.ok) throw new Error(verdict.message);
-  console.log("size budget ok:", verdict.message);
+  let recorded = {};
+  try { recorded = JSON.parse(read(budgetFile)); } catch (e) {}
+  for (const [label, size] of [["docs/app.js", appGz], ["docs/helpers", helpersGz]]) {
+    const verdict = checkBudget(size, recorded[label + " gzip bytes"], label);
+    if (!verdict.ok) throw new Error(verdict.message);
+    console.log("size budget ok:", verdict.message);
+  }
 }
 
 // jumpstart-3d: self-hosted fonts (src/fonts/*.woff2, rules in src/webfonts.css). The site serves docs/fonts/ and the rules sit in index.html; the single file carries the fonts as data: URIs, so neither makes a font request to anyone else.
@@ -96,6 +116,8 @@ writeFileSync(join(docs, "index.html"), siteShell);
 cpSync(join(src, "fonts"), join(docs, "fonts"), { recursive: true });
 cpSync(join(root, "LICENSES", "OFL-1.1-fonts.txt"), join(docs, "fonts", "OFL.txt")); // the license travels with the fonts
 writeFileSync(join(docs, "app.js"), app);
+mkdirSync(join(docs, "helpers"), { recursive: true }); // jumpstart-3d: helper pages load on demand
+for (const f of Object.keys(HELPER_FILES)) writeFileSync(join(docs, "helpers", f), stamped(f));
 cpSync(join(out, "worker.js"), join(docs, "worker.js"));
 cpSync(wasm, join(docs, "occt-gz.wasm"));
 cpSync(join(src, "og-image.png"), join(docs, "og-image.png")); // link-preview card; the meta tags in index.html point here
@@ -106,11 +128,13 @@ for (const f of appIcons) cpSync(join(src, f), join(docs, f));
 writeFileSync(join(docs, ".nojekyll"), "");
 // jumpstart-3d: offline. the site's service worker; its cache name comes from the files it keeps, so every build gets its own cache. Not in the single file.
 const swFonts = fontFiles.map((f) => "fonts/" + f); // the fonts are cached too, and part of the cache name
-const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm", ...swFonts].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
+const swLists = helperLists(); // jumpstart-3d: helper pages load on demand: "precache" ones are saved once the engine is ready, "on-use" ones the first time they are fetched
+const swHelpers = [...swLists.precache, ...swLists.onUse]; // all of them are part of the cache name
+const swVersion = createHash("sha256").update(Buffer.concat(["index.html", "app.js", "worker.js", "occt-gz.wasm", ...swFonts, ...swHelpers].map((f) => readFileSync(join(docs, f))))).digest("hex").slice(0, 10);
 const swSource = read(join(src, "sw.js"));
 if (!swSource.includes('const VERSION = "dev";')) throw new Error('src/sw.js is missing the line const VERSION = "dev";');
 if (!swSource.includes("const FONTS = [];")) throw new Error('src/sw.js is missing the line const FONTS = [];');
-writeFileSync(join(docs, "sw.js"), swSource.replace('const VERSION = "dev";', () => `const VERSION = "${swVersion}";`).replace("const FONTS = [];", () => "const FONTS = " + JSON.stringify(swFonts) + ";"));
+writeFileSync(join(docs, "sw.js"), fillHelperSlots(swSource.replace('const VERSION = "dev";', () => `const VERSION = "${swVersion}";`).replace("const FONTS = [];", () => "const FONTS = " + JSON.stringify(swFonts) + ";"), swLists));
 
 // ---------- single file ----------
 mkdirSync(dist, { recursive: true });
@@ -121,7 +145,7 @@ let single = singleShell.replace(
   () =>
     '<script type="text/plain" id="wp-worker-src">' + worker + "</script>\n" +
     '<script type="text/plain" id="wp-occt">' + wasmB64 + "</script>\n" +
-    '<script type="module">' + app + "</script>\n"
+    '<script type="module">' + appSingle + "</script>\n"
 );
 for (const [f, mime] of icons) single = single.replace('href="' + f + '"', () => 'href="' + dataUri(f, mime) + '"');
 single = single.replace(manifestLink, () => ""); // jumpstart-3d: a web manifest cannot be used from file://

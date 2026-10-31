@@ -1,3 +1,5 @@
+// jumpstart-3d: STEP sessions are initialized before the engine starts.
+import { initStepProgress } from "./stepprogress.js";
 // App core: wiring, modes, selection, keyboard, shared UI helpers.
 import { initProjector } from "./projector.js";
 import { initMedia } from "./media.js";
@@ -6,6 +8,7 @@ import { CREDITS, LICENSE_TEXTS } from "./licenses.js";
 import { initSketch3D } from "./sketch3d.js";
 import { initLathe } from "./lathe.js";
 import { initCarve } from "./carve.js";
+import { initStainedGlass } from "./stainedglass.js";
 // jumpstart-3d: keep the upstream version and community release number separate.
 import { VERSION, BUILD } from "./version.js";
 const BUILD_LABEL = VERSION + " · community build " + BUILD;
@@ -17,6 +20,10 @@ import { initTutorials } from "./tutorials.js";
 import * as THREE from "three";
 import { Viewport, ViewCube } from "./viewport.js";
 import { KernelClient } from "./kernelClient.js";
+// jumpstart-3d: the extra fonts (fonts_more.js) load on first use: morefonts.js, not an import here
+import { initMoreFonts } from "./morefonts.js";
+import { helperAsset, helperFailText } from "./helperpages.js";
+import { extraFonts, FONT_GROUPS, FONT_NAMES } from "./fonts.js";
 import { SceneSync } from "./scene.js";
 import { Sketcher } from "./sketcher.js";
 import { store, findBody } from "./store.js";
@@ -32,6 +39,7 @@ import { initBeginner } from "./beginner.js";
 import { initAdvanced } from "./advanced.js";
 import { initProjects } from "./projects.js";
 import { initFlexiGen } from "./flexigen.js";
+import { initFloorPlan } from "./floorplan.js";
 import { initMeshStep } from "./meshstep.js";
 import { initCosForge } from "./cosforge.js";
 import { initChisel } from "./chisel.js";
@@ -47,7 +55,10 @@ captureShare(); // jumpstart-3d: share link. first thing: a design link's fragme
 import { initLoadUI } from "./loadui.js"; // jumpstart-3d: load
 import { initFineTurn } from "./fineturn.js"; // jumpstart-3d: fine rotation
 import { initPivot } from "./pivot.js"; // jumpstart-3d: pivot
+import { initDirectEdit } from "./directedit.js"; // jumpstart-3d: direct edit
 import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
+// jumpstart-3d: insert supplier parts
+import { initInsertPart } from "./insertpart.js";
 import { initDropImport } from "./dropimport.js"; // jumpstart-3d: drop import
 
 /* global __WASM_PARTS__ */
@@ -131,19 +142,25 @@ function boot() {
   }
   app.cube = new ViewCube(vpEl, vp, (name) => vp.setView(name, name === "home" ? app.scene.allBox() : null));
   const load = initLoadUI(app); // jumpstart-3d: load
+  // jumpstart-3d: stage panel lives beside the viewport status UI.
+  app.stepProgress = initStepProgress(app);
   const kernel = (app.kernel = new KernelClient({
     ...engineSources(),
     onProgress: (m) => load.progress(m, WASM_PARTS.reduce((s, p) => s + (p.size || 0), 0)), // jumpstart-3d: load
+    // jumpstart-3d: geometry progress is separate from engine download progress.
+    onBuildProgress: (m) => app.stepProgress.progress(m),
     onReady: () => { load.ready(); app.status(); }, // jumpstart-3d: load. no hold: the splash is already gone
     onResults: () => {
-      app.scene.refresh(); app.status(); app.onBuilt && app.onBuilt();
+      app.scene.refresh(); app.stepProgress.reconcile(); app.status(); app.onBuilt && app.onBuilt();
       app.advanced && app.advanced.showBuildErrors();
       // frame the design once its first meshes arrive
       if (app.needFit && !app.scene.busy()) { app.needFit = false; const b = app.scene.allBox(); if (!b.isEmpty()) app.vp.fit(b); }
     },
-    onFail: (msg) => load.fail(msg), // jumpstart-3d: load
+    onFail: (msg) => { app.stepProgress.clear(); load.fail(msg); }, // jumpstart-3d: load
   }));
   kernel.onBusy = () => app.status();
+  for (const [k, b] of extraFonts()) kernel.addAsset("font:" + k, "font", b);
+  app.moreFonts = initMoreFonts(app, { helperAsset, helperFailText }); // jumpstart-3d: extra fonts on first use
   kernel.start();
   const scene = (app.scene = new SceneSync(vp, kernel));
   vp.zoomTargets = () => scene.meshes();
@@ -162,6 +179,7 @@ function boot() {
   app.pivot = initPivot(app); // jumpstart-3d: pivot. before the two modes: both draw and use it
   app.beginner = initBeginner(app);
   app.advanced = initAdvanced(app);
+  app.directEdit = initDirectEdit(app, { vp, scene }); // jumpstart-3d: direct edit. click or drag a finished sketch's shape to extrude it
   if (IS_IOS) document.documentElement.classList.add("ios");
   if (IS_MAC) document.documentElement.classList.add("mac");
   // iPhone / iPad: a pinch on the panels would zoom the whole page out of shape (the 3D view has its own pinch)
@@ -175,6 +193,7 @@ function boot() {
   app.sketch3d = initSketch3D(app);
 app.lathe = initLathe(app);
 app.carve = initCarve(app);
+app.stainedGlass = initStainedGlass(app);
 // jumpstart-3d: match the static splash before the app loads.
 { const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + BUILD_LABEL; }
 app.bricks = initBricks(app);
@@ -186,6 +205,7 @@ app.voxel = initVoxel(app);
   $("btn-tutorials-menu").onclick = () => { $("menu-export").hidden = true; app.tutorials.open(); }; // jumpstart-3d: phone entry
   $("btn-import-menu").onclick = () => { $("menu-export").hidden = true; app.insertFile("any"); }; // jumpstart-3d: import in the file menu
   app.flexigen = initFlexiGen(app);
+  app.floorplan = initFloorPlan(app);
   app.meshstep = initMeshStep(app);
   app.cosforge = initCosForge(app);
   app.chisel = initChisel(app);
@@ -199,7 +219,10 @@ app.voxel = initVoxel(app);
     app.sel = app.sel.filter((id) => findBody(doc, id));
     if (app.sketcher.active && !doc.sketches.some((s) => s.id === app.sketcher.active)) app.exitSketch();
     scene.state.hideSketch = app.sketcher.active;
+    app.kernel.keepAlso = store.preview ? new Set(store.doc.bodies.map((b) => b._key).filter(Boolean)) : null; // jumpstart-3d: STEP parts (#173). while a preview is open, the saved bodies' meshes stay too (baseOf reads them)
     scene.sync(doc);
+    // jumpstart-3d: replacement and Undo remove sessions without waiting for a poll.
+    if (kind === "load") app.stepProgress.clear(); else app.stepProgress.reconcile();
     // a command can show its own picks as the selection (Combine's target)
     scene.setSelected(app.command && app.command.sceneSel ? app.command.sceneSel() : app.sel);
     if (app.sketcher.active) app.sketcher.redraw();
@@ -240,6 +263,8 @@ app.voxel = initVoxel(app);
   initFineTurn(app); // jumpstart-3d: fine rotation
   initPerfPanel(app); // jumpstart-3d: perf panel
   initDropImport(app); // jumpstart-3d: drop import. a model file dropped anywhere on the page opens like the Import button
+  // jumpstart-3d: insert supplier parts
+  app.insertPart = initInsertPart(app);
   // jumpstart-3d: the top bar wraps to two rows on a narrow screen; Chisel and the Lathe message start below its real height
   new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px")).observe(document.querySelector(".topbar"));
   onUnit(() => {
@@ -402,16 +427,57 @@ app.switchMode = function (mode) {
   if (mode !== "chisel" && mode !== "arch") app.toast(mode === "advanced" ? "Advanced mode: sketches, features and the timeline" : "Beginner mode: drag shapes, group and cut with holes");
 };
 
+// Slice (like Fusion's sketch palette option): when a sketch plane runs through a body, the part
+// of the bodies between the camera and the plane is cut away (view only), so the sketch can be
+// seen and drawn on. It stays on through an Extrude started from the sketch.
+function planeCutsBodies(plane) {
+  const P = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...plane.n).normalize(), new THREE.Vector3(...plane.o));
+  const v = new THREE.Vector3();
+  for (const view of app.scene.views.values()) {
+    if (!view.mesh || !view.body || view.body.hidden || view.group.visible === false) continue;
+    const pos = view.mesh.geometry.attributes.position;
+    if (!pos) continue;
+    view.mesh.updateMatrixWorld();
+    let above = false, below = false;
+    const step = Math.max(1, Math.floor(pos.count / 20000));
+    for (let i = 0; i < pos.count; i += step) {
+      const d = P.distanceToPoint(v.fromBufferAttribute(pos, i).applyMatrix4(view.mesh.matrixWorld));
+      if (d > 0.05) above = true; else if (d < -0.05) below = true;
+      if (above && below) return true;
+    }
+  }
+  return false;
+}
+app.sketchSlice = { on: false, auto: false, plane: null };
+app.setSketchSlice = function (on) {
+  const sk = app.sketcher.sketch;
+  const sec = app.section;
+  if (!sec) return;
+  if (on && sk) {
+    const only = new Map();
+    for (const view of app.scene.views.values()) if (view.body) only.set(view.body.id, view.dataVer);
+    app.sketchSlice = { on: true, plane: sk.plane };
+    sec.set({ ref: { n: sk.plane.n, o: sk.plane.o }, d: -0.05, flip: false, hatch: false, cap: false, only, slice: true }); // just behind the plane, so the sketch draws over the cut
+  } else {
+    if (sec.info && sec.info.slice) sec.clear();
+    app.sketchSlice = { on: false, plane: null };
+  }
+};
 app.enterSketch = function (id) {
+  app.shapeClosedTold = false; // jumpstart-3d: direct edit. the "shape closed" note shows once per sketch visit
   if (app.command) app.command.cancel();
   app.select([]);
   app.sketcher.enter(id);
   app.scene.state.hideSketch = id;
   app.scene.syncSketches(store.view);
+  const sk = app.sketcher.sketch;
+  // turn Slice on by itself when the plane passes through a body (and no section is in use)
+  if (sk && !(app.section && app.section.on && !app.section.info.slice) && planeCutsBodies(sk.plane)) app.setSketchSlice(true);
   app.refreshUI("sketch");
 };
-app.exitSketch = function () {
+app.exitSketch = function (keepSlice = false) {
   if (!app.sketcher.active) return;
+  if (!keepSlice) app.setSketchSlice(false);
   app.sketcher.exit();
   app.scene.state.hideSketch = null;
   app.scene.syncSketches(store.view);
@@ -682,6 +748,50 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.8.1.3", [
+        ["Floor Planner tutorials:", "ten step-by-step projects built into the Floor Planner itself (🎓 Tutorials in its top bar, so they also work when it's opened in its own tab), in the same style as the JumpStart 3D tutorials: your first room, a small apartment, L-shapes and curved walls, a furnished bedroom, kitchen and dining, outside the house, a 3D walk-through, a two-story house, a small shop and the classroom Be an Architect job. Show me points at the button to use, steps tick themselves off, and the checklist shows your progress. Its animated tour is still there as Quick tour."],
+        ["Saving in the Floor Planner:", "💾 Save (or Ctrl+S) saves the whole plan (every floor, room, item, finish and the roof) in one click: the first time you name it Last name, First name, Plan name. 📂 My plans opens, copies and deletes saved plans, saves a plan to a file to take to another computer, and opens one again. The planner also keeps your last plan by itself and offers to continue it next time."],
+        ["3D Print Sim objects:", "arrange the plate like Orca Slicer. Click an object on the plate (or its name under Objects) to pick it, Shift-click to pick more, and drag it to move it. Turn it by any angle around X, Y or Z, lay it on a face, scale it (type a % or use ½× / 2×) and make copies (Duplicate, as many as you like, each set in a free spot). Arrange packs everything neatly; Reset undoes it all. These changes live only in the sim: your bodies are never moved, scaled or copied in the design. The slicing, layers, times, filament and G-code use the plate as you set it."],
+        ["Advanced ribbon:", "Design has a Workshop group at the right end with Fasteners, Chip Carving and Lathe. Stained Glass is on the Simulate tab."],
+      ]),
+      sec("New in version 2.8.1.2", [
+        ["Floor Planner:", "Architect has a Floor Planner (right end of its toolbar) that opens in its own window. It's the Blueprint Floorplanner: sketch rooms on graph paper (1 block = 1 ft) with rectangles, lines and arcs; see every side's length and each room's square feet; add doors, windows, stairs and openings; furnish and finish rooms in Design 2D (furniture, rugs, floors, wall treatments, exterior brick, stone and siding, roofs, porches, dormers, outdoor items, business and garage items, custom signs); add a second floor or a basement; walk through it in Real Space 3D; and download the plan as PNG, JPEG or PDF. Education mode adds a calculator and client jobs. Its own 3D engine is built in, so it works offline."],
+      ]),
+      sec("New in version 2.8.1.1", [
+        ["3D Print Sim times:", "print times are now worked out the way Orca Slicer does it. Every move is timed with the printer's speeds and accelerations from Orca's own 0.20 mm profiles (Bambu Lab, Creality K1 and K2, Ender-3, Prusa MK4S, CORE One and MINI, Elegoo, Flashforge, Snapmaker U1, Voron), and corners slow down by the printer's jerk or square corner velocity. Travel moves are timed too, and short layers slow down so they can cool. The old estimate was nearly twice too long. The saved G-code now carries the same speeds and per-feature accelerations (M204), skips needless retractions inside infill, and spaces top and bottom skins one line apart so they come out solid."],
+        ["Fonts:", "42 more fonts for the Text tools, in groups: bold sans, rounded, serif and slab, script and handwriting, fun and cartoon, tech and games, stencil, and old style (Old English, Wild West, typewriter…). All are open-licence fonts, credited in About."],
+        ["Quick Hinge:", "add a hinge in a few clicks, without FlexiGen (Advanced → Create → Advanced Create, Insert, Simulate → Makers, or Beginner's Hinge button). Choose print-in-place (prints already assembled), a pin hinge (1.75 mm filament, an M2 or M3 screw, or a printed pin) or a living hinge, with size presets, knuckles, clearance and screw holes. Lay it on any face, spin it, then Join a leaf to your part."],
+        ["Architect:", "opens in feet and inches (switch to metric there and it remembers). While drawing a wall, a box by the cursor shows its length and angle. Start typing to change them (12 = 12 ft, 12 6 = 12' 6\"), press Tab for the angle and Enter to place it. Rooms, floors and roofs take a width and depth the same way."],
+        ["Beginner:", "CosForge, Chip Carve and Lathe moved to the right end of the toolbar, next to Stained Glass."],
+        // jumpstart-3d: the community single file is not stored compressed (his standalone.py change is not ported), so his "Smaller file" note is left out
+      ]),
+      sec("New in version 2.7.10", [
+        ["CosForge:", "two new themes of detailed, original costume templates: Space Opera (a full Galactic Trooper suit with vents and joints, plus a bounty hunter helmet, chest, shoulder and gauntlet, a starfighter pilot helmet and life-support vest, a dark knight lord helmet, breath mask, chest armor and gauntlets, a forest scout helmet, protocol droid head and torso plating, and a hard-light shield) and Superhero Armor (a full Reactor powered-armor suit with glowing core, plus a shield hero helmet, chest and star shield, thunder god helm, cuirass and bracers, panther suit mask, chest and gauntlets, heavy armor helmet, chest and shoulders, and a valkyrie winged helm and circlet). Inspired by film and comic styles; no film or comic designs are copied."],
+        ["Square mission lamp:", "a new Stained Glass shade: a four-sided, craftsman-style shade with a square tapered column base. Its Mission design pattern gives tall cream strips, an amber top band and diamond, and a lower band of green stripes, orange chevrons, amber diamonds and a green X on each side. It works with the snap-fit kit, painting, the other piece patterns and all the exports."],
+        ["Bulb fittings:", "Stained Glass lamps can take real lamp hardware. Pick an E26 medium socket (the standard North American bulb), E27, E12 candelabra, or a harp or 1/8 IPS / M10 lamp rod, and a fitter plate is made for it: a collar sized for the socket's shade ring (40.5 mm for E26, adjustable), with spokes out to a ring on the shade's rim. Put it at the top (a spider, to hang the shade or set it on a harp or rod) or at the bottom (the socket stands on the base and the bulb points up). The lamp base gets a 10.5 mm hole down the middle for the rod and cord, and the view shows where the socket and bulb go. The fitter exports with the other parts."],
+        ["Stained Glass:", "its button now sits at the far right of the ribbons (Design and Simulate) and of Beginner's toolbar."],
+      ]),
+      sec("New in version 2.7.9", [
+        ["Stained Glass Studio:", "a new studio in its own window (Advanced's Create group and Simulate → Makers, Beginner's toolbar and Chisel). Turn the selected object into a glass statue, or make a Tiffany-style lamp from a dome, cone, bell, tulip, lantern, globe or vase shade (with a lamp base). Cut it into Tiffany pieces, panels, diamonds, bricks or rings; set the glass thickness (thinner lets more light through), the frame width and thickness, and the frame look (lead, copper foil, brass, black, silver); paint the pieces with glass colours or whole palettes; see it lit from inside, cathedral or opalescent."],
+        ["Picture to stained glass:", "open a PNG, JPG or SVG picture: it is reduced to a few glass colours, its dark outlines become the lead lines, and big areas are cut into simple pieces a glass cutter could make. Make a flat panel (rectangle, circle or oval, arch, or the picture's own outline) or wrap the picture around a lamp shade."],
+        ["Snap-fit stained glass kits:", "the frame prints as one part with a ledge under the glass and a divider between the pieces; every glass piece prints on its own, in any colour, and clicks into its own opening under small snap bumps (with a fit clearance you set). Export every part as its own STL (with a numbered piece map), one STL per colour, 3MF with every part coloured, or OBJ, or add it to the design."],
+        ["3D Print Sim exports G-code:", "set the printer's G-code style (Marlin, Klipper, Prusa or Bambu Lab), nozzle and bed temperature, fan, speed (Silent to Ludicrous), skirt, brim, retraction and Z hop, then Export G-code: a real .gcode file with the walls, infill, skins, supports, travel moves, cooling, progress and the feature comments Orca Slicer uses, ready to copy to the printer's SD card or USB stick or send with its app."],
+        ["Picture on a face:", "Insert → Image on a face: click a flat face of a body and the picture is put on it, sized to fit, ready to trace by hand or with Auto trace (tick Auto trace it after placing), then extrude, emboss or cut."],
+        ["Architect windows:", "33 more windows: colonial, double hung, farmhouse, craftsman, prairie and diamond grilles, awning, hopper, clerestory, floor-to-ceiling, triple and double casements, glass block, arch-top, half-round, Palladian, octagon and porthole, and 14 stained glass windows (rose, gothic arch with tracery, church lancet, wheel, Tiffany floral, leaded diamonds, prairie, sunburst, art deco, mosaic, porthole, octagon, Victorian transom, entry sidelight). They send to Beginner and Advanced with their frames, muntins and lead."],
+        ["CosForge:", "four new traditional themes with full suits of armor and detailed helmets: Medieval Plate (close helm, great helm, bascinet, sallet, barbute, armet with plume, and every plate down to the sabatons), Roman Legion, Ancient Greek and Norse."],
+        ["Fasteners:", "now also in Advanced Create (Advanced Create → Fasteners)."],
+      ]),
+      sec("New in version 2.7.8", [
+        ["Sketch inside a body:", "when a sketch plane runs through a body (a sketch on an offset plane inside a box, say), the part of the bodies between you and the plane is sliced away, like Fusion 360's Slice, so the sketch can be seen and drawn on. It stays on while you Extrude from the sketch (the view isn't changed back), and the Slice checkbox in the Sketch palette turns it on or off. A circle extruded inside a body now joins that body instead of being lost inside it."],
+        ["Sketches tidy themselves:", "a sketch used by a feature (also a sketch you showed again to use once more) is hidden once the feature is made, and while you edit a sketch, other sketches on the same plane are not drawn on top of it."],
+        ["Sweep like Fusion 360:", "the path can be sketch curves, a 3D Sketch line or body edges (picked one by one, joined end to end); an optional Guide rail turns the profile to follow a second curve and, with Scale on, grows or shrinks it to keep touching the rail; the path and rail sketches stay visible while you pick."],
+        ["Joining many bodies:", "Combine (Join) and patterns fuse many bodies in one go and check the result, so a ring of 64 ribs joined to a hollow planter no longer disappears (a piece that can't be fused is kept rather than lost)."],
+        ["Fasteners library:", "Insert → Fasteners (and Simulate → Makers): hex bolts, socket head, button head, flat head and set screws, wood screws, threaded rod, hex, nylon lock and square nuts, flat and split washers, heat-set inserts and dowel pins, in metric (M2 to M20) and inch (#4 to 1/2\") sizes and standard lengths, with optional modeled threads. Point at a round hole to drop the part into it, lined up; the panel shows the clearance and tap drill sizes. Double-click it later to change it."],
+        ["Bin & Box Maker:", "Simulate → Makers: small part bins and organisers with a grid of square, round or hex compartments, walls, floor, corner radius, finger scoops, label lips, a stackable foot and a lid with fit clearance. Double-click the bin later to change it."],
+        ["Pattern on a 3D line:", "Pattern on path can follow a 3D Sketch line, with the copies turning to follow it, and can hide the line afterwards."],
+        ["Architect plants:", "51 more trees, shrubs, flowers, garden pieces and rocks for the landscape (magnolia, jacaranda, ginkgo, olive, Japanese maple, giant redwood, cedar, poplar, acacia, baobab, coconut and date palms, bamboo, citrus trees, topiary, lilac, holly, sunflowers, poppies, a vegetable bed, corn, pumpkins, bonsai, a bird bath, logs, stumps and more), with a new Garden group."],
+        ["CosForge:", "a new Military theme (combat and pilot helmets, field respirator, plate carrier, duty belt, guards, pads and boots: protective gear only) and 16 more Sci-Fi parts (helmets, exo-suit armor, hover pack, holo bracer, grav boots and a hard-light shield). CosForge has no firearms or other weapons."],
+      ]),
       sec("New in version 2.7.7", [
         ["Shell for any shape:", "Shell and Hollow now work on complex shapes: shapes with holes through them, branches and bosses, joined shapes, free-form and organic bodies, tori, and curved openings (open a round side, not just a flat end). When the exact offset can't make the wall, a new distance-field method builds it from the distance to the kept faces, so it works on any closed shape; flat and round shapes keep their own surface exact. It takes a few seconds."],
         ["Shell options:", "pick opening faces on several shapes at once (each gets its own shell); Hollow can add 1, 2 or 4 drain holes through the bottom (for resin and powder printing) with the size you set; and Method (Auto, Exact offset, Slices, or Any shape with Normal or Fine detail) lets you choose how the wall is made. Auto tries them in turn."],
@@ -879,12 +989,18 @@ app.quickExtrude = function (opts = {}) {
   const sk = app.sketcher.active;
   if (sk && app.sketcher.state) app.sketcher.done();
   if (app.command) app.command.cancel();
-  if (sk) app.exitSketch();
+  if (sk) app.exitSketch(true); // keep the Slice while extruding (it ends with the command)
   app.advanced.extrude(sk ? { sketch: sk, ...opts } : {});
+  if (app.sketchSlice.on && !app.command) app.setSketchSlice(false);
 };
 // Beginner: as soon as a sketch has a new closed shape, Extrude opens on it (already 10 mm up,
 // with the big arrow); Cancel goes back to the sketch to keep drawing
 app.onShapeClosed = function (skId, regionKeys) {
+  // jumpstart-3d: direct edit. Beginner no longer opens Extrude by itself: finish the sketch, then click the shape (or press E)
+  if (app.mode === "beginner") {
+    if (app.sketcher.active === skId && !app.shapeClosedTold) { app.shapeClosedTold = true; app.toast("Shape closed. Finish the sketch, then click the shape to extrude it (or press E now)."); }
+    return;
+  }
   if (app.mode !== "beginner" || app.sketcher.active !== skId) return;
   setTimeout(() => {
     if (app.mode !== "beginner" || app.sketcher.active !== skId) return;
@@ -941,11 +1057,16 @@ app.refreshUI = function (kind) {
 
 app.status = function () {
   const busy = app.scene && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size);
-  $("busy").hidden = !busy || !app.kernel.ready;
+  // jumpstart-3d: a STEP row already describes this active build.
+  $("busy").hidden = !busy || !app.kernel.ready || app.stepProgress.represented();
+  // jumpstart-3d: a hollow on a curved shape can take a minute; say so after 3 s instead of only "Rebuilding"
+  { const k = app.kernel, long = busy && k.inflight && Date.now() - (k.inflightAt || 0) >= 2900 && k.inflight.some((b) => JSON.stringify(b.node).includes('"t":"shell"'));
+    $("busy").textContent = long ? "Hollowing: on a curved shape this can take a minute" : "Rebuilding"; }
   let hint = "";
   if (app.mode === "arch") hint = app.arch.hint();
   else if (app.sketcher.active) hint = app.sketchHint();
   else if (app.command) hint = app.command.hint ? app.command.hint() : "";
+  else if (app.directEdit && app.directEdit.hint()) hint = app.directEdit.hint(); // jumpstart-3d: direct edit
   else if (app.mode === "beginner") hint = app.vp.touchMode ? "Drag shapes onto the workplane. Drag empty space to orbit, two fingers to pan and zoom." : (IS_MAC ? "Drag shapes onto the workplane. Option-drag (or two-finger click and drag) to orbit, Option+Shift-drag to pan, pinch or scroll to zoom." : "Drag shapes onto the workplane. Right-drag to orbit, Shift+right-drag or middle-drag to pan, scroll to zoom.");
   else if (app.sel.length === 1 && !app.isLocked(app.sel[0])) hint = "Drag the white handles to scale the body. Double-click a body or timeline item to edit it.";
   else hint = app.vp.touchMode ? "Start with Sketch, or add a primitive. Drag to orbit, two fingers to pan and zoom, double-tap to edit." : (IS_MAC ? "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Option-drag orbits, Option+Shift-drag pans, pinch zooms." : "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Right-drag orbits, middle-drag pans.");
@@ -980,7 +1101,10 @@ app.sketchHint = function () {
     trim: "Click a segment to cut it back to the nearest intersections.",
     dim: "Sketch dimension: click a line, circle or arc (or two points or lines for a distance or angle), click again to place it, then type the value. Double-click a dimension to change it.",
     mirror: app.sketcher.mirrorHint(), // jumpstart-3d: sketch mirror
-    select: "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
+    // jumpstart-3d: Fusion-style. An empty sketch, including projected face edges, needs a drawing hint.
+    select: app.sketcher.sketch && !app.sketcher.sketch.ents.some((x) => !x.proj)
+      ? "Pick a tool to draw: Line (L), Rectangle (R), Circle (C), or another in the Create group."
+      : "Click a line, circle or arc to type its size. Drag to move shapes, double-click a dimension to change it. Delete removes, X toggles construction. Pick a tool above to draw more.",
   }[t] || "";
 };
 
@@ -1092,6 +1216,10 @@ app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit()
 };
 
 // ------------------------------------------------------------------ keyboard
+// jumpstart-3d: keyboard access. true from a mouse press until the next key press: a button focused this way still hands Tab to the size box (:focus-visible cannot tell, the browser has already seen the key)
+let focusByMouse = false, keyAfterMouse = false;
+document.addEventListener("pointerdown", () => { focusByMouse = true; }, true);
+document.addEventListener("keydown", () => { keyAfterMouse = focusByMouse; focusByMouse = false; }, true); // keyAfterMouse: this key is the first one since the press
 function onKey(e) {
   if (app.mode === "chisel") return; // Chisel has its own keys (in its frame)
   const tag = (e.target.tagName || "").toLowerCase();
@@ -1145,6 +1273,8 @@ function onKey(e) {
   // the open tool can use the arrow keys (Move / Copy moves with them, and turns with , and .)
   if (app.command && app.command.arrowKey && /^Arrow/.test(e.key) && app.command.arrowKey(e)) { e.preventDefault(); return; }
   if (app.command && app.command.turnKey && (e.code === "Comma" || e.code === "Period") && app.command.turnKey(e)) { e.preventDefault(); return; }
+  // jumpstart-3d: keyboard access. Tab (type a size on the selected shape) goes to the shape only while the view or the page has the focus, or a button the mouse just clicked; a button the keyboard reached, and anything in the import note, keeps Tab as the browser moves it
+  if (e.key === "Tab" && e.target !== app.vp.canvas && e.target !== document.body && e.target !== document.documentElement && (e.target.closest?.("#toasts") || !keyAfterMouse)) return;
   const handled = app.mode === "beginner" ? app.beginner.key(e) : app.advanced.key(e);
   if (handled) e.preventDefault();
 }

@@ -1,8 +1,10 @@
+// jumpstart-3d: checked STEP transfer and scoped build stages.
+import { readStepShape, beginStepBuild, stepStage, denseStep } from "./stepload.js";
 // Geometry kernel: turns the document's node trees into OpenCascade solids
 // and meshes. Runs inside a Web Worker in the app, and directly in Node for tests.
 import * as R from "replicad";
 import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: the round-face-safe merge after a boolean (exported for the STEP import)
-import { fontBytes } from "./fonts.js";
+import { fontBytes, registerFont } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
 import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
 import { fillOpenings, analyseOpenings, chooseOpenings } from "./fillopen.js"; // jumpstart-3d: fill openings
@@ -90,6 +92,11 @@ function roundOff(shape, p) {
   // Clamped below half the smallest dimension: OpenCascade can hang otherwise.
   const lim = Math.min(clampPos(p.w), clampPos(p.d), clampPos(p.h)) / 2 * 0.96;
   p = { ...p, r: Math.min(p.r || 0, lim), c: Math.min(p.c || 0, lim) };
+  // rounded upright corners only (bins, trays, plates)
+  const rv = Math.min(p.rv || 0, Math.min(clampPos(p.w), clampPos(p.d)) / 2 * 0.96);
+  if (rv > 0) {
+    try { const s = shape.fillet(rv, (e) => e.inDirection("Z")); shape.delete(); shape = s; } catch (e) { throw new Error("Corner radius is too large for this shape"); }
+  }
   if (p.r > 0) {
     try { const s = shape.fillet(p.r); shape.delete(); return s; } catch (e) { throw new Error("Radius is too large for this shape"); }
   }
@@ -343,7 +350,7 @@ function buildPrim(kind, p) {
 function textDrawing(t) {
   const str = String(t.str || "").replace(/\s+$/, "");
   if (!str.trim()) throw new Error("Type some text first");
-  const fontName = ["sans", "serif", "mono"].includes(t.font) ? t.font : "sans";
+  const fontName = KNOWN_FONTS.has(t.font) ? t.font : "sans";
   const font = R.getFont(fontName);
   const cap = (font.tables.os2 && font.tables.os2.sCapHeight) || font.unitsPerEm * 0.7;
   const fontSize = clampPos(t.size || 10) * font.unitsPerEm / cap;
@@ -581,6 +588,18 @@ function swSeg(s) {
       }
     };
   }
+  if (s.t === "bsp") {
+    // a smooth curve through points: walked as the polyline through them (for stations and trims)
+    const P = s.pts, cum = [0];
+    for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + V.len(V.sub(P[i], P[i - 1])));
+    const total = cum[cum.length - 1] || 1;
+    const loc = (u) => { const L = Math.max(0, Math.min(1, u)) * total; let i = 1; while (i < P.length - 1 && cum[i] < L) i++; const w = (L - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1); return { i, w }; };
+    return {
+      s, len: total,
+      at: (u) => { const { i, w } = loc(u); return { p: V.lerp(P[i - 1], P[i], w), t: V.nrm(V.sub(P[i], P[i - 1])) }; },
+      cut: (f) => { const { i, w } = loc(f); const pts = P.slice(0, i).concat([V.lerp(P[i - 1], P[i], w)]); return pts.length < 2 ? { t: "line", a: P[0], b: P[1] } : { t: "bsp", a: pts[0], b: pts[pts.length - 1], pts }; },
+    };
+  }
   throw new Error("Unsupported path segment");
 }
 function swTrim(segs, f) {
@@ -714,6 +733,68 @@ function swTwistTaper(wire, segs, taper, twist, isHole) {
   }
 }
 
+// Path + guide rail (like Fusion's): the profile turns about the path to keep facing the rail and
+// (with scale on) grows or shrinks with its distance from the path. At each station along the
+// path the rail is found where it crosses the plane across the path there.
+function railPoints(railSegs) {
+  const pts = [];
+  for (const s of railSegs) {
+    if (s.t === "bsp") { for (const q of s.pts) pts.push(q); continue; }
+    const g = swSeg(s);
+    const n = s.t === "line" ? 1 : 64;
+    for (let i = pts.length ? 1 : 0; i <= n; i++) pts.push(g.at(i / n).p);
+  }
+  return pts;
+}
+function railAt(R0, p, t, prev) {
+  const V = swV;
+  let best = null, bd = Infinity;
+  for (let i = 1; i < R0.length; i++) {
+    const a = R0[i - 1], b = R0[i];
+    const da = V.dot(V.sub(a, p), t), db = V.dot(V.sub(b, p), t);
+    if ((da > 0) === (db > 0) && Math.abs(da) > 1e-12 && Math.abs(db) > 1e-12) continue;
+    const u = Math.abs(da - db) < 1e-15 ? 0 : da / (da - db);
+    const q = V.lerp(a, b, Math.max(0, Math.min(1, u)));
+    // nearest crossing to the path point (and to the last one, so a wavy rail is followed in order)
+    const d = V.len(V.sub(q, p)) + (prev ? 0.25 * V.len(V.sub(q, prev)) : 0);
+    if (d < bd) { bd = d; best = q; }
+  }
+  if (best) return best;
+  // no crossing (the rail is shorter than the path): the nearest rail point
+  for (const q of R0) { const d = V.len(V.sub(q, p)); if (d < bd) { bd = d; best = q; } }
+  return best;
+}
+function swGuide(wire, segs, railSegs, scale) {
+  const V = swV;
+  const R0 = railPoints(railSegs);
+  if (R0.length < 2) throw new Error("Pick a guide rail: a sketch curve or body edges");
+  let n = Math.max(8, Math.min(48, segs.length * 8));
+  const S = swStations(segs, n), P0 = S.st[0].p, t0 = S.st[0].t;
+  const across = (v, t) => V.sub(v, V.mul(t, V.dot(v, t)));
+  let q = railAt(R0, P0, t0, null);
+  const v0 = across(V.sub(q, P0), t0), L0 = V.len(v0);
+  if (L0 < 1e-4) throw new Error("The guide rail must not touch the path where the sweep starts");
+  const wires = [];
+  try {
+    let prev = q;
+    for (const st2 of S.st) {
+      q = railAt(R0, st2.p, st2.t, prev); prev = q;
+      const v = across(V.sub(q, st2.p), st2.t), L = V.len(v);
+      const vt = swApply(st2.A, v0); // where the start direction is carried with no turning
+      const ang = L > 1e-9 ? Math.atan2(V.dot(V.cross(vt, v), st2.t), V.dot(vt, v)) : 0;
+      const k = scale && L > 1e-9 ? L / L0 : 1;
+      const Rm = swMat3(swRot(st2.t, ang), st2.A);
+      const RP = swApply(Rm, P0), tr = V.sub(st2.p, V.mul(RP, k));
+      const m = [Rm[0][0] * k, Rm[1][0] * k, Rm[2][0] * k, 0, Rm[0][1] * k, Rm[1][1] * k, Rm[2][1] * k, 0, Rm[0][2] * k, Rm[1][2] * k, Rm[2][2] * k, 0, tr[0], tr[1], tr[2], 1];
+      wires.push(transformShape(wire.clone(), m));
+    }
+    const spine = sweepPath(segs);
+    try { return swPipe(spine, wires); }
+    catch (e) { throw new Error("Couldn't sweep along this path with this guide rail. Keep the rail beside the path, about the same length, without sharp turns."); }
+    finally { spine.delete(); }
+  } finally { wires.forEach((w) => w.delete && w.delete()); }
+}
+
 function buildSweep(node) {
   if (!node.regions || !node.regions.length) throw new Error("Select a closed profile to sweep");
   const pl = planeOf(node.plane);
@@ -731,12 +812,14 @@ function buildSweep(node) {
   const perp = node.orient !== "parallel";
   const frac = Math.max(1e-3, Math.min(1, node.dist == null ? 1 : +node.dist || 1));
   const taper = perp ? +node.taper || 0 : 0, twist = perp ? +node.twist || 0 : 0;
-  const special = Math.abs(taper) > 1e-9 || Math.abs(twist) > 1e-9;
+  const rail = node.railSegs && node.railSegs.length ? node.railSegs : null;
+  const special = !!rail || Math.abs(taper) > 1e-9 || Math.abs(twist) > 1e-9;
   if (frac < 1 - 1e-9 && segs.length) segs = swTrim(segs, frac);
   if (special) {
-    if (segs.length === 1 && segs[0].t === "circle") throw new Error("Twist and taper need an open path. Set Distance below 1, or use a path that is not a closed loop.");
+    const what = rail ? "A guide rail needs" : "Twist and taper need";
+    if (segs.length === 1 && segs[0].t === "circle") throw new Error(what + " an open path. Set Distance below 1, or use a path that is not a closed loop.");
     const start = segs[0].a;
-    if (Math.abs(Vec.dot(Vec.sub(start, node.plane.o), Vec.norm(node.plane.n))) > 1e-3) throw new Error("For twist and taper, the profile must sit at the start of the path.");
+    if (Math.abs(Vec.dot(Vec.sub(start, node.plane.o), Vec.norm(node.plane.n))) > 1e-3) throw new Error((rail ? "For a guide rail" : "For twist and taper") + ", the profile must sit at the start of the path.");
   }
   const spine = sweepPath(segs);
   let out = null;
@@ -745,7 +828,7 @@ function buildSweep(node) {
       if (r.text) throw new Error("Text profiles can't be swept yet");
       const solidOf = (loop, hole) => {
         const sk = loopDrawing(loop).sketchOnPlane(pl);
-        try { return special ? swTwistTaper(sk.wire, segs, taper, twist, hole) : pipe(sk.wire, spine, node.orient); } finally { sk.delete(); }
+        try { return rail ? swGuide(sk.wire, segs, rail, node.railScale !== false) : special ? swTwistTaper(sk.wire, segs, taper, twist, hole) : pipe(sk.wire, spine, node.orient); } finally { sk.delete(); }
       };
       let s1 = solidOf(r.outer, false);
       if (Math.abs(R.measureVolume(s1)) < 1e-9) throw new Error("Couldn't sweep");
@@ -997,7 +1080,7 @@ function attachFillReports(node, mesh) {
     (mesh.fillReports ||= {})[mod.id] = report;
   }
 }
-function applyMod(shape, mod) {
+function applyMod(shape, mod, node) { // jumpstart-3d: STEP parts (#173). node: only keeppiece with src "import" reads it
   switch (mod.t) {
     // jumpstart-3d: fill openings
     case "fillopen": {
@@ -1073,12 +1156,19 @@ function applyMod(shape, mod) {
       let out;
       if (mod.op === "cut") out = shape.cut(tool);
       else if (mod.op === "intersect") out = shape.intersect(tool);
-      else out = shape.fuse(tool);
+      else {
+        // join: a tool made of many solids (a pattern of ribs, say) is fused in one go, and the
+        // result is checked, so the tools can never just disappear
+        const parts = solidsOf(tool);
+        out = fuseMany([shape.clone(), ...parts.map((x) => x.clone())]);
+        for (const x of parts) x.delete();
+      }
       tool.delete(); shape.delete();
       return out;
     }
     // jumpstart-3d: a persisted piece selector re-evaluates the copied history.
     case "keeppiece": {
+      if (mod.src === "import" && node) return importPart(shape, mod, node); // jumpstart-3d: STEP parts (#173)
       const pieces = solidPieces(shape);
       shape.delete();
       if (mod.sole && pieces.length !== mod.count) {
@@ -1421,11 +1511,29 @@ function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
   // up, so the slice method goes first there
   let freeform = false;
   for (const f of shape.faces) { const g = f.geomType; if (g === "BSPLINE_SURFACE" || g === "BEZIER_SURFACE" || g === "OFFSET_SURFACE" || g === "OTHER_SURFACE") freeform = true; f.delete(); }
+  // jumpstart-3d: for closed hollows the order above is replaced: the offset goes first (only its quick attempts, no Intersection join;
+  // 1 s on the oval capsule against 20-30 s for slices, whose walls came out as thin as 0.9 mm for 2) and is kept only
+  // when every curve is wider than the wall (curvature gate) and it passes the wall check; then slices, then the field. With open faces the slices still go first: the check
+  // needs the offset hollow, which the open-face path (a thick solid) does not build.
+  let offsetTried = false;
+  if (freeform && !open.size) {
+    offsetTried = true;
+    // a curve bending the dangerous way (convex for an inward wall, concave for an outward one) as tight as the wall
+    // (radius within 3%) pinches the offset into a broken solid that still measures right (capsule 40 x 36 x 12): no offset
+    const radius = tightestRadius(shape, dir), wide = radius * 0.97 > (dir === "both" ? t / 2 : t);
+    const r0 = wide ? shellSolidOffset(shape, t, open, dir, vIn, true) : null;
+    if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("offset shell first", wide ? (r0 ? "ok" : "failed") : "skipped, tightest curve radius " + radius.toFixed(3), Date.now() - T0, "ms");
+    if (r0) return r0;
+  }
+  // end jumpstart-3d
   if (freeform) {
     const s0 = sliceShell(shape, t, open, dir);
     if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("slice shell first", s0 ? "ok" : "failed", Date.now() - T0, "ms");
     if (s0) return s0;
   }
+  // jumpstart-3d: the offset already ran (failed or was rejected by the wall check): straight to the field
+  if (offsetTried) return sdfShell(shape, t, open, dir);
+  // end jumpstart-3d
   const r = shellSolidOffset(shape, t, open, dir, vIn);
   if (typeof process !== "undefined" && process.env && process.env.SHELL_T) console.log("offset shell", r ? "ok" : "failed", Date.now() - T0, "ms");
   if (r) return r;
@@ -1440,9 +1548,9 @@ function shellSolid(shape, t, open, dir, vIn, method = "auto", detail = 1) {
 }
 // jumpstart-3d: shell hang guard (wall equals a fillet radius). When the offset distance matches the radius of a round
 // face (a fillet's cylinder, a corner's sphere, a torus tube), that face shrinks to nothing and OpenCascade's offset
-// loops for minutes while it eats gigabytes (box with 2 mm fillets and a 2 mm wall, 2026-10-27). Walls 0.5% off the radius
-// offset in half a second, so within 0.25% of a radius the wall is made 0.5% thinner (0.01 mm on a 2 mm wall). The slice
-// method was tried instead and was wrong there (inner hollow 30% too big, walls too thin), the distance field took 30 s.
+// loops for minutes while it eats gigabytes. Within 0.25% of a radius the wall is made 0.5% thinner, or 0.5% thicker
+// when the thinner wall meets another round face's radius. The slice method is 5x slower there, with rough fillet walls
+// and a kernel volume about 11% low; the distance field took 30 s.
 function offsetHitsRadius(shape, d) {
   let hit = false;
   for (const f of shape.faces) {
@@ -1460,11 +1568,93 @@ function offsetHitsRadius(shape, d) {
   return hit;
 }
 // end jumpstart-3d
-function shellSolidOffset(shape, t, open, dir, vIn) {
-  if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) { // jumpstart-3d: shell hang guard (wall equals a fillet radius)
-    t *= 0.995;
-    if (offsetHitsRadius(shape, dir === "both" ? t / 2 : t)) return null; // another round face at the new size: leave it to the slice and field methods
+// jumpstart-3d: an offset by d is only regular where every curve is wider than d; at d equal to a curve's radius the offset
+// pinches and the solid is broken even though it measures right (capsule 40 x 36 x 12). Only curves that bend the dangerous
+// way pinch: an inward offset (side "in") folds where the surface is convex, an outward one ("out") where it is concave,
+// and "both" counts every curve. The smallest such principal radius of curvature over the non-planar faces: a 17 x 17 grid
+// per face, then the worst sample refined twice (a 9 x 9 grid over its neighbouring cells), since a coarse grid misses the
+// tight tip of a stretched ellipsoid or paraboloid. Infinity when no curve bends that way. With the outward normal
+// (D1U x D1V, reversed on a REVERSED face) a convex curve has a negative curvature and a concave one a positive.
+// The outputs of D2 are made once: EvalD2 leaks wasm memory on every call.
+function tightestRadius(shape, side = "both") {
+  const P = new OC.gp_Pnt(), V = [0, 1, 2, 3, 4].map(() => new OC.gp_Vec()), [D1U, D1V, D2U, D2V, D2UV] = V;
+  let kmax = 0;
+  try {
+    for (const f of shape.faces) {
+      if (f.geomType !== "PLANE") {
+        const sg = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
+        const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+        try {
+          const danger = (u, v) => {
+            ad.D2(u, v, P, D1U, D1V, D2U, D2V, D2UV);
+            const nn = D1U.Crossed(D1V);
+            try {
+              const nl = nn.Magnitude(), E = D1U.Dot(D1U), F = D1U.Dot(D1V), G = D1V.Dot(D1V), den = E * G - F * F;
+              if (nl < 1e-9 || den < 1e-12) return 0;
+              const L = sg * D2U.Dot(nn) / nl, M = sg * D2UV.Dot(nn) / nl, N = sg * D2V.Dot(nn) / nl;
+              const K = (L * N - M * M) / den, H = (E * N - 2 * F * M + G * L) / (2 * den), q = Math.sqrt(Math.max(0, H * H - K));
+              return side === "in" ? -(H - q) : side === "out" ? H + q : Math.max(Math.abs(H + q), Math.abs(H - q));
+            } finally { nn.delete(); }
+          };
+          let u0 = ad.FirstUParameter(), u1 = ad.LastUParameter(), v0 = ad.FirstVParameter(), v1 = ad.LastVParameter(), best = 0;
+          // a grid over [u0, u1] x [v0, v1] with n cells a side; returns the worst sample's cell indices
+          const scan = (n) => {
+            let bi = 0, bj = 0, bk = -Infinity;
+            for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+              const k = danger(u0 + (u1 - u0) * i / n, v0 + (v1 - v0) * j / n);
+              if (k > bk) { bk = k; bi = i; bj = j; }
+            }
+            best = Math.max(best, bk);
+            return [bi, bj, n];
+          };
+          for (let pass = 0; pass < 3; pass++) {
+            const [i, j, n] = scan(pass ? 8 : 16);
+            if (pass < 2) { // the next, finer grid covers the cells next to the worst sample
+              const du = (u1 - u0) / n, dv = (v1 - v0) / n, nu0 = Math.max(u0, u0 + (i - 1) * du), nv0 = Math.max(v0, v0 + (j - 1) * dv);
+              u1 = Math.min(u1, u0 + (i + 1) * du); v1 = Math.min(v1, v0 + (j + 1) * dv); u0 = nu0; v0 = nv0;
+            }
+          }
+          kmax = Math.max(kmax, best);
+        } catch (e) {} finally { ad.delete(); }
+      }
+      f.delete();
+    }
+  } finally { P.delete(); V.forEach((v) => v.delete()); }
+  return kmax > 0 ? 1 / kmax : Infinity;
+}
+// an offset wall is right when the offset surface stays the full distance d from the original surface
+// everywhere; where a curve is tighter than d the offset folds and comes closer (oval capsule ends: 1.3-1.9 mm for 2).
+// Measured between shells: between nested solids the distance is 0.
+function wallClear(a, b, d) {
+  const shellsOf = (solid) => { const ex = new OC.TopExp_Explorer(solid.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SHELL, OC.TopAbs_ShapeEnum.TopAbs_SHAPE), list = []; for (; ex.More(); ex.Next()) list.push(ex.Current()); ex.delete(); return list; };
+  const made = [];
+  let builder = null, dss = null;
+  try {
+    builder = new OC.TopoDS_Builder();
+    const compound = (solid) => { const c = new OC.TopoDS_Compound(); made.push(c); builder.MakeCompound(c); for (const sh of shellsOf(solid)) { made.push(sh); builder.Add(c, sh); } return c; };
+    const ca = compound(a), cb = compound(b);
+    dss = new OC.BRepExtrema_DistShapeShape();
+    dss.LoadS1(ca); dss.LoadS2(cb);
+    return !!(dss.Perform() && dss.IsDone() && dss.Value() >= d * 0.99);
+  } catch (e) {
+    return false;
+  } finally {
+    if (dss) dss.delete();
+    if (builder) builder.delete();
+    made.forEach((x) => x.delete && x.delete());
   }
+}
+// end jumpstart-3d
+function shellSolidOffset(shape, t, open, dir, vIn, check = false) {
+  // jumpstart-3d: shell hang guard (wall equals a fillet radius): 0.5% thinner, else 0.5% thicker; both hit another
+  // radius: leave it to the slice and field methods
+  const hits = (w) => offsetHitsRadius(shape, dir === "both" ? w / 2 : w);
+  if (hits(t)) {
+    if (!hits(t * 0.995)) t *= 0.995;
+    else if (!hits(t * 1.005)) t *= 1.005;
+    else return null;
+  }
+  // end jumpstart-3d
   const ok = (sh, more) => { const v = safeVolume(sh); return v > 1e-6 && (more ? v > vIn * 1.002 : v < vIn * 0.998); };
   // a wall can't hold much more than (area of the kept surface) x thickness; OpenCascade
   // sometimes "succeeds" by hollowing only part of a body, which this catches
@@ -1491,14 +1681,21 @@ function shellSolidOffset(shape, t, open, dir, vIn) {
   // offset-and-subtract
   let outer = null, inner = null, walls = null;
   try {
-    if (dir === "in") { inner = offsetSolid(shape, -t, vIn, false); if (!inner) return null; walls = shape.cut(inner); }
-    else if (dir === "out") { outer = offsetSolid(shape, t, vIn, true); if (!outer) return null; walls = outer.cut(shape); }
+    // jumpstart-3d: the checked first try (check) runs only offsetSolid's quick attempts (firstOnly), in the three calls below
+    if (dir === "in") { inner = offsetSolid(shape, -t, vIn, false, check); if (!inner) return null; walls = shape.cut(inner); }
+    else if (dir === "out") { outer = offsetSolid(shape, t, vIn, true, check); if (!outer) return null; walls = outer.cut(shape); }
     else {
-      outer = offsetSolid(shape, t / 2, vIn, true); inner = offsetSolid(shape, -t / 2, vIn, false);
+      outer = offsetSolid(shape, t / 2, vIn, true, check); inner = offsetSolid(shape, -t / 2, vIn, false, check);
       if (!outer || !inner) return null;
       walls = outer.cut(inner);
     }
     if (!walls || !(safeVolume(walls) > 1e-6)) return null;
+    // jumpstart-3d: the wall check of the closed free-form hollow (t is the guard-adjusted wall the offset used)
+    if (check) {
+      const clear = dir === "in" ? wallClear(inner, shape, t) : dir === "out" ? wallClear(outer, shape, t) : wallClear(inner, shape, t / 2) && wallClear(outer, shape, t / 2);
+      if (!clear) return null;
+    }
+    // end jumpstart-3d
     if (!open.size) { const w = walls; walls = null; return w; }
     // the hollow inside, which each opening reaches
     const cavity = dir === "out" ? shape : inner;
@@ -1686,7 +1883,8 @@ function drainHoles(walls, shape, t, dir, dr) {
   if (!best) best = { c: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, bb.min[2]], w: [bb.size[0] * 0.5, bb.size[1] * 0.5] };
   const r = Math.max(0.25, (dr.d || 3) / 2), n = dr.n || 1;
   const below = dir === "out" ? t : dir === "both" ? t / 2 : 0, above = dir === "in" ? t : dir === "both" ? t / 2 : 0;
-  const z0 = best.c[2] - below - 1, h = below + above + 2;
+  const m = Math.max(1, t * 0.01); // jumpstart-3d: covers the shell hang guard's 0.5% thicker wall
+  const z0 = best.c[2] - below - m, h = below + above + 2 * m; // jumpstart-3d: was - 1 and + 2
   const dx = Math.min(best.w[0] / 4, 30), dy = Math.min(best.w[1] / 4, 30);
   const spots = n >= 4 ? [[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]] : n === 2 ? [[-dx, 0], [dx, 0]] : [[0, 0]];
   const v0 = safeVolume(walls);
@@ -1858,8 +2056,8 @@ function thickSolid(shape, d, openHashes, vIn, grows) {
 function validSolid(sh) {
   try { const a = new OC.BRepCheck_Analyzer(sh.wrapped, true, false); const v = a.IsValid(); a.delete(); return v; } catch (e) { return true; }
 }
-// The whole body grown (d > 0) or shrunk (d < 0) by |d|, as a solid.
-function offsetSolid(shape, d, vIn, grows) {
+// The whole body grown (d > 0) or shrunk (d < 0) by |d|, as a solid. (jumpstart-3d: firstOnly = only the two Arc joins and the simple offset, not the Intersection join)
+function offsetSolid(shape, d, vIn, grows, firstOnly = false) {
   let vol; // the volume good() measured last, for inFixedOrder
   const good = (sh) => { const v = vol = safeVolume(sh); return v > 1e-6 && (grows ? v > vIn * 1.0005 : v < vIn * 0.9995); };
   const attempts = [
@@ -1868,7 +2066,7 @@ function offsetSolid(shape, d, vIn, grows) {
     (b) => b.PerformByJoin(shape.wrapped, d, 1e-2, OC.BRepOffset_Mode.BRepOffset_Skin, true, false, OC.GeomAbs_JoinType.GeomAbs_Intersection, false),
     (b) => b.PerformBySimple(shape.wrapped, d),
   ];
-  for (const run of attempts) {
+  for (const run of firstOnly ? [attempts[0], attempts[1], attempts[3]] : attempts) { // jumpstart-3d: firstOnly = the two Arc joins and the simple offset
     const b = new OC.BRepOffsetAPI_MakeOffsetShape();
     let res = null;
     try {
@@ -1882,6 +2080,7 @@ function offsetSolid(shape, d, vIn, grows) {
     b.delete();
     if (res) return res;
   }
+  if (firstOnly) return null; // jumpstart-3d: the checked first try of a free-form hollow stops before the Intersection join and the unified retry (20+ s to fail on lofts)
   // last resort for unified faces
   const u = unified(shape);
   if (u) {
@@ -2263,7 +2462,7 @@ function helixWire(pitch, height, radius, center, dir, left, shift = 0) {
 function glyphDrawings(t) {
   const str = String(t.str || "");
   if (!str.trim()) throw new Error("Type some text first");
-  const fontName = ["sans", "serif", "mono"].includes(t.font) ? t.font : "sans";
+  const fontName = KNOWN_FONTS.has(t.font) ? t.font : "sans";
   const font = R.getFont(fontName);
   const cap = (font.tables.os2 && font.tables.os2.sCapHeight) || font.unitsPerEm * 0.7;
   const fontSize = clampPos(t.size || 10) * font.unitsPerEm / cap;
@@ -3112,7 +3311,19 @@ function stableKey(node) {
 // Files a design brings in (STL meshes, STEP models) are sent to the worker once as
 // "assets"; nodes refer to them by id, so the big data never travels with every rebuild.
 const assets = new Map(); // id -> { kind, bytes: Uint8Array }
-export function setAsset(id, kind, bytes) { assets.set(id, { kind, bytes }); }
+export function setAsset(id, kind, bytes) {
+  if (kind === "font") {
+    // a Text-tool font from the main page
+    const name = id.replace(/^font:/, "");
+    registerFont(name, bytes);
+    fontWait = fontWait.then(() => R.loadFont(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), name, true)).then(() => KNOWN_FONTS.add(name)).catch((e) => console.warn("font", name, e));
+    return;
+  }
+  assets.set(id, { kind, bytes });
+}
+const KNOWN_FONTS = new Set(["sans", "serif", "mono"]);
+let fontWait = Promise.resolve();
+export const fontsReady = () => fontWait;
 export function hasAsset(id) { return assets.has(id); }
 function assetBytes(node) {
   const a = assets.get(node.asset);
@@ -3213,9 +3424,6 @@ function solidFromMesh(V, I, k = 1, merge = true, shellOnly = false) {
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("mesh build ms: faces", T.faces - T.t0, "solid", T.solid - T.faces, "unify", T.unify - T.solid);
   return shape;
 }
-// jumpstart-3d: plain words for a STEP file that cannot be used
-const STEP_UNREADABLE = "Could not read this STEP file (it may be damaged or not a STEP file).";
-const STEP_NO_SHAPES = "This STEP file has no solids or surfaces in it, so there is nothing to import.";
 // jumpstart-3d: all the solids of a STEP file fused in ONE boolean (the first as the argument, the others as tools), then merged once with the
 // round-face-safe simplifiedResult. Fusing them one after another took 45 s for 200 parts (every step runs against everything fused so far);
 // this takes under a second and gives the same shape. A fuse the engine reports errors for falls back to J.Siwek's one-after-another loop.
@@ -3240,33 +3448,27 @@ function fuseSolids(solids) {
   let acc = solids[0]; for (const x of solids.slice(1)) { const f = acc.fuse(x); acc.delete(); x.delete(); acc = f; }
   return acc;
 }
+// jumpstart-3d: STEP parts (#173). How many solids each STEP file holds (asset id -> count, before any fuse): buildBodies puts it on the mesh of a plain
+// import, so the Import code knows to split a file with several parts into one body per part. Both this and stepPartOrder live as long as the worker (clearCache() does not clear them).
+const stepSolids = new Map();
+const stepPartOrder = new Map(); // asset id + ":" + k -> the permutation (sorted index -> explorer index) of that file's solids
 function buildStepAsset(node) {
   const bytes = assetBytes(node);
-  const name = "import_" + Math.random().toString(36).slice(2);
-  OC.FS.writeFile("/" + name, bytes);
-  const reader = new OC.STEPControl_Reader();
+  // jumpstart-3d: the reader owns validation and healing; extraction order stays here.
+  let shape = readStepShape(OC, R, bytes);
+  // one solid when the file has several
+  const solids = [];
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  // jumpstart-3d: release exploration temporaries even when extraction fails.
   try {
-    // jumpstart-3d: ReadFile returns a status string (never false), so `!reader.ReadFile(name)` could not fire and a damaged or non-STEP file showed "This shape has not type, it is null"
-    if (reader.ReadFile(name) !== OC.IFSelect_ReturnStatus.IFSelect_RetDone) throw new Error(STEP_UNREADABLE);
-    reader.TransferRoots();
-    // jumpstart-3d: a file with nothing in it gives a null shape, which R.cast reports as "This shape has not type, it is null"
-    const whole = reader.OneShape();
-    if (whole.IsNull()) { whole.delete(); throw new Error(STEP_NO_SHAPES); }
-    let shape = R.cast(whole);
-    if (isEmptyShape(shape)) { shape.delete(); throw new Error(STEP_NO_SHAPES); } // jumpstart-3d
-    // one solid when the file has several
-    const solids = [];
-    const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
-    for (; ex.More(); ex.Next()) solids.push(R.cast(OC.TopoDS.Solid(ex.Current())));
-    ex.delete();
-    if (solids.length === 1) { shape.delete(); shape = solids[0]; }
-    else if (solids.length > 1) { shape.delete(); shape = fuseSolids(solids); } // jumpstart-3d: was the one-after-another fuse loop, now the fallback in fuseSolids
-    if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
-    return shape;
-  } finally {
-    reader.delete();
-    try { OC.FS.unlink("/" + name); } catch (e) {}
-  }
+    for (; ex.More(); ex.Next()) { const current = ex.Current(); try { solids.push(R.cast(OC.TopoDS.Solid(current))); } finally { current.delete(); } }
+  } finally { ex.delete(); }
+  stepSolids.set(node.asset, solids.length); // jumpstart-3d: STEP parts (#173)
+  if (solids.length === 1) { shape.delete(); shape = solids[0]; }
+  else if (solids.length > 1 && node.parts) { shape.delete(); { const parts = R.makeCompound(solids); solids.forEach((x) => x.delete()); shape = parts; } } // jumpstart-3d: STEP parts (#173). one body per part: the solids stay apart in a compound
+  else if (solids.length > 1) { shape.delete(); shape = fuseSolids(solids); } // jumpstart-3d: was the one-after-another fuse loop, now the fallback in fuseSolids
+  if ((node.k || 1) !== 1) shape = scaleShape(shape, [node.k, node.k, node.k], [0, 0, 0]);
+  return shape;
 }
 // imported models sit centered on the origin, resting on the workplane
 function placeImported(shape, node) {
@@ -3311,7 +3513,7 @@ export function evalNode(node) {
     // evaluate prefix (node without last mod) so editing the last feature is cheap
     const prefix = { ...node, mods: mods.slice(0, -1) };
     shape = evalNode(prefix);
-    shape = solidsOnly(applyMod(shape, mods[mods.length - 1]));
+    shape = solidsOnly(applyMod(shape, mods[mods.length - 1], node)); // jumpstart-3d: STEP parts (#173). node
     // jumpstart-3d: fill openings
     if (last.t === "fillopen") {
       rememberFillReport(key, lastFillReport); // key = fillKey(node)
@@ -3332,13 +3534,14 @@ function buildGroup(node) {
     (k.hole ? holes : solids).push(s);
   }
   let base;
+  // many small touching pieces (stained-glass leading): kept as one compound, not fused (fast)
+  if (node.op === "compound" && !holes.length) { const c = compoundOf(solids); for (const x of solids) x.delete(); return c; }
   if (node.op === "intersect") {
     if (solids.length < 2) throw new Error("Intersect needs at least two solid bodies");
     base = solids[0];
     for (let i = 1; i < solids.length; i++) { const n = base.intersect(solids[i]); base.delete(); solids[i].delete(); base = n; }
   } else if (solids.length) {
-    base = solids[0];
-    for (let i = 1; i < solids.length; i++) { const n = base.fuse(solids[i]); base.delete(); solids[i].delete(); base = n; }
+    base = fuseMany(solids);
   } else {
     // a group made only of holes stays a hole
     base = holes.shift();
@@ -3346,6 +3549,50 @@ function buildGroup(node) {
   }
   for (const h of holes) { const n = base.cut(h); base.delete(); h.delete(); base = n; }
   return base;
+}
+
+// the solids of a shape (a compound's pieces, or the shape itself)
+function solidsOf(shape) {
+  const T = OC.TopAbs_ShapeEnum, out = [];
+  const ex = new OC.TopExp_Explorer(shape.wrapped, T.TopAbs_SOLID, T.TopAbs_SHAPE);
+  for (; ex.More(); ex.Next()) out.push(R.cast(OC.TopoDS.Solid(ex.Current())));
+  ex.delete();
+  return out.length ? out : [shape.clone()];
+}
+function compoundOf(shapes) {
+  const b = new OC.TopoDS_Builder(), c = new OC.TopoDS_Compound();
+  b.MakeCompound(c);
+  for (const x of shapes) for (const so of solidsOf(x)) b.Add(c, so.wrapped);
+  b.delete();
+  return R.cast(c);
+}
+// Fuse solids into one. One fuse with all of them is much faster and more reliable than adding
+// them one at a time (64 overlapping swept ribs: 40 s and right, instead of minutes and empty).
+// A result that lost material is refused: then one at a time, each step checked, and a piece
+// that won't fuse is kept as its own solid rather than lost.
+function fuseMany(solids) {
+  if (solids.length === 1) return solids[0];
+  const vols = solids.map((x) => Math.abs(safeVolume(x)) || 0);
+  const vmax = Math.max(...vols), vsum = vols.reduce((a, b) => a + b, 0);
+  const trust = vols.every((v) => v > 1e-9); // (a volume that can't be measured can't be checked)
+  const ok = (r, lo, hi) => { if (!r) return false; if (!trust) return true; const v = Math.abs(safeVolume(r)); return v >= lo * 0.999 - 1e-6 && v <= hi * 1.001 + 1e-6; };
+  if (solids.length > 2) {
+    const r = fuseAllTools(solids[0], solids.slice(1));
+    if (ok(r, vmax, vsum)) { for (const x of solids) x.delete(); return r; }
+    if (r) r.delete();
+  }
+  let base = solids[0], vb = vols[0];
+  const loose = [];
+  for (let i = 1; i < solids.length; i++) {
+    let n = null;
+    try { n = base.fuse(solids[i]); } catch (e) { n = null; }
+    if (ok(n, Math.max(vb, vols[i]), vb + vols[i])) { base.delete(); solids[i].delete(); base = n; vb = Math.abs(safeVolume(n)); }
+    else { if (n) n.delete(); loose.push(solids[i]); }
+  }
+  if (!loose.length) return base;
+  const c = compoundOf([base, ...loose]);
+  base.delete(); for (const x of loose) x.delete();
+  return c;
 }
 
 // ---------------------------------------------------------------- meshing
@@ -3478,72 +3725,81 @@ function repairFaceMeshes(shape, m, tol, ang) {
   } finally { faces.forEach((f) => f.delete()); }
 }
 
-export function meshShape(shape, quality = 1) {
+export function meshShape(shape, quality = 1, options = {}) {
   const TT = [Date.now()], tick = () => TT.push(Date.now());
   const bb = bboxOf(shape);
   const diag = Math.hypot(...bb.size) || 1;
   const tol = Math.max(0.005, diag * 0.0006 / quality);
-  const m = shape.mesh({ tolerance: tol, angularTolerance: 0.2 / quality });
-  try { repairFaceMeshes(shape, m, tol, 0.2 / quality); } catch (err) {}
-  flipSlivers(m); // jumpstart-3d: a pointed cone's mesh has flat slivers at its tip; the STL writer drops them and opened the mesh
-  tick();
-  const e = shape.meshEdges({ tolerance: tol, angularTolerance: 0.2 / quality });
-  tick();
-  const faces = shape.faces;
-  // Dense bodies (imported meshes): flat faces get their center and normal from the
-  // display triangles, which is exact for flat faces and far quicker than integrating.
-  const fastFlat = faces.length > 400 && m.faceGroups.length === faces.length;
-  const flatFromMesh = (g) => {
-    let ax = 0, ay = 0, az = 0, cx = 0, cy = 0, cz = 0, A = 0;
-    const T = m.triangles, P = m.vertices;
-    for (let i = g.start; i < g.start + g.count; i += 3) {
-      const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3;
-      const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
-      const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
-      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const ar = Math.hypot(nx, ny, nz) / 2;
-      ax += nx; ay += ny; az += nz; A += ar;
-      cx += ar * (P[a] + P[b] + P[c]) / 3; cy += ar * (P[a + 1] + P[b + 1] + P[c + 1]) / 3; cz += ar * (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
-    }
-    const L = Math.hypot(ax, ay, az);
-    if (!(A > 0) || !(L > 0)) return null;
-    return { n: [ax / L, ay / L, az / L], c: [cx / A, cy / A, cz / A] };
-  };
-  const faceInfo = faces.map((f, fi) => {
-    const t = f.geomType;
-    const info = { t };
-    try {
-      const quick = fastFlat && t === "PLANE" ? flatFromMesh(m.faceGroups[fi]) : null;
-      if (quick) { info.n = quick.n; info.c = quick.c; }
-      else if (t === "PLANE") {
-        info.n = unitT(f.normalAt().toTuple());
-        info.c = f.center.toTuple();
-      } else {
-        info.c = f.center.toTuple();
-        if (t === "SPHERE") {
-          const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
-          // jumpstart-3d: free the surface, placement and point objects too (upstream left them for the garbage collector)
-          const own = [];
-          try { const sp = ad.Sphere(); own.push(sp); const ps = sp.Position(); own.push(ps); const L = ps.Location(); own.push(L); info.r = sp.Radius(); info.o = [L.X(), L.Y(), L.Z()]; } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
-        }
-        if (t === "CYLINDRE") {
-          // axis, radius and which side the material is on (for threads)
-          const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
-          const own = []; // jumpstart-3d: free the surface, placement, point and direction objects too
-          try {
-            const cy = ad.Cylinder(), pos = cy.Position();
-            own.push(cy, pos);
-            const P = (p) => { own.push(p); return [p.X(), p.Y(), p.Z()]; };
-            const reversed = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED;
-            info.r = cy.Radius(); info.ax = P(pos.Direction()); info.o = P(pos.Location());
-            info.ext = (pos.Direct() ? 1 : -1) * (reversed ? -1 : 1) > 0;
-          } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
-        }
+  // jumpstart-3d: only untouched dense STEP imports at Normal use the wider angle.
+  let faces;
+  const eligible = denseStep(options.node, Infinity, quality);
+  let m, e, faceInfo;
+  try {
+    if (eligible) faces = shape.faces;
+    const angle = eligible && faces.length > 400 ? 0.35 : 0.2 / quality;
+    m = shape.mesh({ tolerance: tol, angularTolerance: angle });
+    try { repairFaceMeshes(shape, m, tol, angle); } catch (err) {}
+    flipSlivers(m); // jumpstart-3d: a pointed cone's mesh has flat slivers at its tip; the STL writer drops them and opened the mesh
+    tick();
+    e = shape.meshEdges({ tolerance: tol, angularTolerance: angle });
+    tick();
+    faces ||= shape.faces;
+    // Dense bodies (imported meshes): flat faces get their center and normal from the
+    // display triangles, which is exact for flat faces and far quicker than integrating.
+    const fastFlat = faces.length > 400 && m.faceGroups.length === faces.length;
+    const flatFromMesh = (g) => {
+      let ax = 0, ay = 0, az = 0, cx = 0, cy = 0, cz = 0, A = 0;
+      const T = m.triangles, P = m.vertices;
+      for (let i = g.start; i < g.start + g.count; i += 3) {
+        const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3;
+        const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+        const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const ar = Math.hypot(nx, ny, nz) / 2;
+        ax += nx; ay += ny; az += nz; A += ar;
+        cx += ar * (P[a] + P[b] + P[c]) / 3; cy += ar * (P[a + 1] + P[b + 1] + P[c + 1]) / 3; cz += ar * (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
       }
-    } catch (err) {}
-    f.delete();
-    return info;
-  });
+      const L = Math.hypot(ax, ay, az);
+      if (!(A > 0) || !(L > 0)) return null;
+      return { n: [ax / L, ay / L, az / L], c: [cx / A, cy / A, cz / A] };
+    };
+    faceInfo = faces.map((f, fi) => {
+      const t = f.geomType;
+      const info = { t };
+      try {
+        const quick = fastFlat && t === "PLANE" ? flatFromMesh(m.faceGroups[fi]) : null;
+        if (quick) { info.n = quick.n; info.c = quick.c; }
+        else if (t === "PLANE") {
+          info.n = unitT(f.normalAt().toTuple());
+          info.c = f.center.toTuple();
+        } else {
+          info.c = f.center.toTuple();
+          if (t === "SPHERE") {
+            const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+            // jumpstart-3d: free the surface, placement and point objects too (upstream left them for the garbage collector)
+            const own = [];
+            try { const sp = ad.Sphere(); own.push(sp); const ps = sp.Position(); own.push(ps); const L = ps.Location(); own.push(L); info.r = sp.Radius(); info.o = [L.X(), L.Y(), L.Z()]; } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
+          }
+          if (t === "CYLINDRE") {
+            // axis, radius and which side the material is on (for threads)
+            const ad = new OC.BRepAdaptor_Surface(f.wrapped, true);
+            const own = []; // jumpstart-3d: free the surface, placement, point and direction objects too
+            try {
+              const cy = ad.Cylinder(), pos = cy.Position();
+              own.push(cy, pos);
+              const P = (p) => { own.push(p); return [p.X(), p.Y(), p.Z()]; };
+              const reversed = f.wrapped.Orientation() === OC.TopAbs_Orientation.TopAbs_REVERSED;
+              info.r = cy.Radius(); info.ax = P(pos.Direction()); info.o = P(pos.Location());
+              info.ext = (pos.Direct() ? 1 : -1) * (reversed ? -1 : 1) > 0;
+            } finally { for (const x of own) { try { x.delete(); } catch (err) {} } ad.delete(); }
+          }
+        }
+      } catch (err) {}
+      return info;
+    });
+  } finally {
+    faces?.forEach(f => f.delete());
+  }
   tick();
   const edges = shape.edges;
   const edgeIndex = new Map(edges.map((ed, i) => [ed.hashCode, i]));
@@ -3609,6 +3865,19 @@ export function meshShape(shape, quality = 1) {
   tick();
   let volume = null;
   try { volume = R.measureVolume(shape); } catch (err) {}
+  // jumpstart-3d: the quick integral can be far off on a free-form face with many spans (a slice shell read 7716 mm3 for 8724).
+  // When it disagrees with the triangles by over 1%, the adaptive integral measures it again.
+  {
+    let mv = 0;
+    const P = m.vertices, T = m.triangles;
+    for (let i = 0; i < T.length; i += 3) { const a = T[i] * 3, b = T[i + 1] * 3, c = T[i + 2] * 3; mv += P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]); }
+    mv /= 6;
+    if (volume != null && Math.abs(volume - mv) > 0.01 * Math.abs(mv)) {
+      let props;
+      try { props = new OC.GProp_GProps(); OC.BRepGProp.VolumeProperties(shape.wrapped, props, 1e-6, false, false); volume = props.Mass(); }
+      catch (err) {} finally { if (props) props.delete(); }
+    }
+  }
   tick();
   if (typeof process !== "undefined" && process.env && process.env.MESH_T) console.log("meshShape ms:", TT.slice(1).map((t, i) => t - TT[i]).join(" "));
   return {
@@ -3632,22 +3901,57 @@ function solidPieces(shape) {
   const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
   try { for (; ex.More(); ex.Next()) pieces.push(R.cast(OC.TopoDS.Solid(ex.Current()))); }
   finally { ex.delete(); }
-  const keys = new Map(pieces.map(p => {
-    const bb = bboxOf(p);
-    // Quantize centres to 0.01 mm; bounds resolve centre ties.
-    return [p, [...[2, 1, 0].map(i => Math.round((bb.min[i] + bb.max[i]) / 2 / 0.01)), ...bb.min, ...bb.max]];
-  }));
-  return pieces.sort((a, b) => {
-    const ka = keys.get(a), kb = keys.get(b);
-    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
-    return 0;
-  });
+  const keys = new Map(pieces.map(p => [p, pieceKey(p)]));
+  return pieces.sort((a, b) => compareKeys(keys.get(a), keys.get(b)));
+}
+function pieceKey(p) { // jumpstart-3d: STEP parts (#173). was inline in solidPieces
+  const bb = bboxOf(p);
+  // Quantize centres to 0.01 mm; bounds resolve centre ties.
+  return [...[2, 1, 0].map(i => Math.round((bb.min[i] + bb.max[i]) / 2 / 0.01)), ...bb.min, ...bb.max];
+}
+function compareKeys(ka, kb) {
+  for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+  return 0;
+}
+// jumpstart-3d: STEP parts (#173). The part a body of an imported STEP file keeps, in the same order as solidPieces. Sorting the pieces is slow (about 4 s for
+// 200 filleted cylinders), and every part of the file asks for its own piece, so the order is worked out once per file and remembered (stepPartOrder);
+// later calls only walk the compound.
+function importPart(shape, mod, node) {
+  const pieces = [];
+  let keep = null;
+  try {
+    const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_SOLID, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    try {
+      for (; ex.More(); ex.Next()) {
+        // R.cast downcasts into a copy of its own, so the two raw handles are ours to free
+        let current = null, solid = null;
+        try { current = ex.Current(); solid = OC.TopoDS.Solid(current); pieces.push(R.cast(solid)); } finally { if (solid) solid.delete(); if (current) current.delete(); }
+      }
+    } finally { ex.delete(); }
+    const key = node.asset + ":" + (node.k || 1);
+    let perm = stepPartOrder.get(key);
+    if (!perm || perm.length !== pieces.length) {
+      const keys = pieces.map(pieceKey);
+      perm = pieces.map((_, i) => i).sort((a, b) => compareKeys(keys[a], keys[b]));
+      stepPartOrder.set(key, perm);
+    }
+    if (perm.length !== mod.count || !Number.isInteger(mod.piece) || mod.piece < 0 || mod.piece >= perm.length) {
+      throw new Error(`Part ${mod.piece + 1} of this imported STEP file is missing: the file now reads as ${perm.length} parts, not ${mod.count}. Import the file again.`);
+    }
+    keep = pieces[perm[mod.piece]];
+    return keep;
+  } finally {
+    shape.delete();
+    pieces.forEach(p => { if (p !== keep) p.delete(); });
+  }
 }
 
-export function buildBodies(bodies, quality = 1) {
+export function buildBodies(bodies, quality = 1, options = {}) {
   setMeshQuality(quality); // jumpstart-3d: Manifold results are made at this mesh detail, including the B-reps built from them
   const out = [];
   for (const b of bodies) {
+    // jumpstart-3d: synchronous context is always removed, even on engine failure.
+    const endProgress = beginStepBuild(b, options.onProgress);
     try {
       // jumpstart-3d: a join or cut with an imported mesh is done by Manifold and drawn from it, with no OpenCascade work; null means Manifold refused it and the code below runs as before
       const viaManifold = meshBody(b.node, quality);
@@ -3655,8 +3959,11 @@ export function buildBodies(bodies, quality = 1) {
       const shape = evalNode(b.node);
       // jumpstart-3d: a boolean can leave nothing (two boxes that do not meet, a hole that cuts all of a shape); meshing it would throw a bare engine exception
       if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
-      const mesh = meshShape(shape, quality);
+      // jumpstart-3d: cached STEP evaluations still have a real meshing boundary.
+      stepStage("meshing");
+      const mesh = meshShape(shape, quality, { node: b.node });
       { const engine = engineOf(b.node); if (engine) mesh.meshEngine = engine; } // jumpstart-3d: which engine built it (tests read this)
+      if (b.node.t === "step" && !b.node.parts && stepSolids.has(b.node.asset)) mesh.stepParts = stepSolids.get(b.node.asset); // jumpstart-3d: STEP parts (#173). how many parts the file holds
       // jumpstart-3d: fill openings
       attachFillReports(b.node, mesh);
       // jumpstart-3d: only new Combine/Group actions use the count to create bodies.
@@ -3676,9 +3983,11 @@ export function buildBodies(bodies, quality = 1) {
       finally { faces.delete(); }
       shape.delete();
       out.push({ id: b.id, rev: b.rev, ok: true, mesh });
+      // jumpstart-3d: result construction is complete.
+      stepStage("sending");
     } catch (e) {
       out.push({ id: b.id, rev: b.rev, ok: false, error: friendly(e) });
-    }
+    } finally { endProgress(); }
   }
   return out;
 }
@@ -3697,9 +4006,13 @@ function isEmptyShape(shape) {
   try { return !ex.More(); } finally { ex.delete(); }
 }
 
+// jumpstart-3d: STEP parts (#173). A file too big for the engine's memory (4 GB at most) ends in a wasm trap, a RangeError or an out-of-memory text.
+const OUT_OF_MEMORY = "This model needs more memory than the browser gives the geometry engine (at most 4 GB). Try a smaller file, or one with fewer or simpler parts.";
+function nearMemoryCeiling() { try { return OC.HEAPU8.length > 3.5 * 2 ** 30; } catch (x) { return false; } }
 function friendly(e) {
   if (typeof e === "number") return "The geometry kernel couldn't build this shape";
   const msg = errorText(e);
+  if ((e instanceof RangeError && /memory|alloc/i.test(msg)) || (/out of bounds|out of memory|Cannot enlarge memory|unreachable|allocation/i.test(msg) && nearMemoryCeiling())) return OUT_OF_MEMORY; // jumpstart-3d: STEP parts (#173)
   if (/BRep|Standard_|StdFail|NotDone/i.test(msg)) return "The geometry kernel couldn't build this shape";
   // jumpstart-3d: the engine bindings' own errors (a wrong argument type, a deleted object, a wasm trap) are not for users
   if (/called with an invalid signature|Expected null or instance of|Cannot pass deleted object|table index is out of bounds|memory access out of bounds|null function or function signature mismatch/i.test(msg)) return "The geometry kernel couldn't build this shape";
@@ -3721,3 +4034,4 @@ export const _test = { setMeshBoolEnabled, meshBoolReason, withoutManifold: (fn)
 
 // jumpstart-3d: fill openings
 Object.assign(_test, { fixSolid, scaleMod });
+Object.assign(_test, { tightestRadius }); // jumpstart-3d: the Auto hollow's curvature gate, for the node tests

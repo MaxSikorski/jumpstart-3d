@@ -210,6 +210,12 @@ export function initTutorials(app) {
     archPlanSeen: () => !!(app.arch && app.arch.state.planSeen),
     archSelWall: () => !!(app.arch && app.arch.state.sel && app.arch.state.sel.k === "wall"),
     exported: (ext) => !!cur && cur.exported.has(ext),
+    // the Floor Planner (Architect → Floor Planner): its rooms, items, mode… (sizes in feet)
+    fpOpen: () => !!(app.floorplan && app.floorplan.isOpen),
+    fp: () => (app.floorplan && app.floorplan.state()) || { rooms: [], items: [], levels: [0], roof: {}, views: [], dl: [], done: {}, total: 0, r3: 0, shots: 0 },
+    fpMode: (m) => T.fpOpen() && T.fp().mode === m,
+    fpRect: (w, d, tol = 0.05) => T.fp().rooms.find((r) => r.rect && r.dims && ((Math.abs(r.dims[0] - w) < tol && Math.abs(r.dims[1] - d) < tol) || (Math.abs(r.dims[0] - d) < tol && Math.abs(r.dims[1] - w) < tol))) || null,
+    fpItems: (f) => T.fp().items.filter(f),
   };
   const passes = (step) => { if (!step.check) return false; try { return !!step.check(T); } catch (e) { return false; } };
 
@@ -225,6 +231,9 @@ export function initTutorials(app) {
     const tabs = el("div", { class: "seg tut-tabs", role: "tablist" });
     const show = (m) => {
       tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.m === m)));
+      const rem = back.querySelector(".tut-remind"), fpn = back.querySelector(".tut-remind-fp");
+      if (rem) rem.hidden = m === "plan";
+      if (fpn) fpn.hidden = m !== "plan";
       list.innerHTML = "";
       const items = TUTORIALS.filter((t) => t.mode === m).sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
       for (const t of items) {
@@ -235,7 +244,8 @@ export function initTutorials(app) {
           el("b", {}, t.title),
           el("p", {}, t.blurb),
           el("div", { class: "tut-learn" }, "You'll use: " + t.learn.join(", ")),
-          doneN ? el("div", { class: "tut-prog" }, doneN >= t.steps.length ? "✓ Finished before" : `${doneN} of ${t.steps.length} steps done`) : null));
+          doneN ? el("div", { class: "tut-prog" }, doneN >= t.steps.length ? "✓ Finished before" : `${doneN} of ${t.steps.length} steps done`) : null,
+          t.minWidth && innerWidth < t.minWidth ? el("div", { class: "tut-narrow" }, "Some buttons in this lesson are hidden on a screen this narrow: turn your device sideways or use a computer.") : null)); // jumpstart-3d: phone tutorials
       }
     };
     for (const [m, label] of [["beginner", "Beginner"], ["advanced", "Advanced"], ["arch", "Architect"]]) tabs.append(el("button", { "data-m": m, id: "tut-tab-" + m, onclick: () => show(m) }, label));
@@ -245,6 +255,8 @@ export function initTutorials(app) {
         el("p", { class: "tut-intro" }, "Pick a project. Each one walks you through real tools to make a real, printable item. The short ones take 5-10 minutes; the bigger projects take 10-15, and Expert projects about 20."),
         el("div", { class: "tut-remind" }, el("b", {}, "Always start by naming your design: "), "Last name, First name, Item name ", el("span", { class: "tut-eg" }, "(Lopez, Maria, Keychain)"),
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
+        el("div", { class: "tut-remind tut-remind-fp", hidden: true }, el("b", {}, "Floor Planner projects "), "happen in Architect → Floor Planner, on graph paper where 1 block = 1 foot. ",
+          el("b", {}, "Finish each one with Download plan "), "(PNG, JPEG or PDF) to keep it or hand it in."),
         tabs, list));
     back.append(modal);
     back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
@@ -259,7 +271,11 @@ export function initTutorials(app) {
     if (!tut) return;
     close(true);
     const prog = resume ? lsGet("p." + id) : null;
-    if (!resume) {
+    if (tut.mode === "plan") {
+      // Floor Planner projects happen in the planner (in Architect); the design isn't touched
+      if (app.mode !== "arch") app.setMode("arch");
+      if (!resume) lsSet("p." + id, null);
+    } else if (!resume) {
       // a fresh design for the project (the current one is already saved), in the right mode
       if (app.mode !== tut.mode) app.setMode(tut.mode);
       app.projects.newDesign(tut.mode);
@@ -310,6 +326,9 @@ export function initTutorials(app) {
     panel.style.left = (small ? 8 : Math.max(8, vpR.left + 10)) + "px";
     // jumpstart-3d: a phone panel is 470 px tall at most (it was 330: the first step did not fit)
     panel.style.top = (small ? Math.max(60, innerHeight - 470) : Math.max(56, vpR.top + 10)) + "px";
+    // Floor Planner projects: over the right side of its drawing area, clear of its toolbar,
+    // its left menus and its Blueprint List
+    if (cur && cur.tut.mode === "plan" && !small) { panel.style.left = Math.max(8, innerWidth - 430 - Math.min(340, innerWidth - 16)) + "px"; panel.style.top = "170px"; }
     // drag by the header
     panel.addEventListener("pointerdown", (e) => {
       const h = e.target.closest(".tut-head");
@@ -340,9 +359,9 @@ export function initTutorials(app) {
     const { tut, i } = cur, step = tut.steps[i], n = tut.steps.length;
     const doneN = cur.done.size, isDone = cur.done.has(i);
     panel.classList.toggle("mini", !!cur.mini);
-    // jumpstart-3d: on a phone the small panel sits at the top of the 3D view, clear of the shapes in the middle that the step asks you to tap; the open panel goes back where it was
-    if (innerWidth < 700 && cur.mini) { if (cur.openTop == null) cur.openTop = panel.style.top; panel.style.top = (document.getElementById("viewport").getBoundingClientRect().top + 6) + "px"; }
-    else if (cur.openTop != null) { panel.style.top = cur.openTop; cur.openTop = null; } // also when the phone is turned wide while the panel is small
+    // jumpstart-3d: on a phone the small panel sits at the top of the 3D view, clear of the shapes in the middle that the step asks you to tap; Show me may have moved the small panel off its target (cur.dodgeTop); the open panel goes back where it was
+    if (cur.mini && (innerWidth < 700 || cur.dodgeTop != null)) { if (cur.openTop == null) cur.openTop = panel.style.top; panel.style.top = (cur.dodgeTop ?? document.getElementById("viewport").getBoundingClientRect().top + 6) + "px"; }
+    else if (cur.openTop != null) { panel.style.top = cur.openTop; cur.openTop = null; cur.dodgeTop = null; } // also when the phone is turned wide while the panel is small
     panel.innerHTML = "";
     const head = el("div", { class: "tut-head" },
       el("span", { class: "tut-level " + tut.level.toLowerCase() }, tut.level),
@@ -429,6 +448,13 @@ export function initTutorials(app) {
 
   // ---------------------------------------------------------------- "Show me": point at the tool
   function target(show) {
+    if (show.fp) {
+      // inside the Floor Planner (its window covers the page, so its coordinates are the page's)
+      if (!app.floorplan || !app.floorplan.isOpen) return show.sel ? document.querySelector(show.sel) : document.querySelector("#ar-floorplanner");
+      return app.floorplan.el(show.fp);
+    }
+    // jumpstart-3d: below 801 px the top bar hides the name box, so the name step points at the lesson's own quick name boxes
+    if (show.name && panel) { const d = document.querySelector(show.sel); if (!d || !d.getClientRects().length) return panel.querySelector("#tut-last"); }
     if (show.tile) return app.beginner && app.beginner.showTile ? app.beginner.showTile(show.tile, !!show.hole) : null;
     for (const s of show.sel.split(",").map((x) => x.trim())) {
       const e = document.querySelector(s);
@@ -450,22 +476,41 @@ export function initTutorials(app) {
     hideSpot();
     if (!step.show) return;
     const t = target(step.show);
-    if (!t) { if (loud) app.toast(step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
+    if (!t) { if (loud) app.toast(cur.tut.minWidth && innerWidth < cur.tut.minWidth && step.show.sel && step.show.sel.split(",").every((q) => { const e = document.querySelector(q.trim()); return e && !e.getClientRects().length; }) ? "This button is hidden on a screen this narrow. Turn your device sideways, or tick “I did this” and go on." /* jumpstart-3d: lessons that need a wider screen (phone tutorials): only when every button the step names exists but is hidden by the narrow layout */ : step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
     spot = t;
     t.classList.add("tut-spot");
-    try { if (t.closest(".bbar, #ribbon")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now) scrolls into view before the pop-up points at it
+    try { if (t.closest(".bbar, #ribbon, .menu")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now), or an item low in an open menu that scrolls on a phone (Code CAD in Open/Export), scrolls into view before the pop-up points at it
+    // jumpstart-3d: phone and tablet lessons: a target inside a box that scrolls (the right panel's fields, the lesson's own name boxes) is scrolled into that box's view, and Show me never points at something the lesson panel covers
+    const box = t.closest("#tut-panel, .float .body");
+    if (box && (loud || box.id !== "tut-panel")) { const b = box.getBoundingClientRect(), q = t.getBoundingClientRect(); if (q.top < b.top || q.bottom > b.bottom) box.scrollTop += q.top - b.top - Math.max(0, (b.height - q.height) / 2); }
+    const covered = () => { const q = t.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return !!hit && !panel.contains(t) && panel.contains(hit); };
+    if (covered()) {
+      if (!loud) { hideSpot(); return; } // the automatic pointer at a new step has nothing to show under the open panel
+      cur.mini = true; render(); // Show me makes the panel small; on a phone render() moves it to the top of the 3D view
+      if (covered()) { // still covered (the small panel at the top left of a tablet): move it to the other half of the 3D view
+        const vp = document.getElementById("viewport").getBoundingClientRect(), q = t.getBoundingClientRect(), h = panel.getBoundingClientRect().height;
+        const st = document.querySelector(".status"), dk = document.getElementById("shapes");
+        let bottom = (st ? st.getBoundingClientRect().top : innerHeight) - 6;
+        if (dk && !dk.hidden && dk.getClientRects().length && dk.getBoundingClientRect().height > 20) bottom = Math.min(bottom, dk.getBoundingClientRect().top - 6);
+        cur.dodgeTop = q.top + q.height / 2 < (vp.top + vp.bottom) / 2 ? Math.max(vp.top + 6, bottom - h) : vp.top + 6;
+        render();
+      }
+    }
+    // end jumpstart-3d
     const r = t.getBoundingClientRect();
     const via = step.show.via && t.matches(step.show.via);
     bubble = el("div", { class: "tut-bubble", id: "tut-bubble", role: "status" },
-      el("b", {}, step.tool), el("span", {}, via ? "Open this menu, then pick it from the list." : step.show.name ? "Click here and type your name." : bubbleText(step)));
+      el("b", {}, step.tool), el("span", {}, via ? (t.matches(".panel-toggle") ? "Open this panel, then tap Show me again." : "Open this menu, then pick it from the list.") : step.show.name ? (t.id === "tut-last" ? "Type your name in these boxes, then tap Use this name." : "Click here and type your name.") : bubbleText(step))); // jumpstart-3d: the Browser panel and the quick name boxes (phone tutorials)
     document.body.append(bubble);
     // below the target when there's room, otherwise above
-    const bw = Math.min(260, innerWidth - 16), below = r.bottom + 120 < innerHeight;
+    const bw = Math.min(260, innerWidth - 40 /* jumpstart-3d: room for the box's 24 px of padding, so it fits a screen under 276 px too */), below = r.bottom + 120 < innerHeight;
     bubble.style.width = bw + "px";
-    bubble.style.left = Math.max(8, Math.min(innerWidth - bw - 8, r.left + r.width / 2 - bw / 2)) + "px";
+    bubble.style.left = Math.max(8, Math.min(innerWidth - bw - 32 /* jumpstart-3d: the box is bw + 24 px of padding wide, so on a phone its right edge ran 16 px off the screen */, r.left + r.width / 2 - bw / 2)) + "px";
     bubble.style.top = (below ? r.bottom + 12 : Math.max(8, r.top - 12 - 70)) + "px";
     bubble.classList.add(below ? "below" : "above");
     bubble.style.setProperty("--ax", Math.max(14, Math.min(bw - 14, r.left + r.width / 2 - parseFloat(bubble.style.left))) + "px");
+    // jumpstart-3d: on a phone the automatic pointer's pop-up must not sit on the open lesson's text; the outline stays
+    if (!loud && innerWidth < 700 && !cur.mini) { const a = bubble.getBoundingClientRect(), p = panel.getBoundingClientRect(); if (a.bottom > p.top && a.top < p.bottom && a.right > p.left && a.left < p.right) { bubble.remove(); bubble = null; } }
     bubbleT = setTimeout(hideSpot, loud ? 6000 : 4500);
   }
   function bubbleText(step) {

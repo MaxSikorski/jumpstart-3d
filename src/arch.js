@@ -7,12 +7,13 @@
 import * as THREE from "three";
 import { store, nextSeq, IDENTITY } from "./store.js";
 import { el, uid, parseLength } from "./util.js";
-import { isInch, setUnit, onUnit } from "./units.js";
+import { isInch, setUnit, onUnit, getUnit } from "./units.js";
 import { ICON } from "./icons.js";
 import { nextName } from "./ops.js";
 import { LIB, texByKey, TEXTURE_DEFAULTS, applyTextures } from "./texture.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
 import * as LAND from "./archland.js";
+import { windowBars, stainedCanvas, glassOutline, windowIconSVG } from "./archwin.js";
 import { makeWeather, WEATHER } from "./archweather.js";
 import * as LAND_FLOOD from "./archflood.js";
 import { planDrawing, planPDF, planSVG, planDXF, PAPERS } from "./archplan.js";
@@ -41,9 +42,47 @@ export const WINDOWS = [
   { id: "cas3060", name: "Tall casement 30×60", w: 762, h: 1524, sill: 610, kind: "casement" },
   { id: "bath2424", name: "Bathroom 24×24", w: 610, h: 610, sill: 1372, kind: "picture" },
   { id: "tr3612", name: "Transom 36×12", w: 914, h: 305, sill: 2134, kind: "picture" },
-  { id: "round24", name: 'Round 24"', w: 610, h: 610, sill: 1219, kind: "round" },
+  { id: "round24", name: 'Round 24"', w: 610, h: 610, sill: 1219, kind: "round", style: { pat: "spokes", p: { n: 4, a0: 0 } } },
   { id: "m1200", name: "Window 1200×1200 mm", w: 1200, h: 1200, sill: 900, kind: "casement" },
+  // grilles and shapes (v2.7.9)
+  { id: "col6o6", name: "Colonial 6-over-6 36×60", w: 914, h: 1524, sill: 762, kind: "hung", cat: "grille", style: { pat: "sash", p: { c: 3, r: 2 } } },
+  { id: "dh2o2", name: "Double hung 2-over-2 32×54", w: 813, h: 1372, sill: 864, kind: "hung", cat: "grille", style: { pat: "sash", p: { c: 2, r: 1 } } },
+  { id: "farm4", name: "Farmhouse 4-pane 30×42", w: 762, h: 1067, sill: 914, kind: "picture", cat: "grille", style: { pat: "grid", p: { c: 2, r: 2 } } },
+  { id: "craft31", name: "Craftsman 3-over-1 36×54", w: 914, h: 1372, sill: 864, kind: "hung", cat: "grille", style: { pat: "topgrid", p: { c: 3, f: 0.5 } } },
+  { id: "prairie", name: "Prairie grille 36×48", w: 914, h: 1219, sill: 914, kind: "picture", cat: "grille", style: { pat: "prairie" } },
+  { id: "dia3048", name: "Diamond grille 30×48", w: 762, h: 1219, sill: 914, kind: "picture", cat: "grille", style: { pat: "diamond", p: { s: 150 } } },
+  { id: "awn3624", name: "Awning 36×24", w: 914, h: 610, sill: 1219, kind: "picture", cat: "grille" },
+  { id: "hop3216", name: "Basement hopper 32×16", w: 813, h: 406, sill: 1676, kind: "picture", cat: "grille" },
+  { id: "cler9618", name: "Clerestory strip 96×18", w: 2438, h: 457, sill: 2134, kind: "picture", cat: "grille", style: { pat: "mullion", p: { n: 3 } } },
+  { id: "ftc4884", name: "Floor-to-ceiling 48×84", w: 1219, h: 2134, sill: 150, kind: "picture", cat: "grille", style: { pat: "mullion", p: { n: 0, transom: 0.78 } } },
+  { id: "pic9660", name: "Big picture 96×60", w: 2438, h: 1524, sill: 610, kind: "picture", cat: "grille", style: { pat: "mullion", p: { n: 2 } } },
+  { id: "trip9048", name: "Triple casement 90×48", w: 2286, h: 1219, sill: 914, kind: "picture", cat: "grille", style: { pat: "mullion", p: { n: 2 } } },
+  { id: "dcas4848", name: "Double casement 48×48", w: 1219, h: 1219, sill: 914, kind: "casement", cat: "grille" },
+  { id: "gblock", name: "Glass block 32×32", w: 813, h: 813, sill: 1067, kind: "picture", cat: "grille", style: { pat: "block", p: { s: 100 } } },
+  { id: "archtop", name: "Arch top 36×60", w: 914, h: 1524, sill: 762, kind: "picture", shape: "arch", cat: "grille", style: { pat: "grid", p: { c: 2, r: 3 } } },
+  { id: "halfrnd", name: "Half-round transom 48×24", w: 1219, h: 610, sill: 2134, kind: "picture", shape: "arch", cat: "grille", style: { pat: "sunburst", p: { n: 6 } } },
+  { id: "palladian", name: "Palladian arch 72×72", w: 1829, h: 1829, sill: 610, kind: "picture", shape: "arch", cat: "grille", style: { pat: "mullion", p: { n: 2, transom: 0.5 } } },
+  { id: "oct24", name: 'Octagon 24"', w: 610, h: 610, sill: 1219, kind: "picture", shape: "oct", cat: "grille", style: { pat: "spokes", p: { n: 4, a0: 0 } } },
+  { id: "port18", name: 'Porthole 18"', w: 457, h: 457, sill: 1372, kind: "round", cat: "grille" },
+  // stained glass (v2.7.9): coloured pieces between lead lines
+  { id: "sgrose", name: 'Rose window 48" (stained)', w: 1219, h: 1219, sill: 1524, kind: "round", cat: "stained", style: { pat: "rose", p: { n: 12 }, stain: true, palette: "cathedral", seed: 3 } },
+  { id: "sggothic", name: "Gothic arch 36×84 (stained)", w: 914, h: 2134, sill: 610, kind: "picture", shape: "arch", cat: "stained", style: { pat: "tracery", stain: true, palette: "cathedral", seed: 11 } },
+  { id: "sglancet", name: "Church lancet 24×72 (stained)", w: 610, h: 1829, sill: 914, kind: "picture", shape: "arch", cat: "stained", style: { pat: "mosaic", p: { c: 3 }, stain: true, palette: "cathedral", seed: 5 } },
+  { id: "sgwheel", name: 'Wheel window 36" (stained)', w: 914, h: 914, sill: 1372, kind: "round", cat: "stained", style: { pat: "radial", p: { n: 16, rings: [0.2, 0.5, 0.8] }, stain: true, palette: "cathedral", seed: 9 } },
+  { id: "sgtiffany", name: "Tiffany floral 30×42 (stained)", w: 762, h: 1067, sill: 914, kind: "picture", cat: "stained", style: { pat: "tiffany", stain: true, palette: "tiffany", seed: 4, clear: 0.05 } },
+  { id: "sgdiamond", name: "Leaded diamonds 30×48", w: 762, h: 1219, sill: 914, kind: "picture", cat: "stained", style: { pat: "diamond", p: { s: 120 }, stain: true, palette: "clearpanes", clear: 0.5, lead: 8 } },
+  { id: "sgprairie", name: "Prairie stained 36×48", w: 914, h: 1219, sill: 914, kind: "picture", cat: "stained", style: { pat: "prairie", stain: true, palette: "prairie", seed: 2, clear: 0.3 } },
+  { id: "sgsun", name: "Sunburst transom 48×24 (stained)", w: 1219, h: 610, sill: 2134, kind: "picture", shape: "arch", cat: "stained", style: { pat: "sunburst", p: { n: 9 }, stain: true, palette: "sunset", seed: 6 } },
+  { id: "sgdeco", name: "Art deco 30×60 (stained)", w: 762, h: 1524, sill: 762, kind: "picture", cat: "stained", style: { pat: "deco", stain: true, palette: "ocean", seed: 8 } },
+  { id: "sgmosaic", name: "Mosaic 36×36 (stained)", w: 914, h: 914, sill: 1067, kind: "picture", cat: "stained", style: { pat: "mosaic", p: { c: 6 }, stain: true, palette: "cathedral", seed: 13, clear: 0.1 } },
+  { id: "sgport", name: 'Stained porthole 24"', w: 610, h: 610, sill: 1219, kind: "round", cat: "stained", style: { pat: "radial", p: { n: 8, rings: [0.25, 0.6] }, stain: true, palette: "ocean", seed: 21 } },
+  { id: "sgoct", name: 'Stained octagon 24"', w: 610, h: 610, sill: 1219, kind: "picture", shape: "oct", cat: "stained", style: { pat: "radial", p: { n: 8, rings: [0.3] }, stain: true, palette: "sunset", seed: 17 } },
+  { id: "sgvict", name: "Victorian transom 36×14 (stained)", w: 914, h: 356, sill: 2134, kind: "picture", cat: "stained", style: { pat: "prairie", p: { b: 0.3 }, stain: true, palette: "tiffany", seed: 12, clear: 0.2 } },
+  { id: "sgside", name: "Entry sidelight 12×80 (stained)", w: 305, h: 2032, sill: 50, kind: "picture", cat: "stained", style: { pat: "diamond", p: { s: 100 }, stain: true, palette: "cathedral", clear: 0.45, seed: 31 } },
 ];
+// the glass area's shape of a window preset
+const IDENTITY_M = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const shapeOf = (P) => (P && P.shape) || (P && P.kind === "round" ? "round" : "rect");
 const PRESETS = Object.fromEntries([...DOORS, ...WINDOWS].map((p) => [p.id, p]));
 export const WALL_TYPES = [
   { id: "ext6", name: "Exterior 2×6 (6½\")", t: 165 },
@@ -96,8 +135,7 @@ export function parseArch(str) {
 }
 
 // ------------------------------------------------------------------ the building data
-function defaults() {
-  const inch = isInch();
+function defaults(inch = isInch()) { // jumpstart-3d: the unit can be passed (Architect makes a new building in its own units)
   return { v: 1, levels: [{ id: "L1", name: "Level 1", elev: 0 }], walls: [], openings: [], roofs: [], slabs: [], wallT: inch ? 165 : 200, wallH: inch ? 9 * FT : 2700, grid: inch ? 6 * IN : 100 };
 }
 const D2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -341,7 +379,9 @@ function wallMesh(A, w, elev, ext) {
   for (const o of ok) {
     if (doors.includes(o)) continue;
     const p = new THREE.Path();
-    if (PRESETS[o.preset]?.kind === "round") p.absarc(o.s + o.w / 2, o.sill + o.h / 2, Math.min(o.w, o.h) / 2, 0, Math.PI * 2, true);
+    const shp = shapeOf(PRESETS[o.preset]);
+    if (shp === "round") p.absarc(o.s + o.w / 2, o.sill + o.h / 2, Math.min(o.w, o.h) / 2, 0, Math.PI * 2, true);
+    else if (shp !== "rect") { const P0 = glassOutline(shp, o.w, o.h, 40); p.moveTo(o.s + P0[0][0], o.sill + P0[0][1]); for (const q of P0.slice(1)) p.lineTo(o.s + q[0], o.sill + q[1]); p.closePath(); }
     else { p.moveTo(o.s, o.sill); p.lineTo(o.s, o.sill + o.h); p.lineTo(o.s + o.w, o.sill + o.h); p.lineTo(o.s + o.w, o.sill); p.closePath(); }
     shape.holes.push(p);
   }
@@ -361,6 +401,40 @@ function planWallMesh(w, elev, ext) {
   m.userData.pick = { k: "wall", id: w.id };
   return m;
 }
+// a window's glass (plain, or stained: a picture of the coloured pieces) and its bars (wooden
+// muntins, or lead lines for stained glass); place(mesh, x, y, z) puts each in the glass area
+const stainMats = new Map();
+function windowGlass(P, shp, W, H, place) {
+  const st = P.style;
+  const outline = glassOutline(shp, W, H, 48);
+  const g = new THREE.ShapeGeometry(new THREE.Shape(outline.map(([x, y]) => new THREE.Vector2(x, y))));
+  let m;
+  if (st && st.stain) {
+    const key = P.id + "|" + Math.round(W) + "x" + Math.round(H);
+    let mm = stainMats.get(key);
+    if (!mm) {
+      const cv = stainedCanvas(st, shp, W, H, windowBars(st, shp, W, H));
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+      mm = new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity: 0.92, side: THREE.DoubleSide, roughness: 0.25, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35, depthWrite: false });
+      mm.userData.base = { transparent: true, opacity: 0.92, depthWrite: false };
+      stainMats.set(key, mm);
+    }
+    const uv = g.attributes.uv, pos = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / W, pos.getY(i) / H);
+    m = new THREE.Mesh(g, mm);
+  } else m = new THREE.Mesh(g, mat(COL.glass, { glass: true }));
+  place(m, 0, 0, 0);
+  if (!st) return;
+  // bars: muntins stand out from the glass; leading is thin
+  const lead = !!st.stain, bw = lead ? (st.lead || 10) : 28, bd = lead ? 12 : 30;
+  for (const [x0, y0, x1, y1] of windowBars(st, shp, W, H)) {
+    const L = Math.hypot(x1 - x0, y1 - y0);
+    if (L < 1) continue;
+    const b = box(L + (lead ? 2 : 0), bw, bd, lead ? "#2e2e32" : COL.frame, lead ? { metal: 0.3, rough: 0.5 } : undefined);
+    b.rotation.z = Math.atan2(y1 - y0, x1 - x0);
+    place(b, (x0 + x1) / 2, (y0 + y1) / 2, 0);
+  }
+}
 // a door or window, with its frame, in the wall's frame
 function openingModel(o, w, elev) {
   const P = PRESETS[o.preset] || { kind: o.k === "door" ? "single" : "picture" };
@@ -368,14 +442,17 @@ function openingModel(o, w, elev) {
   const cx = o.s + o.w / 2, fw = Math.min(55, o.w * 0.08), dep = t + 24;
   const add = (m, x, y, z) => g.add(inWall(m, B, x, y, z));
   const side = o.flip ? -1 : 1;
-  if (P.kind === "round") {
-    const r = Math.min(o.w, o.h) / 2, cy = o.sill + o.h / 2;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r - fw / 2, fw / 2, 10, 40), mat(COL.frame));
-    add(ring, cx, cy, 0);
-    const gl = new THREE.Mesh(new THREE.CircleGeometry(r - fw * 0.8, 40), mat(COL.glass, { glass: true }));
-    add(gl, cx, cy, 0);
-    const bar = box(o.w - fw, 30, 40, COL.frame); add(bar, cx, cy, 0);
-    const bar2 = box(30, o.h - fw, 40, COL.frame); add(bar2, cx, cy, 0);
+  if (o.k === "window" && shapeOf(P) !== "rect") {
+    // round, arch-top and octagon windows: a frame ring, the glass and its bars
+    const shp = shapeOf(P), y0 = o.sill;
+    const outer = glassOutline(shp, o.w, o.h, 48), inner = glassOutline(shp, o.w - 2 * fw, o.h - 2 * fw, 48);
+    const sh = new THREE.Shape(outer.map(([x, y]) => new THREE.Vector2(x, y)));
+    sh.holes.push(new THREE.Path(inner.map(([x, y]) => new THREE.Vector2(x + fw, y + fw)).reverse()));
+    const fg = new THREE.ExtrudeGeometry(sh, { depth: dep, bevelEnabled: false, curveSegments: 6 });
+    fg.translate(0, 0, -dep / 2);
+    add(new THREE.Mesh(fg, mat(COL.frame)), o.s, y0, 0);
+    if (shp !== "round") add(box(o.w + 90, 32, t + 70, COL.frame), cx, y0 - 16, side * 10); // sill
+    windowGlass(P, shp, o.w - 2 * fw, o.h - 2 * fw, (m, x, y, z) => add(m, o.s + fw + x, y0 + fw + y, z));
   } else if (o.k === "window") {
     const y0 = o.sill;
     add(box(fw, o.h, dep, COL.frame), o.s + fw / 2, y0 + o.h / 2, 0);
@@ -384,7 +461,8 @@ function openingModel(o, w, elev) {
     add(box(o.w, fw, dep, COL.frame), cx, y0 + fw / 2, 0);
     add(box(o.w + 90, 32, t + 70, COL.frame), cx, y0 - 16, side * 10); // sill
     const gw = o.w - 2 * fw, gh = o.h - 2 * fw;
-    add(box(gw, gh, 6, COL.glass, { glass: true }), cx, y0 + o.h / 2, 0);
+    if (P.style) windowGlass(P, "rect", gw, gh, (m, x, y, z) => add(m, o.s + fw + x, y0 + fw + y, z));
+    else add(box(gw, gh, 6, COL.glass, { glass: true }), cx, y0 + o.h / 2, 0);
     if (P.kind === "hung") add(box(gw, 42, 60, COL.frame), cx, y0 + o.h / 2, 0);
     if (P.kind === "slider" || (P.kind === "casement" && o.w > 900)) add(box(42, gh, 60, COL.frame), cx, y0 + o.h / 2, 0);
   } else {
@@ -536,6 +614,60 @@ export function buildingBodies(A, opt) {
     const pre = new THREE.Matrix4().makeTranslation(0, (depth / 2) * k, 0).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
     return prim(kind, { ...p, h: depth }, R(w.a[0] + ux * u, w.a[1] + uy * u, elev + o.sill + r, ang, pre));
   };
+  // a round shape (cylinder, tube, prism) through the wall, centred at u along and zc up
+  const rndAt = (w, elev, u, zc, kind, p, depth) => {
+    const { ux, uy } = winfo(w), ang = Math.atan2(uy, ux);
+    const pre = new THREE.Matrix4().makeTranslation(0, (depth / 2) * k, 0).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+    return prim(kind, { ...p, h: depth }, R(w.a[0] + ux * u, w.a[1] + uy * u, elev + zc, ang, pre));
+  };
+  // a bar lying in the wall plane: centred at (u, z), length L, turned by th from level
+  const wbar = (w, elev, u, z, L, th, width, thick) => {
+    const { ux, uy } = winfo(w), ang = Math.atan2(uy, ux);
+    const pre = new THREE.Matrix4().makeRotationY(-th).multiply(new THREE.Matrix4().makeTranslation(0, 0, (-width / 2) * k));
+    return prim("box", { w: L, d: thick, h: width }, R(w.a[0] + ux * u, w.a[1] + uy * u, elev + z, ang, pre));
+  };
+  // a solid with the part below z0 (a horizontal line in the wall) taken off
+  const above = (piece, w, elev, u, z0, size, depth) => ({ node: { t: "group", children: [piece, wbox(w, elev, u, 0, z0 - size, size, depth + 20, size, true)], mods: [] }, m: IDENTITY_M });
+  // an arch-top or octagon opening as hole / frame / glass shapes
+  const shapedParts = (w, E, o, shp, fw, dep, kind) => {
+    const u = o.s + o.w / 2, out = [];
+    if (shp === "arch") {
+      const r = o.w / 2, zs = o.sill + Math.max(0, o.h - r); // the spring line
+      if (kind === "hole") {
+        if (zs > o.sill + 0.5) out.push(wbox(w, E, u, 0, o.sill, o.w, w.t + 4, zs - o.sill + 1, true));
+        const c = above(rndAt(w, E, u, zs, "cylinder", { w: o.w, d: o.w }, w.t + 4), w, E, u, zs, o.w * 2, w.t + 4); c.hole = true; out.push(c);
+      } else if (kind === "frame") {
+        if (zs > o.sill + 0.5) out.push(wbox(w, E, o.s + fw / 2, 0, o.sill, fw, dep, zs - o.sill + 0.5), wbox(w, E, o.s + o.w - fw / 2, 0, o.sill, fw, dep, zs - o.sill + 0.5));
+        out.push(wbox(w, E, u, 0, o.sill, o.w - 2 * fw, dep, fw));
+        out.push(above(rndAt(w, E, u, zs, "tube", { w: o.w, d: o.w, wall: fw }, dep), w, E, u, zs, o.w * 2, dep));
+      } else {
+        const gw = o.w - 2 * fw;
+        if (zs > o.sill + fw + 0.5) out.push(wbox(w, E, u, 0, o.sill + fw, gw, 6, zs - o.sill - fw + 0.5));
+        out.push(above(rndAt(w, E, u, zs, "cylinder", { w: gw, d: gw }, 6), w, E, u, Math.max(zs, o.sill + fw), o.w * 2, 6));
+      }
+    } else { // octagon: an 8-sided prism, flat at the top and bottom
+      const d = Math.min(o.w, o.h), zc = o.sill + o.h / 2, ac = d / Math.cos(Math.PI / 8);
+      if (kind === "hole") { const c = rndAt(w, E, u, zc, "prism", { w: ac, d: ac, sides: 8 }, w.t + 4); c.hole = true; out.push(c); }
+      else if (kind === "frame") { const inn = (d - 2 * fw) / Math.cos(Math.PI / 8); out.push({ node: { t: "group", children: [rndAt(w, E, u, zc, "prism", { w: ac, d: ac, sides: 8 }, dep), { ...rndAt(w, E, u, zc, "prism", { w: inn, d: inn, sides: 8 }, dep + 4), hole: true }], mods: [] }, m: IDENTITY_M }); }
+      else { const inn = (d - 2 * fw) / Math.cos(Math.PI / 8); out.push(rndAt(w, E, u, zc, "prism", { w: inn, d: inn, sides: 8 }, 6)); }
+    }
+    return out;
+  };
+  // a window's bars (muntins or lead) as thin boxes in the wall plane
+  const barsFor = (w, E, o, P, shp, fw) => {
+    const st = P.style, out = [];
+    if (!st) return out;
+    const W = shp === "round" ? Math.min(o.w, o.h) - 2 * fw : o.w - 2 * fw, H = shp === "round" ? W : o.h - 2 * fw;
+    const ox = o.s + (o.w - W) / 2, oz = o.sill + (o.h - H) / 2;
+    const lead = !!st.stain, bw = lead ? (st.lead || 10) : 28, bd = lead ? 12 : 30;
+    // long sampled curves are joined into fewer, longer pieces so the shape stays light
+    for (const [x0, y0, x1, y1] of windowBars(st, shp, W, H)) {
+      const L = Math.hypot(x1 - x0, y1 - y0);
+      if (L < 3) continue;
+      out.push(wbar(w, E, ox + (x0 + x1) / 2, oz + (y0 + y1) / 2, L + (lead ? 3 : 0), Math.atan2(y1 - y0, x1 - x0), bw, bd));
+    }
+    return out;
+  };
   const body = (name, color, children, extra = {}, fin = null) => {
     if (!children.length) return;
     const b = { name: fin && fin.tex ? name + " · " + finName(fin) : name, color: (fin && fin.color) || color, node: { t: "group", children, mods: [], ...extra } };
@@ -550,7 +682,9 @@ export function buildingBodies(A, opt) {
       // walls with the same finish are one shape (with every door and window on the level cut out)
       const holes = [];
       for (const w of walls) for (const o of goodOpenings(A, w).ok) {
-        if (PRESETS[o.preset]?.kind === "round") { const c = round(w, L.elev, o, "cylinder", { w: Math.min(o.w, o.h), d: Math.min(o.w, o.h) }, w.t + 4); c.hole = true; holes.push(c); }
+        const shp = shapeOf(PRESETS[o.preset]);
+        if (shp === "round") { const c = round(w, L.elev, o, "cylinder", { w: Math.min(o.w, o.h), d: Math.min(o.w, o.h) }, w.t + 4); c.hole = true; holes.push(c); }
+        else if (shp !== "rect") holes.push(...shapedParts(w, L.elev, o, shp, 0, 0, "hole"));
         else holes.push(wbox(w, L.elev, o.s + o.w / 2, 0, o.sill < 1 ? -2 : o.sill, o.w, w.t + 4, o.sill < 1 ? o.h + 2 : o.h, true));
       }
       let cx = 0, cy = 0; for (const w of walls) { cx += (w.a[0] + w.b[0]) / 2 / walls.length; cy += (w.a[1] + w.b[1]) / 2 / walls.length; }
@@ -589,19 +723,25 @@ export function buildingBodies(A, opt) {
         if (kids.length) out.push({ name, color: (fin && fin.color) || (logs ? LOG_COL : COL.wall), node: { t: "group", children: [...kids, ...holes], mods, ...(logs ? { logs: true } : {}) }, ...(textures && opt.textures !== false ? { textures } : {}) });
       }
     }
-    const doors = [], frames = [], glass = [];
+    const doors = [], frames = [], glass = [], leading = [], stained = [];
     for (const w of walls) for (const o of goodOpenings(A, w).ok) {
       const P = PRESETS[o.preset] || {}, fw = Math.min(55, o.w * 0.08), dep = w.t + 24, E = L.elev, cx = o.s + o.w / 2;
+      const shp = shapeOf(P), gl = P.style && P.style.stain ? stained : glass;
+      if (o.k === "window" && P.style) (P.style.stain ? leading : frames).push(...barsFor(w, E, o, P, shp, fw));
       if (P.kind === "round") {
         const r = Math.min(o.w, o.h);
         frames.push(round(w, E, o, "tube", { w: r, d: r, wall: fw }, dep));
-        glass.push(round(w, E, o, "cylinder", { w: r - fw, d: r - fw }, 6));
+        gl.push(round(w, E, o, "cylinder", { w: r - fw, d: r - fw }, 6));
+      } else if (o.k === "window" && shp !== "rect") {
+        frames.push(...shapedParts(w, E, o, shp, fw, dep, "frame"));
+        if (shp === "arch") frames.push(wbox(w, E, cx, (o.flip ? -1 : 1) * 10, o.sill - 32, o.w + 90, w.t + 70, 32));
+        gl.push(...shapedParts(w, E, o, shp, fw, dep, "glass"));
       } else if (o.k === "window") {
         frames.push(wbox(w, E, o.s + fw / 2, 0, o.sill, fw, dep, o.h), wbox(w, E, o.s + o.w - fw / 2, 0, o.sill, fw, dep, o.h), wbox(w, E, cx, 0, o.sill + o.h - fw, o.w - 2 * fw, dep, fw), wbox(w, E, cx, 0, o.sill, o.w - 2 * fw, dep, fw));
         frames.push(wbox(w, E, cx, (o.flip ? -1 : 1) * 10, o.sill - 32, o.w + 90, w.t + 70, 32));
         if (P.kind === "hung") frames.push(wbox(w, E, cx, 0, o.sill + o.h / 2 - 21, o.w - 2 * fw, 60, 42));
         if (P.kind === "slider" || (P.kind === "casement" && o.w > 900)) frames.push(wbox(w, E, cx, 0, o.sill + fw, 42, 60, o.h - 2 * fw));
-        glass.push(wbox(w, E, cx, 0, o.sill + fw, o.w - 2 * fw, 6, o.h - 2 * fw));
+        gl.push(wbox(w, E, cx, 0, o.sill + fw, o.w - 2 * fw, 6, o.h - 2 * fw));
       } else {
         doors.push(wbox(w, E, o.s + fw / 2, 0, 0, fw, dep, o.h), wbox(w, E, o.s + o.w - fw / 2, 0, 0, fw, dep, o.h), wbox(w, E, cx, 0, o.h - fw, o.w - 2 * fw, dep, fw));
         const lw = o.w - 2 * fw, lh = o.h - fw;
@@ -614,6 +754,8 @@ export function buildingBodies(A, opt) {
     if (opt.doors) body("Doors" + tag, COL.door, doors);
     if (opt.windows) body("Window frames" + tag, COL.frame, frames);
     if (opt.glass) body("Glass" + tag, COL.glass, glass);
+    if (opt.glass) body("Stained glass" + tag, "#c8582f", stained);
+    if (opt.windows) body("Window leading" + tag, "#2e2e32", leading, { op: "compound" });
     if (opt.floors) for (const s of A.slabs.filter((q) => q.lvl === L.id)) {
       const x0 = Math.min(s.x0, s.x1), x1 = Math.max(s.x0, s.x1), y0 = Math.min(s.y0, s.y1), y1 = Math.max(s.y0, s.y1), th = s.thick || 150;
       body("Floor" + tag, COL.slab, [prim("box", { w: x1 - x0, d: y1 - y0, h: th }, R((x0 + x1) / 2, (y0 + y1) / 2, L.elev - th))], {}, s.fin);
@@ -651,8 +793,8 @@ export function initArch(app) {
   // ------------------------------------------------------------ data
   const A = () => store.view.arch;
   const AC = () => store.doc.arch; // committed (not the live preview)
-  function ensure() {
-    if (!store.doc.arch) { store.doc.arch = defaults(); app.projects && app.projects.changed && app.projects.changed(); }
+  function ensure(inch) {
+    if (!store.doc.arch) { store.doc.arch = defaults(inch); app.projects && app.projects.changed && app.projects.changed(); }
     const a = store.doc.arch;
     if (!a.levels.some((l) => l.id === st.level)) st.level = a.levels[0].id;
   }
@@ -886,7 +1028,7 @@ export function initArch(app) {
       flatstone: `<ellipse cx="22" cy="35" rx="15" ry="3.5" fill="${c2}"/>`, pebbles: `<ellipse cx="12" cy="36" rx="4" ry="2" fill="${c2}"/><ellipse cx="21" cy="35" rx="3" ry="1.8" fill="#8c877f"/><ellipse cx="29" cy="36" rx="4.5" ry="2" fill="#bdb7ad"/><ellipse cx="35" cy="34.5" rx="2.5" ry="1.5" fill="${c2}"/>`,
       boulder2: `<path d="M5 37 9 22l11-8 12 4 6 19z" fill="${c2}"/>`,
     })[k] : "";
-    return `<svg viewBox="0 0 44 40" width="44" height="40" aria-hidden="true"><rect x="2" y="37" width="40" height="2" fill="#8b6a45"/>${body || more || ""}</svg>`;
+    return `<svg viewBox="0 0 44 40" width="44" height="40" aria-hidden="true"><rect x="2" y="37" width="40" height="2" fill="#8b6a45"/>${body || more || LAND.PLANT_ICONS[k] || ""}</svg>`;
   }
   const landHandler = {
     hover(e) { const p = landPoint(e); st.brushAt = p ? [p.x, p.y] : null; drawOverlay(); },
@@ -1422,8 +1564,114 @@ export function initArch(app) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op, depthTest: false }));
     m.renderOrder = 29; inWall(m, B, x, y, z); ov.add(m); return m;
   }
+
+  // ------------------------------------------------------------ typing sizes while drawing
+  // like Advanced's sketcher: a box by the cursor with the live length and angle of the wall
+  // being drawn (or the width and depth of a room, floor or roof). Start typing a number to
+  // jump in, Tab to the next field, Enter to use it. In feet and inches a bare number is feet:
+  // 12 = 12', 12 6 = 12' 6", 12.5 = 12' 6"; 6" or 140 in work too. In metric it's millimetres
+  // (3.6 m and 360 cm work too).
+  const TB = (() => {
+    const root = el("div", { class: "sk-input ar-typebox", id: "ar-typebox", hidden: true });
+    const f = [0, 1].map((i) => {
+      const lab = el("label", { class: "sk-f" }), name = el("span"), inp = el("input", { type: "text", autocomplete: "off", spellcheck: "false", id: "ar-type-" + i });
+      lab.append(name, inp); root.append(lab);
+      inp.addEventListener("keydown", (e) => typeBoxKey(e, i));
+      inp.addEventListener("input", () => { TB.locked[i] = inp.value.trim() !== ""; typeBoxPreview(); });
+      inp.addEventListener("focus", () => inp.select());
+      return { lab, name, inp };
+    });
+    const ok = el("button", { class: "sk-ok", type: "button", id: "ar-type-ok", title: "Use these sizes (Enter)", "aria-label": "Use these sizes" }, "✓");
+    ok.addEventListener("pointerdown", (e) => e.preventDefault());
+    ok.addEventListener("click", () => typeBoxCommit());
+    root.append(ok);
+    (vp.container || vp.canvas.parentElement).append(root);
+    return { root, f, locked: [false, false], px: null, mode: null };
+  })();
+  function typedLen(str) {
+    const s = String(str || "").trim().toLowerCase();
+    if (!s) return NaN;
+    if (isInch()) {
+      let m = /^(\d+(?:\.\d+)?)$/.exec(s); if (m) return +m[1] * FT;
+      m = /^(\d+)\s+(\d+(?:\.\d+)?)$/.exec(s); if (m) return +m[1] * FT + +m[2] * IN;
+      m = /^(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)$/.exec(s); if (m) return +m[1] * FT + (+m[2] + +m[3] / +m[4]) * IN;
+      m = /^(\d+(?:\.\d+)?)\s*(?:ft|feet|foot)$/.exec(s); if (m) return +m[1] * FT;
+    }
+    return parseArch(s);
+  }
+  function typeBoxMode() {
+    const d = st.draft;
+    if (!d || !active) return null;
+    if (st.tool === "wall" && d.kind === "chain" && d.pts.length) {
+      const last = d.pts[d.pts.length - 1], c = d.cur || last, len = Math.hypot(c[0] - last[0], c[1] - last[1]);
+      const ang = len > 1 ? (Math.atan2(c[1] - last[1], c[0] - last[0]) * 180) / Math.PI : 0;
+      return { kind: "wall", names: ["Length", "Angle"], vals: [fmtLen(len), Math.round(ang * 10) / 10 + "°"], last, c, len, ang };
+    }
+    if ((st.tool === "room" || st.tool === "roof" || st.tool === "floor") && d.p0 && (d.waiting || (st.drag && st.drag.k === "rect"))) {
+      const p1 = d.p1 || d.p0;
+      return { kind: "rect", names: ["Width", "Depth"], vals: [fmtLen(Math.abs(p1[0] - d.p0[0])), fmtLen(Math.abs(p1[1] - d.p0[1]))], p0: d.p0, sx: p1[0] < d.p0[0] ? -1 : 1, sy: p1[1] < d.p0[1] ? -1 : 1 };
+    }
+    return null;
+  }
+  function hideTypeBox() {
+    TB.root.hidden = true; TB.mode = null; TB.locked = [false, false];
+    for (const f of TB.f) f.inp.value = "";
+    if (TB.root.contains(document.activeElement)) vp.canvas.focus();
+  }
+  function updateTypeBox() {
+    const m = typeBoxMode();
+    if (!m) { if (!TB.root.hidden) hideTypeBox(); return; }
+    TB.mode = m; TB.root.hidden = false;
+    m.names.forEach((n, i) => {
+      TB.f[i].name.textContent = n;
+      if (!TB.locked[i] && document.activeElement !== TB.f[i].inp) TB.f[i].inp.value = m.vals[i];
+      TB.f[i].inp.placeholder = m.vals[i];
+      TB.f[i].inp.title = i === 0 || m.kind === "rect" ? (isInch() ? "Feet and inches: 12 = 12', 12 6 = 12' 6\", 6\" = 6 inches" : "Millimetres (or 3.6 m, 360 cm)") : "Degrees: 0 = right (east), 90 = up the plan (north)";
+    });
+    const at = TB.px || [vp.w / 2, vp.h / 2];
+    const off = vp.touchMode ? 34 : 18, x = Math.max(4, Math.min(at[0] + off, vp.w - 270)), y = Math.max(4, Math.min(at[1] + off, vp.h - 70));
+    TB.root.style.transform = `translate(${x}px, ${y}px)`;
+  }
+  function typedTarget() {
+    const m = TB.mode; if (!m) return null;
+    const v0 = TB.locked[0] ? typedLen(TB.f[0].inp.value) : null, v1raw = TB.f[1].inp.value.replace(/°/g, "").trim();
+    if (m.kind === "wall") {
+      const len = v0 ?? m.len, ang = TB.locked[1] ? parseFloat(v1raw) : m.ang;
+      if (!(isFinite(len) && len > 10) || !isFinite(ang)) return { bad: true };
+      const r = (ang * Math.PI) / 180;
+      return { p: [m.last[0] + Math.cos(r) * len, m.last[1] + Math.sin(r) * len] };
+    }
+    const p1 = st.draft.p1 || m.p0, w = v0 ?? Math.abs(p1[0] - m.p0[0]), dd = TB.locked[1] ? typedLen(TB.f[1].inp.value) : Math.abs(p1[1] - m.p0[1]);
+    if (!(isFinite(w) && w > 10 && isFinite(dd) && dd > 10)) return { bad: true };
+    return { p: [m.p0[0] + m.sx * w, m.p0[1] + m.sy * dd] };
+  }
+  function typeBoxPreview() {
+    const t = typedTarget(); if (!t || t.bad || !st.draft) return;
+    if (TB.mode.kind === "wall") st.draft.cur = t.p; else st.draft.p1 = t.p;
+    drawOverlay();
+  }
+  function typeBoxCommit() {
+    const t = typedTarget(), m = TB.mode;
+    if (!t) return;
+    if (t.bad) { app.toast(isInch() ? "Type a size like 12 (feet), 12 6 (12' 6\") or 8\"." : "Type a size in millimetres, like 3600, or 3.6 m."); return; }
+    TB.locked = [false, false]; for (const f of TB.f) f.inp.value = "";
+    vp.canvas.focus();
+    if (m.kind === "wall") { st.draft.cur = t.p; addChainPoint(t.p); }
+    else { st.drag = null; finishRect(m.p0, t.p); }
+    drawOverlay();
+  }
+  function typeBoxKey(e, i) {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (TB.f[i].inp.value.trim()) TB.locked[i] = true;
+      const j = (i + 1) % 2; TB.f[j].inp.focus();
+    } else if (e.key === "Enter") { e.preventDefault(); if (TB.f[i].inp.value.trim()) TB.locked[i] = true; typeBoxCommit(); }
+    else if (e.key === "Escape") { e.preventDefault(); TB.locked = [false, false]; for (const f of TB.f) f.inp.value = ""; vp.canvas.focus(); updateTypeBox(); }
+    e.stopPropagation();
+  }
   function drawOverlay() {
     clearGroup(ov); labels.replaceChildren(); lbls.length = 0;
+    updateTypeBox();
     if (!active) return;
     const a = A(), L = cur(), z = L.elev + 6;
     const P3 = (p) => new THREE.Vector3(p[0], p[1], z);
@@ -1643,6 +1891,7 @@ export function initArch(app) {
       return !!(h && ((st.sel && h.id === st.sel.id) || h.k === "roof"));
     },
     hover(e) {
+      TB.px = vp.local(e);
       if (st.drag) return;
       const t = st.tool;
       if (t === "land") return landHandler.hover(e);
@@ -1694,6 +1943,7 @@ export function initArch(app) {
       return true;
     },
     move(e) {
+      TB.px = vp.local(e);
       if (st.tool === "land") return landHandler.move(e);
       const d = st.drag;
       if (!d) return;
@@ -1810,6 +2060,7 @@ export function initArch(app) {
   const chips = (list, on) => el("div", { class: "arch-chips" }, ...list.map(([l, v]) => el("button", { class: "btn", onclick: () => on(v) }, l)));
   function head(title, sub) { return el("header", {}, el("h4", {}, title), sub ? el("span", { class: "arch-sub" }, sub) : null); }
   function presetSVG(P) {
+    if (P.style || P.shape) return `<svg viewBox="0 0 44 40" width="44" height="40" aria-hidden="true"><rect x="2" y="1" width="40" height="38" rx="3" fill="var(--panel-2)"/>${windowIconSVG(P)}</svg>`;
     const W = 44, H = 44, sc = 36 / Math.max(P.w, (P.sill ?? 0) + P.h, 1200), x0 = (W - P.w * sc) / 2, base = 40;
     const y1 = base - ((P.sill ?? 0) + P.h) * sc, hh = P.h * sc, ww = P.w * sc;
     let s = `<svg viewBox="0 0 ${W} ${H}" width="44" height="44" aria-hidden="true"><rect x="2" y="2" width="40" height="38" rx="3" fill="var(--panel-2)"/><line x1="2" y1="${base}" x2="42" y2="${base}" stroke="var(--ink-3)" stroke-width="1"/>`;
@@ -1835,7 +2086,7 @@ export function initArch(app) {
       body.append(row("Wall type", wallTypeSelect(a.wallT, (W) => update((aa) => { aa.wallT = W.t; if (W.log) aa.wallLog = W.log; else delete aa.wallLog; }, W.log ? "Log walls" : "Wall type"), a.wallLog)));
       body.append(row("Thickness", lenField(a.wallT, (v) => update((aa) => { aa.wallT = v; }, "Wall thickness"), "ar-wallt", { min: 20 })));
       body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ar-autoraise", checked: st.autoRaise, onchange: (e) => { st.autoRaise = e.target.checked; } }), "Raise new walls right away (" + fmtLen(a.wallH) + ")"));
-      body.append(el("p", { class: "arch-hint" }, "Snaps to the grid (" + fmtLen(gridStep()) + "), wall ends and middles, and straight 45°/90° lines. Hold Shift for any angle, Alt to turn snapping off for a moment."));
+      body.append(el("p", { class: "arch-hint" }, "Snaps to the grid (" + fmtLen(gridStep()) + "), wall ends and middles, and straight 45°/90° lines. Hold Shift for any angle, Alt to turn snapping off for a moment. Type a length while drawing (" + (isInch() ? "12 = 12 ft, 12 6 = 12' 6\"" : "3600 = 3.6 m") + "), Tab for the angle, Enter to place it."));
     } else if (t === "raise") {
       panel.append(head("Raise walls"));
       body.append(el("p", { class: "arch-hint" }, "Pull the floor plan up into walls. Pick a height, then raise all the walls on this level (or only the selected wall)."));
@@ -1853,8 +2104,14 @@ export function initArch(app) {
       const list = t === "door" ? DOORS : WINDOWS;
       panel.append(head(t === "door" ? "Doors" : "Windows"));
       body.append(el("p", { class: "arch-hint" }, "Pick one, then point at a wall: it snaps along the wall (to the grid and the wall's middle). Click to put it in. To type exact positions, click a wall with Select and use its grid below."));
+      let shown = list;
+      if (t === "window") {
+        const wc = st.wcat || "std";
+        body.append(seg([["std", "Standard"], ["grille", "Grilles & shapes"], ["stained", "Stained glass"]], wc, (v) => { st.wcat = v; renderPanel(); }, "ar-wcat"));
+        shown = list.filter((P) => (P.cat || "std") === wc);
+      }
       const grid = el("div", { class: "arch-cat", id: "ar-cat" });
-      for (const P of list) grid.append(el("button", { class: "arch-tile", "data-p": P.id, "aria-pressed": String(st.preset[t] === P.id), title: P.name, onclick: () => { st.preset[t] = P.id; renderPanel(); } }, el("span", { html: presetSVG(P) }), el("b", {}, P.name), el("small", {}, `${fmtLen(P.w)} × ${fmtLen(P.h)}` + (P.sill !== undefined ? ` · sill ${fmtLen(P.sill)}` : ""))));
+      for (const P of shown) grid.append(el("button", { class: "arch-tile", "data-p": P.id, "aria-pressed": String(st.preset[t] === P.id), title: P.name, onclick: () => { st.preset[t] = P.id; renderPanel(); } }, el("span", { html: presetSVG(P) }), el("b", {}, P.name), el("small", {}, `${fmtLen(P.w)} × ${fmtLen(P.h)}` + (P.sill !== undefined ? ` · sill ${fmtLen(P.sill)}` : ""))));
       body.append(grid);
     } else if (t === "roof") {
       panel.append(head("Roof"));
@@ -2076,6 +2333,7 @@ export function initArch(app) {
     for (const o of a.openings.filter((q) => q.wall === w.id)) {
       const P = PRESETS[o.preset] || {}, cls = "ae-open" + (s.k === "open" && s.id === o.id ? " sel" : "") + (bad.has(o.id) ? " bad" : "") + (o.k === "door" ? " door" : "");
       if (P.kind === "round") svg += `<circle data-o="${o.id}" cx="${o.s + o.w / 2}" cy="${-(o.sill + o.h / 2)}" r="${Math.min(o.w, o.h) / 2}" class="${cls}"/>`;
+      else if (shapeOf(P) !== "rect") svg += `<polygon data-o="${o.id}" points="${glassOutline(shapeOf(P), o.w, o.h, 32).map(([x, y]) => (o.s + x).toFixed(1) + "," + (-(o.sill + y)).toFixed(1)).join(" ")}" class="${cls}"/>`;
       else svg += `<rect data-o="${o.id}" x="${o.s}" y="${-(o.sill + o.h)}" width="${o.w}" height="${o.h}" class="${cls}"/>`;
       if (s.k === "open" && s.id === o.id) {
         // dimension lines to both ends and the floor
@@ -2161,6 +2419,8 @@ export function initArch(app) {
     btn("archSend", "Send to design", "Turn the building into shapes in Beginner or Advanced, at a scale you pick", () => sendDialog(), "ar-send");
     btn("archExport", "Export", "Export the house with its landscape, scaled to fit the build plate, as 3MF, OBJ or STL", () => exportDialog(), "ar-export");
     btn("archPlanDoc", "Floor plan", "Save the floor plan as a drawing: PDF, SVG or DXF (for CAD)", () => planDialog(), "ar-planexp");
+    sep();
+    btn("floorPlanner", "Floor Planner", "The Blueprint Floor Planner, in its own window: sketch rooms on graph paper, furnish and finish them in 2D, see them in 3D, multiple floors, costs, and client jobs for the classroom", () => app.floorplan && app.floorplan.open(), "ar-floorplanner");
     ribbon.append(bar);
   }
   function box3() {
@@ -2174,6 +2434,7 @@ export function initArch(app) {
   // were changed from the other system's standards
   function setUnits(u) {
     st.unitsPicked = true;
+    try { localStorage.setItem("jumpstart3d.arch.units", u === "in" ? "in" : "mm"); } catch (e) {}
     if ((u === "in") !== isInch()) setUnit(u);
     else renderRibbon();
   }
@@ -2181,11 +2442,11 @@ export function initArch(app) {
     if (!active) return;
     const a = AC(), inch = isInch(), D = defaults(), other = inch ? { wallT: 200, wallH: 2700, grid: 100 } : { wallT: 165, wallH: 9 * FT, grid: 6 * IN };
     const fix = {};
-    for (const k of ["wallT", "wallH", "grid"]) if (Math.abs((a[k] || 0) - other[k]) < 0.5 || (k === "grid" && (inch ? a.grid % IN > 0.01 : Math.abs(a.grid / 10 - Math.round(a.grid / 10)) > 0.01))) fix[k] = D[k];
+    for (const k of ["wallT", "wallH", "grid"]) if (Math.abs((a[k] || 0) - other[k]) < 0.5 || (k === "grid" && (inch ? Math.abs(a.grid / IN - Math.round(a.grid / IN)) > 0.0004 : /* jumpstart-3d: not "% IN", which is 25.4 for 6 * 25.4 and re-set the grid on every switch */ Math.abs(a.grid / 10 - Math.round(a.grid / 10)) > 0.01))) fix[k] = D[k];
     if (Object.keys(fix).length) update((aa) => { Object.assign(aa, fix); }, inch ? "Feet and inches" : "Metric");
     vp.gridBase = gridStep();
     renderRibbon(); renderPanel(); rebuild();
-    app.toast(inch ? "Sizes in feet and inches (like 12' 6\"). Walls default to 6½\" thick and 9' high; the grid is 6\"." : "Sizes in millimetres. Walls default to 200 mm thick and 2.7 m high; the grid is 100 mm.");
+    if (!quietUnits) app.toast(inch ? "Sizes in feet and inches (like 12' 6\"). Walls default to 6½\" thick and 9' high; the grid is 6\"." : "Sizes in millimetres. Walls default to 200 mm thick and 2.7 m high; the grid is 100 mm.");
   });
   function togglePlan() {
     st.plan = !st.plan; if (st.plan) st.planSeen = true;
@@ -2284,8 +2545,12 @@ export function initArch(app) {
   function key(e) {
     const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
     // typing an exact wall length while drawing
+    if (!mod && !TB.root.hidden && /^[0-9.]$/.test(e.key) && !TB.root.contains(document.activeElement)) {
+      const f = TB.f[0].inp; f.value = ""; TB.locked[0] = false; f.focus();
+      return false; // the key goes into the box
+    }
     if (st.tool === "wall" && st.draft && !mod) {
-      if (/^[0-9.'"\/ ]$/.test(e.key) || (e.key === "m" && st.typed) || (e.key === "c" && st.typed)) { st.typed += e.key; drawOverlay(); return true; }
+      if (/^['"\/ ]$/.test(e.key) && st.typed) { st.typed += e.key; drawOverlay(); return true; }
       if (e.key === "Backspace" && st.typed) { st.typed = st.typed.slice(0, -1); drawOverlay(); return true; }
       if (e.key === "Enter" && st.typed) {
         const len = parseArch(st.typed), d = st.draft, last = d.pts[d.pts.length - 1], c = d.cur || [last[0] + 1, last[1]];
@@ -2340,9 +2605,17 @@ export function initArch(app) {
   }
   // ------------------------------------------------------------ entering and leaving
   let saved = null;
+  // Architect keeps its own units (feet and inches unless metric was picked here); the rest of
+  // the app gets its own units back on the way out
+  let quietUnits = false, outsideUnit = null;
+  function archUnit() { try { return localStorage.getItem("jumpstart3d.arch.units") || "in"; } catch (e) { return "in"; } }
   function enter() {
-    ensure();
+    // jumpstart-3d: a design with no building yet gets Architect's standard sizes for Architect's units (6" walls, 9' high) from the start;
+    // making them in the outside unit and switching afterwards logged a "Feet and inches" Undo step on every first entry
+    ensure(archUnit() === "in");
     active = true;
+    outsideUnit = getUnit();
+    if (archUnit() !== getUnit()) { quietUnits = true; try { setUnit(archUnit()); } finally { quietUnits = false; } }
     root.visible = ov.visible = true;
     labels.hidden = false;
     saved = { base: vp.gridBase, max: vp.maxDist };
@@ -2380,6 +2653,9 @@ export function initArch(app) {
     if (app.scene.planeRoot) app.scene.planeRoot.visible = true;
     if (saved) { vp.gridBase = saved.base; vp.maxDist = saved.max; }
     vp.canvas.style.cursor = "default";
+    hideTypeBox();
+    if (outsideUnit && outsideUnit !== getUnit()) setUnit(outsideUnit);
+    outsideUnit = null;
   }
   function refresh(kind) {
     if (!active) return;

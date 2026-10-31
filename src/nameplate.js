@@ -7,7 +7,9 @@ import { store, nextSeq, regionsFor } from "./store.js";
 import { uid, el, fmt } from "./util.js";
 import { getUnit, withUnit } from "./units.js";
 import { textBounds, getFont } from "./textgeo.js";
-import { FONT_NAMES } from "./fonts.js";
+import { FONT_DATA, FONT_NAMES } from "./fonts.js";
+// the three classic fonts only: the extra ones (J.Siwek 2.8.1.1) come and go with a download, and getFont measures in the classic three
+const FONTS = Object.keys(FONT_DATA);
 
 const MAX_CHARS = 40;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -33,7 +35,7 @@ function resolve(spec) {
   const chars = Array.from(text);
   if (chars.length > MAX_CHARS) throw new Error(`text can have at most ${MAX_CHARS} characters (this has ${chars.length})`);
   const font = spec.font == null ? "sans" : spec.font;
-  if (!Object.keys(FONT_NAMES).includes(font)) throw new Error('font must be "sans", "serif" or "mono"');
+  if (!FONTS.includes(font)) throw new Error('font must be "sans", "serif" or "mono"');
   // hasChar says yes to everything; a glyph index of 0 is the font's "missing" box, which the kernel would drop as a blank gap
   const face = getFont(font), missing = [...new Set(chars.filter((c) => face.charToGlyphIndex(c) === 0))];
   if (missing.length) throw new Error(`text has characters the fonts do not have: ${missing.map((c) => `"${c}"`).join(", ")}. The fonts cover English and Western European letters, digits and common symbols.`);
@@ -166,7 +168,7 @@ export function initNamePlate(app, { openCmd, commit, row, seg }) {
         text.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") text.blur(); });
         text.addEventListener("change", () => { st.text = text.value; def.render(); }); // not on input: a re-render would take the caret away
         body.append(row("Text", text, "np-text"));
-        const font = el("select", { class: "num", id: "np-font", "aria-label": "Font" }, ...Object.entries(FONT_NAMES).map(([v, l]) => el("option", { value: v, selected: v === st.font }, l)));
+        const font = el("select", { class: "num", id: "np-font", "aria-label": "Font" }, ...FONTS.map((v) => el("option", { value: v, selected: v === st.font }, FONT_NAMES[v])));
         font.onchange = () => { st.font = font.value; def.render(); };
         body.append(row("Font", font, "np-font"));
         body.append(row("Style", seg(STYLES, st.style, (v) => { st.style = v; def.render(); }, "np-style")));

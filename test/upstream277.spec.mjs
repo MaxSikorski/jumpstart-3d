@@ -31,8 +31,8 @@ const vol = async (id) => (await bodies(page)).find((b) => b.id === id).volume;
 const okAll = async () => { for (const b of await bodies(page)) expect(b.error, b.name).toBeNull(); };
 
 test("the splash and About show version 2.7.7 with the notes for 2.7.7 to 2.7.4", async () => {
-  expect(VERSION).toBe("2.7.7");
-  const label = `Version 2.7.7 · community build ${BUILD}`;
+  expect(VERSION).toMatch(/^2\.\d+\./); // 2.7.7 and later keep these notes (upstream2813.spec.mjs checks the newest)
+  const label = `Version ${VERSION} · community build ${BUILD}`;
   expect(await page.locator("#sp-ver").textContent()).toBe(label);
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
@@ -123,8 +123,8 @@ test("Shell with the 'Any shape' method hollows a torus (distance-field wall)", 
   const v = await vol("b1");
   expect(v, "a wall, not the whole ring").toBeLessThan(solid * 0.8);
   expect(v, "a wall, not nothing").toBeGreaterThan(solid * 0.25);
-  // the field wall's STL has some unmatched edges (128 on this ring, seen 2026-10-27; not asserted closed here), but it does keep the volume
   const rep = meshReport(readStl(bytes(await run(() => JS3D.export("stl")))));
+  expect(rep.open, "the field wall's STL is closed").toBe(0);
   near(rep.volume, v, 0.02);
 });
 

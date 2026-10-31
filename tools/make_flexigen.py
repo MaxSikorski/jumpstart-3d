@@ -8,11 +8,9 @@ def R(a, b, count=1):
     global s
     assert a in s, a[:100]
     s = s.replace(a, b, count)
-# three.js comes from JumpStart 3D (no network needed)
-# its own copy of three.js (bundled, no network): the viewer's typed arrays must come from the same window
-three = open(ROOT + '/tools/three-global.min.js').read().replace('</script', '<\\/script')
+# The shared three.js copy is inserted by src/helperfonts.js when the page opens.
 R('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
-  '<script>' + three + '</script>')
+  '<script>/*js3d:three*/</script>')
 # jumpstart-3d: no Google Fonts request; the app puts its own copy of the fonts into the page when it opens the helper (src/helperfonts.js)
 s = re.sub(r'<link rel="preconnect" href="https://fonts.g[a-z]+.com"[^>]*>\n', '', s)
 s = re.sub(r'<link rel="stylesheet" href="https://fonts.googleapis.com/css2[^"]*">\n', '', s)

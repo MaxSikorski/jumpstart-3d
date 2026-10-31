@@ -179,9 +179,11 @@ const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; /
 
 // explicit tables, taken from what the app writes and the kernel reads (kernel.js evalNode and applyMod)
 const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint"]);
-const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked"]);
+// the part kinds of the Fasteners dialog (FASTENER_KINDS in fasteners.js, which this module does not import; test/sharelink.test.mjs compares)
+export const FASTENER_KINDS = new Set(["hexbolt", "shcs", "button", "flat", "set", "wood", "rod", "nut", "nyloc", "sqnut", "washer", "lockw", "insert", "dowel", "cutter"]);
+const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
-const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op"]);
+const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
 const CHILD_KEYS = new Set(["node", "m", "hole", "color", "name", "hidden", "id", "seq"]);
 const MOD_TYPES = new Set(["fillopen", "fillet", "chamfer", "hole", "bool", "keeppiece", "halfspace", "sketchsplit", "splitface", "offset", "shell", "emboss", "facepat", "thread", "scale", "pattern"]);
@@ -190,8 +192,8 @@ const SKETCH_KEYS = new Set(["id", "name", "seq", "plane", "pts", "ents", "hidde
 const ENT_KEYS = {
   line: ["a", "b"], circle: ["c", "r"], arc: ["c", "a", "b"], spline: ["pts", "closed"], point: ["p"], text: ["p", "str", "size", "angle", "font"],
 };
-const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2", "sg"]); // sg: jumpstart-3d: sketch solver (an angle's turning direction)
-const CON_TYPES = new Set(["origin", "coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "concentric", "equal", "midpoint", "dim"]);
+const CON_KEYS = new Set(["id", "t", "p", "p1", "p2", "e", "e1", "e2", "k", "o", "v", "off", "expr", "unit", "name", "s1", "s2", "sg", "x", "y"]); // sg: jumpstart-3d: sketch solver (an angle's turning direction)
+const CON_TYPES = new Set(["fixed", "origin", "coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "concentric", "equal", "midpoint", "dim"]);
 const PLANE_KEYS = new Set(["id", "name", "seq", "kind", "def", "plane", "size", "hidden"]);
 const MEDIA_MAPS = new Set(["front", "wrap", "box", "ball"]);
 const UNITS = new Set(["mm", "cm", "m", "in", "ft", "deg"]);
@@ -344,13 +346,19 @@ export function validateEnvelope(env) {
       else if (e.t === "point") needP(e.p);
       else if (e.t === "text") { needP(e.p); text(e.str, "text", LIMITS.STRING); num(e.size, "text size"); if (e.angle !== undefined) num(e.angle, "angle"); if (e.font !== undefined) text(e.font, "font", 32); }
     }
-    const cid = new Set();
+    const cid = new Set(), pinned = new Set(); // jumpstart-3d: fixed constraint (pinned: points already held by a Fixed or an origin pin)
     for (const c of cons) {
       obj(c, "a constraint"); allow(c, CON_KEYS, "a constraint");
       if (!CON_TYPES.has(c.t)) throw unsupported("a " + String(c.t).slice(0, 16).replace(/[^\w ]/g, "?") + " constraint");
       id(c.id, "a constraint id"); if (cid.has(c.id)) throw damaged("duplicate constraint id"); cid.add(c.id);
       for (const k of ["p", "p1", "p2"]) if (c[k] !== undefined && c[k] !== null) needP(c[k]);
       for (const k of ["e", "e1", "e2"]) if (c[k] !== undefined && c[k] !== null && (typeof c[k] !== "string" || !eid.has(c[k]))) throw damaged("a constraint points at a missing shape");
+      if (c.t === "fixed" || c.t === "origin") { // jumpstart-3d: fixed constraint: a point is held once, and never one that is projected from a body
+        if (c.t === "fixed") { needP(c.p); num(c.x, "fixed x"); num(c.y, "fixed y"); }
+        if (pinned.has(c.p)) throw damaged("a point that is fixed twice");
+        pinned.add(c.p);
+        if (c.t === "fixed" && ents.some((e) => e.proj && [e.a, e.b, e.c, e.p].includes(c.p) || (e.pts || []).includes(c.p))) throw damaged("a fixed point on a shape projected from a body");
+      }
       if (c.expr !== undefined) text(c.expr, "a dimension expression", LIMITS.EXPR);
       if (c.unit !== undefined && !UNITS.has(c.unit)) throw damaged("a dimension unit");
       if (c.name !== undefined) text(c.name, "a dimension name", 64);
@@ -386,6 +394,16 @@ export function validateEnvelope(env) {
       for (const k of ["rep", "rot"]) if (b.media[k] !== undefined) num(b.media[k], k);
       for (const k of ["mirror", "both"]) if (b.media[k] !== undefined) bool(b.media[k], k);
       if (b.media.dir !== undefined) vec(b.media.dir, 3, "dir"); if (b.media.up !== undefined) vec(b.media.up, 3, "up"); if (b.media.crop !== undefined) vec(b.media.crop, 4, "crop");
+    }
+    if (b.fastener !== undefined) {
+      const fa = b.fastener, has = (k) => fa[k] !== undefined && fa[k] !== null;
+      obj(fa, "a fastener"); allow(fa, new Set(["kind", "std", "size", "len", "threads", "name", "clear", "left"]), "a fastener");
+      if (!FASTENER_KINDS.has(fa.kind)) throw damaged("a fastener kind");
+      if (has("std") && fa.std !== "metric" && fa.std !== "inch") throw damaged("a fastener standard");
+      for (const k of ["size", "name"]) if (has(k)) text(fa[k], k, 64);
+      if (has("len") && !(num(fa.len, "a fastener length") > 0 && fa.len <= LIMITS.MEASURE)) throw damaged("a fastener length");
+      if (has("clear") && !(num(fa.clear, "a print offset") >= -1 && fa.clear <= 1)) throw damaged("a print offset");
+      for (const k of ["threads", "left"]) if (fa[k] !== undefined) bool(fa[k], k);
     }
     node(obj(b.node, "a body shape"), ctx, "a shape");
   }
@@ -447,6 +465,7 @@ function node(n, ctx, what) {
   } else if (t === "mesh" || t === "step") {
     if (typeof n.asset !== "string" || ctx.assets[n.asset] !== (t === "mesh" ? "mesh" : "step")) throw damaged("a model asset is missing");
   }
+  if (n.parts !== undefined && (t !== "step" || !bool(n.parts, "the parts flag"))) throw damaged("the parts flag"); // STEP parts (#173): one body per part of an imported file
   exprs(n, ctx);
   if (t === "coil") bounds(n, ctx, [["turns", LIMITS.TURNS, "turns"]]);
   if (n.mods !== undefined) {
@@ -460,7 +479,7 @@ function node(n, ctx, what) {
         if (m.src !== undefined) throw unsupported("a combined body");
         if (m.tool !== undefined) node(obj(m.tool, "a cutting shape"), ctx, what);
         if (m.m !== undefined) mat16(m.m, "a cutting shape placement");
-      } else if (m.src !== undefined) throw damaged("a modifier source");
+      } else if (m.src !== undefined && !(m.t === "keeppiece" && m.src === "import")) throw damaged("a modifier source"); // STEP parts (#173): the piece of an imported file
       if (m.t === "fillopen") {
         obj(m.plane, "an opening plane"); allow(m.plane, new Set(["o", "n"]), "an opening plane");
         vec(m.plane.o, 3, "plane origin"); vec(m.plane.n, 3, "plane normal");

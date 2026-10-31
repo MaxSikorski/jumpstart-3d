@@ -1,7 +1,7 @@
 // Web Worker hosting the OpenCascade kernel.
 import opencascade from "replicad-opencascadejs";
 import { gunzip } from "./inflate.js";
-import { initKernel, buildBodies, exportStep, clearCache, setAsset, errorText } from "./kernel.js";
+import { initKernel, buildBodies, exportStep, clearCache, setAsset, errorText, fontsReady } from "./kernel.js";
 import { runCodeCad } from "./codecad-worker.js"; // jumpstart-3d: Code CAD
 import { startManifold, manifoldReady } from "./meshbool.js"; // jumpstart-3d: Manifold mesh booleans
 
@@ -58,7 +58,9 @@ self.onmessage = async (ev) => {
     } else if (msg.type === "build") {
       await ready;
       await manifoldReady(); // jumpstart-3d: Manifold starts with the first imported mesh; a build waits for it (nothing when no mesh was imported)
-      const res = buildBodies(msg.bodies, msg.quality || 1);
+      await fontsReady();
+      // jumpstart-3d: scoped stage messages are independent of engine loading.
+      const res = buildBodies(msg.bodies, msg.quality || 1, { onProgress: (event) => self.postMessage({ type: "progress", req: msg.req, ...event }) });
       const transfer = [];
       for (const r of res) if (r.ok) {
         const m = r.mesh;

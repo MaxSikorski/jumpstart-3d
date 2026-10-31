@@ -7,7 +7,7 @@ import { ICON, shapeTile } from "./icons.js";
 import { LIB, textureThumb } from "./texture.js";
 import { FACEPAT } from "./facepat.js";
 import { fillReportFor } from "./fillpick.js"; // jumpstart-3d: fill openings
-import { FONT_NAMES } from "./fonts.js";
+import { FONT_NAMES, fontSelect } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
 import { onEscape } from "./pivot.js"; // jumpstart-3d: pivot
@@ -172,9 +172,6 @@ export function initBeginner(app) {
     bar.append(el("span", { class: "sep" }));
     btn("sketch", "Sketch", "Draw a 2D sketch on the workplane or a flat face", () => app.advanced.createSketch(), "bb-sketch", true);
     btn("spline", "3D Sketch", "Draw lines in 3D on a shape, a virtual sphere or cube, or in the air", () => app.sketch3d.open(), "bb-sketch3d", true);
-    btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
-    btn("chipcarve", "Chip Carve", "Chip carve a board or a shape with knives, like real wood carving (pen pressure sets the depth)", () => app.carve.open(), "bb-chipcarve", true);
-    btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
     btn("extrude", "Extrude", "Extrude a sketch into a shape (E)", () => app.quickExtrude(), "bb-extrude", true);
     btn("rect", "Box on face", "Draw a box right on a flat face: click a face, drag a rectangle, then set the height", () => app.advanced.faceBox(), "bb-facebox", true); // jumpstart-3d: box on face
     btn("import", "Import", "Import a 3D model (STL, OBJ, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true); // jumpstart-3d: OBJ import
@@ -183,11 +180,12 @@ export function initBeginner(app) {
     btn("ungroup", "Ungroup", "Ungroup (Ctrl+Shift+G)", () => ungroup(), "bb-ungroup", true);
     btn("align", "Align", "Align (A)", () => app.advanced.align(), "bb-align", true);
     btn("pattern", "Pattern", "Make rows or circles of copies", () => app.advanced.pattern(), "bb-pattern", true);
-    btn("thread", "Fastener", "Bolts, nuts, threaded rods and tap cutters, metric and inch", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners
+    btn("thread", "Fasteners", "Parts library: bolts, screws, nuts, washers, heat-set inserts, pins and tap cutters (metric and inch), with optional modeled threads", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners (J.Siwek's library in our Beginner toolbar)
     btn("gear", "Gear", "Spur gears, bevel gears and racks by module and tooth count", () => app.advanced.gear(), "bb-gear", true); // jumpstart-3d: gears
     btn("tag", "Name plate", "A tag or name plate sized to its text, with raised or cut-in letters", () => app.advanced.namePlate(), "bb-nameplate", true); // jumpstart-3d: name plates
     btn("knurl", "Knurled knob", "A knob or grip with straight V grooves all round and an optional round, hex or D bore", () => app.advanced.knurl(), "bb-knurl", true); // jumpstart-3d: knurl
     btn("spring", "Coil spring", "A compression spring of round wire, with open ends or ends cut flat", () => app.advanced.spring(), "bb-spring", true); // jumpstart-3d: spring
+    btn("hinge", "Hinge", "Quick hinges: print-in-place, pin or living hinges, ready to put on your parts", () => app.advanced.hinge(), "bb-hinge", true);
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);
@@ -205,6 +203,11 @@ export function initBeginner(app) {
     bar.append(el("span", { class: "sep" }));
     const mb = btn("select", "Multi-select", "Tap shapes to add them to the selection (same as Shift+click)", () => { multi = !multi; mb.setAttribute("aria-pressed", multi); }, "bb-multi", true);
     mb.setAttribute("aria-pressed", multi);
+    bar.append(el("span", { class: "sep" }));
+    btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
+    btn("chipcarve", "Chip Carve", "Chip carve a board or a shape with knives, like real wood carving (pen pressure sets the depth)", () => app.carve.open(), "bb-chipcarve", true);
+    btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
+    btn("stainedglass", "Stained Glass", "Turn a shape (or a lamp shade) into stained glass with a lead or copper frame, then paint the glass (opens in its own window)", () => app.stainedGlass.open(), "bb-sglass", true);
     bar.append(el("button", { class: "ibtn panel-toggle", onclick: () => $("shapes-tab").click() }, el("span", { class: "lbl" }, "Objects")));
     ribbon.append(bar);
     updateRibbon();
@@ -719,22 +722,24 @@ export function initBeginner(app) {
   let multi = false;
   const handler = {
     hover(e) {
-      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot
+      if (pv.dot.at(e, "beginner")) { app.scene.setHovered(null); app.directEdit.leave(); vp.canvas.style.cursor = "grab"; return; } // jumpstart-3d: pivot, direct edit
       const h = pickHandle(e);
       if (h !== hot) { hot = h; vp.request(); }
-      if (h) { app.scene.setHovered(null); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
+      if (h) { app.scene.setHovered(null); app.directEdit.leave(); vp.canvas.style.cursor = h.userData.handle.type === "rot" ? "grab" : h.userData.handle.type === "lift" ? "ns-resize" : "pointer"; return; }
+      if (multi) app.directEdit.leave();
+      else if (app.directEdit.hover(e)) { app.scene.setHovered(null); return; } // jumpstart-3d: direct edit. a finished sketch's shape lights up
       const f = app.scene.pickFace(e);
       app.scene.setHovered(f ? f.body : null);
       vp.canvas.style.cursor = f ? "move" : "default";
     },
-    leave() { app.scene.setHovered(null); hot = null; vp.request(); },
+    leave() { app.scene.setHovered(null); hot = null; app.directEdit.leave(); vp.request(); }, // jumpstart-3d: direct edit
     // touch: dragging a handle or a shape moves it; dragging empty space orbits
     dblclick(e) {
       // double-click a sketch shape to edit the sketch
       const hits = vp.pick(e, app.scene.regionMeshes());
       if (hits.length) app.enterSketch(hits[0].object.userData.region.sketch);
     },
-    wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e)); }, // jumpstart-3d: pivot
+    wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e) || (!multi && app.directEdit.regionAt(e))); }, // jumpstart-3d: pivot, direct edit
     down(e) {
       vpEl.querySelectorAll(".popover:not(.mirror-pop)").forEach((p) => p.remove());
       // jumpstart-3d: pivot. The dot first: it only moves the pivot. Not with Shift/Ctrl/Meta or Multi-select on (those pick bodies), and not for the tap a finger lets the viewport route
@@ -743,6 +748,8 @@ export function initBeginner(app) {
       const h = pickHandle(e);
       rotKeys = null; // a click ends arrow-key turning (a rotation arc starts it again)
       if (h) return startHandle(e, h);
+      // jumpstart-3d: direct edit. A press on a finished sketch's shape: a click opens Extrude on it, a drag pulls it (Shift, Ctrl, Cmd or Multi-select pass through)
+      if (!multi && app.directEdit.down(e)) { drag = { kind: "direct", move: (ev) => { if (app.directEdit.move(ev)) drag = null; }, up: (ev) => app.directEdit.up(ev) }; return true; }
       const f = app.scene.pickFace(e);
       if (f) {
         let sel = app.sel.slice();
@@ -815,7 +822,7 @@ export function initBeginner(app) {
       if (d.kind === "pivot" && vp.touchMode && !d.moved()) return "tap"; // a finger on the dot that did not move: the viewport treats it as a tap on what is under it
       if (d.kind === "rot" && vp.touchMode && !d.moved) return "tap"; // jumpstart-3d: rotation access. a finger on an arc that did not move: the viewport treats it as a tap on what is under it
     },
-    cancel() { if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
+    cancel() { app.directEdit.cancel(); if (drag && drag.restore) drag.restore(); fb.hide(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access. redraw: the other arcs come back
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching
@@ -1181,7 +1188,7 @@ export function initBeginner(app) {
       txt.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") txt.blur(); });
       txt.addEventListener("change", () => { if (txt.value.trim()) updatePrim(b.id, { text: txt.value }, "Edit text"); });
       body.append(el("div", { class: "subhead" }, "Text"), txt);
-      const fs = el("select", { class: "num", id: "insp-font", "aria-label": "Font" }, ...Object.entries(FONT_NAMES).map(([v, l]) => el("option", { value: v, selected: v === (p.font || "sans") }, l)));
+      const fs = fontSelect("insp-font", p.font || "sans");
       fs.onchange = () => updatePrim(b.id, { font: fs.value }, "Font");
       body.append(fs);
       const r3 = el("div", { class: "row3" });

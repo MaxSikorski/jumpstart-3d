@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import {
-  LIMITS, ShareError, b64urlEncode, b64urlDecode, extractFragment, parseFragment, decodeFragment, readFragment, makeLink, snapshot, validateEnvelope,
+  LIMITS, ShareError, FASTENER_KINDS, b64urlEncode, b64urlDecode, extractFragment, parseFragment, decodeFragment, readFragment, makeLink, snapshot, validateEnvelope,
 } from "../src/sharelink.js";
 import { inflateRaw } from "../src/inflate.js";
 
@@ -463,4 +463,55 @@ test("fill openings survives sharing and validates nested keep entries", async (
   for(const entry of [{c:[1,2],a:2},{c:[1,2,3],a:-1},{c:[1,2,3],a:2,extra:true}]) {
     const bad=structuredClone(doc);bad.bodies[0].node.mods[0].keep=[entry];throwsShare(()=>validateEnvelope(env(bad)),entry.extra ? "unsupported" : "damaged");
   }
+});
+
+test("STEP parts (#173): a step node may carry parts: true and keeppiece pieces with src import; nothing else may", () => {
+  const part = (mutate) => (d) => { const n = d.bodies[0].node; n.parts = true; n.mods = [{ id: "f1", seq: 2, t: "keeppiece", piece: 0, count: 3, src: "import" }]; mutate?.(n, d); };
+  validateEnvelope(valid(part(), "import-step"));
+  bad(part((n) => { n.parts = false; }), "damaged", /parts flag/, "import-step"); // true or absent, never false
+  bad(part((n) => { n.parts = "yes"; }), "damaged", /parts flag/, "import-step");
+  bad((d) => { d.bodies[0].node.parts = true; d.bodies[0].node.t = "prim"; d.bodies[0].node.kind = "box"; d.bodies[0].node.p = { w: 1, d: 1, h: 1 }; delete d.bodies[0].node.asset; }, "damaged", /parts flag/, "import-step");
+  bad(part((n) => { n.mods[0].src = "other"; }), "damaged", /modifier source/, "import-step"); // a combine's source is not shareable here
+  bad(part((n) => { n.mods[0].t = "fillet"; }), "damaged", /modifier source/, "import-step"); // only the keeppiece of an import
+});
+
+// The schema only: a real STEP file is too big for a link (4096 characters), so this asset is a stand-in and the parts would not build. That they build is test/step-parts.spec.mjs.
+test("STEP parts (#173): the parts fields make a link and read back unchanged (schema only, no real file)", async () => {
+  const doc = fixture("import-step");
+  const first = doc.bodies[0];
+  doc.bodies = [0, 1, 2].map((i) => { const b = structuredClone(first); b.id = "p" + i; b.name = "box part " + (i + 1); b.node.parts = true; b.node.mods = [{ id: "k" + i, seq: i + 2, t: "keeppiece", piece: i, count: 3, src: "import" }]; return b; });
+  const link = await makeLink(doc, BASE);
+  assert.equal(link.ok, true);
+  const read = await readFragment(extractFragment(link.url));
+  assert.deepEqual(read.bodies.map((b) => b.node), doc.bodies.map((b) => b.node));
+});
+
+// J.Siwek 2.8.1.3: the Fasteners dialog keeps its settings on the body (b.fastener), so the dialog can edit the part again
+test("a body made by the Fasteners dialog passes with its settings; unknown fields, kinds and out-of-range values are refused", () => {
+  const doc = { v: 1, id: "f", name: "F", mode: "advanced", created: 1, seq: 1, grid: 1, sketches: [], planes: [], joints: [], bodies: [
+    { id: "b1", name: "Hex nut M8", seq: 1, color: "#c7ccd2", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      node: { t: "prim", kind: "cylinder", p: { w: 8, d: 8, h: 6.8 }, mods: [] },
+      fastener: { kind: "nut", std: "metric", size: "M8", len: 24, threads: true, name: "Hex nut M8", clear: -0.1, left: false } }] };
+  assert.equal(validateEnvelope(env(doc)).bodies[0].fastener.size, "M8");
+  const with_ = (change) => { const d = structuredClone(doc); Object.assign(d.bodies[0].fastener, change); return env(d); };
+  assert.equal(validateEnvelope(with_({ len: null })).bodies[0].fastener.len, null); // a nut made before a length was set
+  for (const [change, re] of [[{ script: "x" }, /fastener/], [{ threads: "yes" }, /threads/], [{ kind: "rocket" }, /fastener kind/], [{ std: "imperial" }, /fastener standard/],
+    [{ len: 0 }, /fastener length/], [{ len: 2e5 }, null], [{ clear: -1.5 }, /print offset/], [{ clear: 2 }, /print offset/]]) throwsShare(() => validateEnvelope(with_(change)), null, re);
+});
+
+test("the share link's list of fastener kinds is the dialog's list", () => {
+  const src = readFileSync(new URL("../src/fasteners.js", import.meta.url), "utf8");
+  const ids = [...src.matchAll(/\{ id: "([a-z]+)", label: "[^"]+", group: "/g)].map((m) => m[1]);
+  assert.ok(ids.length >= 15);
+  assert.deepEqual([...FASTENER_KINDS].sort(), ids.sort());
+});
+
+test("a Fixed in a link: needs a point and a position, once per point, and never on a projected shape", () => {
+  const fx = (d, extra) => { d.sketches[0].cons = [{ id: "k1", t: "fixed", p: "p0", x: 0, y: 0, ...extra }]; };
+  validateEnvelope(valid((d) => fx(d)));
+  bad((d) => fx(d, { x: undefined }), "damaged");
+  bad((d) => fx(d, { p: "nope" }), "damaged");
+  bad((d) => { fx(d); d.sketches[0].cons.push({ id: "k2", t: "fixed", p: "p0", x: 0, y: 0 }); }, "damaged", /twice/);
+  bad((d) => { fx(d); d.sketches[0].cons.push({ id: "k2", t: "origin", p: "p0" }); }, "damaged", /twice/);
+  bad((d) => { fx(d); d.sketches[0].ents[0].proj = true; }, "damaged", /projected/);
 });

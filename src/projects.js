@@ -1,6 +1,7 @@
 // Saving designs (account storage when available, plus this browser), export and import.
 import { store, newDoc, IDENTITY } from "./store.js";
 import { el, uid, debounce, makeZip, fmt } from "./util.js";
+import { handOff } from "./sendslicer.js"; // jumpstart-3d: send to slicer
 import { ICON } from "./icons.js";
 import { initRecovery } from "./recovery.js";
 import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs storage
@@ -369,14 +370,14 @@ export function initProjects(app) {
   // Model files (.stl, .3mf) download as they are from the standalone file. Inside claude.ai
   // the save dialog only accepts some file types, so there they come wrapped in a .zip.
   async function offerModel(filename, bytes) {
-    if (!downloads) return offer(filename, bytes);
-    try { await downloads.save({ filename, data: new Blob([bytes]) }); return; }
+    if (!downloads) return (await offer(filename, bytes)) ? "file" : false; // jumpstart-3d: send to slicer
+    try { await downloads.save({ filename, data: new Blob([bytes]) }); return "file"; } // jumpstart-3d: send to slicer
     catch (e) {
-      if (e && e.code === "declined") return;
-      if (!e || (e.code !== "rejected_extension" && e.code !== "extension_not_enabled")) { app.toast("Couldn't save the file: " + ((e && e.message) || "unavailable"), "err"); return; }
+      if (e && e.code === "declined") return false; // jumpstart-3d: send to slicer
+      if (!e || (e.code !== "rejected_extension" && e.code !== "extension_not_enabled")) { app.toast("Couldn't save the file: " + ((e && e.message) || "unavailable"), "err"); return false; } // jumpstart-3d: send to slicer
     }
     app.toast("This view can't save ." + filename.split(".").pop() + " files directly, so it's inside a .zip. The downloaded JumpStart 3D file saves it unzipped.");
-    await offer(filename.replace(/\.[^.]+$/, "") + ".zip", makeZip([{ name: filename, data: bytes }]));
+    return (await offer(filename.replace(/\.[^.]+$/, "") + ".zip", makeZip([{ name: filename, data: bytes }]))) ? "zip" : false; // jumpstart-3d: send to slicer
   }
   async function offer(filename, data) {
     if (!downloads) {
@@ -416,7 +417,8 @@ export function initProjects(app) {
   };
   function renderScope() {
     let box = $("export-scope");
-    if (!box) { box = el("div", { id: "export-scope", class: "exscope", role: "radiogroup", "aria-label": "Bodies to export" }); const first = menu.querySelector('button[data-act="stl"]'); if (first) first.before(box, el("hr")); else menu.prepend(box, el("hr")); } // jumpstart-3d: import in the file menu (the picker sits just above the exports)
+    // jumpstart-3d: send to slicer
+    if (!box) { box = el("div", { id: "export-scope", class: "exscope", role: "radiogroup", "aria-label": "Bodies to export" }); const first = menu.querySelector('button[data-act="slicer"]') || menu.querySelector('button[data-act="stl"]'); if (first) first.before(box, el("hr")); else menu.prepend(box, el("hr")); } // jumpstart-3d: import in the file menu (the picker sits just above the exports)
     const nSel = selectedSolids().length, nAll = allSolids().length;
     box.innerHTML = "";
     box.append(el("div", { class: "exhead" }, "Bodies to export"));
@@ -603,6 +605,12 @@ export function initProjects(app) {
     await offerModel(exportName() + ".3mf", await bytes);
     app.onExport && app.onExport("3mf");
   }
+  // jumpstart-3d: send to slicer. the same bytes and name as Export > 3MF, handed to the slicer (src/sendslicer.js)
+  async function sendToSlicer() {
+    const bytes = threeMFBytes();
+    if (!bytes) { app.toast("Nothing to export yet. Holes on their own aren't exported."); return; }
+    if (await handOff(app, exportName() + ".3mf", await bytes, offerModel)) app.onExport && app.onExport("3mf"); // jumpstart-3d: send to slicer
+  }
   // jumpstart-3d: scripting bridge. the STEP bytes of a list of bodies, split out of exportSTEP
   async function stepBytes(bodies) {
     const { resolveNode } = await import("./store.js");
@@ -749,14 +757,17 @@ export function initProjects(app) {
     try { await window.JS3D.ready(130000); } catch (err) { pendingExport = null; app.toast("Still building after two minutes. Try Export again when it has finished.", "err"); return; }
     const { a: act, scope } = pendingExport; pendingExport = null;
     exportScope = scope;
-    ({ stl: exportSTL, obj: exportOBJ, "3mf": export3MF, glb: exportGLB, step: exportSTEP })[act]();
+    // jumpstart-3d: send to slicer
+    ({ slicer: sendToSlicer, stl: exportSTL, obj: exportOBJ, "3mf": export3MF, glb: exportGLB, step: exportSTEP })[act]();
   }
   // end jumpstart-3d
   menu.addEventListener("click", async (e) => { // jumpstart-3d: async, for the export wait
     const a = e.target.closest("button")?.dataset.act;
     if (!a) return;
     menu.hidden = true;
-    if (["stl", "obj", "3mf", "glb", "step"].includes(a) && (pendingExport || buildingNow())) { await exportWhenBuilt(a); return; } // jumpstart-3d: export waits for a rebuild
+    // jumpstart-3d: send to slicer
+    if (["slicer", "stl", "obj", "3mf", "glb", "step"].includes(a) && (pendingExport || buildingNow())) { await exportWhenBuilt(a); return; } // jumpstart-3d: export waits for a rebuild
+    if (a === "slicer") sendToSlicer(); // jumpstart-3d: send to slicer
     if (a === "stl") exportSTL();
     if (a === "obj") exportOBJ();
     if (a === "3mf") export3MF();

@@ -93,3 +93,19 @@ test("a cached design with every body hidden does not leave the camera armed to 
   await openDesign("C"); await waitIdle(page); // now from the cache, with nothing visible to frame
   expect(await page.evaluate(() => window.__app.needFit)).toBe(false);
 });
+
+test("a camera move whose first frame is stamped before the move began does not overshoot (it froze the tab on a slow runner)", async () => {
+  const r = await page.evaluate(() => {
+    const vp = window.__app.vp, V = vp.camera.position.constructor, v0 = vp.view.dist;
+    vp.animateTo({ dist: 110, target: new V(0, 0, 10) }, 10);
+    vp.stepAnim(performance.now() - 500); // a frame that started half a second before the move
+    const out = { dist: vp.view.dist, from: v0, moving: !!vp.anim };
+    vp.stepAnim(performance.now() + 1000); // the move ends
+    out.done = !vp.anim; out.end = vp.view.dist;
+    return out;
+  });
+  expect(r.dist, "the first step stays at the start, not past the end").toBeCloseTo(r.from, 6);
+  expect(r.moving).toBe(true);
+  expect(r.done).toBe(true);
+  expect(r.end).toBeCloseTo(110, 6);
+});

@@ -3,8 +3,7 @@
 // Advanced like an imported STL), each carrying its full sculpt data; only Chisel can sculpt
 // them. Bodies of the design can be copied (or converted) into Chisel to sculpt.
 import * as THREE from "three";
-import CHISEL_HTML from "./chisel.html";
-import { withFonts } from "./helperfonts.js";
+import { helperPage, helperLoadingNote, helperFailText } from "./helperpages.js"; // jumpstart-3d: helper pages load on demand
 import { store, findBody, nextSeq, IDENTITY, regionsFor } from "./store.js";
 import { uid, el, nextColor } from "./util.js";
 import { isInch } from "./units.js";
@@ -78,11 +77,12 @@ export function initChisel(app) {
       levelBar = document.createElement("div");
       levelBar.className = "chisel-level"; levelBar.id = "chisel-level";
       levelBar.setAttribute("role", "group"); levelBar.setAttribute("aria-label", "Chisel level");
-      levelBar.innerHTML = '<button data-level="easy" title="Easy: a few big, simple tools (great for kids and first-timers)">Easy</button><button data-level="pro" title="Pro: every brush, cut and setting">Pro</button><button data-lathe="1" id="chisel-lathe" class="chisel-lathe-btn" title="Turn a body or a wood blank on a virtual lathe">Lathe</button><button data-carve="1" id="chisel-carve" class="chisel-lathe-btn" title="Chip carve a board or a shape with knives">Chip carve</button>';
+      levelBar.innerHTML = '<button data-level="easy" title="Easy: a few big, simple tools (great for kids and first-timers)">Easy</button><button data-level="pro" title="Pro: every brush, cut and setting">Pro</button><button data-lathe="1" id="chisel-lathe" class="chisel-lathe-btn" title="Turn a body or a wood blank on a virtual lathe">Lathe</button><button data-carve="1" id="chisel-carve" class="chisel-lathe-btn" title="Chip carve a board or a shape with knives">Chip carve</button><button data-sglass="1" id="chisel-sglass" class="chisel-lathe-btn" title="Turn the sculpture into stained glass: coloured glass pieces in a lead frame">Stained glass</button>';
       levelBar.addEventListener("click", async (e) => {
         const b = e.target.closest("button"); if (!b) return;
         if (b.dataset.lathe) { await sync(); app.lathe.open(); return; } // your sculpting is saved first
         if (b.dataset.carve) { await sync(); app.carve.open(); return; }
+        if (b.dataset.sglass) { await sync(); app.stainedGlass.open(); return; }
         setLevel(b.dataset.level);
       });
       document.body.append(levelBar);
@@ -235,8 +235,15 @@ export function initChisel(app) {
     ifr = document.createElement("iframe");
     ifr.title = "Chisel sculpting";
     readyP = new Promise((r) => { readyRes = r; });
-    ifr.srcdoc = withFonts(CHISEL_HTML);
-    host.append(ifr);
+    // jumpstart-3d: helper pages load on demand. A failed load closes Chisel again and tells the user; the next try starts afresh.
+    const note = helperLoadingNote(() => app.switchMode("beginner")), mine = host;
+    helperPage("chisel").then((html) => { if (host === mine) { note.done(); ifr.srcdoc = html; } }, (e) => {
+      if (host !== mine) return;
+      host.remove(); host = ifr = readyP = null;
+      readyRes(false); readyRes = null;
+      if (app.mode === "chisel") { app.toast(helperFailText("Chisel", e), "err"); app.switchMode("beginner"); }
+    });
+    host.append(note, ifr);
     document.body.append(host);
     return readyP;
   }
@@ -370,15 +377,17 @@ export function initChisel(app) {
     try { return await busySync; } finally { busySync = null; }
   }
 
+  let introDue = true; // jumpstart-3d: the first-visit notice waits for the first Chisel that really opens (enter() may stop early)
   async function enter() {
-    const first = !host;
-    await ensure();
+    const ready = ensure();
+    if (host) host.hidden = false; // jumpstart-3d: shows the Loading note while the page downloads
+    if (await ready === false || app.mode !== "chisel") return; // jumpstart-3d: the page could not be loaded, or the user already left (Close, a slow download)
     host.hidden = false;
     showLevel(true);
     await load();
     win() && win().shown();
     ifr.focus();
-    if (first) firstVisit();
+    if (introDue) { introDue = false; firstVisit(); }
   }
   // the first time Chisel opens on this device: what sculpting does to a body
   function firstVisit() {

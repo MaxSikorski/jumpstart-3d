@@ -27,6 +27,8 @@ test("gzipSize is the size of the gzipped text", () => {
 test("the committed budget is a real number close to the built app", () => {
   const recorded = JSON.parse(readFileSync(new URL("../size-budget.json", import.meta.url), "utf8"))["docs/app.js gzip bytes"];
   assert.ok(Number.isInteger(recorded) && recorded > 500_000, "size-budget.json holds the gzipped size of docs/app.js");
+  const helpers = JSON.parse(readFileSync(new URL("../size-budget.json", import.meta.url), "utf8"))["docs/helpers gzip bytes"];
+  assert.ok(Number.isInteger(helpers) && helpers > 100_000, "size-budget.json holds the gzipped total of docs/helpers");
 });
 
 test("build.mjs fails on a lowered budget and passes after --bump-budget", { timeout: 180_000 }, () => {
@@ -36,14 +38,20 @@ test("build.mjs fails on a lowered budget and passes after --bump-budget", { tim
   for (const f of ["package.json", "src", "third_party", "tools", "LICENSES", "node_modules"]) symlinkSync(join(root, f), join(dir, f));
   copyFileSync(join(root, "build.mjs"), join(dir, "build.mjs"));
   const tooSmall = join(dir, "size-budget.json");
-  writeFileSync(tooSmall, JSON.stringify({ "docs/app.js gzip bytes": 1_000_000 }));
+  writeFileSync(tooSmall, JSON.stringify({ "docs/app.js gzip bytes": 600_000, "docs/helpers gzip bytes": 100_000 })); // both far under the real sizes
   const bad = spawnSync("node", ["build.mjs"], { cwd: dir, encoding: "utf8" });
   assert.notEqual(bad.status, 0);
-  assert.match(bad.stderr, /over the recorded 1000000/);
+  assert.match(bad.stderr, /over the recorded 600000/);
   const bump = spawnSync("node", ["build.mjs", "--bump-budget"], { cwd: dir, encoding: "utf8" });
   assert.equal(bump.status, 0, bump.stderr);
   const after = JSON.parse(readFileSync(tooSmall, "utf8"))["docs/app.js gzip bytes"];
-  assert.ok(after > 1_000_000);
+  assert.ok(after > 600_000);
+  assert.ok(JSON.parse(readFileSync(tooSmall, "utf8"))["docs/helpers gzip bytes"] > 100_000);
   assert.equal(spawnSync("node", ["build.mjs"], { cwd: dir, encoding: "utf8" }).status, 0);
+  // the inputs are symlinks here, and the site's app.js must still be built without the helper pages (esbuild reports real paths)
+  const chisel = readFileSync(join(root, "src", "chisel.html"), "utf8");
+  const probe = chisel.slice(Math.floor(chisel.length / 2)).match(/[A-Za-z0-9 _.,;:()=+-]{60}/)[0];
+  assert.ok(!readFileSync(join(dir, "docs", "app.js"), "utf8").includes(probe), "the scratch site's app.js carries a helper page");
+  assert.ok(readFileSync(join(dir, "dist", "jumpstart-3d.html"), "utf8").includes(probe), "the scratch single file lacks a helper page");
   rmSync(dir, { recursive: true, force: true });
 });

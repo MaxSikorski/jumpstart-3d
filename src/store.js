@@ -319,8 +319,12 @@ export function resolveNode(node, doc) {
       const M = psk.plane, y = [M.n[1] * M.x[2] - M.n[2] * M.x[1], M.n[2] * M.x[0] - M.n[0] * M.x[2], M.n[0] * M.x[1] - M.n[1] * M.x[0]];
       const W = (p) => [0, 1, 2].map((i) => M.o[i] + M.x[i] * p[0] + y[i] * p[1]);
       n.pathSegs = orderPath(resolveSketch(psk), node.path.ents).map((s) => s.t === "circle" ? { t: "circle", c: W(s.c), r: s.r, n: M.n } : { t: s.t, a: W(s.a), b: W(s.b), m: s.m && W(s.m), spans: s.spans && s.spans.map((b) => b.map(W)) });
-    } else n.pathSegs = [];
-    delete n.path;
+    } else n.pathSegs = node.edgeSegs || [];
+    // the guide rail, the same way
+    const rsk = node.rail && findSketch(doc, node.rail.sketch);
+    if (rsk) n.railSegs = sketchPathSegs(rsk, node.rail.ents);
+    else if (node.railEdgeSegs) n.railSegs = node.railEdgeSegs;
+    delete n.path; delete n.edgeSegs; delete n.rail; delete n.railEdgeSegs;
   }
   if (node.t === "extrude" || node.t === "revolve" || node.t === "sweep") {
     const sk = findSketch(doc, node.sketch);
@@ -420,8 +424,8 @@ export function timeline(doc) {
     const label = n.t === "mesh" ? (b.sculpt ? "Sculpt" : "Imported mesh") : n.t === "step" ? "Imported STEP" : n.t === "prim" ? primName(n.kind) : n.t === "group" ? (n.op === "intersect" ? "Intersect" : "Combine") : n.t === "extrude" ? "Extrude" : n.t === "sweep" ? "Sweep" : n.t === "pipe" ? "Pipe" : n.t === "coil" ? "Coil" : n.t === "loft" ? "Loft" : n.t === "mirror" ? "Mirror" : "Revolve";
     items.push({ seq: b.seq, kind, label: label + exprTag(n), body: b.id }); // jumpstart-3d: parameters
     for (const m of n.mods || []) {
-      // jumpstart-3d: fill openings
-      const lab = { fillopen: "Fill openings", keeppiece: `Keep piece ${m.piece + 1}`, halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", facepat: "Pattern on face", pattern: "Pattern", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t]; // jumpstart-3d: pattern (label)
+      // jumpstart-3d: fill openings. STEP parts (#173): a keeppiece of an imported file reads "Part N of the file"
+      const lab = { fillopen: "Fill openings", keeppiece: m.src === "import" ? `Part ${m.piece + 1} of the file` : `Keep piece ${m.piece + 1}`, halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", facepat: "Pattern on face", pattern: "Pattern", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t]; // jumpstart-3d: pattern (label)
       if (m.src === "combine") { items.push({ seq: m.seq || b.seq, kind: "combine", label: "Combine" + (m.op === "cut" ? " (cut)" : m.op === "intersect" ? " (intersect)" : ""), body: b.id, mod: m.id }); continue; }
       items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab && lab + exprTag(m.t === "bool" ? m.tool : m), body: b.id, mod: m.id }); // jumpstart-3d: parameters
     }

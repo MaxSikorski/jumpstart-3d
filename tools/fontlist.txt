@@ -1,0 +1,42 @@
+anton|ofl/anton/Anton-Regular.ttf|Anton|Bold condensed|Bold sans
+bebas|ofl/bebasneue/BebasNeue-Regular.ttf|Bebas Neue|Tall capitals|Bold sans
+archivo|ofl/archivoblack/ArchivoBlack-Regular.ttf|Archivo Black|Heavy sans|Bold sans
+montserrat|ofl/montserrat/Montserrat[wght].ttf@800|Montserrat|Modern sans|Bold sans
+oswald|ofl/oswald/Oswald[wght].ttf@700|Oswald|Condensed sans|Bold sans
+lato|ofl/lato/Lato-Black.ttf|Lato|Clean sans|Bold sans
+fredoka|ofl/fredoka/Fredoka[wdth,wght].ttf@700|Fredoka|Rounded bubbly|Rounded
+varela|ofl/varelaround/VarelaRound-Regular.ttf|Varela Round|Rounded|Rounded
+nunito|ofl/nunito/Nunito[wght].ttf@900|Nunito|Rounded heavy|Rounded
+baloo|ofl/baloo2/Baloo2[wght].ttf@800|Baloo 2|Friendly rounded|Rounded
+robotoslab|apache/robotoslab/RobotoSlab[wght].ttf@800|Roboto Slab|Slab serif|Serif and slab
+alfaslab|ofl/alfaslabone/AlfaSlabOne-Regular.ttf|Alfa Slab One|Heavy slab|Serif and slab
+abril|ofl/abrilfatface/AbrilFatface-Regular.ttf|Abril Fatface|Fancy serif|Serif and slab
+cinzel|ofl/cinzel/Cinzel[wght].ttf@800|Cinzel|Roman capitals|Serif and slab
+ultra|apache/ultra/Ultra-Regular.ttf|Ultra|Poster serif|Serif and slab
+lobster|ofl/lobster/Lobster-Regular.ttf|Lobster|Bold script|Script and handwriting
+pacifico|ofl/pacifico/Pacifico-Regular.ttf|Pacifico|Surf script|Script and handwriting
+dancing|ofl/dancingscript/DancingScript[wght].ttf@700|Dancing Script|Flowing script|Script and handwriting
+marker|apache/permanentmarker/PermanentMarker-Regular.ttf|Permanent Marker|Marker pen|Script and handwriting
+caveat|ofl/caveat/Caveat[wght].ttf@700|Caveat|Handwriting|Script and handwriting
+kalam|ofl/kalam/Kalam-Bold.ttf|Kalam|Handwriting bold|Script and handwriting
+bangers|ofl/bangers/Bangers-Regular.ttf|Bangers|Comic book|Fun and cartoon
+luckiest|apache/luckiestguy/LuckiestGuy-Regular.ttf|Luckiest Guy|Cartoon|Fun and cartoon
+bungee|ofl/bungee/Bungee-Regular.ttf|Bungee|Signage|Fun and cartoon
+titan|ofl/titanone/TitanOne-Regular.ttf|Titan One|Chunky|Fun and cartoon
+lilita|ofl/lilitaone/LilitaOne-Regular.ttf|Lilita One|Playful bold|Fun and cartoon
+chewy|apache/chewy/Chewy-Regular.ttf|Chewy|Bouncy|Fun and cartoon
+cherry|ofl/cherrybombone/CherryBombOne-Regular.ttf|Cherry Bomb One|Bubble|Fun and cartoon
+creepster|ofl/creepster/Creepster-Regular.ttf|Creepster|Spooky|Fun and cartoon
+orbitron|ofl/orbitron/Orbitron[wght].ttf@800|Orbitron|Sci-fi|Tech and games
+audiowide|ofl/audiowide/Audiowide-Regular.ttf|Audiowide|Futuristic|Tech and games
+russo|ofl/russoone/RussoOne-Regular.ttf|Russo One|Sporty|Tech and games
+pixel|ofl/pressstart2p/PressStart2P-Regular.ttf|Press Start 2P|Pixel game|Tech and games
+blackops|ofl/blackopsone/BlackOpsOne-Regular.ttf|Black Ops One|Stamped|Tech and games
+stencil|ofl/allertastencil/AllertaStencil-Regular.ttf|Allerta Stencil|Stencil|Stencil
+sairastencil|ofl/sairastencilone/SairaStencilOne-Regular.ttf|Saira Stencil One|Stencil bold|Stencil
+fraktur|ofl/unifrakturmaguntia/UnifrakturMaguntia-Book.ttf|UnifrakturMaguntia|Old English|Old style
+pirata|ofl/pirataone/PirataOne-Regular.ttf|Pirata One|Pirate blackletter|Old style
+rye|ofl/rye/Rye-Regular.ttf|Rye|Wild West|Old style
+typewriter|apache/specialelite/SpecialElite-Regular.ttf|Special Elite|Typewriter|Old style
+graduate|ofl/graduate/Graduate-Regular.ttf|Graduate|College|Serif and slab
+staatliches|ofl/staatliches/Staatliches-Regular.ttf|Staatliches|Narrow caps|Bold sans
