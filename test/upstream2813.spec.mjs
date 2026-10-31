@@ -91,9 +91,11 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
   await run(() => window.__app.advanced.printSim.selectKey("b1"));
   await page.click("#ps-otz"); // a quarter turn about Z
   await expect.poll(async () => (await plate()).box, { timeout: 60_000 }).toEqual([30, 40]);
-  await page.fill("#ps-oscale", "150");
-  await page.press("#ps-oscale", "Enter");
-  await expect.poll(async () => (await plate()).box, { timeout: 60_000 }).toEqual([45, 60]);
+  // the panel redraws when a slice finishes, which can drop a typed value: type it again until the plate shows it
+  await expect.poll(async () => {
+    if ((await plate()).box.join() !== "45,60") { await page.fill("#ps-oscale", "150"); await page.press("#ps-oscale", "Enter"); }
+    return (await plate()).box;
+  }, { timeout: 60_000, intervals: [1500] }).toEqual([45, 60]);
   await expect(page.locator("#ps-osize")).toContainText("60");
   // the count box goes back to 1 whenever the panel redraws (a slice finishing): ask again for what is still missing
   await expect.poll(async () => {
