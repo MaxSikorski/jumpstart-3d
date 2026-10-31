@@ -1,5 +1,8 @@
-// Fasteners (Phase 3 step 1): the Fastener dialog and JS3D.fastener make a bolt, a nut, a threaded rod or a tap cutter as
-// ordinary bodies built from the app's own Thread feature. Volumes are checked in bands (the exact values are in test/golden.json).
+// Fasteners (Phase 3 step 1): JS3D.fastener makes a bolt, a nut, a threaded rod or a tap cutter as ordinary bodies built from the
+// app's own Thread feature. Volumes are checked in bands (the exact values are in test/golden.json).
+// Since J.Siwek 2.8.1.3 the dialog is his Fasteners parts library (fastenerCmd in advanced.js, ids fs-*) with our thread fit on top:
+// a print offset per part with the ISO caps, the hand, the turns guard, UNF sizes, a tap cutter, and the F8 spacing. The dialog tests
+// below drive that merged dialog; the bridge tests are unchanged.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { boot, watchErrors, loadDoc, exportBytes, quarantine } from "./helpers.mjs";
@@ -21,67 +24,79 @@ const failure = (fn, arg) => page.evaluate(async ([src, a]) => { try { await new
 const built = () => run(async () => { await JS3D.ready(); return JS3D.list(); });
 const volumeOf = async (id) => (await built()).find((b) => b.id === id).volume;
 const toasts = () => page.locator("#toasts .toast").allInnerTexts();
-// open Advanced Create > Fastener from the ribbon
+// open Advanced Create > Fasteners from the ribbon
 async function openFromRibbon() {
   await page.click("#ad-features");
-  await page.click("#ad-fastener");
+  await page.click("#ad-fasteners");
   await expect(page.locator("#cmd")).toContainText("Fastener");
 }
-const part = (name) => page.locator("#fa-type button", { hasText: name }).click();
-const setLength = async (v) => { await page.fill("#fa-len", String(v)); await page.locator("#fa-len").blur(); };
+// pick a part in the dialog; threads: tick or untick Modeled threads (a tap cutter is always threaded)
+async function choose({ kind, std = "metric", size, len, threads }) {
+  if (kind) await page.selectOption("#fs-kind", kind);
+  if (std && (await page.locator("#fs-std").count())) await page.locator("#fs-std button", { hasText: std === "inch" ? "Inch" : "Metric" }).click();
+  if (size) await page.selectOption("#fs-size", size);
+  if (len !== undefined) await setLength(len);
+  if (threads !== undefined && (await page.locator("#fs-threads").count())) await page.locator("#fs-threads").setChecked(threads);
+}
+const setLength = async (v) => { await page.fill("#fs-len", String(v)); await page.locator("#fs-len").blur(); };
 
-test("Advanced: Create > Advanced Create > Fastener makes an M8x30 bolt in one undo step", async () => {
+test("Advanced: Create > Advanced Create > Fasteners makes a threaded M8x30 hex bolt in one undo step", async () => {
   await fresh("advanced");
   await openFromRibbon();
-  await expect(page.locator("#fa-size")).toHaveValue("M8");
-  await expect(page.locator("#fa-len")).toHaveValue("30");
-  await expect(page.locator("#cmd")).toContainText("Hex head 13 mm across flats, 5.3 mm high; the length is measured under the head.");
+  await choose({ kind: "hexbolt", size: "M8", len: 30, threads: true });
+  await expect(page.locator("#fs-len")).toHaveValue("30");
+  await expect(page.locator("#fs-holes")).toContainText("Holes for M8: clearance 8.8 mm, tap drill 6.75 mm.");
   const undoBefore = await run(() => __store.undoStack.length);
   await page.click("#cmd-ok");
   await expect(page.locator("#cmd")).toBeHidden();
   const list = await built();
-  expect(list.map((b) => b.name)).toEqual(["M8×30 bolt"]);
+  expect(list.map((b) => b.name)).toEqual(["Hex bolt M8 x 30 mm"]);
   expect(list[0].error).toBeNull();
   expect(list[0].hole).toBe(false);
-  expect(list[0].volume).toBeGreaterThan(1980); // 2010 with the ISO thread profile (about 90 mm3 less than the old, too shallow V)
+  expect(list[0].volume).toBeGreaterThan(1900); // his chamfered hex head over the ISO-threaded shank
   expect(list[0].volume).toBeLessThan(2050);
-  // head down on the bed, 30 under the head plus the 5.3 head
-  expect(list[0].bbox.min[2]).toBeCloseTo(0, 3);
-  expect(list[0].bbox.max[2]).toBeCloseTo(35.3, 3);
-  expect(await run(() => __app.sel)).toEqual([list[0].id]);
+  // his parts stand on what they are put on: the underside of the head at z = 0, the shank going down
+  expect(list[0].bbox.min[2]).toBeCloseTo(-30, 2);
+  expect(list[0].bbox.max[2]).toBeCloseTo(5.3, 2);
   expect(await run(() => __store.undoStack.length)).toBe(undoBefore + 1);
-  expect(await run(() => __store.undoStack.at(-1).label)).toBe("Add M8×30 bolt");
+  expect(await run(() => __store.undoStack.at(-1).label)).toBe("Add fastener");
   // the thread is an ordinary Thread feature on the group
   expect(await run((id) => JS3D.get(id).node.mods.map((m) => m.t), list[0].id)).toEqual(["thread"]);
   await run(() => JS3D.undo());
   expect(await run(() => JS3D.list().length)).toBe(0);
 });
 
-test("Advanced: a nut from the dialog has no length row", async () => {
+test("Advanced: a nut from the dialog has no length row, and its modeled thread is bored at the ISO minor diameter", async () => {
   await fresh("advanced");
   await openFromRibbon();
-  await part("Nut");
-  await expect(page.locator("#fa-len")).toHaveCount(0);
-  await expect(page.locator("#cmd")).toContainText("Hex nut 13 mm across flats, 6.8 mm thick.");
+  await choose({ kind: "nut", size: "M8", threads: true });
+  await expect(page.locator("#fs-len")).toHaveCount(0);
   await page.click("#cmd-ok");
   const [nut] = await built();
-  expect(nut.name).toBe("M8 nut");
+  expect(nut.name).toBe("Hex nut M8");
   expect(nut.error).toBeNull();
-  expect(nut.volume).toBeGreaterThan(700);
-  expect(nut.volume).toBeLessThan(750);
-  expect(nut.bbox.max[2]).toBeCloseTo(6.8, 3);
+  expect(nut.volume).toBeGreaterThan(550);
+  expect(nut.volume).toBeLessThan(760);
+  expect(nut.bbox.min[2]).toBeCloseTo(0, 2);
+  expect(nut.bbox.max[2]).toBeCloseTo(6.8, 2);
+  expect(await run((id) => JS3D.get(id).node.children.filter((c) => c.hole).map((c) => c.node.p.w), nut.id)).toEqual([6.646875]);
 });
 
-test("the Fastener dialog says when the print offset is past what the thread can take (bolt 0.07 pitch, nut 0.15 pitch)", async () => {
+test("the Fasteners dialog says when the print offset is past what the thread can take (bolt 0.07 pitch, nut 0.15 pitch)", async () => {
   await fresh("advanced");
   await openFromRibbon();
-  await page.selectOption("#fa-size", "M3");
-  await page.selectOption("#fa-clear", "-0.1");
+  await choose({ kind: "hexbolt", size: "M3", threads: true });
+  await page.selectOption("#fs-clear", "-0.1");
   await expect(page.locator("#cmd")).toContainText("M3: offsets past −0.035 mm make no difference on this bolt");
-  await part("Nut");
+  await choose({ kind: "nut" });
   await expect(page.locator("#cmd")).toContainText("M3: offsets past −0.075 mm make no difference on this nut or hole");
-  await page.selectOption("#fa-size", "M8");
+  await choose({ size: "M8" });
   await expect(page.locator("#cmd")).not.toContainText("make no difference"); // 0.1 is under 0.15 x 1.25
+  // without modeled threads there is no thread to fit: no offset or hand rows
+  await choose({ threads: false });
+  await expect(page.locator("#fs-clear")).toHaveCount(0);
+  await expect(page.locator("#fs-hand")).toHaveCount(0);
+  await page.click('#cmd button[aria-label="Cancel"]');
 });
 
 // quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
@@ -201,19 +216,49 @@ test("threads whose length is a whole number of pitches plus a half: tapped M5 t
 test("the turns guard: a hint at 64 turns, a refusal at 160, and the same refusal from the bridge", async () => {
   await fresh("advanced");
   await openFromRibbon();
-  await part("Threaded rod");
+  await choose({ kind: "rod", size: "M8", threads: true });
   await setLength(80);
   await expect(page.locator("#cmd")).toContainText("About 64 turns: this takes several seconds to build, longer on a phone.");
   await expect(page.locator("#cmd-ok")).toBeEnabled();
   await setLength(200);
   await expect(page.locator("#cmd")).toContainText("Too many turns (160; the most is 150). Make it shorter or pick a larger size.");
   await expect(page.locator("#cmd-ok")).toBeDisabled();
+  // and there is no preview (openCmd drops it for a command that is not valid), so 160 turns never reach the engine
+  await expect.poll(() => run(() => __store.view.bodies.some((x) => x.fastener))).toBe(false);
   await page.click('#cmd button[aria-label="Cancel"]');
   expect(await run(() => JS3D.list().length)).toBe(0);
   const too = "Too many turns (160; the most is 150). Make it shorter or pick a larger size.";
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 200 }))).toBe(too);
   expect(await failure(() => JS3D.fastener({ type: "bolt", size: "M8", length: 200 }))).toBe(too);
   expect(await run(() => JS3D.list().length)).toBe(0);
+});
+
+test("editing a part from the dialog keeps the print offset the Thread print offset tool gave it", async () => {
+  await fresh("advanced");
+  await openFromRibbon();
+  await choose({ kind: "rod", size: "M8", len: 20, threads: true });
+  await page.selectOption("#fs-clear", "0");
+  await page.click("#cmd-ok");
+  const [rod] = await built();
+  await run((id) => JS3D.select([id]), rod.id);
+  await page.click("#ad-features");
+  await page.click("#ad-thread-offset");
+  await page.selectOption("#to-clear", "-0.2");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  expect(await run((id) => JS3D.get(id).node.mods.map((m) => m.clear), rod.id)).toEqual([-0.2]);
+  // double-click the rod to edit it, make it longer, OK
+  await run(() => JS3D.fit());
+  await expect.poll(() => run(() => window.__app.vp.isMoving())).toBe(false);
+  const box = await page.locator("#viewport canvas").first().boundingBox();
+  const [sx, sy] = await run((id) => { const b = window.__store.doc.bodies.find((x) => x.id === id); const V = window.__app.vp.view.target.constructor; return window.__app.vp.project(new V(b.m[12], b.m[13], b.m[14] + 10)); }, rod.id);
+  await page.mouse.dblclick(box.x + sx, box.y + sy);
+  await expect(page.locator("#fs-clear")).toHaveValue("-0.2");
+  await setLength(24);
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  expect(await run((id) => JS3D.get(id).node.mods.map((m) => m.clear), rod.id)).toEqual([-0.2]);
+  expect(await run((id) => __store.doc.bodies.find((b) => b.id === id).fastener.len, rod.id)).toBe(24);
 });
 
 test("JS3D.fastener refuses bad input with plain messages and adds nothing", async () => {
@@ -241,16 +286,18 @@ test("JS3D.fastener refuses bad input with plain messages and adds nothing", asy
 });
 
 // quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
-test("Beginner: the Fastener button makes a cutter at z = 0; a bolt cannot be ungrouped and stretching it adds a Scale", async ({}, info) => {
+test("Beginner: the Fasteners button makes a tap cutter standing on the ground; a bolt cannot be ungrouped and stretching it adds a Scale", async ({}, info) => {
   quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
   await fresh();
   await page.click("#bb-fastener");
-  await part("Tap cutter");
+  await choose({ kind: "cutter", size: "M8", len: 30 });
+  await expect(page.locator("#fs-threads")).toHaveCount(0); // always threaded
   await page.click("#cmd-ok");
   await expect(page.locator("#cmd")).toBeHidden();
   const [cutter] = await built();
-  expect(cutter).toMatchObject({ name: "M8×30 tap cutter", hole: true, error: null });
-  expect(cutter.position[2]).toBe(0);
+  expect(cutter).toMatchObject({ name: "Tap cutter M8 x 30 mm", hole: true, error: null });
+  expect(cutter.bbox.min[2]).toBeCloseTo(0, 2); // never put on a face: it stands on the ground
+  expect(cutter.bbox.max[2]).toBeCloseTo(30, 2);
   // a bolt is a group with a Thread feature
   await fresh();
   const id = await run(() => { const id = JS3D.fastener({ type: "bolt", size: "M8", length: 30 }); JS3D.select([id]); return id; });
@@ -282,19 +329,23 @@ test("the golden design exports to STEP as true solids, one per part", async ({}
   expect(text.match(/MANIFOLD_SOLID_BREP/g)).toHaveLength(4);
 });
 
-test("in inch units the dialog starts at 1/4-20 and 1 inch, and names the part in inches", async () => {
+test("in inch units the dialog starts in inch sizes and names the part in inches", async () => {
   await fresh();
   await page.click("#unit-toggle"); // inches
   try {
+    await run(() => localStorage.removeItem("jumpstart3d.fastener")); // the dialog remembers the last part; start as a new user
     await page.click("#bb-fastener");
-    await expect(page.locator("#fa-size")).toHaveValue("1/4-20");
-    await expect(page.locator("#fa-len")).toHaveValue("1");
-    await expect(page.locator("#cmd")).toContainText("Hex head 0.4375 in across flats");
+    await expect(page.locator("#fs-std button[aria-pressed=true], #fs-std button.on")).toContainText("Inch");
+    await expect(page.locator("#fs-size")).toHaveValue('1/4"-20');
+    await choose({ kind: "hexbolt", std: "inch", size: '1/4"-20', len: 1, threads: true });
+    await expect(page.locator("#fs-holes")).toContainText(" in");
     await page.click("#cmd-ok");
     const [bolt] = await built();
-    expect(bolt.name).toBe('1/4-20×1" bolt');
+    expect(bolt.name).toBe('Hex bolt 1/4"-20 x 1"');
     expect(bolt.error).toBeNull();
-    expect(bolt.bbox.max[2]).toBeCloseTo(25.4 + 0.172 * 25.4, 2);
+    // Beginner: never put on a face, it stands on the bed (the shank's end at z = 0, the head on top)
+    expect(bolt.bbox.min[2]).toBeCloseTo(0, 2);
+    expect(bolt.bbox.max[2]).toBeCloseTo(25.4 + 0.163 * 25.4, 2);
   } finally { await page.click("#unit-toggle"); }
 });
 
@@ -302,20 +353,40 @@ test("Beginner: a second Fastener from the dialog starts beside the first one, n
   quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
   await fresh("beginner");
   await page.click("#bb-fastener");
+  await choose({ kind: "hexbolt", size: "M8", len: 30, threads: true });
   await page.click("#cmd-ok");
   await expect(page.locator("#cmd")).toBeHidden();
   await built();
   await page.click("#bb-fastener");
-  await part("Nut");
+  await choose({ kind: "nut", size: "M8", threads: true });
   await page.click("#cmd-ok");
   await expect(page.locator("#cmd")).toBeHidden();
   const list = await built();
-  const bolt = list.find((b) => b.name.endsWith("bolt")), nut = list.find((b) => b.name.endsWith("nut"));
+  const bolt = list.find((b) => b.name.startsWith("Hex bolt")), nut = list.find((b) => b.name.startsWith("Hex nut"));
   expect(list.filter((b) => b.error)).toEqual([]);
   expect(bolt).toBeTruthy(); expect(nut).toBeTruthy();
   const overlapXY = bolt.bbox.min[0] < nut.bbox.max[0] && bolt.bbox.max[0] > nut.bbox.min[0] && bolt.bbox.min[1] < nut.bbox.max[1] && bolt.bbox.max[1] > nut.bbox.min[1];
   expect(overlapXY, "the nut sits on the bolt").toBe(false);
   expect(nut.bbox.min[2]).toBeCloseTo(0, 3);
+  expect(bolt.bbox.min[2]).toBeCloseTo(0, 2); // stands on the bed, not through it
+});
+
+test("Beginner: a bolt moved over bare ground with the mouse, then OK, stands on the bed, not through it", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
+  await fresh("beginner");
+  await page.click("#bb-fastener");
+  await choose({ kind: "hexbolt", size: "M6", len: 20, threads: false });
+  // the pointer crosses empty ground (the dialog follows it there) on its way to OK
+  const box = await page.locator("#viewport canvas").first().boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2 + 20, { steps: 4 });
+  expect(await run(() => window.__app.command && window.__app.command.title)).toBe("Fastener");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  const [bolt] = await built();
+  expect(bolt.error).toBeNull();
+  expect(bolt.bbox.min[2]).toBeCloseTo(0, 2);
+  expect(bolt.bbox.max[2]).toBeCloseTo(20 + 4, 2); // the 20 mm shank under the 4 mm head
 });
 
 test("Beginner: a tap cutter from the dialog stays inside the box at 0,0 and Group cuts it (review of the F8 fix)", async ({}, info) => {
@@ -325,12 +396,14 @@ test("Beginner: a tap cutter from the dialog stays inside the box at 0,0 and Gro
   await run(() => JS3D.fit()); // the dialog drops the part at the view target: look at the box first
   const before = await volumeOf(id);
   await page.click("#bb-fastener");
-  await part("Tap cutter");
+  await choose({ kind: "cutter", size: "M8", len: 30 });
   await page.click("#cmd-ok");
   await expect(page.locator("#cmd")).toBeHidden();
   const list = await built();
   const cutter = list.find((b) => b.hole);
-  expect(cutter.bbox.min[0]).toBeLessThan(0); expect(cutter.bbox.max[0]).toBeGreaterThan(0); // centred on the box, not pushed aside
+  // dropped at the view target (his dialog rounds it to 5 mm), inside the box: not pushed aside
+  expect(cutter.bbox.min[0]).toBeGreaterThan(-15); expect(cutter.bbox.max[0]).toBeLessThan(15);
+  expect(cutter.bbox.min[1]).toBeGreaterThan(-15); expect(cutter.bbox.max[1]).toBeLessThan(15);
   const g = await run(async (ids) => { const g = JS3D.group(ids); await JS3D.ready(); return g; }, [id, cutter.id]);
   expect(await volumeOf(g)).toBeLessThan(before - 300);
 });

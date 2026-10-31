@@ -179,7 +179,9 @@ const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; /
 
 // explicit tables, taken from what the app writes and the kernel reads (kernel.js evalNode and applyMod)
 const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint"]);
-const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked"]);
+// the part kinds of the Fasteners dialog (FASTENER_KINDS in fasteners.js, which this module does not import; test/sharelink.test.mjs compares)
+export const FASTENER_KINDS = new Set(["hexbolt", "shcs", "button", "flat", "set", "wood", "rod", "nut", "nyloc", "sqnut", "washer", "lockw", "insert", "dowel", "cutter"]);
+const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
 const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
@@ -392,6 +394,16 @@ export function validateEnvelope(env) {
       for (const k of ["rep", "rot"]) if (b.media[k] !== undefined) num(b.media[k], k);
       for (const k of ["mirror", "both"]) if (b.media[k] !== undefined) bool(b.media[k], k);
       if (b.media.dir !== undefined) vec(b.media.dir, 3, "dir"); if (b.media.up !== undefined) vec(b.media.up, 3, "up"); if (b.media.crop !== undefined) vec(b.media.crop, 4, "crop");
+    }
+    if (b.fastener !== undefined) {
+      const fa = b.fastener, has = (k) => fa[k] !== undefined && fa[k] !== null;
+      obj(fa, "a fastener"); allow(fa, new Set(["kind", "std", "size", "len", "threads", "name", "clear", "left"]), "a fastener");
+      if (!FASTENER_KINDS.has(fa.kind)) throw damaged("a fastener kind");
+      if (has("std") && fa.std !== "metric" && fa.std !== "inch") throw damaged("a fastener standard");
+      for (const k of ["size", "name"]) if (has(k)) text(fa[k], k, 64);
+      if (has("len") && !(num(fa.len, "a fastener length") > 0 && fa.len <= LIMITS.MEASURE)) throw damaged("a fastener length");
+      if (has("clear") && !(num(fa.clear, "a print offset") >= -1 && fa.clear <= 1)) throw damaged("a print offset");
+      for (const k of ["threads", "left"]) if (fa[k] !== undefined) bool(fa[k], k);
     }
     node(obj(b.node, "a body shape"), ctx, "a shape");
   }

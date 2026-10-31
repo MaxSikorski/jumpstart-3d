@@ -7,7 +7,7 @@ import { ICON, shapeTile } from "./icons.js";
 import { LIB, textureThumb } from "./texture.js";
 import { FACEPAT } from "./facepat.js";
 import { fillReportFor } from "./fillpick.js"; // jumpstart-3d: fill openings
-import { FONT_NAMES } from "./fonts.js";
+import { FONT_NAMES, fontSelect } from "./fonts.js";
 import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
 import { onEscape } from "./pivot.js"; // jumpstart-3d: pivot
@@ -172,9 +172,6 @@ export function initBeginner(app) {
     bar.append(el("span", { class: "sep" }));
     btn("sketch", "Sketch", "Draw a 2D sketch on the workplane or a flat face", () => app.advanced.createSketch(), "bb-sketch", true);
     btn("spline", "3D Sketch", "Draw lines in 3D on a shape, a virtual sphere or cube, or in the air", () => app.sketch3d.open(), "bb-sketch3d", true);
-    btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
-    btn("chipcarve", "Chip Carve", "Chip carve a board or a shape with knives, like real wood carving (pen pressure sets the depth)", () => app.carve.open(), "bb-chipcarve", true);
-    btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
     btn("extrude", "Extrude", "Extrude a sketch into a shape (E)", () => app.quickExtrude(), "bb-extrude", true);
     btn("rect", "Box on face", "Draw a box right on a flat face: click a face, drag a rectangle, then set the height", () => app.advanced.faceBox(), "bb-facebox", true); // jumpstart-3d: box on face
     btn("import", "Import", "Import a 3D model (STL, OBJ, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true); // jumpstart-3d: OBJ import
@@ -183,11 +180,12 @@ export function initBeginner(app) {
     btn("ungroup", "Ungroup", "Ungroup (Ctrl+Shift+G)", () => ungroup(), "bb-ungroup", true);
     btn("align", "Align", "Align (A)", () => app.advanced.align(), "bb-align", true);
     btn("pattern", "Pattern", "Make rows or circles of copies", () => app.advanced.pattern(), "bb-pattern", true);
-    btn("thread", "Fastener", "Bolts, nuts, threaded rods and tap cutters, metric and inch", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners
+    btn("thread", "Fasteners", "Parts library: bolts, screws, nuts, washers, heat-set inserts, pins and tap cutters (metric and inch), with optional modeled threads", () => app.advanced.fastener(), "bb-fastener", true); // jumpstart-3d: fasteners (J.Siwek's library in our Beginner toolbar)
     btn("gear", "Gear", "Spur gears, bevel gears and racks by module and tooth count", () => app.advanced.gear(), "bb-gear", true); // jumpstart-3d: gears
     btn("tag", "Name plate", "A tag or name plate sized to its text, with raised or cut-in letters", () => app.advanced.namePlate(), "bb-nameplate", true); // jumpstart-3d: name plates
     btn("knurl", "Knurled knob", "A knob or grip with straight V grooves all round and an optional round, hex or D bore", () => app.advanced.knurl(), "bb-knurl", true); // jumpstart-3d: knurl
     btn("spring", "Coil spring", "A compression spring of round wire, with open ends or ends cut flat", () => app.advanced.spring(), "bb-spring", true); // jumpstart-3d: spring
+    btn("hinge", "Hinge", "Quick hinges: print-in-place, pin or living hinges, ready to put on your parts", () => app.advanced.hinge(), "bb-hinge", true);
     btn("mirror", "Mirror", "Mirror (M)", (e) => mirrorPopover(e.currentTarget), "bb-mirror", true);
     btn("drop", "Drop", "Drop to workplane (D)", () => drop(), "bb-drop", true);
     btn("texture", "Texture", "Add a surface texture (T)", () => app.advanced.texture(), "bb-texture", true);
@@ -205,6 +203,11 @@ export function initBeginner(app) {
     bar.append(el("span", { class: "sep" }));
     const mb = btn("select", "Multi-select", "Tap shapes to add them to the selection (same as Shift+click)", () => { multi = !multi; mb.setAttribute("aria-pressed", multi); }, "bb-multi", true);
     mb.setAttribute("aria-pressed", multi);
+    bar.append(el("span", { class: "sep" }));
+    btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
+    btn("chipcarve", "Chip Carve", "Chip carve a board or a shape with knives, like real wood carving (pen pressure sets the depth)", () => app.carve.open(), "bb-chipcarve", true);
+    btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
+    btn("stainedglass", "Stained Glass", "Turn a shape (or a lamp shade) into stained glass with a lead or copper frame, then paint the glass (opens in its own window)", () => app.stainedGlass.open(), "bb-sglass", true);
     bar.append(el("button", { class: "ibtn panel-toggle", onclick: () => $("shapes-tab").click() }, el("span", { class: "lbl" }, "Objects")));
     ribbon.append(bar);
     updateRibbon();
@@ -1185,7 +1188,7 @@ export function initBeginner(app) {
       txt.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") txt.blur(); });
       txt.addEventListener("change", () => { if (txt.value.trim()) updatePrim(b.id, { text: txt.value }, "Edit text"); });
       body.append(el("div", { class: "subhead" }, "Text"), txt);
-      const fs = el("select", { class: "num", id: "insp-font", "aria-label": "Font" }, ...Object.entries(FONT_NAMES).map(([v, l]) => el("option", { value: v, selected: v === (p.font || "sans") }, l)));
+      const fs = fontSelect("insp-font", p.font || "sans");
       fs.onchange = () => updatePrim(b.id, { font: fs.value }, "Font");
       body.append(fs);
       const r3 = el("div", { class: "row3" });

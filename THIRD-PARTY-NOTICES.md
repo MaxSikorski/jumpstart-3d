@@ -88,6 +88,20 @@ JumpStart 3D includes the open-source software and fonts below. Their full licen
 - License: SIL Open Font License 1.1
 - Project: https://github.com/m4rc1e/Chakra-Petch
 
+## three.js (r128)
+
+- Used for: The 3D views of the Floor Planner (Architect → Floor Planner), which was made with this version. Built into the Floor Planner page; nothing is loaded from the web.
+- Copyright © 2010-2021 three.js authors
+- License: MIT (`LICENSES/MIT-three.js-r128.txt`)
+- Project: https://github.com/mrdoob/three.js/tree/r128
+
+## The Text tool's 42 extra fonts (subsets)
+
+- Used for: The extra fonts of the Text tools (Anton, Bebas Neue, Montserrat, Lobster, Orbitron, Roboto Slab and 36 more). Shortened to the letters the tool needs and renamed "JumpStart <style>", since modified versions may not use a Reserved Font Name.
+- Copyright: each font's own holders, listed per file in `LICENSES/fonts-more.txt` and in the app under About → Open-source credits.
+- License: SIL Open Font License 1.1 (`LICENSES/OFL-1.1-fonts.txt`), or Apache License 2.0 for the six marked so, such as Roboto Slab and Ultra (`LICENSES/Apache-2.0-fonts.txt`)
+- Project: https://github.com/google/fonts
+
 ## Flatqueue (3.1.0)
 
 - Included in this source package because replicad's code refers to it; the built app does not end up using it.

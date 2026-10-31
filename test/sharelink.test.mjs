@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import {
-  LIMITS, ShareError, b64urlEncode, b64urlDecode, extractFragment, parseFragment, decodeFragment, readFragment, makeLink, snapshot, validateEnvelope,
+  LIMITS, ShareError, FASTENER_KINDS, b64urlEncode, b64urlDecode, extractFragment, parseFragment, decodeFragment, readFragment, makeLink, snapshot, validateEnvelope,
 } from "../src/sharelink.js";
 import { inflateRaw } from "../src/inflate.js";
 
@@ -484,6 +484,26 @@ test("STEP parts (#173): the parts fields make a link and read back unchanged (s
   assert.equal(link.ok, true);
   const read = await readFragment(extractFragment(link.url));
   assert.deepEqual(read.bodies.map((b) => b.node), doc.bodies.map((b) => b.node));
+});
+
+// J.Siwek 2.8.1.3: the Fasteners dialog keeps its settings on the body (b.fastener), so the dialog can edit the part again
+test("a body made by the Fasteners dialog passes with its settings; unknown fields, kinds and out-of-range values are refused", () => {
+  const doc = { v: 1, id: "f", name: "F", mode: "advanced", created: 1, seq: 1, grid: 1, sketches: [], planes: [], joints: [], bodies: [
+    { id: "b1", name: "Hex nut M8", seq: 1, color: "#c7ccd2", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      node: { t: "prim", kind: "cylinder", p: { w: 8, d: 8, h: 6.8 }, mods: [] },
+      fastener: { kind: "nut", std: "metric", size: "M8", len: 24, threads: true, name: "Hex nut M8", clear: -0.1, left: false } }] };
+  assert.equal(validateEnvelope(env(doc)).bodies[0].fastener.size, "M8");
+  const with_ = (change) => { const d = structuredClone(doc); Object.assign(d.bodies[0].fastener, change); return env(d); };
+  assert.equal(validateEnvelope(with_({ len: null })).bodies[0].fastener.len, null); // a nut made before a length was set
+  for (const [change, re] of [[{ script: "x" }, /fastener/], [{ threads: "yes" }, /threads/], [{ kind: "rocket" }, /fastener kind/], [{ std: "imperial" }, /fastener standard/],
+    [{ len: 0 }, /fastener length/], [{ len: 2e5 }, null], [{ clear: -1.5 }, /print offset/], [{ clear: 2 }, /print offset/]]) throwsShare(() => validateEnvelope(with_(change)), null, re);
+});
+
+test("the share link's list of fastener kinds is the dialog's list", () => {
+  const src = readFileSync(new URL("../src/fasteners.js", import.meta.url), "utf8");
+  const ids = [...src.matchAll(/\{ id: "([a-z]+)", label: "[^"]+", group: "/g)].map((m) => m[1]);
+  assert.ok(ids.length >= 15);
+  assert.deepEqual([...FASTENER_KINDS].sort(), ids.sort());
 });
 
 test("a Fixed in a link: needs a point and a position, once per point, and never on a projected shape", () => {

@@ -1,5 +1,5 @@
 // The app's version: shown on the splash screen (under the tag line) and in About.
 // Change it here for each release (and in index.html's splash, which shows before the app loads).
-export const VERSION = "2.7.7";
+export const VERSION = "2.8.1.3";
 // jumpstart-3d: community build number, bumped by /ship.
 export const BUILD = 27;

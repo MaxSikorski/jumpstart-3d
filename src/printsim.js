@@ -1,13 +1,13 @@
-// 3D Print Sim: lays the design on a printer's plate and simulates printing it, in the
-// spirit of a slicer preview (Orca Slicer): layers with walls, infill and top/bottom skins,
-// overhangs, normal or tree supports, a strength / weak-point map and print estimates.
-// It never makes G-code: it is a preview to learn from, not a slicer.
+// 3D Print Sim: lays the design on a printer's plate and slices it, like Orca Slicer: layers
+// with walls, infill and top/bottom skins, overhangs, normal or tree supports, a strength /
+// weak-point map and print estimates, then saves G-code for the printer (gcode.js).
 import { packPaint, unpackPaint, MAX_SLOTS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 import * as THREE from "three";
 import { store, findBody } from "./store.js";
 import { el, fmt } from "./util.js";
 import { M4 } from "./ops.js";
 import { FILAMENTS } from "./fea.js";
+import { makeGcode, KINDS as GK, FIL_TEMPS, FLAVORS, flavorFor, SPEED_PRESETS, motionFor } from "./gcode.js";
 
 import { registerPrinters, getPlatePref, setPlatePref } from "./printerpresets.js"; // jumpstart-3d: the Printer plate choice and the evidence labels on these rows
 import { leansOut } from "./overhang.js"; // jumpstart-3d: one overhang rule for the design view and the sim
@@ -79,7 +79,7 @@ function flushVolume(from, to) {
   return 140 + 520 * dl + 160 * dc;
 }
 // typical max volumetric flow (mm³/s) and speeds for a standard 0.4 mm nozzle profile
-const FLOW = { pla: 18, plaplus: 16, petg: 12, abs: 15, asa: 14, nylon: 10, pc: 10, cfpla: 12, cfnylon: 9, peek: 6, tpu: 4 };
+const FLOW = { pla: 21, plaplus: 16, petg: 12, abs: 15, asa: 14, nylon: 10, pc: 10, cfpla: 12, cfnylon: 9, peek: 6, tpu: 4 };
 const COL = {
   outer: 0xff8000, inner: 0xffd400, sparse: 0xb03029, solid: 0x9654cc, top: 0xf04040, bottom: 0x5a9ee6, bridge: 0x4d80ba, support: 0x1fb85a,
 };
@@ -92,11 +92,15 @@ export function initPrintSim(app, X) {
   const st = {
     printer: "x1", filament: "pla", layer: 0.2, walls: 2, infill: 15, topN: 4, botN: 3,
     supports: "none", threshold: 45, plateOnly: false, view: "model", R: new THREE.Matrix4(), ids: [],
+    // objects on the plate: { key, id (body), X (sim placement), home, s (scale), n (copy no.) }; osel: picked objects
+    inst: [], osel: new Set(), copyN: 0, oang: 90,
     pickFace: false, layerMax: 0,
     // filaments: slots[i] = { color }, and the slot each body prints with (grouped by color at first)
     slots: [], slotOf: new Map(), colorBy: "auto",
     // color painting: faces painted with a filament; tool: null | "paint" | "fill" | "erase"
     paint: new Map(), paintTool: null, brush: 0,
+    // G-code (like Orca's process and filament settings)
+    gflavor: null, nozzleT: null, bedT: null, fanP: null, speed: "standard", skirt: 1, brim: 0, retract: 0.8, zhop: true, showG: false, lastG: null,
   };
   const root = new THREE.Group(); root.visible = false; vp.world.add(root);
   const clip = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e9); // keeps z below the shown layer
@@ -147,43 +151,66 @@ export function initPrintSim(app, X) {
     const list = sel.length ? sel : store.doc.bodies.filter((b) => !b.hole && !b.hidden);
     return list.map((b) => b.id);
   }
-  // world triangles of the parts after the sim orientation, dropped on the plate and centred
+  // ------------------------------------------------------------ objects on the plate (sim only)
+  // every body on the plate is an object; copies made here are objects too. Each object has its
+  // own placement X (turn, scale, move, made in the sim) applied after the plate turn st.R. None of
+  // this is written to the design: the bodies keep their own shape and position.
+  function syncInst() {
+    st.inst = st.inst.filter((q) => st.ids.includes(q.id));
+    for (const id of st.ids) if (!st.inst.some((q) => q.key === id)) st.inst.push({ key: id, id, X: new THREE.Matrix4(), home: new THREE.Matrix4(), s: 1 });
+    // keep the design's order: each body, then its copies
+    st.inst.sort((a, b) => st.ids.indexOf(a.id) - st.ids.indexOf(b.id) || (a.key === a.id ? -1 : b.key === b.id ? 1 : a.n - b.n));
+    for (const k of [...st.osel]) if (!st.inst.some((q) => q.key === k)) st.osel.delete(k);
+  }
+  const instOf = (key) => st.inst.find((q) => q.key === key);
+  const isCopy = (q) => q.key !== q.id;
+  const instName = (q) => (findBody(store.doc, q.id)?.name || "Body") + (isCopy(q) ? ` · copy ${q.n}` : "");
+  const hasLayout = () => st.inst.some((q) => isCopy(q) || !isIdent(q.X));
+  const isIdent = (m) => m.elements.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-9);
+  // world triangles of the objects after the sim placement, dropped on the plate and centred
   function buildWorld() {
-    const parts = [];
-    for (const id of st.ids) {
-      const b = findBody(store.doc, id), v = scene.views.get(id);
+    syncInst();
+    const parts = [], t = new THREE.Vector3();
+    // the design's own layout (no sim moves) sets the centre, so moving one object leaves the rest
+    const box0 = new THREE.Box3();
+    for (const q of st.inst) {
+      const b = findBody(store.doc, q.id), v = scene.views.get(q.id);
       if (!b || !v || !v.data) continue;
-      parts.push({ id, data: v.data, M: st.R.clone().multiply(M4(b.m)) });
+      const base = st.R.clone().multiply(M4(b.m));
+      const M = q.X.clone().multiply(base), V = v.data.vertices, bk = new THREE.Box3();
+      for (let i = 0; i < V.length; i += 3) bk.expandByPoint(t.set(V[i], V[i + 1], V[i + 2]).applyMatrix4(M));
+      if (!isCopy(q)) {
+        if (isIdent(q.X)) box0.union(bk);
+        else for (let i = 0; i < V.length; i += 3) box0.expandByPoint(t.set(V[i], V[i + 1], V[i + 2]).applyMatrix4(base));
+      }
+      parts.push({ id: q.id, key: q.key, q, data: v.data, M, bk });
     }
     if (!parts.length) return null;
     // bodies that touch or overlap stay together as one object (like a multi-color model:
-    // letters on a plate, a two-color part); each separate object rests on the plate. The
-    // layout is kept and centred on the plate.
-    const box = new THREE.Box3(), t = new THREE.Vector3();
-    for (const p of parts) {
-      const bk = new THREE.Box3(), V = p.data.vertices;
-      for (let i = 0; i < V.length; i += 3) bk.expandByPoint(t.set(V[i], V[i + 1], V[i + 2]).applyMatrix4(p.M));
-      p.bk = bk;
-    }
+    // letters on a plate, a two-color part); each separate object rests on the plate.
     const grp = parts.map((_, i) => i);
     const find = (i) => (grp[i] === i ? i : (grp[i] = find(grp[i])));
     for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) if (parts[i].bk.clone().expandByScalar(0.05).intersectsBox(parts[j].bk)) grp[find(i)] = find(j);
     const low = new Map();
     parts.forEach((p, i) => { const g = find(i); low.set(g, Math.min(low.has(g) ? low.get(g) : Infinity, p.bk.min.z)); });
+    const c = box0.isEmpty() ? parts[0].bk.getCenter(new THREE.Vector3()) : box0.getCenter(new THREE.Vector3());
+    const box = new THREE.Box3();
     for (let i = 0; i < parts.length; i++) {
       const p = parts[i];
       p.dz = -low.get(find(i));
-      box.union(p.bk.clone().translate(new THREE.Vector3(0, 0, p.dz)));
+      p.g = find(i);
+      p.wb = p.bk.clone().translate(new THREE.Vector3(-c.x, -c.y, p.dz));
+      box.union(p.wb);
     }
-    const c = box.getCenter(new THREE.Vector3());
     let nV = 0, nT = 0;
     for (const p of parts) { nV += p.data.vertices.length / 3; nT += p.data.triangles.length / 3; }
     const pos = new Float32Array(nV * 3), tri = new Uint32Array(nT * 3), owner = new Uint16Array(nT), tface = new Int32Array(nT);
     let ov = 0, ot = 0;
-    const pose = new Map();
+    const pose = new Map(), cpose = [];
     parts.forEach((p, k) => {
       const T = new THREE.Matrix4().makeTranslation(-c.x, -c.y, p.dz);
-      pose.set(p.id, T.clone().multiply(st.R));
+      const P = T.clone().multiply(p.q.X).multiply(st.R);
+      if (isCopy(p.q)) cpose.push({ k, id: p.id, P }); else pose.set(p.id, P);
       const M = T.clone().multiply(p.M), V = p.data.vertices, Tr = p.data.triangles;
       const flip = M.determinant() < 0;
       for (let i = 0; i < V.length; i += 3) { t.set(V[i], V[i + 1], V[i + 2]).applyMatrix4(M); pos[(ov + i / 3) * 3] = t.x; pos[(ov + i / 3) * 3 + 1] = t.y; pos[(ov + i / 3) * 3 + 2] = t.z; }
@@ -199,7 +226,10 @@ export function initPrintSim(app, X) {
     const size = box.getSize(new THREE.Vector3());
     const vowner = new Uint16Array(nV);
     for (let t = 0; t < nT; t++) for (let e = 0; e < 3; e++) vowner[tri[t * 3 + e]] = owner[t];
-    return { pos, tri, owner, tface, vowner, nParts: parts.length, ids: parts.map((p) => p.id), names: parts.map((p) => findBody(store.doc, p.id)?.name || "Body"), pose, size, nT };
+    return {
+      pos, tri, owner, tface, vowner, nParts: parts.length, ids: parts.map((p) => p.id), keys: parts.map((p) => p.key), group: parts.map((p) => p.g),
+      wbox: parts.map((p) => p.wb), pre: parts.map((p) => p.bk), names: parts.map((p) => instName(p.q)), pose, cpose, size, box, nT,
+    };
   }
 
   // ------------------------------------------------------------ vertical-ray lookups
@@ -537,7 +567,7 @@ export function initPrintSim(app, X) {
       k = 0; setTimeout(pass2, 0);
     };
     // pass 2: walls, infill and skins as toolpath lines
-    const lines = [], cols = [], layerEnd = [], lown = [], ltri = [];
+    const lines = [], cols = [], layerEnd = [], lown = [], ltri = [], lkind = [];
     const C = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
     const CC = Object.fromEntries(Object.entries(COL).map(([key, v]) => [key, C(v)]));
     // every line also gets the time it takes to print, for the print animation
@@ -547,10 +577,10 @@ export function initPrintSim(app, X) {
     // own: the part; tri: the surface triangle the line sits against (walls and skins), so a
     // painted face changes the filament of the lines behind it
     const push = (x0, y0, x1, y1, z, kind, own = 0, tri = -1) => {
-      lines.push(x0, y0, z, x1, y1, z); const c = CC[kind]; cols.push(...c, ...c); lown.push(own); ltri.push(tri);
+      lines.push(x0, y0, z, x1, y1, z); const c = CC[kind]; cols.push(...c, ...c); lown.push(own); ltri.push(tri); lkind.push(GK.indexOf(kind));
       const len = Math.hypot(x1 - x0, y1 - y0);
       res.len[kind] += len;
-      tNow += len / Math.min(SPEEDS[kind] || 200, flow / sec) + 0.02;
+      tNow += len / Math.min(SPEEDS[kind] || 200, flow / sec); // rough; retime() replaces it
       cum.push(tNow);
     };
     const thinCells = new Set();
@@ -612,7 +642,6 @@ export function initPrintSim(app, X) {
       if (job !== sliceJob) return;
       const until = performance.now() + 30;
       for (; k < nL && performance.now() < until; k++) {
-        tNow += 4; // layer change
         const z = (k + 1) * lh, sg = segsL[k], so = ownL[k], sT = triL[k], o = occ[k];
         const at = (L, i, j) => (L && i >= 0 && j >= 0 && i < RW && j < RH ? L[j * RW + i] : 0);
         // walls: the contour, plus inner walls as inward offsets of each loop
@@ -644,7 +673,7 @@ export function initPrintSim(app, X) {
         const ang = k % 2 ? Math.PI / 4 : -Math.PI / 4, ca = Math.cos(ang), sa = Math.sin(ang);
         const inset = st.walls * LW;
         const sparseStep = st.infill > 0 ? LW / (st.infill / 100) : Infinity;
-        const base = LW * 1.25, every = isFinite(sparseStep) ? Math.max(1, Math.round(sparseStep / base)) : Infinity;
+        const base = LW, every = isFinite(sparseStep) ? Math.max(1, Math.round(sparseStep / base)) : Infinity;
         const rs = new Float32Array(sg.length);
         let vmin = Infinity, vmax = -Infinity;
         for (let i = 0; i < sg.length; i += 2) { const x = sg[i], y = sg[i + 1]; rs[i] = x * ca + y * sa; rs[i + 1] = -x * sa + y * ca; vmin = Math.min(vmin, rs[i + 1]); vmax = Math.max(vmax, rs[i + 1]); }
@@ -682,10 +711,10 @@ export function initPrintSim(app, X) {
       }
       status(`Slicing… ${50 + Math.round((k / nL) * 50)}%`);
       if (k < nL) { setTimeout(pass2, 0); return; }
-      res.lines = new Float32Array(lines); res.cols = new Float32Array(cols); res.layerEnd = layerEnd; res.lown = new Uint16Array(lown); res.ltri = new Int32Array(ltri);
+      res.lines = new Float32Array(lines); res.cols = new Float32Array(cols); res.layerEnd = layerEnd; res.lown = new Uint16Array(lown); res.ltri = new Int32Array(ltri); res.lkind = new Uint8Array(lkind);
       res.cum = new Float64Array(cum); res.total = tNow; res.printTotal = tNow;
       // the slicer's own order; reordered by filament (and tool-change pauses added) per plan
-      res.base = { lines: res.lines, cols: res.cols, lown: res.lown, ltri: res.ltri, cum: res.cum, layerEnd: layerEnd.slice(), total: tNow };
+      res.base = { lines: res.lines, cols: res.cols, lown: res.lown, ltri: res.ltri, lkind: res.lkind, cum: res.cum, layerEnd: layerEnd.slice(), total: tNow };
       res.thin = [...thinCells].map((s) => s.split("|").map(Number)).map(([kk, i, j]) => [i * 1.5, j * 1.5, (kk + 0.5) * lh]);
       res.cell = cell;
       res.segs = segsL;
@@ -897,17 +926,17 @@ export function initPrintSim(app, X) {
       }
       lEnd.push(o * 2);
     }
-    const lines = new Float32Array(n * 6), cols = new Float32Array(n * 6), lown = new Uint16Array(n), ltri = new Int32Array(n), lslot = new Int16Array(n), cum = new Float64Array(n);
+    const lines = new Float32Array(n * 6), cols = new Float32Array(n * 6), lown = new Uint16Array(n), ltri = new Int32Array(n), lslot = new Int16Array(n), lkind = new Uint8Array(n), cum = new Float64Array(n);
     let t = 0;
     for (let j = 0; j < n; j++) {
       const i = order[j];
       lines.set(B.lines.subarray(i * 6, i * 6 + 6), j * 6);
       cols.set(B.cols.subarray(i * 6, i * 6 + 6), j * 6);
-      lown[j] = B.lown[i]; ltri[j] = B.ltri[i]; lslot[j] = ls ? ls[i] : 0;
+      lown[j] = B.lown[i]; ltri[j] = B.ltri[i]; lslot[j] = ls ? ls[i] : 0; lkind[j] = B.lkind ? B.lkind[i] : 0;
       t += pause[j] + durs[i];
       cum[j] = t;
     }
-    Object.assign(S, { lines, cols, lown, ltri, lslot, cum, pause, pkind, durs: Float64Array.from(order, (i) => durs[i]), layerEnd: lEnd, total: t });
+    Object.assign(S, { lines, cols, lown, ltri, lslot, lkind, cum, pause, pkind, durs: Float64Array.from(order, (i) => durs[i]), layerEnd: lEnd, total: t });
     const ln = layG.children[0];
     if (ln) { ln.geometry.setAttribute("position", new THREE.BufferAttribute(S.lines, 3)); ln.geometry.computeBoundingSphere(); }
   }
@@ -1153,6 +1182,29 @@ export function initPrintSim(app, X) {
       strG.add(new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), new THREE.PointsMaterial({ color: 0xff2d55, size: 5, sizeAttenuation: false, depthTest: false })));
     }
   }
+  // the print time, worked out like Orca Slicer: the same moves the G-code would have, timed
+  // with the printer's speeds, accelerations and corner (jerk) limits; the print animation's
+  // timeline is scaled to match, layer by layer
+  function supFor() { return st.supports !== "none" && A && A.cols && A.cols.length ? { cols: A.cols, sp: st.supports === "tree" ? 3 : 2 } : null; }
+  function planTime() {
+    if (!S || !S.lines || !S.base) return null;
+    const key = [st.printer, st.filament, st.speed, st.skirt, st.brim, st.retract, st.zhop, st.supports, A ? A.cols.length : 0, S.lines.length, lastPlan ? lastPlan.changes : 0].join("|");
+    if (S._est && S._estKey === key) return S._est;
+    let r;
+    try { r = makeGcode(S, supFor(), gcodeOptions(), { estimate: true }); } catch (e) { console.warn("time estimate", e); return null; }
+    S._est = r; S._estKey = key;
+    // rescale the slicer's rough line times so each layer takes as long as the planner says
+    const B = S.base, n = B.cum.length, cum = new Float64Array(n);
+    let li = 0, t = 0;
+    for (let k = 0; k < S.nL; k++) {
+      const end = (B.layerEnd[k] || 0) / 2, t0 = li ? B.cum[li - 1] : 0, span = (end ? B.cum[end - 1] : 0) - t0, f = span > 0 ? r.layerT[k] / span : 0;
+      for (let i = li; i < end; i++) { cum[i] = t + (B.cum[i] - t0) * f; }
+      t += r.layerT[k]; li = end;
+    }
+    B.cum = cum; B.total = t; S.printTotal = t;
+    applyOrder(lastPlan);
+    return r;
+  }
   function estimates() {
     const fil = FILAMENTS[st.filament], flow = FLOW[st.filament] || 12;
     const L = S ? S.len : null;
@@ -1166,8 +1218,10 @@ export function initPrintSim(app, X) {
     if (S) t += S.nL * 4; // layer changes and travel
     const grams = (vol * fil.rho) / 1000;
     const meters = vol / (Math.PI * 0.875 * 0.875) / 1000;
-    if (S && S.total) t = (S.printTotal ?? S.total) + (A ? A.supVol : 0) / Math.min(flow, 150 * sec);
-    return { vol, grams, meters, secs: t };
+    const pt = planTime();
+    if (pt) t = pt.secs;
+    else if (S && S.total) t = (S.printTotal ?? S.total) + (A ? A.supVol : 0) / Math.min(flow, 150 * sec);
+    return { vol, grams, meters, secs: t, profile: pt ? pt.profile : "", slowed: pt ? pt.slowed : 0 };
   }
 
   // ------------------------------------------------------------ show
@@ -1184,6 +1238,10 @@ export function initPrintSim(app, X) {
     scene.state.simHide = new Set(v === "model" ? hiddenOthers() : store.doc.bodies.map((b) => b.id));
     scene.state.pose = W ? new Map(W.pose) : new Map();
     scene.refresh();
+    buildCopies();
+    copyG.visible = v === "model";
+    selG.visible = v !== "strength";
+    drawSel();
     if (layG.visible) setLayer(st.layerMax); else clip.constant = 1e9;
     if (slider) slider.hidden = v !== "layers" || !S;
     legend();
@@ -1233,6 +1291,44 @@ export function initPrintSim(app, X) {
     }, 60);
   }
 
+  // the Objects section: pick an object, then turn, lay flat, scale or copy it (sim only)
+  function objectBox(body) {
+    body.append(el("div", { class: "subhead" }, "Objects ", el("span", { style: { fontWeight: 400, opacity: 0.7 } }, "· only in the sim")));
+    if (!W) return;
+    const chips = el("div", { class: "psbtns", id: "ps-objs" });
+    const MAX = 16;
+    W.keys.slice(0, MAX).forEach((k, i) => chips.append(el("button", { class: "btn" + (st.osel.has(k) ? " primary" : ""), id: "ps-obj-" + i, "aria-pressed": String(st.osel.has(k)), title: "Pick " + W.names[i] + " (Shift adds)", onclick: (e) => { selectKey(k, e.shiftKey); drawSel(); renderPanel(); } }, W.names[i])));
+    if (W.keys.length > MAX) chips.append(el("span", { class: "hint", style: { padding: "4px" } }, `+${W.keys.length - MAX} more`));
+    body.append(chips);
+    const qs = selInst();
+    if (!qs.length) {
+      body.append(el("div", { class: "hint", style: { padding: 0 } }, "Click an object on the plate (or its name) to turn it, lay it on a face, scale it or copy it. Drag it to move it. None of this changes your design."));
+      return;
+    }
+    const bx = selBox(), sz = bx.isEmpty() ? null : bx.getSize(new THREE.Vector3());
+    body.append(el("div", { class: "hint", id: "ps-osize", style: { padding: 0 } }, `${qs.length === 1 ? instName(qs[0]) : qs.length + " objects"} picked${sz ? ` · ${fmt(sz.x, 1)} × ${fmt(sz.y, 1)} × ${fmt(sz.z, 1)} mm` : ""}.`));
+    const ang = el("input", { class: "num", type: "number", id: "ps-oang", value: st.oang, min: -360, max: 360, step: 5, style: { width: "64px" }, "aria-label": "Turn angle in degrees", onchange: (e) => { st.oang = +e.target.value || 90; } });
+    ang.addEventListener("keydown", (e) => e.stopPropagation());
+    body.append(row("Turn", el("div", { class: "psbtns" }, ang, el("span", { style: { alignSelf: "center" } }, "°"),
+      el("button", { class: "btn", id: "ps-otx", title: "Turn around X", onclick: () => turnObj("x", st.oang) }, "X"),
+      el("button", { class: "btn", id: "ps-oty", title: "Turn around Y", onclick: () => turnObj("y", st.oang) }, "Y"),
+      el("button", { class: "btn", id: "ps-otz", title: "Turn around Z (flat on the plate)", onclick: () => turnObj("z", st.oang) }, "Z"))));
+    const sc = el("input", { class: "num", type: "number", id: "ps-oscale", value: Math.round(qs[0].s * 1000) / 10, min: 1, max: 1000, step: 5, style: { width: "72px" }, "aria-label": "Scale in percent", onchange: (e) => scaleObj(+e.target.value) });
+    sc.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") scaleObj(+sc.value); });
+    body.append(row("Scale", el("div", { class: "psbtns" }, sc, el("span", { style: { alignSelf: "center" } }, "%"),
+      el("button", { class: "btn", id: "ps-ohalf", onclick: () => scaleObj(qs[0].s * 50) }, "½×"),
+      el("button", { class: "btn", id: "ps-odouble", onclick: () => scaleObj(qs[0].s * 200) }, "2×"))));
+    const cnt = el("input", { class: "num", type: "number", id: "ps-ocount", value: 1, min: 1, max: 50, step: 1, style: { width: "56px" }, "aria-label": "How many copies" });
+    cnt.addEventListener("keydown", (e) => e.stopPropagation());
+    body.append(row("Copies", el("div", { class: "psbtns" }, cnt,
+      el("button", { class: "btn", id: "ps-odup", title: "Add copies on the plate. Your design keeps one.", onclick: () => dupObj(+cnt.value) }, "Duplicate"))));
+    const anyCopy = qs.some(isCopy);
+    body.append(el("div", { class: "psbtns" },
+      el("button", { class: "btn" + (st.pickFace ? " primary" : ""), id: "ps-olay", title: "Click the face of this object that should lie on the plate", onclick: () => { st.pickFace = !st.pickFace; renderPanel(); } }, "Lay on face"),
+      el("button", { class: "btn", id: "ps-oreset", title: "Undo this object's turns and scale", onclick: () => resetObj() }, "Reset object"),
+      el("button", { class: "btn", id: "ps-odel", title: anyCopy ? "Remove the copy from the plate" : "Take it off the plate (your design keeps it)", onclick: () => delObj() }, anyCopy ? "Remove copy" : "Take off plate"),
+      el("button", { class: "btn", id: "ps-odone", onclick: () => { st.osel.clear(); st.pickFace = false; drawSel(); renderPanel(); } }, "Done")));
+  }
   // ------------------------------------------------------------ panel
   let def = null;
   function renderPanel() { if (def && app.command === def) def.render(); }
@@ -1252,11 +1348,11 @@ export function initPrintSim(app, X) {
       noEnter: true,
       wide: true,
       ok() { closeCmd(false); },
-      hint: () => st.paintTool === "paint" ? `Painting with F${st.brush + 1}: click or drag over faces. Drag empty space to turn the view.` : st.paintTool === "fill" ? `Click a body to print it all with F${st.brush + 1}.` : st.paintTool === "erase" ? "Click painted faces to remove their paint." : st.pickFace ? "Click the face that should lie on the plate." : "Preview only: this simulates the print. It does not make G-code.",
+      hint: () => st.paintTool === "paint" ? `Painting with F${st.brush + 1}: click or drag over faces. Drag empty space to turn the view.` : st.paintTool === "fill" ? `Click a body to print it all with F${st.brush + 1}.` : st.paintTool === "erase" ? "Click painted faces to remove their paint." : st.pickFace ? "Click the face that should lie on the plate." : st.osel.size ? "Drag the picked object to move it. Turn, scale or copy it on the right. Click empty space to let go." : "Click an object to turn, scale or copy it (only in the sim). Then check the layers and Export G-code.",
       build(body) {
         const P = PRINTERS[st.printer];
         const nm = st.ids.map((id) => findBody(store.doc, id)?.name).filter(Boolean);
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, `${nm.length ? nm.length === 1 ? nm[0] : nm.length + " bodies" : "Nothing"} on the plate. Nothing here changes your design, and no G-code is made.`));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, `${nm.length ? nm.length === 1 ? nm[0] : nm.length + " bodies" : "Nothing"} on the plate. Nothing here changes your design.`));
         const solids = store.doc.bodies.filter((b) => !b.hole);
         if (solids.length > 1) {
           const pl = el("div", { class: "psplate" }, el("div", { class: "subhead", style: { margin: "0 0 3px" } }, "On the plate"));
@@ -1340,16 +1436,19 @@ export function initPrintSim(app, X) {
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ps-plate", checked: st.plateOnly, onchange: (e) => { st.plateOnly = e.target.checked; rebuild(false); } }), "On build plate only"));
         body.append(el("div", { class: "subhead" }, "Orientation"));
         body.append(el("div", { class: "psbtns" },
-          el("button", { class: "btn" + (st.pickFace ? " primary" : ""), id: "ps-lay", onclick: () => { st.pickFace = !st.pickFace; renderPanel(); } }, "Lay on face"),
-          el("button", { class: "btn", id: "ps-auto", onclick: () => autoOrient() }, "Auto orient"),
+          el("button", { class: "btn" + (st.pickFace ? " primary" : ""), id: "ps-lay", title: "Click the face of an object that should lie on the plate", onclick: () => { st.pickFace = !st.pickFace; renderPanel(); } }, "Lay on face"),
+          el("button", { class: "btn", id: "ps-auto", title: "Turn everything on the plate so it needs the least support", onclick: () => autoOrient() }, "Auto orient"),
           el("button", { class: "btn", id: "ps-rx", onclick: () => rotate("x") }, "Rotate X"),
           el("button", { class: "btn", id: "ps-ry", onclick: () => rotate("y") }, "Rotate Y"),
-          el("button", { class: "btn", id: "ps-reset", onclick: () => { st.R.identity(); st.refit = true; rebuild(); } }, "Reset")));
+          el("button", { class: "btn", id: "ps-arrange", title: "Pack every object neatly on the plate", onclick: () => arrange() }, "Arrange"),
+          el("button", { class: "btn", id: "ps-reset", title: "Undo every turn, scale, move and copy made in the sim", onclick: () => resetAll() }, "Reset")));
+        objectBox(body);
         body.append(el("div", { class: "subhead" }, "View"));
         body.append(row("Show", seg([["model", "Model"], ["layers", "Layers"], ["strength", "Strength"]], st.view, (v) => { st.view = v; applyView(); renderPanel(); X.onView && X.onView(); }, "ps-view")));
         if (st.view === "layers") body.append(row("Color by", seg([["type", "Line type"], ["filament", "Filament"]], byFilament() ? "filament" : "type", (v) => { st.colorBy = v; lineColors(); legend(); renderPanel(); }, "ps-colorby")));
         body.append(el("button", { class: "btn primary", id: "ps-play2", style: { width: "100%" }, onclick: () => togglePlay() }, anim.playing ? "❚❚ Pause print" : "▶ Play the print"));
         body.append(el("div", { class: "hint", id: "ps-status", style: { padding: 0 } }, S ? `Sliced: ${S.nL} layers.` : W ? "Slicing…" : ""));
+        gcodeBox(body);
         if (W) body.append(results(P));
         if (W) { const ab = adviceBox(); if (ab) body.append(ab); }
       },
@@ -1357,10 +1456,11 @@ export function initPrintSim(app, X) {
       handler: {
         hover(e) {
           if (st.paintTool && W) { const t = pickTri(e); hoverFace(t); vp.canvas.style.cursor = t >= 0 ? "crosshair" : "default"; return; }
-          if (!st.pickFace || !W) { vp.canvas.style.cursor = "default"; return; }
-          vp.canvas.style.cursor = pickTri(e) >= 0 ? "pointer" : "default";
+          if (!W || (!st.pickFace && st.view !== "model")) { vp.canvas.style.cursor = "default"; return; }
+          vp.canvas.style.cursor = pickTri(e) >= 0 ? (st.pickFace ? "pointer" : "move") : "default";
         },
         down(e) {
+          drag = null;
           if (st.paintTool && W) {
             const t = pickTri(e);
             if (t < 0) return false; // empty space: orbit as usual
@@ -1369,23 +1469,52 @@ export function initPrintSim(app, X) {
             if (st.paintTool === "fill") { st.painting = false; filamentsChanged(); }
             return true;
           }
-          if (!st.pickFace || !W) return false;
+          if (!W) return false;
+          if (!st.pickFace) {
+            if (st.view !== "model") return false;
+            // click an object to pick it (Shift adds); drag it to move it on the plate
+            const t = pickTri(e);
+            if (t < 0) { if (st.osel.size) { st.osel.clear(); drawSel(); renderPanel(); } return false; }
+            const k = W.owner[t];
+            if (!(st.osel.has(W.keys[k]) && !e.shiftKey)) { if (e.shiftKey && st.osel.has(W.keys[k])) selectKey(W.keys[k], true); else selectPart(k, e.shiftKey); drawSel(); renderPanel(); }
+            const hz = (() => { const h = vp.pick(e, [pickMesh])[0]; return h ? root.worldToLocal(h.point.clone()).z : 0; })();
+            const p0 = platePt(e, hz);
+            if (st.osel.size && p0) drag = { p0, z: hz, d: new THREE.Vector2(), moved: false };
+            return true;
+          }
           const t = pickTri(e);
           if (t < 0) return true;
           const n = new THREE.Vector3(A.nrm[t * 3], A.nrm[t * 3 + 1], A.nrm[t * 3 + 2]);
+          st.pickFace = false;
+          // with several objects (or one picked) only the clicked object turns, like Orca
+          if (st.osel.size || hasLayout() || W.nParts > 1) {
+            if (!st.osel.has(W.keys[W.owner[t]])) selectPart(W.owner[t]);
+            layObj(n);
+            return true;
+          }
           const q = new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, 0, -1));
           st.R.premultiply(new THREE.Matrix4().makeRotationFromQuaternion(q));
-          st.pickFace = false;
           st.refit = true; rebuild();
           return true;
         },
         move(e) {
+          if (drag) {
+            const p = platePt(e, drag.z);
+            if (!p) return;
+            drag.d.set(p.x - drag.p0.x, p.y - drag.p0.y);
+            if (drag.d.length() > 0.5) drag.moved = true;
+            if (drag.moved) dragPreview(drag.d);
+            return;
+          }
           if (!st.painting) return;
           const t = pickTri(e);
           hoverFace(t);
           if (paintAt(t)) buildPaint();
         },
-        up() { if (st.painting) { st.painting = false; filamentsChanged(); } },
+        up() {
+          if (drag) { const d = drag; drag = null; if (d.moved) { stopAnim(); moveObj(d.d.x, d.d.y); } return; }
+          if (st.painting) { st.painting = false; filamentsChanged(); }
+        },
         leave() { hoverFace(-1); },
       },
     };
@@ -1408,8 +1537,8 @@ export function initPrintSim(app, X) {
   // look at the parts, keeping them clear of the settings panel on the right
   function frame() {
     if (!W) return;
-    const s2 = W.size, hx = Math.max(10, s2.x / 2) * 1.15, hy = Math.max(10, s2.y / 2) * 1.15;
-    vp.fit(new THREE.Box3(new THREE.Vector3(-hx, -hy, 0), new THREE.Vector3(hx + Math.max(hx, hy) * 1.1, hy, Math.max(s2.z, 8))));
+    const s2 = W.size, cx = (W.box.min.x + W.box.max.x) / 2, cy = (W.box.min.y + W.box.max.y) / 2, hx = Math.max(10, s2.x / 2) * 1.15, hy = Math.max(10, s2.y / 2) * 1.15;
+    vp.fit(new THREE.Box3(new THREE.Vector3(cx - hx, cy - hy, 0), new THREE.Vector3(cx + hx + Math.max(hx, hy) * 1.1, cy + hy, Math.max(s2.z, 8))));
   }
   function results(P) {
     const box = el("div", { class: "simres" });
@@ -1421,7 +1550,7 @@ export function initPrintSim(app, X) {
     if (multi) est.secs += plan.secs;
     const hh = Math.floor(est.secs / 3600), mm = Math.round((est.secs % 3600) / 60);
     box.append(el("div", { class: "simtiles" },
-      el("div", { class: "simtile" }, el("span", {}, "Print time"), el("b", { id: "ps-time" }, S ? (hh ? `${hh} h ${mm} min` : `${mm} min`) : "…")),
+      el("div", { class: "simtile", title: est.profile ? `Worked out like Orca Slicer: the printer's ${est.profile} speeds, accelerations and corner limits, the travel moves, and slowing down short layers so they cool${est.slowed ? ` (${est.slowed} layers slowed)` : ""}. Warm-up and bed levelling are not included.` : "" }, el("span", {}, "Print time"), el("b", { id: "ps-time" }, S ? (hh ? `${hh} h ${mm} min` : `${mm} min`) : "…"), est.profile ? el("i", {}, "like Orca, no warm-up") : null),
       el("div", { class: "simtile" }, el("span", {}, "Filament"), el("b", { id: "ps-grams" }, S ? `${fmt(est.grams + (multi ? plan.wasteGrams : 0), 1)} g` : "…"), el("i", {}, S ? (multi ? `incl. ${fmt(plan.wasteGrams, 1)} g purge` : `${fmt(est.meters, 2)} m`) : "")),
       multi ? el("div", { class: "simtile", id: "ps-changes" }, el("span", {}, "Changes"), el("b", {}, String(plan.changes)), el("i", {}, plan.swaps ? `${plan.swaps} nozzle swap${plan.swaps === 1 ? "" : "s"}` : `${plan.flushes} purge${plan.flushes === 1 ? "" : "s"}`)) : el("div", { class: "simtile" }, el("span", {}, "Layers"), el("b", {}, S ? String(S.nL) : "…")),
       el("div", { class: "simtile" + (fits ? "" : " bad") }, el("span", {}, "Size"), el("b", { style: { fontSize: "12px" } }, `${fmt(W.size.x, 1)}×${fmt(W.size.y, 1)}×${fmt(W.size.z, 1)}`), fits ? null : el("i", {}, uw < P.w && W.size.x > uw && W.size.x <= P.w ? `Wider than ${uw} mm` : "Too big for this printer"))));
@@ -1473,7 +1602,205 @@ export function initPrintSim(app, X) {
     return h ? h.faceIndex : -1;
   }
   let pickMesh = null;
+  // ------------------------------------------------------------ object tools (turn, lay flat, scale, copy, move)
+  // all of them change only the sim's own placement of the objects, never the bodies
+  const copyG = new THREE.Group(), selG = new THREE.Group();
+  root.add(copyG, selG);
+  const geoCache = new Map();
+  function geoOf(id, data) {
+    const c = geoCache.get(id);
+    if (c && c.data === data) return c.g;
+    if (c) c.g.dispose();
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(data.vertices instanceof Float32Array ? data.vertices : new Float32Array(data.vertices), 3));
+    g.setIndex(new THREE.BufferAttribute(data.triangles instanceof Uint32Array ? data.triangles : new Uint32Array(data.triangles), 1));
+    g.computeVertexNormals();
+    geoCache.set(id, { data, g });
+    return g;
+  }
+  // copies made in the sim are drawn here (the design has no body for them)
+  function buildCopies() {
+    for (const c of [...copyG.children]) { copyG.remove(c); c.material.dispose(); }
+    if (!W) return;
+    for (const { k, id, P } of W.cpose) {
+      const b = findBody(store.doc, id), v = scene.views.get(id);
+      if (!b || !v || !v.data) continue;
+      const m = new THREE.Mesh(geoOf(id, v.data), new THREE.MeshStandardMaterial({ color: b.color || "#a7b0ba", roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide }));
+      m.matrixAutoUpdate = false;
+      m.matrix.copy(P).multiply(M4(b.m));
+      m.userData = { key: W.keys[k], P };
+      copyG.add(m);
+    }
+  }
+  function selBox(keys = st.osel) {
+    const bx = new THREE.Box3();
+    if (W) W.keys.forEach((k, i) => { if (keys.has(k)) bx.union(W.wbox[i]); });
+    return bx;
+  }
+  function drawSel() {
+    disposeGroup(selG);
+    selG.position.set(0, 0, 0);
+    if (!W || !st.osel.size) { vp.request(); return; }
+    const bx = selBox();
+    if (bx.isEmpty()) { vp.request(); return; }
+    const h = new THREE.Box3Helper(bx.expandByScalar(0.6), 0x2f7de1);
+    h.material.depthTest = false; h.renderOrder = 9;
+    selG.add(h);
+    vp.request();
+  }
+  // pick the object under part k (bodies that touch are one object)
+  function selectPart(k, add) {
+    if (!add) st.osel.clear();
+    if (k == null || k < 0 || !W) return;
+    const g = W.group[k];
+    W.keys.forEach((key, i) => { if (W.group[i] === g) st.osel.add(key); });
+  }
+  function selectKey(key, add) {
+    if (!W) { st.osel = new Set([key]); return; }
+    const k = W.keys.indexOf(key);
+    if (k < 0) return;
+    if (add && st.osel.has(key)) { const g = W.group[k]; W.keys.forEach((kk, i) => { if (W.group[i] === g) st.osel.delete(kk); }); return; }
+    selectPart(k, add);
+  }
+  const selInst = () => st.inst.filter((q) => st.osel.has(q.key));
+  // centre of the picked objects, in the space their placement X works in
+  function selCentre() {
+    const bx = new THREE.Box3();
+    if (W) W.keys.forEach((k, i) => { if (st.osel.has(k)) bx.union(W.pre[i]); });
+    return bx.isEmpty() ? new THREE.Vector3() : bx.getCenter(new THREE.Vector3());
+  }
+  function about(M) {
+    const c = selCentre();
+    return new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(M).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+  }
+  function applySel(G) { for (const q of selInst()) q.X.premultiply(G); st.refit = true; rebuild(); }
+  function turnObj(ax, deg = st.oang) {
+    if (!st.osel.size) return;
+    const a = (deg * Math.PI) / 180;
+    applySel(about(ax === "x" ? new THREE.Matrix4().makeRotationX(a) : ax === "y" ? new THREE.Matrix4().makeRotationY(a) : new THREE.Matrix4().makeRotationZ(a)));
+  }
+  function layObj(n) {
+    const q = new THREE.Quaternion().setFromUnitVectors(n.clone().normalize(), new THREE.Vector3(0, 0, -1));
+    applySel(about(new THREE.Matrix4().makeRotationFromQuaternion(q)));
+  }
+  function scaleObj(pct) {
+    const qs = selInst();
+    if (!qs.length || !(pct > 0)) return;
+    const f = Math.max(0.01, Math.min(100, pct / 100)) / qs[0].s;
+    if (Math.abs(f - 1) < 1e-6) return;
+    for (const q of qs) q.s *= f;
+    applySel(about(new THREE.Matrix4().makeScale(f, f, f)));
+  }
+  function moveObj(dx, dy) { applySel(new THREE.Matrix4().makeTranslation(dx, dy, 0)); }
+  // a free place on the plate for a w × d footprint, as near as it can be to `near`
+  function freeSpot(w, d, boxes, near) {
+    const P = PRINTERS[st.printer], uw = usableWidth(), gap = 4;
+    const hit = (x, y) => boxes.some((b) => x - w / 2 < b.max.x + gap && x + w / 2 > b.min.x - gap && y - d / 2 < b.max.y + gap && y + d / 2 > b.min.y - gap);
+    let best = null;
+    const step = Math.max(2, Math.min(w, d) / 4);
+    for (let y = -P.d / 2 + d / 2; y <= P.d / 2 - d / 2 + 1e-6; y += step)
+      for (let x = -uw / 2 + w / 2; x <= uw / 2 - w / 2 + 1e-6; x += step) {
+        if (hit(x, y)) continue;
+        const dist = Math.hypot(x - near.x, y - near.y);
+        if (!best || dist < best.dist) best = { x, y, dist };
+      }
+    if (best) return new THREE.Vector2(best.x, best.y);
+    // no room left: put it beside everything (the plate check will say it doesn't fit)
+    const all = boxes.reduce((a, b) => a.union(b), new THREE.Box3());
+    return new THREE.Vector2(all.max.x + gap + w / 2, near.y);
+  }
+  function dupObj(count = 1) {
+    if (!W || !st.osel.size) return;
+    const src = selInst(), bx = selBox();
+    if (bx.isEmpty()) return;
+    const w = bx.max.x - bx.min.x, d = bx.max.y - bx.min.y, ctr = bx.getCenter(new THREE.Vector3());
+    const boxes = W.wbox.map((b) => b.clone());
+    const made = new Set();
+    count = Math.max(1, Math.min(50, Math.round(count) || 1));
+    for (let n = 0; n < count; n++) {
+      const at = freeSpot(w, d, boxes, ctr);
+      const T = new THREE.Matrix4().makeTranslation(at.x - ctr.x, at.y - ctr.y, 0);
+      for (const q of src) {
+        const X = T.clone().multiply(q.X), no = ++st.copyN;
+        const c = { key: q.id + "#" + no, id: q.id, X, home: X.clone(), s: q.s, hs: q.s, n: no };
+        st.inst.push(c); made.add(c.key);
+      }
+      boxes.push(new THREE.Box3(new THREE.Vector3(at.x - w / 2, at.y - d / 2, 0), new THREE.Vector3(at.x + w / 2, at.y + d / 2, 1)));
+    }
+    st.osel = made;
+    st.refit = true; rebuild();
+    app.toast(count === 1 ? "Copied on the plate (your design still has one)." : `${count} copies on the plate (your design is unchanged).`);
+  }
+  function delObj() {
+    const qs = selInst();
+    if (!qs.length) return;
+    const copies = qs.filter(isCopy), orig = qs.filter((q) => !isCopy(q));
+    if (orig.length && st.ids.length - orig.length < 1 && !st.inst.some((q) => isCopy(q) && !qs.includes(q))) { app.toast("Keep at least one object on the plate.", "err"); return; }
+    st.inst = st.inst.filter((q) => !copies.includes(q));
+    if (orig.length) {
+      // an original's copies stay: the first one takes its place on the plate
+      st.ids = st.ids.filter((id) => !orig.some((q) => q.id === id) || st.inst.some((q) => q.id === id && isCopy(q)));
+      for (const o of orig) {
+        const i = st.inst.indexOf(o);
+        const heir = st.inst.find((q) => q.id === o.id && isCopy(q));
+        if (heir) { heir.key = o.id; delete heir.n; }
+        st.inst.splice(i, 1);
+      }
+    }
+    st.osel.clear();
+    stopAnim(); st.refit = true; rebuild();
+  }
+  function resetObj() {
+    for (const q of selInst()) { q.X = q.home.clone(); q.s = q.hs || 1; }
+    st.refit = true; rebuild();
+  }
+  function resetAll() {
+    st.R.identity();
+    st.ids = targetIds();
+    st.inst = st.inst.filter((q) => !isCopy(q));
+    for (const q of st.inst) { q.X.identity(); q.home.identity(); q.s = 1; q.hs = 1; }
+    st.osel.clear(); st.copyN = 0;
+    st.refit = true; rebuild();
+  }
+  // pack every object on the plate in rows (like Orca's Arrange)
+  function arrange() {
+    if (!W) return;
+    const groups = new Map();
+    W.keys.forEach((k, i) => { const g = W.group[i]; if (!groups.has(g)) groups.set(g, { keys: [], b: new THREE.Box3() }); groups.get(g).keys.push(k); groups.get(g).b.union(W.wbox[i]); });
+    const list = [...groups.values()].sort((a, b) => (b.b.max.y - b.b.min.y) - (a.b.max.y - a.b.min.y));
+    const uw = usableWidth(), gap = 6;
+    let x = 0, y = 0, rowD = 0, maxW = 0;
+    for (const g of list) {
+      const w = g.b.max.x - g.b.min.x, d = g.b.max.y - g.b.min.y;
+      if (x > 0 && x + w > uw - 4) { y += rowD + gap; x = 0; rowD = 0; }
+      g.at = new THREE.Vector2(x, y);
+      x += w + gap; rowD = Math.max(rowD, d); maxW = Math.max(maxW, x - gap);
+    }
+    const totD = y + rowD;
+    for (const g of list) {
+      const dx = g.at.x - maxW / 2 - g.b.min.x, dy = g.at.y - totD / 2 - g.b.min.y;
+      const T = new THREE.Matrix4().makeTranslation(dx, dy, 0);
+      for (const k of g.keys) instOf(k).X.premultiply(T);
+    }
+    st.refit = true; rebuild();
+    app.toast("Arranged on the plate.");
+  }
+  // dragging an object over the plate moves it there (shown live, sliced when let go)
+  let drag = null;
+  // the pointer on a level plane at height z (the height it grabbed the object at, so it follows the pointer)
+  const platePt = (e, z = 0) => { const n = new THREE.Vector3(0, 0, 1).transformDirection(root.matrixWorld), o = root.localToWorld(new THREE.Vector3(0, 0, z)); const p = vp.rayPlane(e, new THREE.Plane().setFromNormalAndCoplanarPoint(n, o)); return p ? root.worldToLocal(p) : null; };
+  function dragPreview(d) {
+    const T = new THREE.Matrix4().makeTranslation(d.x, d.y, 0);
+    for (const c of copyG.children) if (st.osel.has(c.userData.key)) { const b = findBody(store.doc, W.ids[W.keys.indexOf(c.userData.key)]); if (b) c.matrix.copy(T).multiply(c.userData.P).multiply(M4(b.m)); }
+    const pose = new Map(W.pose);
+    for (const k of st.osel) if (W.pose.has(k)) pose.set(k, T.clone().multiply(W.pose.get(k)));
+    scene.state.pose = pose; scene.refresh();
+    selG.position.set(d.x, d.y, 0);
+    ovG.visible = paintG.visible = supG.visible = false;
+    vp.request();
+  }
   function rotate(ax) {
+    if (st.osel.size) { turnObj(ax, 90); return; }
     const m = ax === "x" ? new THREE.Matrix4().makeRotationX(Math.PI / 2) : new THREE.Matrix4().makeRotationY(Math.PI / 2);
     st.R.premultiply(m);
     st.refit = true; rebuild();
@@ -1534,6 +1861,8 @@ export function initPrintSim(app, X) {
     scene.state.simHide = new Set();
     scene.state.pose = new Map();
     scene.refresh();
+    for (const c of [...copyG.children]) { copyG.remove(c); c.material.dispose(); }
+    disposeGroup(selG); drag = null;
     W = null; A = null; S = null; pickMesh = null; st.pickFace = false;
     vp.request();
   }
@@ -1631,5 +1960,48 @@ export function initPrintSim(app, X) {
   const setView = (v) => { if (v !== "layers") stopAnim(); st.view = v; applyView(); renderPanel(); };
   const layFace = () => { st.pickFace = !st.pickFace; renderPanel(); };
   const togglePlay = () => (anim.playing ? pause() : play());
-  return { open, teardown, st, autoOrient, setView, layFace, rotate, togglePlay, setIds: (ids) => { st.ids = ids; stopAnim(); st.refit = true; rebuild(); } };
+  // ------------------------------------------------------------ G-code
+  const temps = () => FIL_TEMPS[st.filament] || [210, 60, 100];
+  function gcodeOptions() {
+    const P = PRINTERS[st.printer], [tn, tb, fan] = temps(), fil = FILAMENTS[st.filament] || {};
+    return {
+      bed: { w: P.w, d: P.d, h: P.h }, printerName: P.name, filamentName: fil.name || st.filament, flavor: st.gflavor || flavorFor(P),
+      nozzleTemp: st.nozzleT ?? tn, bedTemp: st.bedT ?? tb, fan: st.fanP ?? fan, speed: st.speed, skirt: st.skirt, brim: st.brim, retract: st.retract, zhop: st.zhop,
+      walls: st.walls, infill: st.infill, topN: st.topN, botN: st.botN, supports: st.supports, lineWidth: LW, maxFlow: FLOW[st.filament] || 12, density: fil.rho || 1.24,
+      motion: motionFor(st.printer, P), printerKey: st.printer, filamentKey: st.filament,
+    };
+  }
+  async function exportGcode() {
+    if (!S || !S.lines) { app.toast("Wait a moment: the plate is still being sliced.", "err"); return; }
+    const sup = st.supports !== "none" && A && A.cols && A.cols.length ? { cols: A.cols, sp: st.supports === "tree" ? 3 : 2 } : null;
+    const r = makeGcode(S, sup, gcodeOptions());
+    st.lastG = { secs: r.secs, grams: r.grams, meters: r.filamentMM / 1000, size: r.text.length };
+    const names = st.ids.map((id) => findBody(store.doc, id)?.name).filter(Boolean);
+    const base = ((names.length === 1 ? names[0] : (store.doc.name || "Plate")) + " " + PRINTERS[st.printer].name.replace(/\s*\(.*\)/, "")).replace(/[\\/:*?"<>|]+/g, "").trim();
+    const bytes = new TextEncoder().encode(r.text);
+    if (app.projects && app.projects.saveModel) await app.projects.saveModel(base + ".gcode", bytes);
+    renderPanel();
+    app.toast(`Saved ${base}.gcode: ${Math.round(r.secs / 60)} min, ${r.grams.toFixed(1)} g of filament. Copy it to the printer's SD card or USB stick, or send it with the printer's app.`);
+    return r;
+  }
+  function gcodeBox(body) {
+    const P = PRINTERS[st.printer], [tn, tb, fan] = temps(), fl = st.gflavor || flavorFor(P);
+    body.append(el("div", { class: "subhead" }, "Print settings (G-code)"));
+    const fs = el("select", { class: "num", id: "ps-flavor" }, ...FLAVORS.map(([k, n]) => el("option", { value: k, selected: k === fl }, n + (k === flavorFor(P) ? " (this printer)" : ""))));
+    fs.onchange = () => { st.gflavor = fs.value; };
+    body.append(row("G-code for", fs, "ps-flavor"));
+    const r3 = el("div", { class: "row3" });
+    const nf = (id, label, val, on, min, max) => el("label", {}, label, el("input", { type: "number", class: "num", id, value: val, min, max, step: 1, onchange: (e) => on(+e.target.value) }));
+    r3.append(nf("ps-tnoz", "Nozzle °C", st.nozzleT ?? tn, (v) => { st.nozzleT = v; }, 150, 450), nf("ps-tbed", "Bed °C", st.bedT ?? tb, (v) => { st.bedT = v; }, 0, 130), nf("ps-fan", "Fan %", st.fanP ?? fan, (v) => { st.fanP = Math.max(0, Math.min(100, v)); }, 0, 100));
+    body.append(r3);
+    body.append(row("Speed", seg(SPEED_PRESETS.map(([k, n]) => [k, n]), st.speed, (v) => { st.speed = v; renderPanel(); }, "ps-speedp")));
+    body.append(row("Skirt", seg([[0, "None"], [1, "1"], [2, "2"], [3, "3"]], st.skirt, (v) => { st.skirt = v; renderPanel(); }, "ps-skirt")));
+    body.append(row("Brim", seg([[0, "None"], [3, "3 mm"], [5, "5 mm"], [8, "8 mm"]], st.brim, (v) => { st.brim = v; renderPanel(); }, "ps-brim")));
+    body.append(row("Retraction", seg([[0, "Off"], [0.4, "0.4"], [0.8, "0.8"], [1.5, "1.5"], [5, "5 mm"]], st.retract, (v) => { st.retract = v; renderPanel(); }, "ps-retract")));
+    body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ps-zhop", checked: st.zhop, onchange: (e) => { st.zhop = e.target.checked; } }), "Lift the nozzle (Z hop) when travelling"));
+    body.append(el("button", { class: "btn primary", id: "ps-gcode", style: { width: "100%" }, disabled: !(S && S.lines), onclick: () => exportGcode() }, "⬇ Export G-code"));
+    if (st.lastG) body.append(el("div", { class: "hint", id: "ps-gcode-info", style: { padding: 0 } }, `Last G-code: ${Math.floor(st.lastG.secs / 3600)} h ${Math.round((st.lastG.secs % 3600) / 60)} min · ${st.lastG.grams.toFixed(1)} g · ${st.lastG.meters.toFixed(2)} m of filament · ${(st.lastG.size / 1e6).toFixed(1)} MB`));
+    body.append(el("div", { class: "hint", style: { padding: 0 } }, fl === "bambu" ? "Bambu Lab printers: open the .gcode in Bambu Studio or Orca Slicer to send it over Wi-Fi, or print it from the SD card." : fl === "klipper" ? "Klipper printers (Creality K series, Voron…): upload the .gcode in the printer's web page (Mainsail / Fluidd) or copy it to a USB stick." : "Copy the .gcode to the printer's SD card or USB stick, or send it with the printer's app or OctoPrint."));
+  }
+  return { open, teardown, st, autoOrient, turnObj, scaleObj, dupObj, delObj, arrange, resetAll, selectKey: (k, add) => { selectKey(k, add); drawSel(); renderPanel(); }, world: () => W, setView, layFace, rotate, togglePlay, exportGcode, gcodeOptions, setIds: (ids) => { st.ids = ids; stopAnim(); st.refit = true; rebuild(); } };
 }

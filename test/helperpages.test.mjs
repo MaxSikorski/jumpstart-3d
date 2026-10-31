@@ -43,13 +43,19 @@ for (const f of onDisk) {
 }
 
 test("a file in on-use mode is left out of the install list and is the only one in ON_USE", () => {
-  const lists = helperLists({ ...HELPER_FILES, "big-data.json": "on-use" });
+  const pages = Object.fromEntries(Object.entries(HELPER_FILES).filter(([, mode]) => mode === "precache"));
+  const lists = helperLists({ ...pages, "big-data.json": "on-use" });
   assert.ok(!lists.precache.includes("helpers/big-data.json"));
   assert.deepEqual(lists.onUse, ["helpers/big-data.json"]);
-  assert.deepEqual(lists.precache, Object.keys(HELPER_FILES).map((f) => "helpers/" + f));
+  assert.deepEqual(lists.precache, Object.keys(pages).map((f) => "helpers/" + f));
   const filled = fillHelperSlots(read("src/sw.js"), lists);
   assert.ok(!slot("HELPERS", filled).includes("helpers/big-data.json"));
   assert.deepEqual(slot("ON_USE", filled), ["helpers/big-data.json"]);
+});
+
+test("the extra fonts are saved quietly after the engine is ready; the Floor Planner page only when opened (Max, 2026-10-30)", () => {
+  assert.deepEqual(helperLists().onUse, ["helpers/floorplan.html"]);
+  assert.deepEqual(helperLists().precache.sort(), ["helpers/chisel.html", "helpers/flexigen.html", "helpers/fonts_more.js", "helpers/helper-three.html", "helpers/meshstep.html"]);
 });
 
 test("an unknown mode is refused", () => {

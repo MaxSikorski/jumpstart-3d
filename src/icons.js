@@ -67,6 +67,8 @@ export const ICON = {
   printer3d: S('<path d="M4 4h16v4H4z"/><path d="M12 8v3"/><path d="M10.5 11h3l-1.5 2z" fill="currentColor"/><path d="M5 20h14"/><path d="M8 20v-3h8v3" stroke="#1f4fa8"/><path d="M8 17.5h8M8 18.7h8" stroke="#1f4fa8" stroke-width="1"/>'),
   clearSim: S('<circle cx="12" cy="12" r="8"/><path d="M8 8l8 8M16 8l-8 8"/>'),
   sweep: S('<path d="M4 19c4 0 5-3 7-7s4-7 9-7" stroke="#1f4fa8" stroke-dasharray="2 1.6"/><ellipse cx="5" cy="17" rx="2" ry="3.2"/><path d="M5 13.8c4 0 5-3 7-6.8s4-5 7.5-5.4M5 20.2c4.5 0 6-3.2 8-7s3.4-5.8 7-6"/>'),
+  floorPlanner: S('<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 12h7v9M10 12V3M14 3v6h7M14 15h3" stroke="#1f4fa8"/><path d="M6 6h1M6 8h1" stroke-width="2.4"/>'),
+  hinge: S('<path d="M3 7h7v10H3zM14 7h7v10h-7z"/><path d="M10 9h4M10 15h4" stroke="#1f4fa8" stroke-width="2.4"/><circle cx="12" cy="12" r="1.3" fill="#1f4fa8" stroke="none"/>'),
   thread: S('<path d="M8 3h8v18H8z"/><path d="M8 6l8-2M8 10l8-2M8 14l8-2M8 18l8-2" stroke="#1f4fa8"/>'),
   gear: S('<circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5V6M12 18v3.5M2.5 12H6M18 12h3.5M5.3 5.3l2.5 2.5M16.2 16.2l2.5 2.5M5.3 18.7l2.5-2.5M16.2 7.8l2.5-2.5" stroke-width="2.6"/>'), // jumpstart-3d: gears
   tag: S('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="6.5" cy="12" r="1.3"/><path d="M10 10.5h7.5M10 13.5h5" stroke="#1f4fa8"/>'), // jumpstart-3d: name plates
@@ -86,6 +88,7 @@ export const ICON = {
   close: S('<path d="M6 6l12 12M18 6 6 18"/>'),
   body: S('<path d="M4 8l8-4 8 4-8 4z"/><path d="M4 8v8l8 4 8-4V8"/>'),
   combineIcon: S('<rect x="3" y="7" width="11" height="11" rx="1"/><circle cx="15" cy="10" r="6"/>'),
+  stainedglass: S('<path d="M12 3 4 8v8l8 5 8-5V8z"/><path d="M12 3v18M4 8l16 8M20 8 4 16"/><path d="M8.5 6 8 18.5" stroke="#1f4fa8"/>'),
   chipcarve: S('<path d="M3 21l7.5-7.5"/><path d="M10.5 13.5l7-9.5 2.5 2.5-9.5 7z"/><path d="M14 21l3-5 3 5z" stroke="#1f4fa8"/><path d="M17 16v2.6" stroke="#1f4fa8"/>'),
   lathe: S('<path d="M1.5 12h3M19.5 12h3"/><path d="M4.5 8.5c3 0 3.5 2 6 2s3-2.5 5.5-2.5c2 0 3.5.8 3.5.8v6.4s-1.5.8-3.5.8c-2.5 0-3-2.5-5.5-2.5s-3 2-6 2z"/><path d="M12 22l2.5-6.5" stroke="#1f4fa8" stroke-width="2.2"/>'),
   cam: S('<path d="M9 3h6v5H9z"/><path d="M11 8v6l1 2 1-2V8" stroke="#1f4fa8"/><path d="M3 21h18M5 18h14v3H5z"/><path d="M7 18c1-1.5 3-2 5-2s4 .5 5 2" stroke="#1f4fa8"/>'),

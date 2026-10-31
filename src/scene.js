@@ -56,8 +56,9 @@ export function sketchImageMesh(im, onLoad) {
     imgTex.set(im.src, tex);
     if (imgTex.size > 12) imgTex.delete(imgTex.keys().next().value);
   }
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(im.w, im.h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: im.opacity ?? 0.6, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2 }));
-  m.position.set(im.cx || 0, im.cy || 0, 0);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(im.w, im.h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: im.opacity ?? 0.6, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  // (pulled toward the viewer, so a picture on a body's face shows on top of the face)
+  m.position.set(im.cx || 0, im.cy || 0, 0.02);
   m.rotation.z = ((im.rot || 0) * Math.PI) / 180;
   m.renderOrder = 1;
   m.userData.sketchImage = true;
@@ -483,6 +484,9 @@ export class SceneSync {
       const forced = this.state.forceSketch === sk.id || !!(this.state.forceSketches && this.state.forceSketches.has(sk.id));
       if (!forced && (!this.showSketches || sk.hidden)) continue;
       if (this.state.hideSketch === sk.id) continue;
+      // while a sketch is being edited, other sketches lying on the same plane are not drawn
+      // (they'd sit on top of the new lines and catch clicks)
+      if (!forced && this.state.hideSketch && coplanarSketch(doc, this.state.hideSketch, sk)) continue;
       const g = new THREE.Group();
       g.matrixAutoUpdate = false;
       g.matrix.copy(planeMatrix(sk.plane));
@@ -536,4 +540,15 @@ export class SceneSync {
     }
     this.vp.request();
   }
+}
+
+function coplanarSketch(doc, activeId, sk) {
+  const a = (doc.sketches || []).find((x) => x.id === activeId);
+  if (!a || !a.plane || !sk.plane) return false;
+  const n1 = a.plane.n, n2 = sk.plane.n;
+  const l1 = Math.hypot(...n1), l2 = Math.hypot(...n2);
+  const dot = (n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2]) / (l1 * l2);
+  if (Math.abs(dot) < 0.9999) return false;
+  const d = ((sk.plane.o[0] - a.plane.o[0]) * n1[0] + (sk.plane.o[1] - a.plane.o[1]) * n1[1] + (sk.plane.o[2] - a.plane.o[2]) * n1[2]) / l1;
+  return Math.abs(d) < 1e-3;
 }

@@ -210,6 +210,12 @@ export function initTutorials(app) {
     archPlanSeen: () => !!(app.arch && app.arch.state.planSeen),
     archSelWall: () => !!(app.arch && app.arch.state.sel && app.arch.state.sel.k === "wall"),
     exported: (ext) => !!cur && cur.exported.has(ext),
+    // the Floor Planner (Architect → Floor Planner): its rooms, items, mode… (sizes in feet)
+    fpOpen: () => !!(app.floorplan && app.floorplan.isOpen),
+    fp: () => (app.floorplan && app.floorplan.state()) || { rooms: [], items: [], levels: [0], roof: {}, views: [], dl: [], done: {}, total: 0, r3: 0, shots: 0 },
+    fpMode: (m) => T.fpOpen() && T.fp().mode === m,
+    fpRect: (w, d, tol = 0.05) => T.fp().rooms.find((r) => r.rect && r.dims && ((Math.abs(r.dims[0] - w) < tol && Math.abs(r.dims[1] - d) < tol) || (Math.abs(r.dims[0] - d) < tol && Math.abs(r.dims[1] - w) < tol))) || null,
+    fpItems: (f) => T.fp().items.filter(f),
   };
   const passes = (step) => { if (!step.check) return false; try { return !!step.check(T); } catch (e) { return false; } };
 
@@ -225,6 +231,9 @@ export function initTutorials(app) {
     const tabs = el("div", { class: "seg tut-tabs", role: "tablist" });
     const show = (m) => {
       tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.m === m)));
+      const rem = back.querySelector(".tut-remind"), fpn = back.querySelector(".tut-remind-fp");
+      if (rem) rem.hidden = m === "plan";
+      if (fpn) fpn.hidden = m !== "plan";
       list.innerHTML = "";
       const items = TUTORIALS.filter((t) => t.mode === m).sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
       for (const t of items) {
@@ -246,6 +255,8 @@ export function initTutorials(app) {
         el("p", { class: "tut-intro" }, "Pick a project. Each one walks you through real tools to make a real, printable item. The short ones take 5-10 minutes; the bigger projects take 10-15, and Expert projects about 20."),
         el("div", { class: "tut-remind" }, el("b", {}, "Always start by naming your design: "), "Last name, First name, Item name ", el("span", { class: "tut-eg" }, "(Lopez, Maria, Keychain)"),
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
+        el("div", { class: "tut-remind tut-remind-fp", hidden: true }, el("b", {}, "Floor Planner projects "), "happen in Architect → Floor Planner, on graph paper where 1 block = 1 foot. ",
+          el("b", {}, "Finish each one with Download plan "), "(PNG, JPEG or PDF) to keep it or hand it in."),
         tabs, list));
     back.append(modal);
     back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); back.remove(); } }); // jumpstart-3d: closing the dialog must not change the selection or sketch tool
@@ -260,7 +271,11 @@ export function initTutorials(app) {
     if (!tut) return;
     close(true);
     const prog = resume ? lsGet("p." + id) : null;
-    if (!resume) {
+    if (tut.mode === "plan") {
+      // Floor Planner projects happen in the planner (in Architect); the design isn't touched
+      if (app.mode !== "arch") app.setMode("arch");
+      if (!resume) lsSet("p." + id, null);
+    } else if (!resume) {
       // a fresh design for the project (the current one is already saved), in the right mode
       if (app.mode !== tut.mode) app.setMode(tut.mode);
       app.projects.newDesign(tut.mode);
@@ -311,6 +326,9 @@ export function initTutorials(app) {
     panel.style.left = (small ? 8 : Math.max(8, vpR.left + 10)) + "px";
     // jumpstart-3d: a phone panel is 470 px tall at most (it was 330: the first step did not fit)
     panel.style.top = (small ? Math.max(60, innerHeight - 470) : Math.max(56, vpR.top + 10)) + "px";
+    // Floor Planner projects: over the right side of its drawing area, clear of its toolbar,
+    // its left menus and its Blueprint List
+    if (cur && cur.tut.mode === "plan" && !small) { panel.style.left = Math.max(8, innerWidth - 430 - Math.min(340, innerWidth - 16)) + "px"; panel.style.top = "170px"; }
     // drag by the header
     panel.addEventListener("pointerdown", (e) => {
       const h = e.target.closest(".tut-head");
@@ -430,6 +448,11 @@ export function initTutorials(app) {
 
   // ---------------------------------------------------------------- "Show me": point at the tool
   function target(show) {
+    if (show.fp) {
+      // inside the Floor Planner (its window covers the page, so its coordinates are the page's)
+      if (!app.floorplan || !app.floorplan.isOpen) return show.sel ? document.querySelector(show.sel) : document.querySelector("#ar-floorplanner");
+      return app.floorplan.el(show.fp);
+    }
     // jumpstart-3d: below 801 px the top bar hides the name box, so the name step points at the lesson's own quick name boxes
     if (show.name && panel) { const d = document.querySelector(show.sel); if (!d || !d.getClientRects().length) return panel.querySelector("#tut-last"); }
     if (show.tile) return app.beginner && app.beginner.showTile ? app.beginner.showTile(show.tile, !!show.hole) : null;

@@ -9,6 +9,8 @@ export const HELPER_FILES = {
   "flexigen.html": "precache",
   "meshstep.html": "precache",
   "helper-three.html": "precache",
+  "fonts_more.js": "precache", // J.Siwek's 42 extra Text fonts (1.9 MB): saved quietly after the engine is ready (Max, 2026-10-30); src/morefonts.js parses the text
+  "floorplan.html": "on-use", // the Floor Planner page (1 MB), when Architect opens it
 };
 
 export const STAMP = "js3d-build:";

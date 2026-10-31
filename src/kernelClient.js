@@ -14,6 +14,7 @@ export class KernelClient {
     this.stepWaiters = new Map();
     this.assets = new Map(); // imported files (STL/STEP), sent to the worker once
     this.probes = new Map(); // jumpstart-3d: Code CAD. key -> function that takes the answer for a one-off build
+    this.stale = new Set(); // jumpstart-3d: extra fonts. keys built in flight before the fonts came in: the reply is dropped and the body built again
   }
   hasAsset(id) { return this.assets.has(id); }
   addAsset(id, kind, bytes) {
@@ -75,6 +76,7 @@ export class KernelClient {
         this.solo.delete(r.rev); // jumpstart-3d
         r.key = r.rev;
         delete r.rev;
+        if (this.dropStale(r.key)) continue; // jumpstart-3d: extra fonts
         this.meshes.set(r.key, r);
         this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       }
@@ -99,12 +101,19 @@ export class KernelClient {
       this.inflight = null;
       items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
-      res.forEach((r) => this.meshes.set(r.key, r));
+      res.forEach((r) => { if (!this.dropStale(r.key, items)) this.meshes.set(r.key, r); }); // jumpstart-3d: extra fonts
       this.perf && this.perf.done(res); // jumpstart-3d: perf panel
       this.settleProbes(res); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(res);
       this.pump();
     }
+  }
+  // jumpstart-3d: extra fonts. A reply for a key marked stale is not kept; the body goes back in the queue (pumped after the reply).
+  dropStale(key, items = this.inflight || []) {
+    if (!this.stale.delete(key)) return false;
+    const it = items.find((b) => b.key === key);
+    if (it) this.queue.set(key, it);
+    return true;
   }
   // jumpstart-3d: STEP parts (#173). Over 160 results, the oldest ones that no body of the open design needs go. A design of 200 bodies used to lose its first
   // 40 meshes to this and leave them unbuilt; now the cache grows only while all of it is needed, and shrinks back when a smaller design is shown.
@@ -137,17 +146,26 @@ export class KernelClient {
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
+    // jumpstart-3d: a body whose text uses an extra font waits in the queue until the fonts are in (morefonts.js); the others go on.
+    // The wait always ends (loaded or not), and then the queue is pumped again.
+    const held = (it) => {
+      const w = this.waitFor && this.waitFor(it);
+      if (w && !this.fontWait) this.fontWait = Promise.resolve(w).catch(() => {}).finally(() => { this.fontWait = null; this.pump(); });
+      return !!w;
+    };
     // send small batches so the screen updates progressively
     // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
-    const heavy = (it) => { const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"t":"shell"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); }; // jumpstart-3d: a shell (hollow) goes alone with the long time limit: an oval capsule's Auto hollow takes 20-35 s
+    const heavy = (it) => { if (it.node && it.node.t === "group" && (it.node.children || []).length > 40) return true; const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"t":"shell"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); }; // jumpstart-3d: a shell (hollow) goes alone with the long time limit: an oval capsule's Auto hollow takes 20-35 s
     const batch = [];
     for (const [k, it] of this.queue) {
+      if (held(it)) continue; // jumpstart-3d: extra fonts
       const alone = (b) => heavy(b) || this.solo.has(b.key); // jumpstart-3d: a retried body also goes alone
       if (batch.length && (alone(it) || alone(batch[0]))) break;
       batch.push(it); this.queue.delete(k);
       if (batch.length >= 4 || alone(it)) break;
     }
+    if (!batch.length) { this.onBusy && this.onBusy(true); return; } // jumpstart-3d: extra fonts (everything queued is waiting for them; the status bar says so)
     this.inflight = batch;
     this.perf && this.perf.start(); // jumpstart-3d: perf panel
     // jumpstart-3d: identify the active batch separately from export requests.
@@ -196,6 +214,8 @@ export class KernelClient {
     this.start();
   }
   step(bodies) {
+    const w = this.waitFor && bodies.map((b) => this.waitFor(b)).find(Boolean); // jumpstart-3d: extra fonts (a STEP export of text in one)
+    if (w) return Promise.resolve(w).catch(() => {}).then(() => this.step(bodies));
     const req = ++this.req;
     return new Promise((resolve, reject) => {
       this.stepWaiters.set(req, { resolve, reject });

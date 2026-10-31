@@ -14,7 +14,7 @@ const clampI = (v, a, b) => Math.max(a, Math.min(b, Math.round(v)));
 
 export const THEMES = [
   { id: "scifi", name: "Sci-Fi" }, { id: "modern", name: "Modern Sci-Fi" }, { id: "fantasy", name: "Fantasy" }, { id: "hero", name: "Comic Hero" },
-  { id: "steam", name: "Steampunk" }, { id: "samurai", name: "Samurai" }, { id: "basic", name: "Basic forms" },
+  { id: "steam", name: "Steampunk" }, { id: "samurai", name: "Samurai" }, { id: "military", name: "Military" }, { id: "medieval", name: "Medieval Plate" }, { id: "roman", name: "Roman Legion" }, { id: "greek", name: "Ancient Greek" }, { id: "norse", name: "Norse" }, { id: "spaceop", name: "Space Opera" }, { id: "superhero", name: "Superhero Armor" }, { id: "basic", name: "Basic forms" },
 ];
 // where each kind of part goes; sided parts come as a left and right pair
 export const SLOTS = {
@@ -686,7 +686,7 @@ export function generatePart(inst, B, res = 3) {
 export function uvSpan(desc) { const [x0] = desc.xy(0, 0.5), [x1] = desc.xy(1, 0.5), [, y0] = desc.xy(0.5, 0), [, y1] = desc.xy(0.5, 1); return [Math.abs(x1 - x0) || 1, Math.abs(y1 - y0) || 1]; }
 
 // ----------------------------------------------------------------------------- templates
-const C = { white: "#e9edf2", gun: "#58626e", cyan: "#39c0ff", steel: "#b9c0c8", gold: "#d4a017", red: "#c8202f", yellow: "#f2c230", blue: "#2f5fb8", brass: "#b48443", copper: "#a55a2a", leather: "#6b4a2a", black: "#2b2b31", lacq: "#8e1f1f", green: "#4d7a3a", purple: "#5b3a8c" };
+const C = { white: "#e9edf2", slate: "#58626e", cyan: "#39c0ff", steel: "#b9c0c8", gold: "#d4a017", red: "#c8202f", yellow: "#f2c230", blue: "#2f5fb8", brass: "#b48443", copper: "#a55a2a", leather: "#6b4a2a", black: "#2b2b31", lacq: "#8e1f1f", green: "#4d7a3a", purple: "#5b3a8c" };
 const t = (id, name, theme, slot, shape, deco, addons, color, accent, set = true) => ({ id, name, theme, slot, shape: shape || {}, deco: { thick: 2.5, ...(deco || {}) }, addons: addons || [], color, accent: accent || color, set });
 // a form cage preset: fn(i, j, phi) -> [dx, dy, dz] in body mm (x: wearer's left, y: back, z: up)
 const fp = (nu, nv, sharp, fn) => { const d = []; for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) d.push(...fn(i, j)); return { nu, nv, sharp, d }; };
@@ -747,6 +747,230 @@ function modernSet() {
     withForm(helmForm(4, 8, 2), t("visor-mask", "Visor Mask", M, "mask", { style: "half" }, { thick: 2.2, lines: "inset", lineGap: 5, glow: true, edge: "bevel", edgeSize: 2 }, [], S, L, false)),
   ].map((x) => { if (x.form && x.slot === "mask") delete x.form; return x; });
 }
+// Military (v2.7.8): field armor and gear in olive, tan and ranger green. Protective gear only: no
+// firearms or other weapons anywhere in CosForge.
+function militarySet() {
+  const OD = "#5b6236", TAN = "#a08560", RG = "#4b5a3a", BK = "#2b2d2f", GR = "#6c7076", WEB = "#3b3f2a", FL = "#e0b13a";
+  const mil = { lines: "grid", lineGap: 20, lineDepth: 0.7, edge: "trim", edgeSize: 4, edgeH: 1.2 };
+  const X = "military";
+  return [
+    withForm(helmForm(0, 4, 3, 6), t("mil-helm", "Combat Helmet", X, "helmet", { face: "open", faceW: 150, brow: 62, depth: 112, back: 8, round: 0.75, gap: 18 }, { edge: "roll", edgeSize: 5, edgeH: 1.4, tex: "quilt", texSize: 30, texDepth: 0.6 }, [{ k: "box", x: 0, y: "brow+14", size: 14, w: 30, len: 24, h: 12 }, { k: "box", x: 84, y: "brow+30", size: 10, w: 14, len: 60, h: 8, mirror: true }], OD, WEB)),
+    withForm(helmForm(6, 4, 6, 4), t("mil-helm-visor", "Riot Helmet (visor)", X, "helmet", { face: "bigvisor", faceW: 170, faceH: 80, brow: 64, lens: true, depth: 120, back: 10, round: 0.6 }, { edge: "trim", edgeSize: 5, edgeH: 1.4, lines: "inset", lineGap: 12 }, [], BK, GR, false)),
+    withForm(helmForm(0, 2, 2, 4), t("mil-pilot", "Jet Pilot Helmet", X, "helmet", { face: "visor", faceW: 156, faceH: 34, brow: 72, lens: true, depth: 116, back: 14, round: 0.55 }, { edge: "trim", edgeSize: 4, emblem: "star", emblemSize: 18, emblemH: 1.5 }, [{ k: "box", x: 70, y: "brow+40", size: 12, w: 22, len: 36, h: 10, mirror: true }], GR, FL, false)),
+    t("mil-respirator", "Field Respirator", X, "mask", { style: "lower" }, { thick: 2.4, lines: "hbands", lineGap: 9, edge: "roll", edgeSize: 4 }, [{ k: "gauge", x: 46, y: "mid", size: 22, mirror: true }], BK, OD),
+    t("mil-collar", "Neck Guard", X, "gorget", { spread: 1.05, cover: 260 }, { ...mil, tex: "quilt", texSize: 20, texDepth: 0.8 }, [], OD, WEB),
+    withForm(vChest(4, 0), t("mil-carrier", "Plate Carrier", X, "chest", { bottom: "straight", side: 100 }, { ...mil }, [{ k: "box", x: 0, y: "waist+48", size: 22, w: 44, len: 66, h: 24, count: 3, rowAcross: true, step: 50 }, { k: "box", x: 70, y: "chest-20", size: 14, w: 30, len: 40, h: 14, mirror: true }], TAN, WEB)),
+    withForm(vChest(4, 0), t("mil-carrier-od", "Plate Carrier (olive)", X, "chest", { bottom: "straight", side: 100 }, { ...mil }, [{ k: "box", x: 0, y: "waist+48", size: 22, w: 44, len: 66, h: 24, count: 3, rowAcross: true, step: 50 }, { k: "gem", x: 0, y: "chest-10", size: 10 }], OD, WEB, false)),
+    withForm(backForm(3), t("mil-back", "Carrier Back Panel", X, "back", { bottom: "straight" }, { ...mil }, [{ k: "box", x: 0, y: "L*0.5", size: 30, w: 110, len: 170, h: 34 }], TAN, WEB)),
+    t("mil-belt", "Duty Belt", X, "belt", { height: 50, buckle: 64 }, { lines: "vbands", lineGap: 24, edge: "trim", edgeSize: 3 }, [{ k: "box", x: 60, y: "mid", size: 18, w: 34, len: 44, h: 22, mirror: true }, { k: "box", x: 120, y: "mid", size: 16, w: 28, len: 40, h: 20, mirror: true }], WEB, TAN),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("mil-tassets", "Groin & Hip Guards", X, "tasset", { plates: 3, len: 150, cover: 200, split: 18 }, { ...mil, tex: "quilt", texSize: 22, texDepth: 0.8 }, [], OD, WEB)),
+    withForm(peakDome(6), t("mil-pauldron", "Shoulder Guard", X, "pauldron", { shape: "shield", size: 1 }, { ...mil, tex: "quilt", texSize: 22, texDepth: 0.8 }, [{ k: "box", x: 0, y: "mid", size: 8, w: 40, len: 30, h: 4 }], OD, WEB)),
+    withForm(ridgeLimb(3), t("mil-upper", "Upper Arm Guard", X, "upperarm", { from: 0.35, to: 0.85, cover: 220 }, { ...mil }, [], OD, WEB)),
+    withForm(ridgeLimb(4), t("mil-bracer", "Forearm Guard", X, "bracer", { from: 0.08, to: 0.9, cover: 280, flareTop: 6 }, { ...mil }, [{ k: "box", x: 0, y: "L*0.5", size: 10, w: 34, len: 28, h: 8 }], OD, WEB)),
+    t("mil-hand", "Knuckle Guard", X, "handplate", {}, { edge: "roll", edgeSize: 3, lines: "vbands", lineGap: 12 }, [], BK, OD),
+    withForm(ridgeLimb(4, false), t("mil-thigh", "Thigh Rig", X, "thigh", { cover: 160 }, { ...mil }, [{ k: "box", x: 0, y: "L*0.5", size: 18, w: 50, len: 60, h: 20 }], TAN, WEB)),
+    t("mil-knee", "Knee Pad", X, "knee", { wings: 1 }, { edge: "roll", edgeSize: 4, edgeH: 1.5, tex: "quilt", texSize: 14, texDepth: 0.8 }, [], BK, OD),
+    withForm(ridgeLimb(5, false), t("mil-greave", "Shin Guard", X, "greave", { cover: 220, point: 20, flareBot: 4 }, { ...mil }, [], OD, WEB)),
+    t("mil-boot", "Combat Boot Cover", X, "boot", { cover: 300 }, { lines: "hbands", lineGap: 12, edge: "roll", edgeSize: 4 }, [], BK, TAN),
+    t("mil-toe", "Boot Toe Cap", X, "toe", {}, { edge: "roll", edgeSize: 3 }, [], BK, TAN),
+    t("mil-shield", "Riot Shield (field)", X, "shield", { shape: "tower", size: 600, curve: 1000, gap: 24 }, { lines: "inset", lineGap: 20, edge: "trim", edgeSize: 12, edgeH: 2, thick: 3 }, [], BK, GR, false),
+  ];
+}
+// more Sci-Fi (v2.7.8): original designs, armor and gear only
+function moreScifi() {
+  const W = "#e8ecf1", G = "#3a4049", A = "#ff8a1f", Cy = "#39c0ff", V = "#8f5cf0", R = "#c8202f", Gn = "#5fd38a", S = "#9aa3ad";
+  const tech = { lines: "panels", lineGap: 10, lineDepth: 0.9, glow: true, edge: "trim", edgeSize: 4, edgeH: 1.3 };
+  const X = "scifi";
+  return [
+    withForm(helmForm(10, 8, 5, 2), t("star-marine-helm", "Star Marine Helm", X, "helmet", { face: "bigvisor", faceW: 136, faceH: 46, brow: 70, lens: true, depth: 126, back: 14, round: 0.25 }, { ...tech, ridge: 3, ridgeW: 10 }, [{ k: "antenna", x: 88, y: "brow+12", len: 50 }, { k: "box", x: 80, y: "brow+34", size: 10, w: 16, len: 34, h: 10, mirror: true }], G, A, false)),
+    withForm(helmForm(12, 10, 6, 0), t("void-trooper-helm", "Void Trooper Helm", X, "helmet", { face: "eyes", faceW: 128, brow: 78, lens: true, depth: 124, back: 12, round: 0.4 }, { ...tech, lines: "chevron", lineGap: 12 }, [{ k: "fin", x: 0, y: "brow-6", len: 80, h: 14, profile: "shark", w: 4 }], W, V, false)),
+    withForm(helmForm(4, 4, 2, 6), t("mech-pilot-helm", "Mech Pilot Helm", X, "helmet", { face: "visor", faceW: 150, faceH: 30, brow: 74, lens: true, depth: 120, back: 16, round: 0.45 }, { ...tech }, [{ k: "goggles", x: 0, y: "brow+40", size: 16 }, { k: "antenna", x: 90, y: "brow+6", len: 36, mirror: true }], S, Cy, false)),
+    t("cyber-visor", "Cyber Visor", X, "mask", { style: "half" }, { thick: 2.2, lines: "inset", lineGap: 4, glow: true, edge: "bevel", edgeSize: 2 }, [], G, Gn, false),
+    t("comms-collar", "Comms Collar", X, "gorget", { spread: 1.1 }, { ...tech, lines: "hbands", lineGap: 8 }, [{ k: "antenna", x: 70, y: "mid", len: 70 }], G, A, false),
+    withForm(vChest(12, 14), t("exo-chest", "Exo-Suit Chest", X, "chest", { bottom: "v", vd: 46, side: 104 }, { ...tech, emblem: "hex", emblemSize: 22, emblemH: 2, emblemGlow: true }, [{ k: "gauge", x: 64, y: "chest-24", size: 18, mirror: true }], W, A, false)),
+    withForm(vChest(6, 0), t("reactor-chest", "Reactor Core Chest", X, "chest", { bottom: "arch", vd: 30, side: 102 }, { ...tech, emblem: "gear", emblemSize: 30, emblemH: 3, emblemGlow: true, emblemDY: 16 }, [], G, Cy, false)),
+    withForm(backForm(5), t("hover-pack", "Hover Pack", X, "back", { side: 70, drop: -100, top: 0.97 }, { ...tech }, [{ k: "thruster", x: 58, y: "L*0.3", size: 24, mirror: true }, { k: "thruster", x: 0, y: "L*0.62", size: 18 }, { k: "fin", x: 70, y: "L*0.55", len: 70, h: 18, profile: "shark", w: 4, mirror: true }], G, A, false)),
+    t("tech-belt", "Tech Belt", X, "belt", { height: 50, buckle: 70 }, { ...tech, emblem: "hex", emblemSize: 16, emblemH: 2, emblemGlow: true }, [{ k: "box", x: 80, y: "mid", size: 16, w: 30, len: 36, h: 18, mirror: true }], G, Cy, false),
+    withForm(peakDome(12), t("lamp-pauldron", "Lamp Pauldron", X, "pauldron", { shape: "tower", drop: 1.05 }, { ...tech, tex: "lames", texSize: 22, texDepth: 1.6 }, [{ k: "gauge", x: 0, y: "mid", size: 16 }], W, Cy, false)),
+    withForm(ridgeLimb(6), t("holo-bracer", "Holo Bracer", X, "bracer", { from: 0.06, to: 0.94, cover: 300, flareTop: 10 }, { ...tech }, [{ k: "gem", x: 0, y: "L*0.5", size: 12 }, { k: "box", x: 0, y: "L*0.78", size: 6, w: 40, len: 26, h: 6 }], G, Gn, false)),
+    withForm(ridgeLimb(7, false), t("exo-thigh", "Exo Thigh Plate", X, "thigh", { cover: 170 }, { ...tech, ridge: 2.5, ridgeW: 10 }, [], W, A, false)),
+    t("servo-knee", "Servo Knee", X, "knee", { wings: 1, fan: 1 }, { ...tech, lineGap: 7 }, [{ k: "gauge", x: 0, y: "mid", size: 12 }], G, A, false),
+    withForm(ridgeLimb(8, false), t("exo-greave", "Exo Greave", X, "greave", { cover: 230, point: 30, flareBot: 8 }, { ...tech }, [], W, A, false)),
+    t("grav-boot", "Grav Boot", X, "boot", { cover: 310 }, { ...tech, lineGap: 8 }, [{ k: "thruster", x: 0, y: "L*0.85", size: 14 }], G, Cy, false),
+    t("hardlight-shield", "Hard-Light Shield", X, "shield", { shape: "round", size: 460, curve: 800 }, { tex: "hex", texSize: 28, texDepth: 1.2, glow: true, edge: "trim", edgeSize: 10, edgeH: 2, thick: 3 }, [{ k: "boss", x: 0, y: 0, size: 60 }], G, V, false),
+  ];
+}
+// Traditional armor (v2.7.9): full suits, each slot covered, so "Add the whole set" dresses the
+// whole body, with detailed helmets (visors, crests, cheek guards, neck guards, rivets).
+function historicSets() {
+  const ST = "#b9c0c8", DS = "#7d848c", BR = "#b07a3a", BZ = "#a8743a", LE = "#6b4a2a", RD = "#8e1f1f", GD = "#d4a017", WH = "#e9edf2", IR = "#5e6268";
+  const plate = { edge: "roll", edgeSize: 5, edgeH: 1.8, rivets: true, rivetInset: 7, rivetGap: 22 };
+  const lames = (size = 22) => ({ ...plate, tex: "lames", texSize: size, texDepth: 2.2 });
+  const M = "medieval", R = "roman", G = "greek", N = "norse";
+  return [
+    // ---- Medieval plate: a full harness
+    withForm(helmForm(8, 6, 6, 4), t("med-close", "Close Helm", M, "helmet", { face: "slit", faceW: 120, brow: 74, depth: 126, back: 12, round: 0.3 }, { ...plate, ridge: 3, ridgeW: 10, ridgeSharp: true, lines: "inset", lineGap: 14 }, [{ k: "fin", path: "sagittal", from: "brow-40", to: "brow+40", h: 12, profile: "rounded", w: 4 }, { k: "boss", x: 64, y: "brow+22", size: 8, mirror: true }], ST, GD)),
+    withForm(helmForm(2, 2, 4, 0), t("med-great", "Great Helm", M, "helmet", { face: "slit", faceW: 130, brow: 70, depth: 128, back: 20, round: 0.05, tall: 1.08 }, { ...plate, lines: "vbands", lineGap: 40, lineDepth: 1 }, [{ k: "plate", x: 0, y: "brow+34", shape: "cross", size: 30, w: 2, accent: true }], ST, GD, false)),
+    withForm(helmForm(10, 4, 2, 22), t("med-bascinet", "Bascinet with Visor", M, "helmet", { face: "visor", faceW: 126, faceH: 16, brow: 76, depth: 124, back: 14, round: 0.2, tall: 1.06 }, { ...plate, ridge: 3, ridgeW: 8, ridgeSharp: true, lines: "chevron", lineGap: 10, lineDepth: 0.8 }, [{ k: "fin", path: "sagittal", from: "brow-10", to: "brow+60", h: 8, profile: "shark", w: 4 }, { k: "gem", x: 0, y: "brow+40", size: 4, count: 5, rowAcross: true, step: 12 }], ST, GD, false)),
+    withForm(helmForm(0, 4, 2, 6), t("med-sallet", "Sallet", M, "helmet", { face: "visor", faceW: 140, faceH: 14, brow: 72, depth: 118, back: 40, round: 0.5 }, { ...plate, ridge: 2.5, ridgeW: 12 }, [{ k: "fin", path: "sagittal", from: "brow-30", to: "brow+70", h: 9, profile: "rounded", w: 4 }], DS, GD, false)),
+    withForm(helmForm(4, 8, 4, 4), t("med-barbute", "Barbute", M, "helmet", { face: "tvisor", faceW: 110, brow: 70, depth: 122, back: 12, round: 0.45 }, { ...plate, ridge: 2.5, ridgeW: 10, ridgeSharp: true }, [], ST, GD, false)),
+    withForm(helmForm(6, 4, 6, 10), t("med-armet", "Armet with Plume", M, "helmet", { face: "slit", faceW: 116, brow: 72, depth: 124, back: 12, round: 0.25 }, { ...plate, ridge: 3, ridgeW: 8 }, [{ k: "fin", path: "sagittal", from: "brow+20", to: "brow+80", h: 60, profile: "mohawk", w: 14, accent: true }], ST, RD, false)),
+    t("med-bevor", "Bevor (chin guard)", M, "mask", { style: "lower" }, { ...plate, tex: "lames", texSize: 14, texDepth: 1.6 }, [], ST, GD, false),
+    t("med-gorget", "Plate Gorget", M, "gorget", { spread: 1.2, cover: 280 }, lames(14), [], ST, GD),
+    withForm(vChest(12, 6), t("med-breast", "Breastplate", M, "chest", { bottom: "arch", vd: 26, side: 104 }, { ...plate, ridge: 3, ridgeW: 14, ridgeSharp: true, emblem: "crest", emblemSize: 30, emblemH: 1.6 }, [], ST, GD)),
+    withForm(backForm(5), t("med-back", "Backplate", M, "back", { bottom: "straight" }, { ...plate, ridge: 2.5, ridgeW: 10 }, [], ST, GD)),
+    t("med-fauld", "Fauld (waist lames)", M, "belt", { height: 70 }, lames(16), [{ k: "gem", x: 0, y: "mid", size: 8 }], ST, GD),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("med-tassets", "Tassets", M, "tasset", { plates: 2, len: 200, cover: 180, split: 30 }, lames(24), [], ST, GD)),
+    withForm(peakDome(10), t("med-pauldron", "Layered Pauldron", M, "pauldron", { shape: "tower", drop: 1.2, size: 1.1 }, lames(18), [{ k: "fin", x: 0, y: "mid-20", len: 70, h: 14, profile: "rounded", w: 4 }], ST, GD)),
+    withForm(ridgeLimb(3), t("med-rerebrace", "Rerebrace", M, "upperarm", { from: 0.32, to: 0.88, cover: 240 }, plate, [], ST, GD)),
+    withForm(ridgeLimb(4), t("med-vambrace", "Vambrace", M, "bracer", { from: 0.04, to: 0.92, cover: 300, flareTop: 14 }, { ...plate, ridge: 2, ridgeW: 8 }, [], ST, GD)),
+    t("med-gauntlet", "Gauntlet Plate", M, "handplate", {}, lames(9), [{ k: "spike", x: 0, y: "mid", size: 4, len: 8, count: 4, rowAcross: true, step: 14 }], ST, GD),
+    withForm(ridgeLimb(5, false), t("med-cuisse", "Cuisse", M, "thigh", { cover: 180 }, { ...plate, ridge: 2.5, ridgeW: 10 }, [], ST, GD)),
+    t("med-poleyn", "Poleyn (knee)", M, "knee", { wings: 1, fan: 1 }, { ...plate, ridge: 2, ridgeW: 8 }, [{ k: "boss", x: 0, y: "mid", size: 10 }], ST, GD),
+    withForm(ridgeLimb(6, false), t("med-greave", "Greave", M, "greave", { cover: 240, point: 30, flareBot: 6 }, { ...plate, ridge: 2.5, ridgeW: 10 }, [], ST, GD)),
+    t("med-sabaton", "Sabaton", M, "boot", { cover: 300 }, lames(14), [], ST, GD),
+    t("med-toe", "Sabaton Toe", M, "toe", {}, lames(10), [], ST, GD),
+    t("med-heater", "Heater Shield", M, "shield", { shape: "heater", size: 520, curve: 900 }, { edge: "trim", edgeSize: 14, edgeH: 2, thick: 3, emblem: "crest", emblemSize: 150, emblemH: 2 }, [], WH, RD),
+    t("med-kite", "Kite Shield", M, "shield", { shape: "kite", size: 600, curve: 800 }, { edge: "trim", edgeSize: 12, edgeH: 2, thick: 3, rivets: true, rivetInset: 10, rivetGap: 30 }, [{ k: "boss", x: 0, y: -60, size: 40 }], RD, GD, false),
+    // ---- Roman legion
+    withForm(helmForm(0, 16, 2, 4), t("rom-galea", "Galea (legionary helmet)", R, "helmet", { face: "open", faceW: 120, brow: 66, depth: 112, back: 42, round: 0.5, gap: 12 }, { edge: "roll", edgeSize: 6, edgeH: 2, rivets: true, rivetInset: 6, rivetGap: 18, ridge: 2, ridgeW: 10 }, [{ k: "plate", x: 0, y: "brow-8", shape: "crescent", size: 70, w: 3, accent: true }, { k: "boss", x: 74, y: "brow+30", size: 7, mirror: true }, { k: "fin", path: "sagittal", from: "brow-10", to: "brow+60", h: 40, profile: "mohawk", w: 12, accent: true }], DS, RD)),
+    withForm(helmForm(0, 16, 2, 4), t("rom-centurion", "Centurion Helmet", R, "helmet", { face: "open", faceW: 120, brow: 66, depth: 112, back: 42, round: 0.5, gap: 12 }, { edge: "roll", edgeSize: 6, edgeH: 2, rivets: true, rivetInset: 6, rivetGap: 18 }, [{ k: "fin", y: "brow+40", x: 0, across: true, len: 220, h: 50, profile: "rounded", w: 14, accent: true }], BR, RD, false)),
+    t("rom-focale", "Neck Scarf Guard", R, "gorget", { spread: 1, cover: 240 }, { edge: "roll", edgeSize: 4, tex: "quilt", texSize: 18, texDepth: 0.6 }, [], RD, GD),
+    withForm(vChest(4, 0), t("rom-segmentata", "Lorica Segmentata", R, "chest", { bottom: "straight", side: 106 }, { tex: "lames", texSize: 26, texDepth: 2.6, edge: "roll", edgeSize: 4, edgeH: 1.6, rivets: true, rivetInset: 6, rivetGap: 30 }, [{ k: "boss", x: 50, y: "chest-20", size: 6, mirror: true }], DS, BR)),
+    withForm(backForm(3), t("rom-back", "Segmentata Back", R, "back", { bottom: "straight" }, { tex: "lames", texSize: 26, texDepth: 2.6, edge: "roll", edgeSize: 4, edgeH: 1.6 }, [], DS, BR)),
+    t("rom-cingulum", "Cingulum Belt", R, "belt", { height: 48, buckle: 50 }, { edge: "trim", edgeSize: 3, emblem: "star", emblemSize: 14, emblemH: 1.5 }, [{ k: "gem", x: 30, y: "mid", size: 5, count: 6, rowAcross: true, step: 26, mirror: true }], LE, BR),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("rom-pteruges", "Pteruges (leather strips)", R, "tasset", { plates: 7, len: 180, cover: 280, split: 6 }, { edge: "trim", edgeSize: 3, lines: "vbands", lineGap: 14, lineDepth: 0.8 }, [], LE, BR)),
+    withForm(peakDome(4), t("rom-shoulder", "Segmented Shoulder", R, "pauldron", { shape: "tower", drop: 1.15 }, { tex: "lames", texSize: 18, texDepth: 2.2, edge: "roll", edgeSize: 4, rivets: true, rivetInset: 5, rivetGap: 24 }, [], DS, BR)),
+    withForm(ridgeLimb(2), t("rom-upper", "Upper Arm Lames", R, "upperarm", { from: 0.32, to: 0.85, cover: 230 }, { tex: "lames", texSize: 16, texDepth: 2, edge: "roll", edgeSize: 3 }, [], DS, BR)),
+    withForm(ridgeLimb(2), t("rom-manica", "Manica (arm guard)", R, "bracer", { from: 0.04, to: 0.92, cover: 300, flareTop: 10 }, { tex: "lames", texSize: 14, texDepth: 2, edge: "roll", edgeSize: 3 }, [], DS, BR)),
+    t("rom-hand", "Hand Guard", R, "handplate", {}, { edge: "roll", edgeSize: 3, tex: "lames", texSize: 10, texDepth: 1.4 }, [], DS, BR),
+    withForm(ridgeLimb(2, false), t("rom-thigh", "Thigh Guard", R, "thigh", { cover: 150 }, { edge: "roll", edgeSize: 4, lines: "hbands", lineGap: 20 }, [], LE, BR)),
+    t("rom-knee", "Knee Guard", R, "knee", { wings: 1 }, { edge: "roll", edgeSize: 4 }, [], BR, BR),
+    withForm(ridgeLimb(4, false), t("rom-ocrea", "Ocrea (greave)", R, "greave", { cover: 230, point: 20, flareBot: 4 }, { edge: "roll", edgeSize: 5, ridge: 2, ridgeW: 10 }, [], BR, GD),
+    ),
+    t("rom-caligae", "Caligae (sandal boots)", R, "boot", { cover: 280 }, { lines: "vbands", lineGap: 16, lineDepth: 1, edge: "trim", edgeSize: 3 }, [], LE, BR),
+    t("rom-toe", "Sandal Toe", R, "toe", {}, { lines: "hbands", lineGap: 10, edge: "trim", edgeSize: 2 }, [], LE, BR),
+    t("rom-scutum", "Scutum (curved shield)", R, "shield", { shape: "tower", size: 640, curve: 520, gap: 24 }, { edge: "trim", edgeSize: 14, edgeH: 2, thick: 3, emblem: "bolt", emblemSize: 120, emblemH: 2, lines: "inset", lineGap: 40 }, [{ k: "boss", x: 0, y: 0, size: 50 }], RD, GD),
+    // ---- Ancient Greek (bronze)
+    withForm(helmForm(12, 10, 6, 4), t("grk-corinthian", "Corinthian Helmet", G, "helmet", { face: "tvisor", faceW: 116, brow: 72, depth: 124, back: 14, round: 0.35 }, { edge: "roll", edgeSize: 5, edgeH: 1.6, lines: "inset", lineGap: 10, lineDepth: 0.8 }, [{ k: "fin", path: "sagittal", from: "brow-30", to: "brow+80", h: 50, profile: "mohawk", w: 16, accent: true }], BZ, RD)),
+    withForm(helmForm(0, 12, 4, 4), t("grk-attic", "Attic Helmet", G, "helmet", { face: "open", faceW: 126, brow: 68, depth: 116, back: 24, round: 0.45, gap: 12 }, { edge: "roll", edgeSize: 5, edgeH: 1.6, emblem: "star", emblemSize: 14, emblemH: 1.4 }, [{ k: "plate", x: 0, y: "brow-10", shape: "crescent", size: 60, w: 2, accent: true }, { k: "fin", path: "sagittal", from: "brow-10", to: "brow+60", h: 34, profile: "rounded", w: 12, accent: true }], BZ, GD, false)),
+    withForm(helmForm(0, 8, 4, 2), t("grk-chalcidian", "Chalcidian Helmet", G, "helmet", { face: "eyes", faceW: 126, brow: 74, depth: 118, back: 18, round: 0.4 }, { edge: "roll", edgeSize: 5, edgeH: 1.6, ridge: 2, ridgeW: 10 }, [{ k: "horn", x: 60, y: "brow+20", size: 6, len: 40, curl: 40, tilt: 20, mirror: true }], BZ, GD, false)),
+    t("grk-gorget", "Bronze Collar", G, "gorget", { spread: 1.1 }, { edge: "roll", edgeSize: 4, lines: "hbands", lineGap: 12 }, [], BZ, GD),
+    withForm(vChest(6, 10), t("grk-cuirass", "Muscle Cuirass", G, "chest", { bottom: "arch", vd: 34, side: 104, neck: 66 }, { muscle: 1, edge: "roll", edgeSize: 5, edgeH: 1.8 }, [], BZ, GD)),
+    withForm(backForm(4), t("grk-back", "Cuirass Back", G, "back", {}, { muscle: 0.5, edge: "roll", edgeSize: 5, edgeH: 1.8 }, [], BZ, GD)),
+    t("grk-belt", "Zoma Belt", G, "belt", { height: 40 }, { edge: "roll", edgeSize: 3, lines: "chevron", lineGap: 14 }, [], BZ, GD),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("grk-pteruges", "Linen Pteruges", G, "tasset", { plates: 8, len: 170, cover: 290, split: 5 }, { edge: "trim", edgeSize: 3 }, [], WH, RD)),
+    withForm(peakDome(6), t("grk-shoulder", "Shoulder Flap", G, "pauldron", { shape: "shield" }, { edge: "roll", edgeSize: 4, emblem: "star", emblemSize: 16, emblemH: 1.4 }, [], WH, RD)),
+    withForm(ridgeLimb(2), t("grk-upper", "Upper Arm Guard", G, "upperarm", { from: 0.35, to: 0.85, cover: 200 }, { edge: "roll", edgeSize: 4 }, [], BZ, GD)),
+    withForm(ridgeLimb(3), t("grk-bracer", "Bronze Bracer", G, "bracer", { from: 0.1, to: 0.9, cover: 280, flareTop: 8 }, { edge: "roll", edgeSize: 4, muscle: 0.4 }, [], BZ, GD)),
+    t("grk-hand", "Bronze Hand Plate", G, "handplate", {}, { edge: "roll", edgeSize: 3 }, [], BZ, GD),
+    withForm(ridgeLimb(3, false), t("grk-thigh", "Thigh Guard", G, "thigh", { cover: 150 }, { edge: "roll", edgeSize: 4, muscle: 0.4 }, [], BZ, GD)),
+    t("grk-knee", "Knee Cap", G, "knee", { wings: 1 }, { edge: "roll", edgeSize: 4 }, [], BZ, GD),
+    withForm(ridgeLimb(6, false), t("grk-greave", "Bronze Greave", G, "greave", { cover: 260, point: 10, flareBot: 4 }, { edge: "roll", edgeSize: 5, muscle: 0.8 }, [], BZ, GD)),
+    t("grk-boot", "Leather Boot", G, "boot", { cover: 270 }, { edge: "trim", edgeSize: 3, lines: "vbands", lineGap: 18 }, [], LE, BZ),
+    t("grk-toe", "Boot Toe", G, "toe", {}, { edge: "trim", edgeSize: 2 }, [], LE, BZ),
+    t("grk-hoplon", "Hoplon (round shield)", G, "shield", { size: 620, curve: 700 }, { edge: "roll", edgeSize: 18, edgeH: 3, thick: 3, emblem: "star", emblemSize: 180, emblemH: 2 }, [], BZ, RD),
+    // ---- Norse
+    withForm(helmForm(0, 4, 4, 6), t("nor-spectacle", "Spectacle Helmet", N, "helmet", { face: "open", faceW: 130, brow: 64, depth: 108, back: 12, round: 0.6, gap: 10 }, { ridge: 3, ridgeW: 12, edge: "roll", edgeSize: 4, rivets: true, rivetInset: 6, rivetGap: 18, lines: "vbands", lineGap: 46, lineDepth: 1.2 }, [{ k: "goggles", x: 28, y: "brow+8", size: 20, mirror: true }], IR, BR)),
+    withForm(helmForm(0, 2, 2, 10), t("nor-nasal", "Nasal Helmet", N, "helmet", { face: "open", faceW: 134, brow: 62, depth: 104, back: 10, round: 0.4, gap: 10 }, { ridge: 3, ridgeW: 10, ridgeSharp: true, edge: "roll", edgeSize: 5, rivets: true, rivetInset: 6, rivetGap: 20 }, [{ k: "plate", x: 0, y: "brow+18", shape: "triangle", size: 22, w: 3, rot: 180 }], IR, BR, false)),
+    withForm(helmForm(0, 4, 4, 6), t("nor-horned", "Horned Helm (saga style)", N, "helmet", { face: "open", faceW: 130, brow: 66, depth: 108, back: 14, round: 0.6, gap: 10 }, { ridge: 3, ridgeW: 12, edge: "roll", edgeSize: 4, rivets: true, rivetInset: 6, rivetGap: 18 }, [{ k: "horn", x: 70, y: "brow-30", size: 12, len: 110, curl: 70, tilt: 30, mirror: true, accent: true }], IR, "#e8dcc0", false)),
+    t("nor-collar", "Fur Collar", N, "gorget", { spread: 1.3, cover: 300 }, { tex: "scales", texSize: 10, texDepth: 1.6, edge: "roll", edgeSize: 4 }, [], "#7a5a3a", "#c9b38a"),
+    withForm(vChest(4, 0), t("nor-lamellar", "Lamellar Vest", N, "chest", { bottom: "straight", side: 104 }, { tex: "scales", texSize: 14, texDepth: 1.6, edge: "trim", edgeSize: 5 }, [], IR, BR)),
+    withForm(backForm(2), t("nor-back", "Lamellar Back", N, "back", { bottom: "straight" }, { tex: "scales", texSize: 14, texDepth: 1.6, edge: "trim", edgeSize: 5 }, [], IR, BR)),
+    t("nor-belt", "Leather Belt", N, "belt", { height: 46, buckle: 56 }, { edge: "trim", edgeSize: 3, emblem: "gear", emblemSize: 14, emblemH: 1.4 }, [{ k: "box", x: 90, y: "mid", size: 16, w: 30, len: 40, h: 18, mirror: true }], LE, BR),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("nor-skirt", "Mail Skirt", N, "tasset", { plates: 3, len: 210, cover: 260, split: 10 }, { tex: "scales", texSize: 8, texDepth: 1.2, edge: "trim", edgeSize: 3 }, [], IR, BR)),
+    withForm(peakDome(6), t("nor-shoulder", "Shoulder Guard", N, "pauldron", { shape: "shield" }, { tex: "scales", texSize: 12, texDepth: 1.4, edge: "roll", edgeSize: 4 }, [], IR, BR)),
+    withForm(ridgeLimb(2), t("nor-upper", "Leather Arm Wrap", N, "upperarm", { from: 0.35, to: 0.85, cover: 220 }, { lines: "hbands", lineGap: 16, edge: "trim", edgeSize: 3 }, [], LE, BR)),
+    withForm(ridgeLimb(3), t("nor-bracer", "Leather Bracer", N, "bracer", { from: 0.06, to: 0.92, cover: 290, flareTop: 8 }, { lines: "chevron", lineGap: 14, edge: "trim", edgeSize: 4, rivets: true, rivetInset: 5, rivetGap: 22 }, [], LE, BR)),
+    t("nor-hand", "Hand Wrap", N, "handplate", {}, { lines: "hbands", lineGap: 10, edge: "trim", edgeSize: 2 }, [], LE, BR),
+    withForm(ridgeLimb(2, false), t("nor-thigh", "Thigh Wrap", N, "thigh", { cover: 160 }, { lines: "chevron", lineGap: 18, edge: "trim", edgeSize: 3 }, [], LE, BR)),
+    t("nor-knee", "Knee Cop", N, "knee", { wings: 1 }, { edge: "roll", edgeSize: 4, rivets: true, rivetInset: 5, rivetGap: 16 }, [], IR, BR),
+    withForm(ridgeLimb(3, false), t("nor-greave", "Leg Wrap Greave", N, "greave", { cover: 250, point: 10 }, { lines: "chevron", lineGap: 16, edge: "trim", edgeSize: 3 }, [], LE, BR)),
+    t("nor-boot", "Fur Boot", N, "boot", { cover: 300 }, { tex: "scales", texSize: 10, texDepth: 1.4, edge: "roll", edgeSize: 4 }, [], "#7a5a3a", "#c9b38a"),
+    t("nor-toe", "Boot Toe", N, "toe", {}, { edge: "roll", edgeSize: 3 }, [], LE, BR),
+    t("nor-round", "Round Shield", N, "shield", { size: 640, curve: 1400 }, { edge: "trim", edgeSize: 14, edgeH: 2, thick: 3, lines: "vbands", lineGap: 60, lineDepth: 1 }, [{ k: "boss", x: 0, y: 0, size: 60 }], "#c8202f", GD),
+  ];
+}
+// Space Opera and Superhero Armor (v2.7.10): original, detailed designs in the spirit of space
+// adventure films (troopers, hunters, pilots, dark knights, droid plating) and comic-book hero
+// suits (powered armor, shield heroes, thunder armor, panther suits). No film or comic designs
+// are copied, and as everywhere in CosForge there are no firearms or other weapons.
+function spaceOperaSet() {
+  const WH = "#eef0f2", BK = "#26282c", GY = "#7d848c", GR = "#5e6a4c", TN = "#b59a6a", RD = "#9c1c20", GD = "#c9a23a", CP = "#a8653a", BL = "#3a6ea8";
+  const tr = { lines: "panels", lineGap: 12, lineDepth: 0.9, edge: "trim", edgeSize: 4, edgeH: 1.3, ridge: 2.5, ridgeW: 10 };
+  const X = "spaceop";
+  return [
+    // ---- Galactic Trooper: a full white suit with dark joints and vents
+    withForm(helmForm(12, 10, 6, 4), t("so-trooper-helm", "Galactic Trooper Helmet", X, "helmet", { face: "eyes", faceW: 126, brow: 76, lens: true, depth: 126, back: 12, round: 0.35 }, { ...tr, ridgeSharp: true }, [{ k: "box", x: 34, y: "brow+44", size: 8, w: 14, len: 18, h: 6, mirror: true }, { k: "gem", x: 0, y: "brow+52", size: 4, count: 5, rowAcross: true, step: 8 }, { k: "fin", path: "sagittal", from: "brow-30", to: "brow+10", h: 6, profile: "rounded", w: 8 }, { k: "boss", x: 82, y: "brow+28", size: 9, mirror: true }], WH, BK)),
+    t("so-trooper-collar", "Trooper Neck Seal", X, "gorget", { spread: 1, cover: 260 }, { lines: "hbands", lineGap: 7, edge: "trim", edgeSize: 3 }, [], BK, WH),
+    withForm(vChest(10, 8), t("so-trooper-chest", "Trooper Chest Plate", X, "chest", { bottom: "straight", side: 104 }, { ...tr, emblem: "hex", emblemSize: 14, emblemH: 1.5 }, [{ k: "box", x: 0, y: "waist+70", size: 14, w: 70, len: 26, h: 8 }, { k: "gem", x: 40, y: "chest-12", size: 5, count: 3, step: 10, mirror: true }], WH, BK)),
+    withForm(backForm(4), t("so-trooper-back", "Trooper Back Plate", X, "back", { bottom: "straight" }, { ...tr }, [{ k: "box", x: 0, y: "L*0.55", size: 20, w: 90, len: 60, h: 18 }], WH, BK)),
+    t("so-trooper-belt", "Trooper Utility Belt", X, "belt", { height: 54, buckle: 70 }, { lines: "vbands", lineGap: 20, edge: "trim", edgeSize: 3, emblem: "diamond", emblemSize: 14, emblemH: 1.5 }, [{ k: "box", x: 70, y: "mid", size: 14, w: 26, len: 34, h: 16, count: 2, rowAcross: true, step: 34, mirror: true }], WH, BK),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("so-trooper-tassets", "Trooper Hip Plates", X, "tasset", { plates: 2, len: 150, cover: 150, split: 50 }, { ...tr }, [], WH, BK)),
+    withForm(peakDome(6), t("so-trooper-pauldron", "Trooper Shoulder Bell", X, "pauldron", { shape: "shield", size: 1 }, { ...tr }, [], WH, BK)),
+    withForm(ridgeLimb(4), t("so-trooper-upper", "Trooper Bicep Plate", X, "upperarm", { from: 0.36, to: 0.86, cover: 220 }, { ...tr }, [], WH, BK)),
+    withForm(ridgeLimb(4), t("so-trooper-bracer", "Trooper Forearm", X, "bracer", { from: 0.06, to: 0.9, cover: 300, flareTop: 8 }, { ...tr }, [{ k: "box", x: 0, y: "L*0.6", size: 6, w: 30, len: 22, h: 5 }], WH, BK)),
+    t("so-trooper-hand", "Trooper Glove Plate", X, "handplate", {}, { lines: "vbands", lineGap: 10, edge: "trim", edgeSize: 2 }, [], BK, WH),
+    withForm(ridgeLimb(5, false), t("so-trooper-thigh", "Trooper Thigh Plate", X, "thigh", { cover: 170 }, { ...tr }, [{ k: "box", x: 0, y: "L*0.4", size: 10, w: 44, len: 30, h: 8 }], WH, BK)),
+    t("so-trooper-knee", "Trooper Knee Plate", X, "knee", { wings: 1, fan: 1 }, { ...tr, lineGap: 7 }, [], WH, BK),
+    withForm(ridgeLimb(6, false), t("so-trooper-shin", "Trooper Shin Plate", X, "greave", { cover: 240, point: 20, flareBot: 6 }, { ...tr }, [], WH, BK)),
+    t("so-trooper-boot", "Trooper Boot", X, "boot", { cover: 300 }, { lines: "hbands", lineGap: 10, edge: "trim", edgeSize: 3 }, [], WH, BK),
+    t("so-trooper-toe", "Trooper Toe Cap", X, "toe", {}, { edge: "trim", edgeSize: 2 }, [], WH, BK),
+    // ---- more helmets and parts
+    withForm(helmForm(4, 6, 4, 2), t("so-hunter-helm", "Bounty Hunter Helmet", X, "helmet", { face: "visor", faceW: 138, faceH: 22, brow: 76, lens: true, depth: 124, back: 14, round: 0.25 }, { edge: "trim", edgeSize: 5, edgeH: 1.6, rivets: true, rivetInset: 7, rivetGap: 24, tex: "hammered", texSize: 8, texDepth: 0.5 }, [{ k: "gauge", x: 92, y: "brow+10", size: 14 }, { k: "plate", x: 0, y: "brow-20", shape: "triangle", size: 22, w: 2, rot: 180, accent: true }], GR, RD, false)),
+    withForm(vChest(6, 0), t("so-hunter-chest", "Hunter Chest Plate", X, "chest", { bottom: "arch", vd: 26, side: 100 }, { edge: "trim", edgeSize: 5, tex: "hammered", texSize: 10, texDepth: 0.6, emblem: "crest", emblemSize: 20, emblemH: 1.5 }, [{ k: "box", x: 60, y: "waist+40", size: 12, w: 22, len: 40, h: 14, count: 3, rowAcross: true, step: 26 }], GR, RD, false)),
+    withForm(peakDome(8), t("so-hunter-pauldron", "Hunter Shoulder Plate", X, "pauldron", { shape: "shield" }, { edge: "trim", edgeSize: 4, tex: "hammered", texSize: 10, texDepth: 0.6 }, [{ k: "plate", x: 0, y: "mid", shape: "crest", size: 22, w: 1.5, accent: true }], GR, RD, false)),
+    withForm(ridgeLimb(4), t("so-hunter-gauntlet", "Hunter Gauntlet", X, "bracer", { from: 0.04, to: 0.94, cover: 300, flareTop: 12 }, { edge: "trim", edgeSize: 4, lines: "inset", lineGap: 8 }, [{ k: "box", x: 0, y: "L*0.55", size: 8, w: 36, len: 30, h: 8 }, { k: "gem", x: -12, y: "L*0.55", size: 3, count: 4, step: 7 }], GR, RD, false)),
+    withForm(helmForm(2, 4, 2, 6), t("so-pilot-helm", "Starfighter Pilot Helmet", X, "helmet", { face: "open", faceW: 140, brow: 64, depth: 112, back: 16, round: 0.5, gap: 14 }, { edge: "trim", edgeSize: 5, edgeH: 1.5, emblem: "star", emblemSize: 14, emblemH: 1.4 }, [{ k: "fin", path: "sagittal", from: "brow-30", to: "brow+40", h: 8, profile: "rounded", w: 30, accent: true }, { k: "goggles", x: 0, y: "brow-14", size: 24 }, { k: "box", x: 80, y: "brow+36", size: 10, w: 20, len: 28, h: 10, mirror: true }], WH, "#e06a1f", false)),
+    withForm(vChest(2, 0), t("so-pilot-vest", "Pilot Life-Support Vest", X, "chest", { bottom: "straight", side: 96 }, { lines: "vbands", lineGap: 26, edge: "trim", edgeSize: 4 }, [{ k: "box", x: 0, y: "chest-10", size: 20, w: 80, len: 50, h: 22 }, { k: "gem", x: -20, y: "chest-10", size: 5, count: 4, rowAcross: true, step: 13 }], "#e06a1f", WH, false)),
+    withForm(helmForm(14, 12, 8, 4), t("so-dark-helm", "Dark Knight Lord Helmet", X, "helmet", { face: "eyes", faceW: 120, brow: 78, lens: true, depth: 128, back: 34, round: 0.6, tall: 1.04 }, { edge: "roll", edgeSize: 5, edgeH: 1.8, ridge: 3, ridgeW: 12, ridgeSharp: true }, [{ k: "box", x: 0, y: "brow+56", size: 10, w: 40, len: 22, h: 8 }], BK, "#4a4d52", false)),
+    t("so-dark-mask", "Dark Knight Breath Mask", X, "mask", { style: "lower" }, { thick: 2.4, lines: "vbands", lineGap: 5, edge: "roll", edgeSize: 3 }, [], BK, GY, false),
+    withForm(vChest(8, 6), t("so-dark-chest", "Dark Knight Chest Armor", X, "chest", { bottom: "arch", vd: 30, side: 104 }, { edge: "roll", edgeSize: 5, edgeH: 1.6, ridge: 2, ridgeW: 10 }, [{ k: "box", x: 0, y: "chest-20", size: 22, w: 90, len: 60, h: 10 }, { k: "gem", x: -24, y: "chest-28", size: 5, count: 4, rowAcross: true, step: 16, accent: true }, { k: "gem", x: -16, y: "chest-10", size: 4, count: 3, rowAcross: true, step: 16 }], BK, RD, false)),
+    withForm(ridgeLimb(3), t("so-dark-gauntlet", "Dark Knight Gauntlet", X, "bracer", { from: 0.04, to: 0.92, cover: 300, flareTop: 22 }, { edge: "roll", edgeSize: 5, lines: "hbands", lineGap: 18 }, [], BK, GY, false)),
+    withForm(helmForm(6, 4, 4, 2), t("so-scout-helm", "Forest Scout Helmet", X, "helmet", { face: "visor", faceW: 130, faceH: 26, brow: 72, lens: true, depth: 118, back: 30, round: 0.55 }, { ...tr, lineGap: 16 }, [{ k: "box", x: 0, y: "brow+40", size: 12, w: 30, len: 34, h: 12 }], WH, BK, false)),
+    withForm(helmForm(0, 0, 2, 0), t("so-droid-helm", "Protocol Droid Head", X, "helmet", { face: "open", faceW: 90, brow: 70, depth: 120, back: 6, round: 0.9, gap: 6 }, { edge: "roll", edgeSize: 4, lines: "hbands", lineGap: 22, lineDepth: 1 }, [{ k: "goggles", x: 26, y: "brow+6", size: 16, mirror: true }, { k: "plate", x: 0, y: "brow+44", shape: "circle", size: 14, w: 2, accent: true }], GD, CP, false)),
+    withForm(vChest(2, 0), t("so-droid-chest", "Droid Torso Plating", X, "chest", { bottom: "straight", side: 104 }, { lines: "grid", lineGap: 24, edge: "roll", edgeSize: 4, rivets: true, rivetInset: 8, rivetGap: 26 }, [{ k: "gauge", x: 0, y: "chest-20", size: 26 }, { k: "box", x: 0, y: "waist+40", size: 16, w: 60, len: 30, h: 8 }], GD, CP, false)),
+    t("so-energy-shield", "Hard-Light Wrist Shield", X, "shield", { shape: "round", size: 420, curve: 700 }, { tex: "hex", texSize: 26, texDepth: 1.2, glow: true, edge: "trim", edgeSize: 10, edgeH: 2, thick: 3 }, [{ k: "boss", x: 0, y: 0, size: 40 }], BL, WH, false),
+  ];
+}
+function superheroSet() {
+  const RD = "#b3141d", GD = "#d8a92b", BL = "#1f3f8f", SV = "#c7ccd2", BK = "#1c1d21", PU = "#5b3a8c", GM = "#4f555c", WH = "#eef0f2", CY = "#39c0ff";
+  const suit = { lines: "panels", lineGap: 11, lineDepth: 0.9, edge: "trim", edgeSize: 4, edgeH: 1.3, ridge: 2.5, ridgeW: 9, ridgeSharp: true };
+  const X = "superhero";
+  return [
+    // ---- Reactor Suit: a full powered-armor suit
+    withForm(helmForm(12, 10, 6, 4), t("sh-reactor-helm", "Reactor Suit Helmet", X, "helmet", { face: "eyes", faceW: 118, brow: 76, lens: true, depth: 126, back: 10, round: 0.3 }, { ...suit, emblemGlow: true }, [{ k: "plate", x: 0, y: "brow-16", shape: "crest", size: 22, w: 1.5, accent: true }, { k: "fin", path: "sagittal", from: "brow-40", to: "brow+10", h: 5, profile: "rounded", w: 30 }, { k: "gem", x: 66, y: "brow+30", size: 5, mirror: true, accent: true }], RD, GD)),
+    t("sh-reactor-collar", "Reactor Collar", X, "gorget", { spread: 1.1 }, { ...suit, lines: "hbands", lineGap: 8 }, [], RD, GD),
+    withForm(vChest(12, 10), t("sh-reactor-chest", "Reactor Chest Plate", X, "chest", { bottom: "v", vd: 40, side: 104 }, { ...suit, emblem: "circle", emblemSize: 26, emblemH: 2.5, emblemGlow: true, emblemDY: 10 }, [{ k: "gem", x: 0, y: "emblemY", size: 11, accent: true }], RD, GD)),
+    withForm(backForm(6), t("sh-reactor-back", "Reactor Back Plate", X, "back", {}, { ...suit }, [{ k: "thruster", x: 46, y: "chest-50", size: 14, mirror: true }], RD, GD)),
+    t("sh-reactor-belt", "Reactor Waist", X, "belt", { height: 50, buckle: 60 }, { ...suit, lines: "vbands", lineGap: 16, emblem: "hex", emblemSize: 14, emblemH: 1.5 }, [], GD, RD),
+    withForm(fp(7, 6, true, () => [0, 0, 0]), t("sh-reactor-hips", "Reactor Hip Plates", X, "tasset", { plates: 2, len: 160, cover: 160, split: 40 }, { ...suit }, [], RD, GD)),
+    withForm(peakDome(12), t("sh-reactor-pauldron", "Reactor Shoulder", X, "pauldron", { shape: "tower", drop: 1.05 }, { ...suit, tex: "lames", texSize: 20, texDepth: 1.6 }, [], RD, GD)),
+    withForm(ridgeLimb(5), t("sh-reactor-upper", "Reactor Arm Plate", X, "upperarm", { from: 0.32, to: 0.88, cover: 230 }, { ...suit }, [], RD, GD)),
+    withForm(ridgeLimb(5), t("sh-reactor-bracer", "Reactor Gauntlet", X, "bracer", { from: 0.04, to: 0.95, cover: 310, flareTop: 12 }, { ...suit }, [{ k: "gem", x: 0, y: "L*0.85", size: 7, accent: true }], RD, GD)),
+    t("sh-reactor-hand", "Reactor Palm Plate", X, "handplate", {}, { ...suit, lineGap: 6 }, [{ k: "gem", x: 0, y: 0, size: 8, accent: true }], RD, GD),
+    withForm(ridgeLimb(7, false), t("sh-reactor-thigh", "Reactor Thigh Plate", X, "thigh", { cover: 175 }, { ...suit }, [], RD, GD)),
+    t("sh-reactor-knee", "Reactor Knee", X, "knee", { wings: 1, fan: 1 }, { ...suit, lineGap: 7 }, [], GD, RD),
+    withForm(ridgeLimb(8, false), t("sh-reactor-shin", "Reactor Shin", X, "greave", { cover: 240, point: 34, flareBot: 8 }, { ...suit }, [], RD, GD)),
+    t("sh-reactor-boot", "Reactor Boot", X, "boot", { cover: 310 }, { ...suit, lineGap: 9 }, [{ k: "thruster", x: 0, y: "L*0.9", size: 12 }], RD, GD),
+    t("sh-reactor-toe", "Reactor Toe", X, "toe", {}, { ...suit, lineGap: 6 }, [], RD, GD),
+    // ---- shield hero, thunder armor, panther suit, heavy armor, winged valkyrie
+    withForm(helmForm(0, 6, 4, 2), t("sh-patriot-helm", "Shield Hero Helmet", X, "helmet", { face: "open", faceW: 128, brow: 70, depth: 106, back: 10, round: 0.35, gap: 12 }, { edge: "trim", edgeSize: 4, edgeH: 1.4, emblem: "star", emblemSize: 22, emblemH: 1.6 }, [{ k: "plate", x: 70, y: "brow+6", shape: "wing", size: 34, w: 2, mirror: true, accent: true }], BL, WH, false)),
+    withForm(vChest(6, 4), t("sh-patriot-chest", "Shield Hero Chest", X, "chest", { bottom: "arch", vd: 26, side: 102 }, { muscle: 0.6, lines: "hbands", lineGap: 26, lineDepth: 0.8, edge: "trim", edgeSize: 4, emblem: "star", emblemSize: 46, emblemH: 2 }, [], BL, WH, false)),
+    t("sh-patriot-shield", "Star Round Shield", X, "shield", { size: 600, curve: 700 }, { edge: "roll", edgeSize: 40, edgeH: 2.5, thick: 3, emblem: "star", emblemSize: 120, emblemH: 2.5, lines: "inset", lineGap: 60, lineDepth: 1.4 }, [], RD, WH, false),
+    withForm(helmForm(0, 8, 4, 6), t("sh-thunder-helm", "Thunder God Helm", X, "helmet", { face: "open", faceW: 132, brow: 64, depth: 108, back: 18, round: 0.45, gap: 12 }, { edge: "roll", edgeSize: 5, edgeH: 1.8, ridge: 3, ridgeW: 12 }, [{ k: "plate", x: 78, y: "brow-6", shape: "wing", size: 66, w: 3, mirror: true, rot: 10, accent: true }], SV, GD, false)),
+    withForm(vChest(8, 4), t("sh-thunder-chest", "Thunder God Cuirass", X, "chest", { bottom: "arch", vd: 30, side: 104 }, { edge: "roll", edgeSize: 5, edgeH: 1.8, lines: "inset", lineGap: 16 }, [{ k: "boss", x: 36, y: "chest-10", size: 14, count: 3, step: 40, mirror: true }], BK, SV, false)),
+    withForm(ridgeLimb(3), t("sh-thunder-bracer", "Thunder Bracer", X, "bracer", { from: 0.06, to: 0.92, cover: 300, flareTop: 10 }, { edge: "roll", edgeSize: 4, tex: "scales", texSize: 9, texDepth: 1.2, emblem: "bolt", emblemSize: 16, emblemH: 1.6 }, [], SV, GD, false)),
+    withForm(helmForm(8, 6, 6, 4), t("sh-panther-helm", "Panther Suit Mask Helmet", X, "helmet", { face: "eyes", faceW: 112, brow: 76, lens: true, depth: 126, back: 6, round: 0.5 }, { lines: "chevron", lineGap: 9, lineDepth: 0.8, glow: true, edge: "trim", edgeSize: 3 }, [{ k: "ear", x: 50, y: "brow-40", len: 34, h: 30, w: 4, mirror: true }], BK, PU, false)),
+    withForm(vChest(8, 10), t("sh-panther-chest", "Panther Suit Chest", X, "chest", { bottom: "v", vd: 46, side: 102 }, { lines: "chevron", lineGap: 10, lineDepth: 0.8, glow: true, edge: "trim", edgeSize: 3, muscle: 0.5 }, [{ k: "gem", x: 0, y: "chest-30", size: 6, count: 5, rowAcross: true, step: 14, accent: true }], BK, PU, false)),
+    withForm(ridgeLimb(4), t("sh-panther-gauntlet", "Panther Gauntlet", X, "bracer", { from: 0.04, to: 0.96, cover: 300, flareTop: 8 }, { lines: "chevron", lineGap: 9, glow: true, edge: "trim", edgeSize: 3 }, [{ k: "spike", x: 0, y: "L*0.95", size: 3, len: 14, count: 3, rowAcross: true, step: 10 }], BK, PU, false)),
+    withForm(helmForm(14, 12, 6, 8), t("sh-heavy-helm", "Heavy Armor Helmet", X, "helmet", { face: "slit", faceW: 110, brow: 76, depth: 128, back: 14, round: 0.15, tall: 1.05 }, { ...suit, rivets: true, rivetInset: 8, rivetGap: 22 }, [{ k: "box", x: 80, y: "brow+26", size: 12, w: 22, len: 40, h: 12, mirror: true }], GM, SV, false)),
+    withForm(vChest(14, 8), t("sh-heavy-chest", "Heavy Armor Chest", X, "chest", { bottom: "straight", side: 108 }, { ...suit, rivets: true, rivetInset: 9, rivetGap: 26, emblem: "circle", emblemSize: 22, emblemH: 2, emblemGlow: true }, [{ k: "box", x: 64, y: "chest-40", size: 16, w: 30, len: 40, h: 16, mirror: true }], GM, CY, false)),
+    withForm(peakDome(16), t("sh-heavy-pauldron", "Heavy Armor Shoulder", X, "pauldron", { shape: "tower", drop: 1.2, size: 1.2 }, { ...suit, tex: "lames", texSize: 22, texDepth: 2.2, rivets: true, rivetInset: 7, rivetGap: 20 }, [], GM, SV, false)),
+    withForm(helmForm(0, 4, 4, 6), t("sh-valkyrie-helm", "Valkyrie Winged Helm", X, "helmet", { face: "open", faceW: 130, brow: 64, depth: 106, back: 12, round: 0.5, gap: 12 }, { edge: "roll", edgeSize: 5, edgeH: 1.6, lines: "chevron", lineGap: 14 }, [{ k: "plate", x: 74, y: "brow-12", shape: "wing", size: 80, w: 3, mirror: true, rot: 18, accent: true }, { k: "gem", x: 0, y: "brow+8", size: 7, accent: true }], SV, GD, false)),
+    t("sh-valkyrie-crown", "Valkyrie Circlet", X, "crown", { style: "points", points: 5, pointH: 26, top: 50, bottom: 64 }, { thick: 2.4, edge: "trim", edgeSize: 2 }, [{ k: "gem", x: 0, y: "mid", size: 7, accent: true }], GD, CY, false),
+  ];
+}
 export const TEMPLATES = [
   // Sci-Fi
   t("scifi-helm", "Visor Helmet", "scifi", "helmet", { face: "bigvisor", faceW: 150, faceH: 62, brow: 70, lens: true, depth: 116, back: 14, round: 0.25 }, { lines: "panels", lineGap: 12, ridge: 3, ridgeW: 14, edge: "trim", edgeSize: 5, edgeH: 1.5 }, [{ k: "antenna", x: 92, y: "brow+10", len: 60 }, { k: "gem", x: 80, y: "brow+28", size: 9, mirror: true }], C.white, C.cyan),
@@ -756,11 +980,11 @@ export const TEMPLATES = [
   t("scifi-upper", "Arm Guard", "scifi", "upperarm", { from: 0.38, to: 0.85, cover: 220 }, { lines: "panels", lineGap: 8, edge: "trim", edgeSize: 4 }, [], C.white, C.cyan),
   t("scifi-bracer", "Tech Bracer", "scifi", "bracer", { from: 0.08, to: 0.9, cover: 290, flareTop: 6 }, { tex: "hex", texSize: 11, texDepth: 1, edge: "trim", edgeSize: 5, edgeH: 1.5 }, [{ k: "gem", x: 0, y: "mid", size: 11 }], C.white, C.cyan),
   t("scifi-thigh", "Thigh Plate", "scifi", "thigh", { cover: 170 }, { lines: "panels", lineGap: 14, edge: "trim", edgeSize: 5, ridge: 2, ridgeW: 14 }, [], C.white, C.cyan),
-  t("scifi-knee", "Knee Pad", "scifi", "knee", { wings: 1 }, { lines: "inset", lineGap: 8, edge: "trim", edgeSize: 4 }, [], C.gun, C.cyan),
+  t("scifi-knee", "Knee Pad", "scifi", "knee", { wings: 1 }, { lines: "inset", lineGap: 8, edge: "trim", edgeSize: 4 }, [], C.slate, C.cyan),
   t("scifi-greave", "Armored Greave", "scifi", "greave", { cover: 230, point: 36, flareBot: 6 }, { lines: "panels", lineGap: 12, ridge: 3, ridgeW: 12, edge: "trim", edgeSize: 5 }, [], C.white, C.cyan),
-  t("scifi-boot", "Boot Cover", "scifi", "boot", { cover: 300 }, { lines: "hbands", lineGap: 10, edge: "trim", edgeSize: 5 }, [], C.gun, C.cyan),
-  t("scifi-belt", "Utility Belt", "scifi", "belt", { height: 55 }, { lines: "vbands", lineGap: 18, edge: "trim", edgeSize: 4, edgeH: 1.2 }, [{ k: "box", x: 70, y: "mid", size: 22, mirror: true }, { k: "gem", x: 0, y: "mid", size: 14 }], C.gun, C.cyan),
-  t("scifi-shield", "Hex Shield", "scifi", "shield", { shape: "hex", size: 460 }, { tex: "hex", texSize: 30, texDepth: 1.4, edge: "trim", edgeSize: 10, edgeH: 2, thick: 3 }, [], C.gun, C.cyan),
+  t("scifi-boot", "Boot Cover", "scifi", "boot", { cover: 300 }, { lines: "hbands", lineGap: 10, edge: "trim", edgeSize: 5 }, [], C.slate, C.cyan),
+  t("scifi-belt", "Utility Belt", "scifi", "belt", { height: 55 }, { lines: "vbands", lineGap: 18, edge: "trim", edgeSize: 4, edgeH: 1.2 }, [{ k: "box", x: 70, y: "mid", size: 22, mirror: true }, { k: "gem", x: 0, y: "mid", size: 14 }], C.slate, C.cyan),
+  t("scifi-shield", "Hex Shield", "scifi", "shield", { shape: "hex", size: 460 }, { tex: "hex", texSize: 30, texDepth: 1.4, edge: "trim", edgeSize: 10, edgeH: 2, thick: 3 }, [], C.slate, C.cyan),
   // Fantasy
   t("knight-helm", "Great Helm", "fantasy", "helmet", { face: "slit", faceW: 130, brow: 76, depth: 128, back: 6, round: 0.5, tall: 1.06, gap: 14 }, { ridge: 4, ridgeW: 9, ridgeSharp: true, edge: "roll", edgeSize: 7, edgeH: 2, rivets: true, rivetInset: 9, rivetGap: 30 }, [{ k: "fin", x: 0, y: "mid", len: 150, h: 34, profile: "rounded", w: 5, off: true }], C.steel, C.gold),
   t("crested-helm", "Crested Helm", "fantasy", "helmet", { face: "tvisor", faceW: 128, brow: 72, depth: 122, back: 10, round: 0.35 }, { ridge: 3, ridgeW: 8, edge: "roll", edgeSize: 6, edgeH: 2 }, [{ k: "fin", path: "sagittal", from: "brow-20", to: "brow+30", h: 55, profile: "mohawk", w: 10 }], C.gold, C.red, false),
@@ -806,13 +1030,13 @@ export const TEMPLATES = [
   t("suneate", "Suneate Shin Guard", "samurai", "greave", { cover: 200 }, { lines: "vbands", lineGap: 12, lineDepth: 1.2, edge: "roll", edgeSize: 5 }, [], C.black, C.gold),
   t("samurai-tasset", "Kusazuri Skirt", "samurai", "tasset", { plates: 4, len: 220, cover: 260, split: 8 }, { tex: "lames", texSize: 30, texDepth: 2.2, edge: "roll", edgeSize: 5 }, [], C.black, C.lacq),
   // more (v2.7)
-  t("recon-helm", "Recon Helmet", "scifi", "helmet", { face: "visor", faceW: 140, faceH: 26, brow: 78, lens: true, depth: 124, back: 12, round: 0.15, tall: 1.04 }, { lines: "panels", lineGap: 10, ridge: 2.5, ridgeW: 10, edge: "trim", edgeSize: 4, edgeH: 1.4 }, [{ k: "gauge", x: 96, y: "brow+20", size: 20, mirror: true }, { k: "antenna", x: 96, y: "brow+8", len: 45 }], C.gun, C.cyan, false),
+  t("recon-helm", "Recon Helmet", "scifi", "helmet", { face: "visor", faceW: 140, faceH: 26, brow: 78, lens: true, depth: 124, back: 12, round: 0.15, tall: 1.04 }, { lines: "panels", lineGap: 10, ridge: 2.5, ridgeW: 10, edge: "trim", edgeSize: 4, edgeH: 1.4 }, [{ k: "gauge", x: 96, y: "brow+20", size: 20, mirror: true }, { k: "antenna", x: 96, y: "brow+8", len: 45 }], C.slate, C.cyan, false),
   t("space-helm", "Space Bubble Helmet", "scifi", "helmet", { face: "bigvisor", faceW: 200, faceH: 110, brow: 58, lens: true, depth: 125, back: 0, round: 1, gap: 34 }, { edge: "trim", edgeSize: 6, edgeH: 2 }, [{ k: "antenna", x: 70, y: "brow-40", len: 50, mirror: true }], C.white, C.cyan, false),
-  t("jetpack", "Jet Pack", "scifi", "back", { side: 70, drop: -120, top: 0.97 }, { lines: "panels", lineGap: 10, edge: "trim", edgeSize: 5 }, [{ k: "thruster", x: 62, y: "L*0.25", size: 26, mirror: true }, { k: "box", x: 0, y: "L*0.55", size: 36, w: 90, len: 110, h: 40 }], C.gun, C.cyan, false),
-  t("power-gauntlet", "Power Gauntlet", "scifi", "bracer", { from: 0.04, to: 0.96, cover: 310, flareTop: 14 }, { tex: "hex", texSize: 9, texDepth: 1, edge: "trim", edgeSize: 5, edgeH: 1.6 }, [{ k: "gem", x: 0, y: "L*0.3", size: 8, count: 3, step: 26 }], C.gun, C.cyan, false),
+  t("jetpack", "Jet Pack", "scifi", "back", { side: 70, drop: -120, top: 0.97 }, { lines: "panels", lineGap: 10, edge: "trim", edgeSize: 5 }, [{ k: "thruster", x: 62, y: "L*0.25", size: 26, mirror: true }, { k: "box", x: 0, y: "L*0.55", size: 36, w: 90, len: 110, h: 40 }], C.slate, C.cyan, false),
+  t("power-gauntlet", "Power Gauntlet", "scifi", "bracer", { from: 0.04, to: 0.96, cover: 310, flareTop: 14 }, { tex: "hex", texSize: 9, texDepth: 1, edge: "trim", edgeSize: 5, edgeH: 1.6 }, [{ k: "gem", x: 0, y: "L*0.3", size: 8, count: 3, step: 26 }], C.slate, C.cyan, false),
   t("scifi-collar", "Armored Collar", "scifi", "gorget", {}, { lines: "hbands", lineGap: 8, edge: "trim", edgeSize: 4 }, [], C.white, C.cyan),
   t("scifi-hand", "Armored Hand Plate", "scifi", "handplate", {}, { lines: "inset", lineGap: 5, edge: "trim", edgeSize: 3 }, [], C.white, C.cyan),
-  t("riot-shield", "Riot Shield", "scifi", "shield", { shape: "tower", size: 560, curve: 900, gap: 22 }, { lines: "panels", lineGap: 18, edge: "trim", edgeSize: 12, edgeH: 2, thick: 3 }, [], C.gun, C.cyan, false),
+  t("riot-shield", "Riot Shield", "scifi", "shield", { shape: "tower", size: 560, curve: 900, gap: 22 }, { lines: "panels", lineGap: 18, edge: "trim", edgeSize: 12, edgeH: 2, thick: 3 }, [], C.slate, C.cyan, false),
   t("dragon-helm", "Dragon Helm", "fantasy", "helmet", { face: "slit", faceW: 120, brow: 76, depth: 122, back: 20, round: 0.3 }, { tex: "scales", texSize: 16, texDepth: 1.6, edge: "roll", edgeSize: 5 }, [{ k: "horn", x: 60, y: "brow-50", size: 13, len: 150, curl: 110, tilt: 55, ang: -95, mirror: true }, { k: "fin", path: "sagittal", from: "brow-30", to: "brow+60", h: 30, profile: "shark", w: 5 }], C.green, C.gold, false),
   t("dragon-pauldron", "Dragon Pauldron", "fantasy", "pauldron", { shape: "spiky", size: 1.1 }, { tex: "scales", texSize: 15, texDepth: 1.8, edge: "roll", edgeSize: 5 }, [{ k: "horn", x: 0, y: "mid", size: 9, len: 60, curl: 50, tilt: 30, ang: -90, count: 3, rowAcross: true, step: 30 }], C.green, C.gold, false),
   t("dragon-gauntlet", "Dragon Gauntlet", "fantasy", "bracer", { from: 0.04, to: 0.94, cover: 300, flareTop: 16, point: 30 }, { tex: "scales", texSize: 12, texDepth: 1.5, edge: "roll", edgeSize: 4 }, [{ k: "spike", x: 0, y: "L*0.45", size: 5, len: 22, count: 4, step: 34 }], C.green, C.gold, false),
@@ -834,6 +1058,14 @@ export const TEMPLATES = [
   t("tekko", "Tekko Hand Guard", "samurai", "handplate", {}, { tex: "hex", texSize: 8, texDepth: 1, edge: "roll", edgeSize: 3 }, [], C.black, C.gold),
   // Modern Sci-Fi (v2.8): sleek hard-surface armor with light lines; angular shapes come from preset form cages
   ...modernSet(),
+  ...moreScifi(),
+  // Military (v2.7.8)
+  ...militarySet(),
+  // Traditional armor (v2.7.9)
+  ...historicSets(),
+  // Space Opera and Superhero Armor (v2.7.10)
+  ...spaceOperaSet(),
+  ...superheroSet(),
   // Basic forms
   ...["helmet", "mask", "crown", "gorget", "chest", "back", "belt", "tasset", "pauldron", "upperarm", "bracer", "handplate", "thigh", "knee", "greave", "boot", "toe", "shield"].map((s) =>
     t("basic-" + s, "Plain " + SLOTS[s].name.replace(/ \(.*\)/, "").toLowerCase(), "basic", s, s === "helmet" ? { face: "open", depth: 108 } : s === "mask" ? { style: "half" } : {}, {}, [], "#c9ced6", "#7aa7e0", false)),
