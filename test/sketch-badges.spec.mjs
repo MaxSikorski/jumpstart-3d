@@ -2,7 +2,7 @@
 // version with the 120 degree angle, at the school laptop size 1366 x 768 after Fit all: no badge on another badge, on a corner or on a dimension label,
 // every badge clickable and tied to its line (selecting it lights the line; hovering one Equal lights its partner), and a plain rectangle's badges stay by their lines.
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors, loadDoc, newDoc } from "./helpers.mjs";
+import { boot, reload, watchErrors, loadDoc, newDoc } from "./helpers.mjs";
 
 let page, errors;
 test.beforeEach(async ({ browser }, info) => {
@@ -220,4 +220,125 @@ test("while the Dimension tool waits for its label click, a badge does not swall
   expect((await sketch()).cons.filter((c) => c.t === "dim").length, "a new dimension was placed").toBe(dims + 1);
   expect(await run(() => window.__app.sketcher.selCons.size), "no badge was selected").toBe(0);
   await page.keyboard.press("Escape");
+});
+
+// ---- Fixed constraint (issue #238) ----
+const pin = (id) => run((id) => { const p = window.__store.doc.sketches[0].pts.find((q) => q.id === id); return [p.x, p.y]; }, id);
+const screenOf = (x, y) => run(([x, y]) => { // a sketch point on the page, in pixels
+  const s = window.__app.sketcher, vp = window.__app.vp, cb = vp.canvas.getBoundingClientRect(), V = vp.camera.position.constructor;
+  const q = vp.project(new V(x, y, 0).applyMatrix4(s.mat)); return [cb.left + q[0], cb.top + q[1]];
+}, [x, y]);
+async function circleAndLine() { // circle centre (5, 3) radius 10; a flat line 17 above its centre, so a Tangent needs radius 17 (or a moved line)
+  await openBlank();
+  await run(() => {
+    const s = window.__app.sketcher;
+    s.edit("Circle", (sk) => { sk.pts.push({ id: "c0", x: 5, y: 3 }); sk.ents.push({ id: "e0", t: "circle", c: "c0", r: 10 }); });
+    s.edit("Line", (sk) => { sk.pts.push({ id: "l0", x: -30, y: 20 }, { id: "l1", x: 30, y: 20 }); sk.ents.push({ id: "e1", t: "line", a: "l0", b: "l1" }); });
+  });
+  await fitAll();
+}
+const fixedCons = async () => (await sketch()).cons.filter((c) => c.t === "fixed");
+const FIXED_BADGE = "📌";
+
+test("Fixed is in the Constraints menu with a lock icon; a circle's centre, then Tangent: the centre stays and the radius changes", async ({}, info) => {
+  test.setTimeout(240_000);
+  await circleAndLine();
+  await page.locator("#sk-constraints").click({ force: true });
+  const item = page.locator("#sk-c-fixed");
+  await expect(item).toBeVisible();
+  await expect(item).toContainText("Fixed");
+  expect(await item.locator("svg").count(), "a lock icon").toBeGreaterThan(0);
+  await item.click();
+  // click on the circle's ring: the centre is what gets pinned
+  const [rx, ry] = await screenOf(15, 3);
+  await page.mouse.move(rx, ry);
+  await page.mouse.click(rx, ry);
+  expect((await fixedCons()).map((c) => [c.p, c.x, c.y]), "only the centre is fixed").toEqual([["c0", 5, 3]]);
+  await expect(page.locator(".cglyph")).toHaveCount(1);
+  await expect(page.locator(".cglyph")).toHaveText(FIXED_BADGE);
+  await expect(page.locator(".cglyph")).toHaveAttribute("aria-label", "Fixed constraint");
+  // Tangent between the line and the circle
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("tangent", [{ kind: "line", e: s.sketch.ents.find((e) => e.id === "e1") }, { kind: "round", e: s.sketch.ents.find((e) => e.id === "e0") }]); });
+  const sk = await sketch(), c = sk.pts.find((p) => p.id === "c0"), circ = sk.ents.find((e) => e.id === "e0");
+  expect(sk.cons.some((k) => k.t === "tangent"), "tangent was added").toBe(true);
+  expect(c.x, "centre x stays").toBeCloseTo(5, 4);
+  expect(c.y, "centre y stays").toBeCloseTo(3, 4);
+  const [a, b] = ["l0", "l1"].map((id) => sk.pts.find((p) => p.id === id));
+  const dist = Math.abs((b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y)) / Math.hypot(b.x - a.x, b.y - a.y);
+  expect(dist, "the circle touches the line").toBeCloseTo(circ.r, 3);
+  expect(circ.r, "the radius changed").not.toBeCloseTo(10, 1);
+  await page.screenshot({ path: info.outputPath("fixed-tangent.png") });
+});
+
+test("Fixed on a line pins both ends and a rectangle's corners; a second Fixed says it is already fixed; dragging a fixed point leaves it", async () => {
+  test.setTimeout(240_000);
+  await openBlank();
+  await polygon([[-20, -10], [20, -10], [20, 10], [-20, 10]]);
+  await fitAll();
+  // a line: both ends
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("fixed", [{ kind: "line", e: s.sketch.ents.find((e) => e.id === "e0") }]); });
+  expect((await fixedCons()).map((c) => c.p).sort(), "the bottom line's two ends").toEqual(["p0", "p1"].sort());
+  // a second Fixed on the same line: refused with the plain words, nothing added
+  await run(() => { window.__fixedToast = null; const a = window.__app; a.__t = a.toast; a.toast = (m) => { window.__fixedToast = m; }; });
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("fixed", [{ kind: "line", e: s.sketch.ents.find((e) => e.id === "e0") }]); });
+  expect(await run(() => window.__fixedToast), "duplicate").toMatch(/already fixed/i);
+  expect((await fixedCons()).length, "still two").toBe(2);
+  await run(() => { const a = window.__app; a.toast = a.__t; });
+  // the other two corners, by clicking them with the tool
+  await page.locator("#sk-constraints").click({ force: true });
+  await page.locator("#sk-c-fixed").click();
+  for (const [x, y] of [[20, 10], [-20, 10]]) { const [sx, sy] = await screenOf(x, y); await page.mouse.move(sx, sy); await page.mouse.click(sx, sy); }
+  expect((await fixedCons()).length, "all four corners").toBe(4);
+  await page.keyboard.press("Escape");
+  // drag a corner with Select: it does not move
+  await run(() => window.__app.sketcher.setTool("select"));
+  const before = await pin("p2"), [sx, sy] = await screenOf(...before);
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx + 60, sy - 40, { steps: 6 });
+  await page.mouse.up();
+  const after = await pin("p2");
+  expect(after[0], "corner x").toBeCloseTo(before[0], 4);
+  expect(after[1], "corner y").toBeCloseTo(before[1], 4);
+});
+
+test("a Fixed badge is selected by a click, Delete removes it, and the point is free again", async () => {
+  test.setTimeout(240_000);
+  await circleAndLine();
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("fixed", [{ kind: "pt", pid: "l0" }]); });
+  await expect(page.locator(".cglyph")).toHaveCount(1);
+  const [bx, by] = centre((await screen()).badges[0].rect);
+  await page.mouse.click(bx, by);
+  expect(await run(() => window.__app.sketcher.selCons.size)).toBe(1);
+  await page.keyboard.press("Delete");
+  expect((await fixedCons()).length).toBe(0);
+  await expect(page.locator(".cglyph")).toHaveCount(0);
+  // free again: a drag moves it
+  const before = await pin("l0"), [sx, sy] = await screenOf(...before);
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx - 30, sy + 30, { steps: 6 });
+  await page.mouse.up();
+  const after = await pin("l0");
+  expect(Math.hypot(after[0] - before[0], after[1] - before[1]), "the freed point moved").toBeGreaterThan(1);
+});
+
+test("Fixed survives save and reload, and an old design without it loads unchanged", async ({}, info) => {
+  test.setTimeout(240_000);
+  await circleAndLine();
+  await run(() => { const s = window.__app.sketcher; s.applyConstraint("fixed", [{ kind: "round", e: s.sketch.ents.find((e) => e.id === "e0") }, ]); });
+  const saved = await sketch();
+  expect(saved.cons.filter((c) => c.t === "fixed").length).toBe(1);
+  await page.waitForTimeout(1200); // the autosave
+  await reload(page);
+  await run(() => window.__app.enterSketch("s1"));
+  await page.waitForFunction(() => !window.__app.vp.anim);
+  const back = await sketch();
+  expect(back.cons.filter((c) => c.t === "fixed").map((c) => [c.p, c.x, c.y])).toEqual([["c0", 5, 3]]);
+  await expect(page.locator(".cglyph")).toHaveText(FIXED_BADGE);
+  // a design saved before Fixed existed: no fixed entries, same shapes, nothing added by loading
+  await loadDoc(page, newDoc("Old", "advanced", { sketches: [{ id: "s1", name: "Sketch 1", seq: 1, hidden: false, plane: { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1] }, pts: [{ id: "a", x: 0, y: 0 }, { id: "b", x: 10, y: 0 }], ents: [{ id: "e0", t: "line", a: "a", b: "b" }], cons: [{ id: "k1", t: "horizontal", e1: "e0" }] }] }));
+  const old = await sketch();
+  expect(old.cons.map((c) => c.t)).toEqual(["horizontal"]);
+  expect(old.pts.map((p) => [p.x, p.y])).toEqual([[0, 0], [10, 0]]);
 });
