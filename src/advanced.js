@@ -107,6 +107,22 @@ export function initAdvanced(app) {
     const nLocal = h.face.normal.clone();
     return { body: base.body.id, base, face, info: base.data.faceInfo[face], point: h.point.clone(), normal: nLocal.clone().transformDirection(base.m), nLocal, distance: h.distance };
   }
+  // jumpstart-3d: edge pick hint (#239)
+  let lastEdgePickHint = -Infinity;
+  function edgePickHint(e, kind) {
+    const hit = vp.pick(e, scene.meshes())[0];
+    if (!hit) return;
+    const b = hit.object.userData.bodyView.body;
+    const now = performance.now();
+    if (now - lastEdgePickHint < 3000) return;
+    const message = b.hidden || b.locked || b.hole
+      ? "That body is locked/hidden/a hole, so its edges can't be picked."
+      : !baseOf(b.id)
+        ? "This body didn't build, so it has no edges to pick."
+        : `No edge to ${kind === "fillet" ? "round" : "chamfer"} here: smooth joins and curved seams have no edge to pick. Click closer to a sharp edge.`;
+    lastEdgePickHint = now;
+    app.toast(message);
+  }
   // Is this point on a body's surface visible, or is some face in front of it? Checked along the
   // line of sight to the point itself (not the pointer), so edges deep inside cuts and holes, whose
   // walls are seen at a glancing angle, still count as visible.
@@ -1584,6 +1600,8 @@ export function initAdvanced(app) {
           const a = overArrow(e);
           if (a) { arrowDrag = { ...a, f: axisDragger(e, a.origin, a.n), v0: cur().value }; vp.canvas.style.cursor = "grabbing"; return true; }
           const h = pickTarget(e);
+          // jumpstart-3d: edge pick hint (#239)
+          if (!h) edgePickHint(e, st.kind);
           if (!h) return true;
           const s = cur();
           if (editing && !s.items.length) s.keep = null; // clicking edges picks a new set of edges
