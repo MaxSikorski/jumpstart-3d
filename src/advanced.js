@@ -5986,6 +5986,7 @@ export function initAdvanced(app) {
         ] },
       ]);
       const CICON = { coincident: "cCoincident", horizontal: "cHorizontal", vertical: "cVertical", parallel: "cParallel", perpendicular: "cPerpendicular", tangent: "cTangent", concentric: "cConcentric", equal: "cEqual", midpoint: "cMidpoint" };
+      CICON.fixed = "lock"; // jumpstart-3d: fixed constraint
       const cTool = tool.startsWith("c-") ? tool : null;
       group("Constrain", "sketch", [
         { id: "sk-constraints", label: "Constraints", title: "Keep lines horizontal, parallel, tangent, equal… (select shapes first, or pick after choosing)", icon: "constraints", pressed: !!cTool, dropdown: Object.keys(CICON).map((k) => ({ id: "sk-c-" + k, label: SKETCH_TOOLS["c-" + k].label.replace(" constraint", ""), icon: CICON[k], on: tool === "c-" + k, fn: () => sketcher.setTool("c-" + k) })) },
