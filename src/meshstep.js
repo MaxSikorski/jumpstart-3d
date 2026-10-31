@@ -1,7 +1,6 @@
 // Mesh to STEP Helper: turns STL/3MF meshes into editable STEP solids. It runs in its own
 // window over the app; "Open in JumpStart 3D" hands the STEP straight into the design.
-import HELPER_HTML from "./meshstep.html";
-import { withFonts } from "./helperfonts.js";
+import { helperPage, helperLoadingNote, helperFailText } from "./helperpages.js"; // jumpstart-3d: helper pages load on demand
 
 export function initMeshStep(app) {
   let frame = null;
@@ -23,19 +22,23 @@ export function initMeshStep(app) {
     };
     // a file to open straight away: the helper picks it up when it starts
     window.__JS3D_STEP_PENDING__ = file && file.bytes ? { buf: file.bytes.buffer.slice(file.bytes.byteOffset, file.bytes.byteOffset + file.bytes.byteLength), name: file.name } : null;
-    ifr.srcdoc = withFonts(HELPER_HTML);
+    // jumpstart-3d: helper pages load on demand (the pop-out button below uses the page once it has arrived)
+    const note = helperLoadingNote(() => close());
+    let page = null;
+    helperPage("meshstep").then((html) => { if (frame && ifr.isConnected) { page = html; note.done(); ifr.srcdoc = html; } }, (e) => { if (frame && ifr.isConnected) { close(); app.toast(helperFailText("Mesh to STEP", e), "err"); } });
     // a pop-out copy in its own browser tab (where allowed); downloads work there
     const pop = document.createElement("button");
     pop.className = "btn meshstep-pop";
     pop.textContent = "Open in a new tab ↗";
     pop.title = "Open the helper in its own browser tab. To bring a STEP back, download it there, then use Import in JumpStart 3D.";
     pop.onclick = () => {
-      const url = URL.createObjectURL(new Blob([withFonts(HELPER_HTML)], { type: "text/html" }));
+      if (!page) return; // jumpstart-3d: still loading
+      const url = URL.createObjectURL(new Blob([page], { type: "text/html" }));
       const w = window.open(url, "_blank");
       if (!w) app.toast("Your browser blocked the new tab. The helper still works right here.", "err");
       else { close(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
     };
-    frame.append(ifr, pop);
+    frame.append(note, ifr, pop);
     document.body.append(frame);
   }
   function close() { if (frame) { frame.remove(); frame = null; } }
