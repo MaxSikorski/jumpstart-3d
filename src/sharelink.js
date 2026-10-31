@@ -181,9 +181,9 @@ const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; /
 const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint"]);
 // the part kinds of the Fasteners dialog (FASTENER_KINDS in fasteners.js, which this module does not import; test/sharelink.test.mjs compares)
 export const FASTENER_KINDS = new Set(["hexbolt", "shcs", "button", "flat", "set", "wood", "rod", "nut", "nyloc", "sqnut", "washer", "lockw", "insert", "dowel", "cutter"]);
-const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
+const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "hinge", "hingePart"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
-const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
+const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "pathSegs", "railSegs", "railEdgeSegs", "railScale", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
 const CHILD_KEYS = new Set(["node", "m", "hole", "color", "name", "hidden", "id", "seq"]);
 const MOD_TYPES = new Set(["fillopen", "fillet", "chamfer", "hole", "bool", "keeppiece", "halfspace", "sketchsplit", "splitface", "offset", "shell", "emboss", "facepat", "thread", "scale", "pattern"]);
@@ -206,6 +206,25 @@ function obj(v, what) { if (!isObj(v)) throw damaged(what + " is not an object")
 function arr(v, what, max) { if (!Array.isArray(v) || v.length > max) throw damaged(what + " is not a list, or is too long"); return v; }
 function vec(v, n, what) { if (!Array.isArray(v) || v.length !== n) throw damaged(what + " is not " + n + " numbers"); v.forEach((x) => num(x, what)); return v; }
 function allow(o, keys, what) { for (const k of Object.keys(o)) if (!keys.has(k)) throw unsupported(what + " has " + k.slice(0, 32).replace(/[^\w.-]/g, "?")); }
+function positive(v, what) { if (!(num(v, what) > 0 && v <= LIMITS.MEASURE)) throw damaged(what); }
+function nonnegative(v, what) { if (!(num(v, what) >= 0 && v <= LIMITS.MEASURE)) throw damaged(what); }
+function count(v, max, what) { if (!Number.isInteger(v) || v < 1 || v > max) throw damaged(what); }
+
+// Saved edge paths are fixed world-space segments, not references to the source body.
+function segments(v) {
+  const list = arr(v, "path segments", 2000);
+  if (!list.length) throw damaged("an empty path");
+  for (const s of list) {
+    obj(s, "a path segment");
+    const keys = { line: ["a", "b"], arc: ["a", "b", "m"], circle: ["c", "n", "r"], bsp: ["a", "b", "pts"], bez: ["a", "b", "spans"] }[s.t];
+    if (!keys) throw damaged("a path segment type");
+    allow(s, new Set(["t", ...keys]), "a path segment");
+    for (const k of keys.filter((k) => ["a", "b", "m", "c", "n"].includes(k))) vec(s[k], 3, "a path point");
+    if (s.t === "circle") positive(s.r, "a path radius");
+    if (s.t === "bsp") { const p = arr(s.pts, "path points", 2000); if (p.length < 2) throw damaged("path points"); p.forEach((x) => vec(x, 3, "a path point")); }
+    if (s.t === "bez") { const spans = arr(s.spans, "path spans", 2000); if (!spans.length) throw damaged("path spans"); for (const span of spans) { if (!Array.isArray(span) || span.length !== 4) throw damaged("a path span"); span.forEach((x) => vec(x, 3, "a path point")); } }
+  }
+}
 // an affine placement: 16 finite numbers, last row 0 0 0 1, a linear part that can be inverted
 function mat16(m, what) {
   vec(m, 16, what);
@@ -370,7 +389,7 @@ export function validateEnvelope(env) {
       if (ctx.assetBytes > LIMITS.ASSET_BYTES) throw tooBig("The pictures and imported models in this design are too big for a link.");
       for (const k of ["w", "h", "cx", "cy", "rot", "opacity"]) if (s.image[k] !== undefined) num(s.image[k], "a picture " + k);
     }
-    ctx.sketches.set(s.id, true);
+    ctx.sketches.set(s.id, eid);
   }
 
   // planes
@@ -405,9 +424,32 @@ export function validateEnvelope(env) {
       if (has("clear") && !(num(fa.clear, "a print offset") >= -1 && fa.clear <= 1)) throw damaged("a print offset");
       for (const k of ["threads", "left"]) if (fa[k] !== undefined) bool(fa[k], k);
     }
+    const ref = (v) => { id(v, "a part body id"); ctx.bodyRefs.push(v); };
+    for (const k of ["binLid", "hingePart"]) if (b[k] !== undefined) ref(b[k]);
+    if (b.bin !== undefined) {
+      const o = obj(b.bin, "a bin");
+      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId"]), "a bin");
+      for (const k of ["w", "d", "h", "wall", "divider", "floor", "scoopR", "labelW", "foot", "lidT"]) if (o[k] !== undefined) positive(o[k], k);
+      for (const k of ["radius", "inner", "clear"]) if (o[k] !== undefined) nonnegative(o[k], k);
+      for (const k of ["cols", "rows"]) if (o[k] !== undefined) count(o[k], 20, k);
+      for (const k of ["scoop", "label", "stack", "lid"]) if (o[k] !== undefined) bool(o[k], k);
+      if (o.shape !== undefined && !["square", "round", "hex"].includes(o.shape)) throw damaged("a bin shape");
+      if (o.lidId != null) ref(o.lidId);
+    }
+    if (b.hinge !== undefined) {
+      const o = obj(b.hinge, "a hinge");
+      allow(o, new Set(["type", "len", "dia", "knuckles", "leafW", "leafT", "clear", "pin", "screws", "screwD", "gap", "thin", "bId", "pinId", "kind"]), "a hinge");
+      for (const k of ["len", "dia", "leafW", "leafT", "clear", "screwD", "gap", "thin"]) if (o[k] !== undefined) positive(o[k], k);
+      if (o.knuckles !== undefined) count(o.knuckles, 25, "knuckles");
+      if (o.type !== undefined && !["pip", "pin", "living"].includes(o.type)) throw damaged("a hinge type");
+      if (o.pin !== undefined && !["filament", "m2", "m3", "printed"].includes(o.pin)) throw damaged("a hinge pin");
+      if (o.screws !== undefined) bool(o.screws, "screws");
+      if (o.kind !== undefined) text(o.kind, "hinge name");
+      for (const k of ["bId", "pinId"]) if (o[k] != null) ref(o[k]);
+    }
     node(obj(b.node, "a body shape"), ctx, "a shape");
   }
-  for (const r of ctx.bodyRefs) if (!bid.has(r)) throw damaged("a mirror points at a missing body");
+  for (const r of ctx.bodyRefs) if (!bid.has(r)) throw damaged("a shape or part points at a missing body");
   if (doc.printPaint !== undefined) printPaint(doc.printPaint, bid);
   return doc;
 }
@@ -441,12 +483,19 @@ function node(n, ctx, what) {
   if (t === "prim") {
     if (!PRIM_KINDS.has(n.kind)) throw unsupported("a " + String(n.kind).slice(0, 16).replace(/[^\w ]/g, "?") + " shape");
     obj(n.p, "shape sizes");
+    if (n.p.rv !== undefined) { if (n.kind !== "box") throw damaged("corner radius"); nonnegative(n.p.rv, "corner radius"); }
     bounds({ ...n.p, exprs: n.exprs, exprUnits: n.exprUnits }, ctx, [["turns", LIMITS.TURNS, "turns"], ["sides", n.kind === "pyramid" ? LIMITS.PYRAMID_SIDES : LIMITS.SIDES, "sides"], ["points", LIMITS.POINTS, "points"]]);
     for (const [k, v] of Object.entries(n.p)) { if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) throw damaged("a size name"); if (typeof v !== "number" && typeof v !== "string" && typeof v !== "boolean") throw damaged("a size"); }
   } else if (t === "extrude" || t === "revolve" || t === "sweep") {
     sk(n.sketch);
     arr(n.profiles, "profiles", LIMITS.SKETCH_ITEMS);
-    if (t === "sweep") { obj(n.path, "a sweep path"); sk(n.path.sketch); }
+    if (t === "sweep") {
+      const path = (p) => { obj(p, "a sweep path"); allow(p, new Set(["sketch", "ents"]), "a sweep path"); sk(p.sketch); const ents = arr(p.ents, "path shapes", LIMITS.SKETCH_ITEMS); if (!ents.length) throw damaged("an empty path"); for (const e of ents) if (!ctx.sketches.get(p.sketch).has(e)) throw damaged("a path uses a missing sketch shape"); };
+      if (n.path !== undefined) path(n.path); else if (n.edgeSegs === undefined) throw damaged("a sweep path");
+      if (n.rail !== undefined && n.rail !== null) path(n.rail);
+      if (n.railEdgeSegs !== undefined) segments(n.railEdgeSegs);
+      if (n.railScale !== undefined) bool(n.railScale, "rail scale");
+    }
   } else if (t === "pipe") {
     if (n.path !== undefined) { obj(n.path, "a pipe path"); sk(n.path.sketch); } // a 3D sketch pipe carries edgeSegs instead
   } else if (t === "loft") {
@@ -465,6 +514,8 @@ function node(n, ctx, what) {
   } else if (t === "mesh" || t === "step") {
     if (typeof n.asset !== "string" || ctx.assets[n.asset] !== (t === "mesh" ? "mesh" : "step")) throw damaged("a model asset is missing");
   }
+  if (n.edgeSegs !== undefined && (t === "sweep" || t === "pipe")) segments(n.edgeSegs);
+  if ((n.railEdgeSegs !== undefined || n.railScale !== undefined) && t !== "sweep") throw damaged("a sweep rail");
   if (n.parts !== undefined && (t !== "step" || !bool(n.parts, "the parts flag"))) throw damaged("the parts flag"); // STEP parts (#173): one body per part of an imported file
   exprs(n, ctx);
   if (t === "coil") bounds(n, ctx, [["turns", LIMITS.TURNS, "turns"]]);
