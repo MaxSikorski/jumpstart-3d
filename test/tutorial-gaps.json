@@ -115,6 +115,7 @@
       "sk-arcc",
       "sk-c-coincident",
       "sk-c-concentric",
+      "sk-c-fixed",
       "sk-c-midpoint",
       "sk-c-tangent",
       "sk-ins-dxf",

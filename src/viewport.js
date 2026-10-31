@@ -304,10 +304,10 @@ export class Viewport {
       const pxPerMm = this.h / (2 * hh);
       if (this.gridUnit === "in") {
         // inches: fractions, then whole inches, with a bolder line every 4 (or every foot)
-        while (s * pxPerMm < 7) s *= s >= 25.4 ? 12 : 4;
+        while (pxPerMm > 0 && s * pxPerMm < 7) s *= s >= 25.4 ? 12 : 4; // jumpstart-3d: pxPerMm <= 0 (a camera past its target) would never end
         u.minor.value = s; u.major.value = s >= 25.4 ? s * 12 : s * 4;
       } else {
-        while (s * pxPerMm < 7) s *= 10;
+        while (pxPerMm > 0 && s * pxPerMm < 7) s *= 10;
         u.minor.value = s; u.major.value = s * 10;
       }
     }
@@ -592,7 +592,8 @@ export class Viewport {
   }
   stepAnim(t) {
     const a = this.anim;
-    let k = Math.min(1, (t - a.t0) / a.ms);
+    // jumpstart-3d: a frame's timestamp is its start, which can be earlier than a move begun later in that frame; a negative k overshot (a 10 ms move: dist far past zero) and the grid loop in updateCamera never ended
+    let k = Math.max(0, Math.min(1, (t - a.t0) / a.ms));
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) k = 1;
     const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
     const v = this.view;

@@ -505,3 +505,13 @@ test("the share link's list of fastener kinds is the dialog's list", () => {
   assert.ok(ids.length >= 15);
   assert.deepEqual([...FASTENER_KINDS].sort(), ids.sort());
 });
+
+test("a Fixed in a link: needs a point and a position, once per point, and never on a projected shape", () => {
+  const fx = (d, extra) => { d.sketches[0].cons = [{ id: "k1", t: "fixed", p: "p0", x: 0, y: 0, ...extra }]; };
+  validateEnvelope(valid((d) => fx(d)));
+  bad((d) => fx(d, { x: undefined }), "damaged");
+  bad((d) => fx(d, { p: "nope" }), "damaged");
+  bad((d) => { fx(d); d.sketches[0].cons.push({ id: "k2", t: "fixed", p: "p0", x: 0, y: 0 }); }, "damaged", /twice/);
+  bad((d) => { fx(d); d.sketches[0].cons.push({ id: "k2", t: "origin", p: "p0" }); }, "damaged", /twice/);
+  bad((d) => { fx(d); d.sketches[0].ents[0].proj = true; }, "damaged", /projected/);
+});
