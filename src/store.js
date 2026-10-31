@@ -319,8 +319,12 @@ export function resolveNode(node, doc) {
       const M = psk.plane, y = [M.n[1] * M.x[2] - M.n[2] * M.x[1], M.n[2] * M.x[0] - M.n[0] * M.x[2], M.n[0] * M.x[1] - M.n[1] * M.x[0]];
       const W = (p) => [0, 1, 2].map((i) => M.o[i] + M.x[i] * p[0] + y[i] * p[1]);
       n.pathSegs = orderPath(resolveSketch(psk), node.path.ents).map((s) => s.t === "circle" ? { t: "circle", c: W(s.c), r: s.r, n: M.n } : { t: s.t, a: W(s.a), b: W(s.b), m: s.m && W(s.m), spans: s.spans && s.spans.map((b) => b.map(W)) });
-    } else n.pathSegs = [];
-    delete n.path;
+    } else n.pathSegs = node.edgeSegs || [];
+    // the guide rail, the same way
+    const rsk = node.rail && findSketch(doc, node.rail.sketch);
+    if (rsk) n.railSegs = sketchPathSegs(rsk, node.rail.ents);
+    else if (node.railEdgeSegs) n.railSegs = node.railEdgeSegs;
+    delete n.path; delete n.edgeSegs; delete n.rail; delete n.railEdgeSegs;
   }
   if (node.t === "extrude" || node.t === "revolve" || node.t === "sweep") {
     const sk = findSketch(doc, node.sketch);

@@ -31,3 +31,18 @@ node build.mjs
 ```
 
 The Python scripts use only the standard library and expect to sit in `tools/` next to `src/`. `make_meshstep.py` also writes a stand-alone `mesh-to-step-helper.html` at the repository root; it is ignored by git.
+
+## The Floor Planner and the extra fonts (J.Siwek 2.8.1.2 and 2.8.1.1)
+
+- `src/floorplan.html` is made by `tools/make_floorplan.py` from `tools/floorplanner-source.html` (the Blueprint Floorplanner),
+  `tools/fp_tutorials.js` and `tools/fp_addons.js`, with `third_party/three-r128/three.min.js` built in (the source's cdnjs
+  `<script src>` is replaced, so the page loads nothing from the web). Regenerate from the repository root:
+
+  ```bash
+  THIRD_PARTY=third_party uv run --no-project python -I tools/make_floorplan.py
+  ```
+
+  For 2.8.1.3 this gives a file byte-equal to his.
+- `src/fonts_more.js` is made by `tools/make_fonts.py` from `tools/fontlist.txt` and a checkout of the Google Fonts repository
+  (not in this repository); the TTFs it used are in `src/fontsub/more/`, their credits in `src/fontsub/more/credits.json` and
+  `LICENSES/fonts-more.txt`. We take his `fonts_more.js` as it is.

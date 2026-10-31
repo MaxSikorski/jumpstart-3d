@@ -7,7 +7,7 @@ import { holdImport, importBusy } from "./dropimport.js"; // jumpstart-3d: inser
 import { el, fmt, uid, round, clone, nextColor, fileAccept } from "./util.js";
 import { getUnit, withUnit, showLen } from "./units.js";
 import { ICON } from "./icons.js";
-import { FONT_NAMES } from "./fonts.js";
+import { FONT_NAMES, fontSelect } from "./fonts.js";
 import { planeMatrix } from "./scene.js";
 import { thickLines } from "./thickline.js";
 import { drawDragArrow, overDragArrow } from "./dragarrow.js"; // jumpstart-3d: shared pull arrow
@@ -33,7 +33,7 @@ import { textBounds } from "./textgeo.js";
 import { initSection } from "./section.js";
 import { sketchesDXF } from "./dxf.js";
 import { initPipeCoil } from "./pipecoil.js";
-import { initFasteners } from "./fasteners.js"; // jumpstart-3d: fasteners
+import { initFasteners, MAX_TURNS, WARN_TURNS, tooMany } from "./fasteners.js"; // jumpstart-3d: fasteners (JS3D.fastener, the turns guard)
 import { initHolePattern } from "./holepattern.js"; // jumpstart-3d: hole pattern
 import { initFillOpenings } from "./fillopenings.js"; // jumpstart-3d: fill openings
 import { initFaceBox } from "./facebox.js"; // jumpstart-3d: box on face
@@ -45,6 +45,10 @@ import { initKnurl } from "./knurl.js"; // jumpstart-3d: knurl
 import { initSpring } from "./spring.js"; // jumpstart-3d: spring
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
+import { binParts, BIN_DEFAULTS } from "./bins.js";
+import { hingeParts, HINGE_DEFAULTS, HINGE_TYPES, PIN_KINDS } from "./hinges.js";
+import { FASTENER_KINDS, kindOf as fastKind, sizesFor, LENGTHS, defaultLength, fastenerPart, holeSizes } from "./fasteners.js";
+import { sizeData } from "./fasteners.js"; // jumpstart-3d: fasteners (pitch and size for the turns guard and the F8 spacing)
 
 const BODY_COLORS = ["#9fb1c4", "#c9a27a", "#8fb79a", "#b49ac8", "#c98f8f", "#8fb8c9"];
 
@@ -322,6 +326,7 @@ export function initAdvanced(app) {
     if (!committed) store.setPreview(null);
     def.cleanup && def.cleanup(committed); // jumpstart-3d: pivot. (committed)
     if (!committed && def.onCancel) def.onCancel();
+    if (app.sketchSlice && app.sketchSlice.on && !sketcher.active) app.setSketchSlice(false);
     scene.state.forceSketch = null;
     scene.state.ghost = new Set();
     scene.highlightRegions(new Set(), null);
@@ -375,8 +380,12 @@ export function initAdvanced(app) {
       // (it stays in the Browser; the eye shows it again)
       store.update((doc) => {
         const before = usedSketches(doc);
+        const nodes0 = new Map((doc.bodies || []).map((b) => [b.id, JSON.stringify(b.node)]));
         def.apply(doc);
-        for (const id of usedSketches(doc)) if (!before.has(id)) { const sk = (doc.sketches || []).find((x) => x.id === id); if (sk) sk.hidden = true; }
+        // every sketch the new or changed features use (also one shown again to reuse it)
+        const changed = { bodies: (doc.bodies || []).filter((b) => nodes0.get(b.id) !== JSON.stringify(b.node)) };
+        const now = usedSketches(changed);
+        for (const id of usedSketches(doc)) if (!before.has(id) || now.has(id)) { const sk = (doc.sketches || []).find((x) => x.id === id); if (sk) sk.hidden = true; }
       }, label);
     } catch (err) { app.toast(err.message, "err"); return; }
     closeCmd(true);
@@ -708,7 +717,7 @@ export function initAdvanced(app) {
     return out;
   }
   function textFontSelect(value, onPick, id) {
-    const s = el("select", { class: "num", id, "aria-label": "Font" }, ...Object.entries(FONT_NAMES).map(([v, l]) => el("option", { value: v, selected: v === value }, l)));
+    const s = fontSelect(id, value);
     s.onchange = () => onPick(s.value);
     return s;
   }
@@ -968,12 +977,54 @@ export function initAdvanced(app) {
       return bb && bb.intersectsBox(tb);
     }).map((b) => b.id);
   }
+  // is world point p inside body id? (a ray straight up through its triangles, counting crossings)
+  function insideBody(id, p) {
+    const v = scene.views.get(id);
+    if (!v || !v.data || !v.group) return false;
+    const q = p.clone().applyMatrix4(v.group.matrixWorld.clone().invert());
+    const P = v.data.vertices, T = v.data.triangles;
+    let n = 0;
+    const ex = 1.3e-5, ey = 2.7e-5, x = q.x + ex, y = q.y + ey;
+    for (let t = 0; t < T.length; t += 3) {
+      const a = T[t] * 3, b = T[t + 1] * 3, c = T[t + 2] * 3;
+      const ax = P[a], ay = P[a + 1], bx = P[b], by = P[b + 1], cx = P[c], cy = P[c + 1];
+      if ((x < ax && x < bx && x < cx) || (x > ax && x > bx && x > cx) || (y < ay && y < by && y < cy) || (y > ay && y > by && y > cy)) continue;
+      const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (Math.abs(den) < 1e-14) continue;
+      const l1 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den, l2 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den, l3 = 1 - l1 - l2;
+      if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+      if (l1 * P[a + 2] + l2 * P[b + 2] + l3 * P[c + 2] > q.z) n++;
+    }
+    return n % 2 === 1;
+  }
+  // the bodies an extrude actually runs into (not just ones whose boxes overlap)
+  function overlapping(doc, st, parts) {
+    const sk = findSk(doc, st.sketchId);
+    if (!sk || st.kind !== "extrude") return parts;
+    const regs = regionsFor(sk), M = planeMatrix(sk.plane), n = new THREE.Vector3(...sk.plane.n).normalize();
+    let lo = 0, hi = st.dist;
+    if (st.mode === "sym") { lo = -Math.abs(st.dist) / 2; hi = Math.abs(st.dist) / 2; }
+    if (st.mode === "two") { lo = -Math.abs(st.dist2); hi = Math.abs(st.dist); }
+    const pts = [];
+    for (const pr of st.profiles.values()) {
+      const r = regs[pr.index];
+      if (!r) continue;
+      const c = r.pt || r.poly[0], step = Math.max(1, Math.floor(r.poly.length / 16));
+      const flat = [c];
+      for (let i = 0; i < r.poly.length; i += step) { const q = r.poly[i]; flat.push([c[0] + (q[0] - c[0]) * 0.9, c[1] + (q[1] - c[1]) * 0.9]); }
+      for (const f of flat) for (const k of [0.15, 0.5, 0.85]) pts.push(new THREE.Vector3(f[0], f[1], 0).applyMatrix4(M).addScaledVector(n, lo + (hi - lo) * k));
+    }
+    return parts.filter((id) => pts.some((p) => insideBody(id, p)));
+  }
   function resolvedOp(doc, st) {
     if (st.op !== "auto") return st.op;
     const parts = participants(doc, st);
     const sk = findSk(doc, st.sketchId);
     if (!parts.length) return "new";
     if (sk && sk.onBody) return (st.kind === "extrude" && st.dist < 0 && st.mode === "one") ? "cut" : "join";
+    // like Fusion 360: a new shape that runs into a body joins it (otherwise it would sit hidden
+    // inside it, listed in the browser but nowhere to be seen)
+    if (overlapping(doc, st, parts).length) return "join";
     return "new";
   }
   // while previewing a cut, show the volume being removed in see-through red
@@ -983,18 +1034,31 @@ export function initAdvanced(app) {
   function featureNode(st) {
     const base = { t: st.kind, sketch: st.sketchId, profiles: [...st.profiles.values()].map((p) => p.ref) };
     if (st.kind === "extrude") Object.assign(base, { dist: st.dist, mode: st.mode, dist2: st.dist2 }, exprsOf(st, st.mode === "two" ? ["dist", "dist2"] : ["dist"])); // jumpstart-3d: parameters
-    else if (st.kind === "sweep") Object.assign(base, { path: st.path, orient: st.orient, dist: st.sdist, taper: st.taper, twist: st.twist, chain: st.chain });
+    else if (st.kind === "sweep") {
+      Object.assign(base, { orient: st.orient, dist: st.sdist, taper: st.taper, twist: st.twist, chain: st.chain });
+      // the path: sketch curves, or body edges (kept as fixed world-space segments)
+      if (st.path && st.path.ents.length) base.path = st.path;
+      else { const segs = st.edges.length ? pc.chainSegs(st.edges.map((e) => e.segs)) : st.fixedSegs; if (segs) base.edgeSegs = segs; }
+      // an optional guide rail
+      if (st.rail && st.rail.ents.length) base.rail = st.rail;
+      else { const rs = st.railEdges.length ? pc.chainSegs(st.railEdges.map((e) => e.segs)) : st.fixedRail; if (rs) base.railEdgeSegs = rs; }
+      if (base.rail || base.railEdgeSegs) base.railScale = st.railScale;
+    }
     else Object.assign(base, { axis: st.axis, angle: st.angle }, exprsOf(st, ["angle"])); // jumpstart-3d: parameters
     return base;
   }
 
   // sweep path as sampled world points (for previews and bounding boxes)
-  function sweepPathLines(st) {
-    const sk = st.path && findSk(store.view, st.path.sketch);
+  function sweepPathLines(st, which = "path") {
+    const sp = which === "rail" ? st.rail : st.path, edges = which === "rail" ? st.railEdges : st.edges, fixed = which === "rail" ? st.fixedRail : st.fixedSegs;
+    if (edges && edges.length) return edges.map((x) => x.pts);
+    if (fixed) return fixed.map((q) => q.t === "bsp" ? q.pts.map((p) => V3(p)) : q.t === "arc" ? [V3(q.a), V3(q.m), V3(q.b)] : q.t === "circle" ? [V3(q.c)] : [V3(q.a), V3(q.b)]);
+    const sk = sp && findSk(store.view, sp.sketch);
     if (!sk) return [];
     const M = planeMatrix(sk.plane);
-    return resolveSketch(sk).filter((c) => st.path.ents.includes(c.id)).map((c) => sampleCurve(c).map((q) => new THREE.Vector3(q[0], q[1], 0).applyMatrix4(M)));
+    return resolveSketch(sk).filter((c) => sp.ents.includes(c.id)).map((c) => sampleCurve(c).map((q) => new THREE.Vector3(q[0], q[1], 0).applyMatrix4(M)));
   }
+  const sweepHasPath = (st) => !!((st.path && st.path.ents.length) || st.edges.length || st.fixedSegs);
   const sweepPathWorld = (st) => sweepPathLines(st).flat();
   function pathPts(h) {
     const sk = findSk(store.view, h.sketch);
@@ -1046,7 +1110,7 @@ export function initAdvanced(app) {
     // body appears once the arrow is dragged or a distance typed
     const arrowZoom = () => { if (def.arrow) drawArrow(); }; // jumpstart-3d: preserve face hover when no arrow is shown.
     const big = app.mode === "beginner"; // Beginner: starts pulled up 10 mm, with a big arrow (easier to see and grab)
-    const st = { kind, profiles: new Map(), sketchId: null, dist: kind === "extrude" && !editing && !big ? 0 : 10, mode: "one", dist2: 5, op: "auto", angle: 360, axis: null, axisLine: null, pickAxis: false, path: null, pickPath: false, orient: "perp", sdist: 1, taper: 0, twist: 0, chain: true, extent: "dist", toRef: null, pickTo: false, hoverPlane: null, hoverPlaneKey: "", editing };
+    const st = { kind, profiles: new Map(), sketchId: null, dist: kind === "extrude" && !editing && !big ? 0 : 10, mode: "one", dist2: 5, op: "auto", angle: 360, axis: null, axisLine: null, pickAxis: false, path: null, pickPath: false, edges: [], fixedSegs: null, rail: null, railEdges: [], fixedRail: null, pickRail: false, railScale: true, orient: "perp", sdist: 1, taper: 0, twist: 0, chain: true, extent: "dist", toRef: null, pickTo: false, hoverPlane: null, hoverPlaneKey: "", editing };
     // coming straight from a sketch: show it and pick its profile when there is only one
     if (!editing && opts.sketch) {
       const sk = findSk(store.doc, opts.sketch);
@@ -1084,7 +1148,7 @@ export function initAdvanced(app) {
     if (editing) {
       const b = findBody(store.doc, editing.body);
       const node = editing.mod ? b.node.mods.find((m) => m.id === editing.mod).tool : b.node;
-      Object.assign(st, { sketchId: node.sketch, dist: node.dist ?? 10, mode: node.mode || "one", dist2: node.dist2 ?? 5, angle: node.angle ?? 360, axis: node.axis || null, path: node.path || null, orient: node.orient || "perp", sdist: kind === "sweep" && node.dist != null ? node.dist : 1, taper: node.taper ?? 0, twist: node.twist ?? 0, chain: node.chain !== false }, exprsOf(node, ["dist", "dist2", "angle"])); // jumpstart-3d: parameters
+      Object.assign(st, { sketchId: node.sketch, dist: node.dist ?? 10, mode: node.mode || "one", dist2: node.dist2 ?? 5, angle: node.angle ?? 360, axis: node.axis || null, path: node.path || null, orient: node.orient || "perp", sdist: kind === "sweep" && node.dist != null ? node.dist : 1, taper: node.taper ?? 0, twist: node.twist ?? 0, chain: node.chain !== false, fixedSegs: kind === "sweep" && !node.path && node.edgeSegs ? node.edgeSegs : null, rail: node.rail || null, fixedRail: node.railEdgeSegs || null, railScale: node.railScale !== false }, exprsOf(node, ["dist", "dist2", "angle"])); // jumpstart-3d: parameters
       st.op = editing.mod ? b.node.mods.find((m) => m.id === editing.mod).op : "new";
       const sk = findSk(store.doc, st.sketchId);
       if (sk) {
@@ -1102,7 +1166,7 @@ export function initAdvanced(app) {
     let arrowDrag = null;
     const def = {
       title: (editing ? "Edit " : "") + KIND_NAME[kind],
-      valid: () => st.profiles.size > 0 && (kind === "extrude" ? Math.abs(st.dist) > 1e-6 || st.mode === "two" : kind === "sweep" ? !!(st.path && st.path.ents.length) : !!st.axis && st.angle > 0),
+      valid: () => st.profiles.size > 0 && (kind === "extrude" ? Math.abs(st.dist) > 1e-6 || st.mode === "two" : kind === "sweep" ? sweepHasPath(st) : !!st.axis && st.angle > 0),
       canOk: () => def.valid(),
       apply(doc) {
         const node = featureNode(st);
@@ -1129,7 +1193,8 @@ export function initAdvanced(app) {
           doc.bodies.push({ id: st.newId || (st.newId = uid("b")), name: nextName(doc, "Body"), seq: nextSeq(doc), color: app.mode === "beginner" ? nextColor() : BODY_COLORS[doc.bodies.length % BODY_COLORS.length], hole: false, hidden: false, m: IDENTITY.slice(), node: { ...node, mods: [] }, ...(app.previewing ? { cmdPreview: true } : {}) });
         } else {
           if (!parts.length) throw new Error(op === "cut" ? "The profile doesn't reach any body to cut." : "The profile doesn't reach any body.");
-          const targets = op === "join" ? [parts[0]] : parts;
+          const ov = op === "join" ? overlapping(doc, st, parts) : [];
+          const targets = op === "join" ? [ov[0] || parts[0]] : parts;
           const seq = nextSeq(doc);
           for (const id of targets) {
             const b = findBody(doc, id);
@@ -1137,8 +1202,9 @@ export function initAdvanced(app) {
             b.node.mods.push({ id: uid("f"), seq, t: "bool", op, tool: { ...node, mods: [] }, m: arr(M4(b.m).invert()) });
           }
         }
-        if (sk) sk.hidden = true;
-        if (st.path) { const ps = findSk(doc, st.path.sketch); if (ps) ps.hidden = true; }
+        // (while previewing, the path and rail sketches stay shown so their curves can be picked)
+        if (sk && !app.previewing) sk.hidden = true;
+        if (!app.previewing) for (const ref of [st.path, st.rail]) if (ref) { const ps = findSk(doc, ref.sketch); if (ps) ps.hidden = true; }
         if (app.previewing && op === "cut") showCut(doc, node);
       },
       ok() { commit(def, editing ? "Edit " + kind : KIND_NAME[kind]); },
@@ -1149,7 +1215,12 @@ export function initAdvanced(app) {
         if (kind === "sweep") {
           swChain = st.chain;
           const n = st.path ? st.path.ents.length : 0;
-          body.append(row("Path", pickbox(st.pickPath, n ? el("span", {}, el("b", {}, n), ` curve${n > 1 ? "s" : ""}`) : "Click a sketch path", n ? () => { st.path = null; st.pickPath = true; refresh(); } : null, () => { st.pickPath = true; def.render(); })));
+          const ne = st.edges.length, pathLabel = n ? el("span", {}, el("b", {}, n), ` curve${n > 1 ? "s" : ""}`) : ne ? el("span", {}, el("b", {}, ne), ` edge${ne > 1 ? "s" : ""}`) : st.fixedSegs ? el("b", {}, "body edges") : "Click a sketch path or body edges";
+          body.append(row("Path", pickbox(st.pickPath, pathLabel, sweepHasPath(st) ? () => { st.path = null; st.edges = []; st.fixedSegs = null; st.pickPath = true; st.pickRail = false; refresh(); } : null, () => { st.pickPath = true; st.pickRail = false; def.render(); })));
+          const rn = st.rail ? st.rail.ents.length : 0, re = st.railEdges.length, hasRail = !!(rn || re || st.fixedRail);
+          const railLabel = rn ? el("span", {}, el("b", {}, rn), ` curve${rn > 1 ? "s" : ""}`) : re ? el("span", {}, el("b", {}, re), ` edge${re > 1 ? "s" : ""}`) : st.fixedRail ? el("b", {}, "body edges") : "None (optional)";
+          body.append(row("Guide rail", pickbox(st.pickRail, railLabel, hasRail ? () => { st.rail = null; st.railEdges = []; st.fixedRail = null; refresh(); } : null, () => { st.pickRail = true; st.pickPath = false; def.render(); }), "sw-rail"));
+          if (hasRail) body.append(el("label", { class: "check", title: "On: the profile grows and shrinks to keep touching the rail. Off: it only turns to face the rail." }, el("input", { type: "checkbox", id: "sw-rscale", checked: st.railScale, onchange: (e) => { st.railScale = e.target.checked; refresh(false); } }), "Scale the profile to the rail"));
           body.append(row("Orientation", seg([["perp", "Perpendicular"], ["parallel", "Parallel"]], st.orient, (v) => { st.orient = v; refresh(); }, "sw-orient")));
           body.append(el("label", { class: "check", title: "On: clicking a path curve selects every connected curve. Off: click curves one at a time." }, el("input", { type: "checkbox", id: "sw-chain", checked: st.chain, onchange: (e) => { st.chain = e.target.checked; swChain = st.chain; refresh(); } }), "Chain selection"));
           body.append(row("Distance", app.numField({ value: st.sdist, id: "sw-dist", min: 0.001, max: 1, step: 0.05, live: true, onCommit: (v) => { st.sdist = Math.min(1, Math.max(0.001, v)); refresh(false); } }), "sw-dist"));
@@ -1157,7 +1228,7 @@ export function initAdvanced(app) {
             body.append(row("Taper angle", app.numField({ value: st.taper, id: "sw-taper", min: -89, max: 89, step: 1, angle: true, live: true, onCommit: (v) => { st.taper = v; refresh(false); } }), "sw-taper"));
             body.append(row("Twist angle", app.numField({ value: st.twist, id: "sw-twist", min: -3600, max: 3600, step: 5, angle: true, live: true, onCommit: (v) => { st.twist = v; refresh(false); } }), "sw-twist"));
           }
-          body.append(el("div", { class: "hint", style: { padding: 0 } }, "Distance is a fraction of the path (0 to 1). Positive taper widens the sweep, negative narrows it. Twist is the total turn over the swept distance. Taper and twist need Perpendicular orientation, and the profile at the start of the path. Draw the profile and path in different sketches."));
+          body.append(el("div", { class: "hint", style: { padding: 0 } }, "Distance is a fraction of the path (0 to 1). Positive taper widens the sweep, negative narrows it. Twist is the total turn over the swept distance. Taper, twist and a guide rail need the profile at the start of the path. The path can be sketch curves (in another sketch than the profile), a 3D Sketch line or body edges."));
         } else if (kind === "revolve") {
           body.append(row("Axis", pickbox(st.pickAxis, WORLD_AXES[st.axis] ? el("span", {}, el("b", {}, st.axis), " axis") : st.axis ? el("span", {}, el("b", {}, "1"), " sketch line") : "Click a sketch line", null, () => { st.pickAxis = true; def.render(); })));
           const sk = findSk(store.doc, st.sketchId);
@@ -1202,9 +1273,10 @@ export function initAdvanced(app) {
           // sweep: a click inside a profile adds/removes it, a click on a curve sets the path
           if (kind === "sweep") {
             const h = sweepPathHit(e);
-            const key = h ? h.sketch + ":" + h.curve.id : null;
-            if (key !== st.hoverPath) { st.hoverPath = key; st.hoverPathPts = h ? pathPts(h) : null; drawArrow(); }
-            if (h || st.pickPath) { vp.canvas.style.cursor = h ? "pointer" : "default"; return; }
+            const eh = !h ? sweepEdgeHit(e) : null;
+            const key = h ? h.sketch + ":" + h.curve.id : eh ? "e" + eh.body + ":" + eh.edge : null;
+            if (key !== st.hoverPath) { st.hoverPath = key; st.hoverPathPts = h ? pathPts(h) : eh ? [edgeWorldPts(eh.base, eh.edge)] : null; drawArrow(); }
+            if (h || eh || st.pickPath || st.pickRail) { vp.canvas.style.cursor = h || eh ? "pointer" : "default"; return; }
           }
           // jumpstart-3d: redraw only when arrow hover changes.
           const hot = !!overArrow(e);
@@ -1244,9 +1316,31 @@ export function initAdvanced(app) {
           // The arrow starts at the shape's centre, so a quick grab of the arrow at that exact spot (within 6 px, 500 ms) cannot be told from a double-click; a deliberate grab there is unlikely
           if (def.openedBy && e.timeStamp - def.openedBy.at < 500 && Math.hypot(e.clientX - def.openedBy.x, e.clientY - def.openedBy.y) < (vp.touchMode ? 20 : 6)) { if (vp.touchMode) setTimeout(() => { if (app.command === def) { closeCmd(false); app.enterSketch(def.openedBy.sketch); } }, 0); return true; }
           const sweepCurve = kind === "sweep" ? sweepPathHit(e) : null;
-          if (kind === "sweep" && (sweepCurve || st.pickPath)) {
+          const sweepEdge = kind === "sweep" && !sweepCurve ? sweepEdgeHit(e) : null;
+          if (kind === "sweep" && sweepEdge) {
+            // body edges: added one click at a time (click again to drop), joined end to end
+            const rail = st.pickRail;
+            const list = rail ? st.railEdges : st.edges;
+            if (rail) { st.rail = null; st.fixedRail = null; } else { st.path = null; st.fixedSegs = null; }
+            const i = list.findIndex((x) => x.body === sweepEdge.body && x.edge === sweepEdge.edge);
+            if (i >= 0) list.splice(i, 1);
+            else list.push({ body: sweepEdge.body, edge: sweepEdge.edge, segs: pc.edgeSeg(sweepEdge), pts: edgeWorldPts(sweepEdge.base, sweepEdge.edge) });
+            try { if (list.length) pc.chainSegs(list.map((x) => x.segs)); def.error = null; } catch (err) { def.error = err.message; }
+            st.hoverPath = null; st.hoverPathPts = null;
+            refresh();
+            return true;
+          }
+          if (kind === "sweep" && st.pickRail && sweepCurve) {
+            const sk = findSk(store.view, sweepCurve.sketch);
+            st.rail = { sketch: sweepCurve.sketch, ents: st.chain ? pathChain(resolveSketch(sk), sweepCurve.curve.id) : [sweepCurve.curve.id] };
+            st.railEdges = []; st.fixedRail = null; st.pickRail = false; st.hoverPath = null; st.hoverPathPts = null;
+            refresh();
+            return true;
+          }
+          if (kind === "sweep" && (sweepCurve || st.pickPath || st.pickRail)) {
             const h = sweepCurve;
             if (h) {
+              st.edges = []; st.fixedSegs = null;
               const sk = findSk(store.view, h.sketch);
               const ids = st.chain ? pathChain(resolveSketch(sk), h.curve.id) : [h.curve.id];
               if (st.chain || !st.path || st.path.sketch !== h.sketch) st.path = { sketch: h.sketch, ents: ids };
@@ -1363,6 +1457,13 @@ export function initAdvanced(app) {
     }
     // jumpstart-3d: grab the head or the whole shaft in either mode.
     function overArrow(e) { return overDragArrow(vp, def.arrow, e); }
+    // a body edge for the sweep's path or rail: when picking them, or once a profile is chosen
+    // and the pointer isn't over a sketch profile (the profile's own body edges are allowed)
+    function sweepEdgeHit(e) {
+      if (!(st.pickPath || st.pickRail || (st.profiles.size && !sweepHasPath(st)) || st.edges.length || st.railEdges.length)) return null;
+      if (!st.pickPath && !st.pickRail && vp.pick(e, scene.regionMeshes()).length) return null;
+      return pickBaseEdge(e, (b) => !b.hole && !b.cmdPreview && b.id !== "__cut_preview");
+    }
     // a sweep path pick: a sketch curve, unless the click is inside a profile of the same sketch
     function sweepPathHit(e) {
       const h = pickSketchCurve(e);
@@ -1393,6 +1494,7 @@ export function initAdvanced(app) {
       def.arrow = null;
       if (kind === "sweep") {
         for (const pl of sweepPathLines(st)) drawLine(pl, 0x2f66c8);
+        for (const pl of sweepPathLines(st, "rail")) drawLine(pl, 0x9a3fd0);
         for (const pl of st.hoverPathPts || []) drawLine(pl, 0xe8a317);
         return;
       }
@@ -1403,6 +1505,7 @@ export function initAdvanced(app) {
       const M = planeMatrix(sk.plane);
       if (kind === "sweep") {
         for (const pl of sweepPathLines(st)) drawLine(pl, 0x2f66c8);
+        for (const pl of sweepPathLines(st, "rail")) drawLine(pl, 0x9a3fd0);
         for (const pl of st.hoverPathPts || []) drawLine(pl, 0xe8a317);
         return;
       }
@@ -2285,8 +2388,8 @@ export function initAdvanced(app) {
     try {
       if (type === "image") {
         const img = await loadImage(f);
-        ensureSketch();
-        insertImageCmd(img, f.name);
+        if (sketcher.active) insertImageCmd(img, f.name);
+        else imageOnFaceCmd(img, f.name); // pick a face of a body (or the workplane) for it
       } else {
         const text = await f.text();
         const res = type === "svg" ? { curves: parseSVG(text), skipped: 0 } : parseDXF(text);
@@ -2554,14 +2657,66 @@ export function initAdvanced(app) {
   // Size, place and turn a sketch's reference picture: drag its handles on the canvas (corners
   // scale evenly, sides stretch, the knob on top turns it, inside moves it), type the numbers,
   // or click two points on it and type the real distance between them.
-  function insertImageCmd(img, name) { pictureCmd(sketcher.active, { img, name }); }
+  function insertImageCmd(img, name, opts) { pictureCmd(sketcher.active, { img, name, ...(opts || {}) }); }
+  // Image on a face: point at a flat face of a body (or the workplane) and click; a sketch is
+  // made on that face with the picture on it, sized to the face, ready to trace over by hand or
+  // with Auto trace, then extrude, emboss or cut.
+  function imageOnFaceCmd(img, name) {
+    let hover = null;
+    const def = {
+      title: "Picture on a face",
+      valid: () => false,
+      hint: () => "Click a flat face of a body to put the picture on it, or click the ground for the workplane.",
+      build(body) {
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, el("b", {}, name), ` · ${img.w} × ${img.h} px`));
+        body.append(el("div", { class: "hint", style: { padding: "4px 0" } }, "Point at a flat face: it lights up. The picture is sized to fit the face. After placing it you can trace it on the face."));
+        body.append(el("button", { class: "btn", id: "imf-xy", style: { width: "100%" }, onclick: () => place(null) }, "Use the workplane (XY) instead"));
+      },
+      start() { scene.syncSketches(store.view); },
+      handler: {
+        hover(e) {
+          const f = pickBaseFace(e, (b) => !b.hole);
+          const ok = f && f.info && f.info.t === "PLANE" ? f : null;
+          const k = ok ? ok.body + "#" + ok.face : null;
+          if (k !== (hover && hover.body + "#" + hover.face)) { hover = ok; clearOv(); if (ok) drawFace(ok.base, ok.face, 0xe8a317); vp.request(); }
+          vp.canvas.style.cursor = ok ? "copy" : "default";
+        },
+        down(e) {
+          const f = pickBaseFace(e, (b) => !b.hole);
+          if (f && f.info && f.info.t === "PLANE") place(f);
+          else if (!f) place(null);
+          else app.toast("Pick a flat face: pictures go on flat faces.");
+          return true;
+        },
+      },
+    };
+    function place(f) {
+      clearOv();
+      closeCmd(false);
+      let fit = null;
+      if (f) {
+        makeSketch(planeFromFace(f), f);
+        // the face's size in the sketch: from its outline projected into the sketch
+        const sk = findSketch(store.doc, sketcher.active);
+        if (sk && sk.pts.length) {
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (const q of sk.pts) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+          const aspect = img.h / img.w, w = Math.min((x1 - x0) * 0.8, ((y1 - y0) * 0.8) / aspect);
+          if (w > 0.01) fit = { w: +w.toFixed(3), cx: +((x0 + x1) / 2).toFixed(4), cy: +((y0 + y1) / 2).toFixed(4) };
+        }
+      } else makeSketch(ORIGIN_PLANES.XY, null);
+      insertImageCmd(img, name, { fit, onFace: !!f });
+    }
+    openCmd(def);
+  }
   function pictureCmd(sketchId, fresh) {
     const sk0 = findSketch(store.doc, sketchId);
     const cur = fresh ? null : sk0 && sk0.image;
     if (!fresh && !cur) return;
     const aspect = fresh ? fresh.img.h / fresh.img.w : cur.h / cur.w;
-    const w0 = fresh ? Math.min(300, Math.max(20, +(fresh.img.natW * 0.2646).toFixed(1))) : cur.w;
-    const st = { w: w0, h: fresh ? +(w0 * aspect).toFixed(4) : cur.h, cx: fresh ? 0 : cur.cx || 0, cy: fresh ? 0 : cur.cy || 0, rot: fresh ? 0 : cur.rot || 0, opacity: fresh ? 0.6 : cur.opacity ?? 0.6, keep: true, cal: null };
+    const fit = fresh && fresh.fit;
+    const w0 = fit ? fit.w : fresh ? Math.min(300, Math.max(20, +(fresh.img.natW * 0.2646).toFixed(1))) : cur.w;
+    const st = { w: w0, h: fresh ? +(w0 * aspect).toFixed(4) : cur.h, cx: fit ? fit.cx : fresh ? 0 : cur.cx || 0, cy: fit ? fit.cy : fresh ? 0 : cur.cy || 0, rot: fresh ? 0 : cur.rot || 0, opacity: fresh ? (fresh.onFace ? 0.9 : 0.6) : cur.opacity ?? 0.6, keep: true, cal: null, trace: false };
     let drag = null, hot = null;
     const f = {};
     const def = {
@@ -2576,7 +2731,11 @@ export function initAdvanced(app) {
         if (!base) return;
         sk.image = { ...base, w: +st.w.toFixed(4), h: +st.h.toFixed(4), cx: +st.cx.toFixed(4), cy: +st.cy.toFixed(4), rot: +st.rot.toFixed(3), opacity: st.opacity };
       },
-      ok() { commit(def, fresh ? "Insert image" : "Size picture"); },
+      ok() {
+        commit(def, fresh ? "Insert image" : "Size picture");
+        if (st.trace) setTimeout(() => traceCmd(sketchId), 0);
+        else if (fresh && fresh.onFace) app.toast("The picture is on the face. Trace over it with the sketch tools, or use Auto trace in the Sketch palette.");
+      },
       hint: () => st.cal ? (st.cal.pts.length < 2 ? `Click point ${st.cal.pts.length + 1} of 2 on the picture (two ends of something you know the length of).` : "Type the real length between the two points.") : "Drag the corners to scale, the sides to stretch, the round knob to turn, or inside to move.",
       build(body) {
         if (fresh) body.append(el("div", { class: "hint", style: { padding: 0 } }, el("b", {}, fresh.name), ` · ${fresh.img.w} × ${fresh.img.h} px`));
@@ -2591,6 +2750,7 @@ export function initAdvanced(app) {
         r3.append(el("label", {}, "X", f.x), el("label", {}, "Y", f.y), el("label", {}, "Turn °", f.r));
         body.append(r3);
         body.append(sliderRow("Opacity", "img-op", st.opacity * 100, 5, 100, 1, "%", (v) => { st.opacity = v / 100; schedulePreview(def); }));
+        if (fresh) body.append(el("label", { class: "check", title: "Turn the picture's shapes into sketch outlines on this face as soon as it's placed (you can also trace by hand)" }, el("input", { type: "checkbox", id: "img-trace", checked: st.trace, onchange: (e) => { st.trace = e.target.checked; } }), "Auto trace it after placing"));
         // scale from a known length
         if (!st.cal) body.append(el("button", { class: "btn", id: "img-cal", style: { width: "100%", marginTop: "6px" }, title: "Click both ends of something in the picture whose real size you know, then type that size", onclick: () => { st.cal = { pts: [] }; def.render(); draw(); app.status(); } }, "Scale with a known length…"));
         else {
@@ -5272,8 +5432,67 @@ export function initAdvanced(app) {
     }
 
     // ---------------- the path: sampled into a world polyline with arc-length
+    // a 3D line (from 3D Sketch, or any tube made along a path) as a path: its centre lines
+    function lineBodyPaths(b) {
+      const out = [];
+      const sampleSeg = (sg, push) => {
+        if (sg.pts) sg.pts.forEach(push);
+        else if (sg.t === "line") { push(sg.a); push(sg.b); }
+        else if (sg.t === "arc" && sg.m) {
+          const A = new THREE.Vector3(...sg.a), Mv = new THREE.Vector3(...sg.m), B = new THREE.Vector3(...sg.b);
+          const ab = B.clone().sub(A), am = Mv.clone().sub(A), n = ab.clone().cross(am);
+          const n2 = n.lengthSq();
+          if (n2 < 1e-12) { push(sg.a); push(sg.b); return; }
+          const c = A.clone().add(am.clone().cross(n).multiplyScalar(ab.lengthSq()).add(n.clone().cross(ab).multiplyScalar(am.lengthSq())).divideScalar(2 * n2));
+          const u = A.clone().sub(c), r = u.length(); u.normalize();
+          const nn = n.clone().normalize(), v = nn.clone().cross(u);
+          const ang = (p) => { const d = p.clone().sub(c); return Math.atan2(d.dot(v), d.dot(u)); };
+          let a1 = ang(B); if (a1 <= 0) a1 += 2 * Math.PI;
+          const k = Math.max(8, Math.ceil(a1 / 0.1));
+          for (let i = 0; i <= k; i++) { const t = (a1 * i) / k; push(c.clone().addScaledVector(u, r * Math.cos(t)).addScaledVector(v, r * Math.sin(t)).toArray()); }
+        } else if (sg.t === "circle" && sg.c) {
+          const n = new THREE.Vector3(...(sg.n || [0, 0, 1])).normalize(), u = new THREE.Vector3(1, 0, 0);
+          if (Math.abs(u.dot(n)) > 0.9) u.set(0, 1, 0);
+          u.projectOnPlane(n).normalize(); const v = n.clone().cross(u);
+          for (let i = 0; i <= 96; i++) { const t = (i / 96) * 2 * Math.PI; push(new THREE.Vector3(...sg.c).addScaledVector(u, sg.r * Math.cos(t)).addScaledVector(v, sg.r * Math.sin(t)).toArray()); }
+        } else if (sg.spans) {
+          for (const sp of sg.spans) for (let k = 0; k <= 24; k++) { const t = k / 24, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t]; push([0, 1, 2].map((i) => w[0] * sp[0][i] + w[1] * sp[1][i] + w[2] * sp[2][i] + w[3] * sp[3][i])); }
+        } else if (sg.a && sg.b) { push(sg.a); push(sg.b); }
+      };
+      const walk = (node, M) => {
+        if (!node) return;
+        const segs = node.t === "pipe" || node.t === "coil" ? node.edgeSegs : null;
+        if (segs && segs.length) {
+          const pts = [];
+          const push = (p) => { const v = new THREE.Vector3(...p).applyMatrix4(M); if (!pts.length || pts[pts.length - 1].distanceTo(v) > 1e-6) pts.push(v); };
+          for (const sg of segs) sampleSeg(sg, push);
+          if (pts.length > 1) out.push(pts);
+        }
+        if (node.t === "group") for (const c of node.children || []) walk(c.node, M.clone().multiply(new THREE.Matrix4().fromArray(c.m || IDENTITY)));
+      };
+      walk(b.node, M4(b.m));
+      return out;
+    }
+    const isLineBody = (b) => !!b && !b.hole && lineBodyPaths(b).length > 0;
+    // a 3D line under the pointer (and which of its lines, for a joined 3D sketch)
+    function pickLineBody(e) {
+      const f = scene.pickFace(e);
+      const b = f && findBody(store.doc, f.body);
+      if (!b || !isLineBody(b)) return null;
+      const lines = lineBodyPaths(b);
+      let line = 0, bd = Infinity;
+      lines.forEach((pts, i) => { for (const p of pts) { const d = p.distanceTo(f.point); if (d < bd) { bd = d; line = i; } } });
+      return { body: b.id, line };
+    }
     function pathData() {
       if (!st.path) return null;
+      if (st.path.body) {
+        const b = findBody(store.doc, st.path.body);
+        const lines = b ? lineBodyPaths(b) : [];
+        const pts = lines[Math.min(st.path.line || 0, lines.length - 1)];
+        if (!pts || pts.length < 2) return null;
+        return pathFrom(pts.map((p) => p.clone()), null, 1);
+      }
       const sk = findSketch(store.view, st.path.sketch) || findSketch(store.doc, st.path.sketch);
       if (!sk) return null;
       const segs = orderPath(resolveSketch(sk), st.path.ents);
@@ -5306,7 +5525,25 @@ export function initAdvanced(app) {
       const M = planeMatrix(sk.plane);
       const pts = P2.map((q) => new THREE.Vector3(q[0], q[1], 0).applyMatrix4(M));
       if (pts.length < 2) return null;
+      return pathFrom(pts, new THREE.Vector3(...sk.plane.n).normalize(), segs.length);
+    }
+    // a polyline with arc length; n: the plane it lies in (a 3D line works out its own, if flat)
+    function pathFrom(pts, n, segCount) {
       const closed = pts[0].distanceTo(pts[pts.length - 1]) < 1e-6;
+      if (!n) {
+        // a flat 3D line still turns its copies in its own plane; a twisting one follows in 3D
+        const c = new THREE.Vector3(); pts.forEach((p) => c.add(p)); c.divideScalar(pts.length);
+        let best = null, bl = 0;
+        for (let i = 0; i < pts.length; i += Math.max(1, Math.floor(pts.length / 40))) for (let j = i + 1; j < pts.length; j += Math.max(1, Math.floor(pts.length / 40))) {
+          const v = pts[i].clone().sub(c).cross(pts[j].clone().sub(c)), l = v.length();
+          if (l > bl) { bl = l; best = v; }
+        }
+        if (best && bl > 1e-9) {
+          best.normalize();
+          const span = pts.reduce((m, p) => Math.max(m, p.distanceTo(c)), 0) || 1;
+          if (pts.every((p) => Math.abs(p.clone().sub(c).dot(best)) < span * 1e-3 + 1e-4)) n = best;
+        }
+      }
       const cum = [0];
       for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + pts[k].distanceTo(pts[k - 1]));
       const L = cum[cum.length - 1];
@@ -5331,7 +5568,7 @@ export function initAdvanced(app) {
         }
         return best;
       };
-      return { pts, closed, L, at, nearest, n: new THREE.Vector3(...sk.plane.n).normalize(), segCount: segs.length };
+      return { pts, closed, L, at, nearest, n, segCount, is3d: !!(st.path && st.path.body) };
     }
 
     const recenter = () => {
@@ -5381,12 +5618,22 @@ export function initAdvanced(app) {
           if (!pd.closed && (s < -1e-6 || s > pd.L + 1e-6)) break; // past the end of an open path
           const B = pd.at(s, dir);
           let m = new THREE.Matrix4().makeTranslation(B.p.x - A.p.x, B.p.y - A.p.y, B.p.z - A.p.z);
-          if (st.orient === "follow") {
+          if (st.orient === "follow" && pd.n) {
             // turn by the change in the path's direction, around the path's plane normal
             const t0 = A.t.clone().projectOnPlane(pd.n).normalize(), t1 = B.t.clone().projectOnPlane(pd.n).normalize();
             const ang = Math.atan2(t0.clone().cross(t1).dot(pd.n), t0.dot(t1));
             m = new THREE.Matrix4().makeTranslation(B.p.x, B.p.y, B.p.z)
               .multiply(new THREE.Matrix4().makeRotationAxis(pd.n, ang))
+              .multiply(new THREE.Matrix4().makeTranslation(-A.p.x, -A.p.y, -A.p.z));
+          } else if (st.orient === "follow") {
+            // a path that twists through 3D: carry the copy's turn along the path step by step
+            // (no sudden spins), so it stays the same way round relative to the path
+            const q = new THREE.Quaternion(), qs = new THREE.Quaternion();
+            const steps = Math.max(1, Math.ceil(Math.abs(s - s0) / Math.max(pd.L / 400, 0.2)));
+            let prev = A.t.clone();
+            for (let k = 1; k <= steps; k++) { const tk = pd.at(s0 + ((s - s0) * k) / steps, dir).t; qs.setFromUnitVectors(prev, tk); q.premultiply(qs); prev = tk; }
+            m = new THREE.Matrix4().makeTranslation(B.p.x, B.p.y, B.p.z)
+              .multiply(new THREE.Matrix4().makeRotationFromQuaternion(q))
               .multiply(new THREE.Matrix4().makeTranslation(-A.p.x, -A.p.y, -A.p.z));
           }
           out.push({ key: "p" + i, m });
@@ -5449,6 +5696,7 @@ export function initAdvanced(app) {
           return;
         }
         const T = transforms();
+        if (st.type === "path" && st.path && st.path.body && st.hidePath) { const pb = findBody(doc, st.path.body); if (pb) pb.hidden = true; }
         if (st.what === "features") {
           const b = findBody(doc, st.fbody);
           if (!b) return;
@@ -5493,7 +5741,7 @@ export function initAdvanced(app) {
       ok() { commit(def, "Pattern"); },
       onDelete: editing ? () => deleteFeature(editing) : null, // jumpstart-3d: pattern
       hint: () => editing ? "Change the count, spacing or angle. The copies update in the model."
-        : st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path. Connected curves are picked together."
+        : st.type === "path" && (st.pickPath || !st.path) ? "Click a sketch line, arc, circle or polygon for the path (connected curves are picked together), or a 3D line from 3D Sketch."
         : st.what === "features" ? (st.fbody ? "Click a cut, boss, hole or text on the model, or in the timeline, to pick it (click again to unpick). You can also tick features in the list." : "Click a cut, boss, hole or text on the model, or in the timeline, to pick it.")
         : st.ids.length ? "Set the count and spacing. The copies preview in place." : "Click the shapes to pattern.",
       build(body) {
@@ -5540,12 +5788,13 @@ export function initAdvanced(app) {
           body.append(el("div", { class: "hint", style: { padding: 0 } }, "360° spaces the copies evenly around the full circle."));
         } else {
           const pd = pathData();
-          body.append(row("Path", pickbox(st.pickPath, pd ? el("span", {}, el("b", {}, pd.segCount), ` curve${pd.segCount > 1 ? "s" : ""} · ${pd.closed ? "closed" : "open"} · ${withUnit(pd.L, 1)}`) : "Click a sketch path", pd ? () => { st.path = null; st.pickPath = true; changed(); } : null, () => { st.pickPath = true; def.render(); }), "pt-path"));
+          body.append(row("Path", pickbox(st.pickPath, pd ? (pd.is3d ? el("span", {}, el("b", {}, "3D line"), ` · ${pd.closed ? "closed" : "open"} · ${withUnit(pd.L, 1)}`) : el("span", {}, el("b", {}, pd.segCount), ` curve${pd.segCount > 1 ? "s" : ""} · ${pd.closed ? "closed" : "open"} · ${withUnit(pd.L, 1)}`)) : "Click a sketch path or a 3D line", pd ? () => { st.path = null; st.pickPath = true; changed(); } : null, () => { st.pickPath = true; def.render(); }), "pt-path"));
           body.append(num("Count", "pn", { min: 2, max: 500, step: 1 }));
           body.append(row("Spread", seg([["fit", pd && !pd.closed ? "To the end" : "Whole path"], ["space", "Spacing"]], st.pdist, (v) => { st.pdist = v; changed(); }, "pt-pdist")));
           if (st.pdist === "space") body.append(num("Spacing", "pspace", { min: 0.01, step: 1 }));
           body.append(row("Copies", seg([["same", "Same direction"], ["follow", "Follow path"]], st.orient, (v) => { st.orient = v; changed(); }, "pt-orient")));
           body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pt-flip", checked: st.flip, onchange: (e) => { st.flip = e.target.checked; changed(false); } }), "Go the other way along the path"));
+          if (pd && pd.is3d) body.append(el("label", { class: "check", title: "Hide the 3D line once the copies are made (it stays in the browser; the eye button shows it again)" }, el("input", { type: "checkbox", id: "pt-hidepath", checked: !!st.hidePath, onchange: (e) => { st.hidePath = e.target.checked; } }), "Hide the 3D line afterwards"));
           body.append(el("div", { class: "hint", style: { padding: 0 } }, "Copies start where the " + (st.what === "features" ? "features sit" : "object sits") + " (the nearest point on the path) and step along it. Follow path turns each copy with the path, like beads on a string."));
         }
         const total = transforms().length + 1;
@@ -5567,7 +5816,7 @@ export function initAdvanced(app) {
       cleanup() { scene.setSelected([]); clearOv(); markTimeline(true); },
       handler: {
         hover(e) {
-          if (st.type === "path" && st.pickPath) { const h = pickSketchCurve(e); vp.canvas.style.cursor = h ? "pointer" : "default"; scene.setHovered(null); return; }
+          if (st.type === "path" && st.pickPath) { const h = pickSketchCurve(e), lb = h ? null : pickLineBody(e); vp.canvas.style.cursor = h || lb ? "pointer" : "default"; scene.setHovered(lb ? lb.body : null); return; }
           const f = scene.pickFace(e);
           if (st.what === "features") {
             // the feature under the pointer is outlined (not the whole body)
@@ -5582,12 +5831,20 @@ export function initAdvanced(app) {
           scene.setHovered(f ? f.body : null); vp.canvas.style.cursor = f ? "pointer" : "default";
         },
         down(e) {
-          // the path: a sketch curve and the curves joined to it
+          // the path: a sketch curve and the curves joined to it, or a 3D line
           if (st.type === "path" && (st.pickPath || !scene.pickFace(e))) {
             const h = pickSketchCurve(e);
             if (h) {
               const sk = findSk(store.view, h.sketch);
               st.path = { sketch: h.sketch, ents: pathChain(resolveSketch(sk), h.curve.id) };
+              st.pickPath = false; changed();
+              return true;
+            }
+            const lb = st.pickPath ? pickLineBody(e) : null;
+            if (lb) {
+              st.path = { body: lb.body, line: lb.line };
+              // the line itself isn't one of the copies
+              st.ids = st.ids.filter((id) => id !== lb.body);
               st.pickPath = false; changed();
               return true;
             }
@@ -5695,6 +5952,293 @@ export function initAdvanced(app) {
         },
       },
     };
+    openCmd(def);
+  }
+
+  // ------------------------------------------------------------------ fasteners library
+  // Bolts, screws, nuts, washers, inserts and pins in metric and inch sizes. Point at a face to
+  // place one (it stands on the face), or at a round hole to drop it in, lined up with the hole.
+  function fastenerCmd(editingId = null) {
+    const existing = editingId ? findBody(store.doc, editingId) : null;
+    let pref = {}; try { pref = JSON.parse(localStorage.getItem("jumpstart3d.fastener") || "{}") || {}; } catch (e) {}
+    const f0 = existing ? existing.fastener : null;
+    const st = { kind: (f0 || pref).kind || "shcs", std: (f0 || pref).std || (getUnit() === "in" ? "inch" : "metric"), size: (f0 || pref).size || null, len: f0 ? f0.len : null, threads: f0 ? !!f0.threads : !!pref.threads,
+      id: existing ? existing.id : uid("b"), m: existing ? existing.m.slice() : null, placed: !!existing, where: null };
+    // jumpstart-3d: fasteners. Our thread fit on his library: a print offset per part (ISO profile caps), left-hand threads, the turns guard.
+    Object.assign(st, { clear: f0 && f0.clear != null ? f0.clear : store.doc.threadOffset || 0, left: f0 ? !!f0.left : false, pointed: !!existing });
+    const threaded = () => st.kind === "cutter" || (st.threads && !!fastKind(st.kind).thread);
+    const pitchNow = () => { const sd = sizeData(st.std, st.size); return sd ? sd.p : 1; };
+    const turns = () => (threaded() && fastKind(st.kind).len ? Math.round(st.len / pitchNow()) : 0);
+    // end jumpstart-3d
+    const fix = () => {
+      if (fastKind(st.kind).metricOnly) st.std = "metric";
+      const sizes = sizesFor(st.kind, st.std);
+      if (!sizes.includes(st.size)) st.size = sizes.includes(st.std === "inch" ? '1/4"-20' : "M3") ? (st.std === "inch" ? '1/4"-20' : "M3") : sizes[0];
+      if (!(st.len > 0)) st.len = defaultLength(st.kind, st.std, st.size);
+    };
+    fix();
+    if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 5), round(t.y, 5), 0)); }
+    const part = () => fastenerPart(st.kind, st.std, st.size, st.len, { threads: st.threads, clear: st.clear, left: st.left }); // jumpstart-3d: fasteners (per-part offset and hand)
+    // over a round hole: stand on its rim, along its axis (toward the camera side)
+    function holePlace(e) {
+      const hit = scene.pickFace(e, (b) => b.id !== st.id && !b.hole);
+      if (!hit || !hit.info || hit.info.t !== "CYLINDRE" || hit.info.ext !== false || !hit.info.ax) return null;
+      const G = hit.view.group.matrixWorld;
+      const o = V3(hit.info.o).applyMatrix4(G), a = V3(hit.info.ax).transformDirection(G).normalize(), r = hit.info.r;
+      if (a.dot(vp.camera.position.clone().sub(hit.point)) < 0) a.negate();
+      const t = hit.point.clone().sub(o).dot(a), c = o.clone().addScaledVector(a, t);
+      const u = new THREE.Vector3().crossVectors(a, Math.abs(a.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)).normalize();
+      const ray = new THREE.Raycaster(c.clone().addScaledVector(a, 1e4).addScaledVector(u, r * 1.3 + 0.2), a.clone().negate());
+      const hits = ray.intersectObject(hit.view.mesh, false);
+      const top = hits.length ? hits[0].point.clone().sub(c).dot(a) : 0;
+      const m = frameOnFace(c.clone().addScaledVector(a, top), a);
+      return { m, label: "hole Ø" + withUnit(2 * r, 2) };
+    }
+    const def = {
+      title: (existing ? "Edit " : "") + "Fastener",
+      apply(doc) {
+        const pt = part();
+        let b = findBody(doc, st.id);
+        if (!b) { b = { id: st.id, name: pt.name, seq: nextSeq(doc), color: pt.color, hole: false, hidden: false, m: st.m.slice(), node: pt.node }; doc.bodies.push(b); }
+        else if (!existing || existing.name === existing.fastener?.name) b.name = pt.name;
+        b.node = pt.node; b.m = st.m.slice();
+        b.fastener = { kind: st.kind, std: st.std, size: st.size, len: st.len, threads: st.threads, name: pt.name };
+        // jumpstart-3d: fasteners. A tap cutter is a hole; one never put on a face stands on the ground (it goes down from its origin).
+        if (st.kind === "cutter" || (f0 && f0.kind === "cutter")) b.hole = st.kind === "cutter";
+        if (st.kind === "cutter" && !st.pointed) b.m[14] += st.len;
+        Object.assign(b.fastener, { clear: st.clear, left: st.left });
+        // end jumpstart-3d
+      },
+      // jumpstart-3d: fasteners. The turns guard: a thread of more than MAX_TURNS turns is refused.
+      valid: () => turns() <= MAX_TURNS,
+      canOk: () => def.valid(),
+      // end jumpstart-3d
+      ok() {
+        try { localStorage.setItem("jumpstart3d.fastener", JSON.stringify({ kind: st.kind, std: st.std, size: st.size, threads: st.threads })); } catch (e) {}
+        // jumpstart-3d: fasteners. A new part never put anywhere with the pointer starts beside the bodies already there (browser test F8).
+        if (!existing && !st.pointed && st.kind !== "cutter") {
+          const sd = sizeData(st.std, st.size), rad = Math.max(sd.af / Math.cos(Math.PI / 6), sd.dk || 0, sd.wo || 0, sd.fd || 0, sd.bd || 0) / 2 + 2;
+          const boxes = store.doc.bodies.filter((b) => !b.hidden && b.id !== st.id).map((b) => { const bb = scene.bodyTightBox(b.id); return bb && !bb.isEmpty() ? bb : { min: { x: b.m[12] - 15, y: b.m[13] - 15 }, max: { x: b.m[12] + 15, y: b.m[13] + 15 } }; });
+          const hits = (x, y) => boxes.some((bb) => x + rad > bb.min.x && x - rad < bb.max.x && y + rad > bb.min.y && y - rad < bb.max.y);
+          for (let n = 0; n < 200 && hits(st.m[12], st.m[13]); n++) st.m[12] += 10; // the grid step
+          schedulePreview(def);
+        }
+        // end jumpstart-3d
+        commit(def, existing ? "Edit fastener" : "Add fastener");
+      },
+      onDelete: existing ? () => { closeCmd(false); deleteBodies([existing.id]); } : null,
+      hint: () => existing ? "Change the part, then OK." : "Point at a face to stand it there, or at a round hole to drop it in. Click to place, then OK.",
+      build(body) {
+        const k = fastKind(st.kind);
+        const sel = el("select", { id: "fs-kind", onchange: (e) => { st.kind = e.target.value; st.len = null; fix(); def.render(); schedulePreview(def); } });
+        for (const gname of [...new Set(FASTENER_KINDS.map((x) => x.group))]) {
+          const og = el("optgroup", { label: gname });
+          for (const x of FASTENER_KINDS.filter((y) => y.group === gname)) og.append(el("option", { value: x.id, selected: x.id === st.kind }, x.label));
+          sel.append(og);
+        }
+        body.append(row("Part", sel, "fs-kind"));
+        if (!k.metricOnly) body.append(row("Standard", seg([["metric", "Metric (ISO)"], ["inch", "Inch (UNC / UNF)"]], st.std, (v) => { st.std = v; st.len = null; fix(); def.render(); schedulePreview(def); }, "fs-std"))); // jumpstart-3d: fasteners (UNF sizes)
+        const ss = el("select", { id: "fs-size", onchange: (e) => { st.size = e.target.value; st.len = null; fix(); def.render(); schedulePreview(def); } }, ...sizesFor(st.kind, st.std).map((z) => el("option", { value: z, selected: z === st.size }, z)));
+        body.append(row("Size", ss, "fs-size"));
+        if (k.len) {
+          const opts = st.std === "inch" ? LENGTHS.inch.map(([v, l]) => [v * 25.4, l]) : LENGTHS.metric.map((v) => [v, v + " mm"]);
+          const ls = el("select", { id: "fs-lenpick", onchange: (e) => { if (e.target.value) { st.len = +e.target.value; def.render(); schedulePreview(def); } } },
+            el("option", { value: "" }, "Standard…"), ...opts.map(([v, l]) => el("option", { value: v, selected: Math.abs(v - st.len) < 1e-6 }, l)));
+          body.append(row("Length", el("div", { style: { display: "flex", gap: "6px" } }, app.numField({ value: st.len, id: "fs-len", len: true, min: 0.5, step: 1, onCommit: (v) => { st.len = v; def.render(); schedulePreview(def); } }), ls), "fs-len")); // jumpstart-3d: fasteners (re-render: the turns guard)
+        }
+        if (k.thread && k.thread !== "cut") body.append(el("label", { class: "check", title: "Cut a real helical thread (slower to build; plain is lighter and fine for most models)" }, el("input", { type: "checkbox", id: "fs-threads", checked: st.threads, onchange: (e) => { st.threads = e.target.checked; def.render(); schedulePreview(def); } }), "Modeled threads")); // jumpstart-3d: fasteners (re-render: the thread rows below)
+        // jumpstart-3d: fasteners. Our ISO thread fit: hand, a print offset per part with the note where its cap bites, the turns guard.
+        if (threaded()) {
+          const note = (text, id) => body.append(el("div", { class: "hint", id, style: { padding: 0 } }, text));
+          body.append(row("Hand", seg([[false, "Right"], [true, "Left"]], st.left, (v) => { st.left = v; def.render(); schedulePreview(def); }, "fs-hand")));
+          body.append(row("Print offset", offsetSelect(st.clear, (v) => { st.clear = v; def.render(); schedulePreview(def); }, "fs-clear"), "fs-clear"));
+          const cap = st.kind === "cutter" ? "" : offsetSelect.note(st.clear, pitchNow(), k.thread === "ext" ? "bolt" : "nut", st.std === "metric" ? st.size : "");
+          if (cap) note(cap, "fs-cap");
+          if (st.kind === "cutter") note("A threaded hole shape: put it into a solid, select both and Group them (in Advanced, Combine › Cut with the cutter as the tool). Its print offset widens it when it is made.", "fs-cutter");
+          const n = turns();
+          if (n > MAX_TURNS) note(tooMany(n), "fs-turns");
+          else if (n > WARN_TURNS) note(`About ${n} turns: this takes several seconds to build, longer on a phone.`, "fs-turns");
+        }
+        // end jumpstart-3d
+        const hs = holeSizes(st.std, st.size);
+        if (hs) body.append(el("div", { class: "hint", id: "fs-holes", style: { padding: "2px 0" } }, `Holes for ${st.size}: clearance ${withUnit(hs.clearance, 2)}, tap drill ${withUnit(hs.tap, 2)}` + (st.kind === "insert" && hs.insert ? `, insert hole ${withUnit(hs.insert, 2)}` : "") + "."));
+        if (st.where) body.append(el("div", { class: "hint", style: { padding: 0 } }, "Placed in the " + st.where + "."));
+      },
+      start() { schedulePreview(def); },
+      handler: {
+        hover(e) {
+          if (st.placed) return;
+          const h = holePlace(e);
+          const mat = h ? h.m : placeOn(e, st.id);
+          if (mat) { st.m = arr(mat); st.pointed = true; schedulePreview(def); } // jumpstart-3d: fasteners (pointed)
+          vp.canvas.style.cursor = h ? "copy" : "default";
+        },
+        down(e) {
+          const h = holePlace(e);
+          const mat = h ? h.m : placeOn(e, st.id);
+          if (mat) { st.m = arr(mat); st.placed = true; st.pointed = true; st.where = h ? h.label : null; def.render(); schedulePreview(def); } // jumpstart-3d: fasteners (pointed)
+          return true;
+        },
+      },
+    };
+    openCmd(def);
+  }
+
+  // ------------------------------------------------------------------ bin & box maker
+  // Small part bins and organiser boxes: size, a grid of compartments, their shape, walls, finger
+  // scoops, label lips, a stackable foot and a lid. Edit it later from the Browser (double-click).
+  function binCmd(editingId = null) {
+    const existing = editingId ? findBody(store.doc, editingId) : null;
+    let pref = {}; try { pref = JSON.parse(localStorage.getItem("jumpstart3d.bins") || "{}") || {}; } catch (e) {}
+    const st = { o: { ...BIN_DEFAULTS, ...(existing ? existing.bin : pref) }, id: existing ? existing.id : uid("b"), lidId: existing && existing.bin.lidId || uid("b"), m: existing ? existing.m.slice() : null, placed: !!existing };
+    if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 1), round(t.y, 1), 0)); }
+    let info = null;
+    const def = {
+      title: existing ? "Edit bin" : "Bin & Box Maker",
+      apply(doc) {
+        const parts = binParts(st.o);
+        info = parts.cell;
+        let b = findBody(doc, st.id);
+        if (!b) { b = { id: st.id, name: nextName(doc, "Bin"), seq: nextSeq(doc), color: "#5b8fd6", hole: false, hidden: false, m: st.m.slice(), node: parts.bin }; doc.bodies.push(b); }
+        b.node = parts.bin; b.m = st.m.slice();
+        b.bin = { ...st.o, lidId: parts.lid ? st.lidId : null };
+        let lid = findBody(doc, st.lidId);
+        if (parts.lid) {
+          // the lid sits beside the bin, the way it goes on (its rim down)
+          const M = M4(st.m).multiply(new THREE.Matrix4().makeTranslation(st.o.w + 12, 0, 0));
+          if (!lid) { lid = { id: st.lidId, name: b.name + " lid", seq: nextSeq(doc), color: "#e0a43a", hole: false, hidden: false, m: arr(M), node: parts.lid }; doc.bodies.push(lid); }
+          else { lid.node = parts.lid; if (!existing) lid.m = arr(M); }
+          lid.binLid = st.id;
+        } else if (lid) doc.bodies = doc.bodies.filter((x) => x.id !== st.lidId);
+      },
+      ok() {
+        try { const { lidId, ...keep } = st.o; void lidId; localStorage.setItem("jumpstart3d.bins", JSON.stringify(keep)); } catch (e) {}
+        commit(def, existing ? "Edit bin" : "Bin");
+      },
+      onDelete: existing ? () => { closeCmd(false); deleteBodies([existing.id, ...(existing.bin.lidId ? [existing.bin.lidId] : [])].filter((id) => findBody(store.doc, id))); } : null,
+      hint: () => existing ? "Change the bin, then OK." : "Set the size and compartments. Click the ground or a flat face to place it, then OK.",
+      build(body) {
+        const o = st.o;
+        const num = (label, k, opt = {}) => el("label", {}, label, app.numField({ value: o[k], id: "bn-" + k, len: opt.len !== false, min: opt.min ?? 0.4, max: opt.max ?? 1e5, step: opt.step ?? 1, live: true, onCommit: (v) => { o[k] = opt.int ? Math.max(1, Math.round(v)) : v; schedulePreview(def); if (opt.rerender) def.render(); } }));
+        const r3 = (...kids) => el("div", { class: "row3" }, ...kids);
+        body.append(el("div", { class: "subhead" }, "Outside size"), r3(num("Width", "w", { min: 10 }), num("Depth", "d", { min: 10 }), num("Height", "h", { min: 5 })));
+        body.append(el("div", { class: "subhead" }, "Compartments"), r3(num("Columns", "cols", { len: false, int: true, min: 1, max: 20 }), num("Rows", "rows", { len: false, int: true, min: 1, max: 20 }), num("Divider", "divider")));
+        body.append(row("Shape", seg([["square", "Square"], ["round", "Round"], ["hex", "Hex"]], o.shape, (v) => { o.shape = v; def.render(); schedulePreview(def); }, "bn-shape")));
+        body.append(el("div", { class: "subhead" }, "Walls"), r3(num("Wall", "wall"), num("Floor", "floor"), num("Corner radius", "radius", { min: 0 })));
+        if (o.shape === "square") {
+          body.append(row("Inside corners", app.numField({ value: o.inner, id: "bn-inner", len: true, min: 0, step: 0.5, live: true, onCommit: (v) => { o.inner = v; schedulePreview(def); } }), "bn-inner"));
+          body.append(el("label", { class: "check", title: "A curved ramp at the front of each compartment, so small parts slide out under a finger" }, el("input", { type: "checkbox", id: "bn-scoop", checked: o.scoop, onchange: (e) => { o.scoop = e.target.checked; def.render(); schedulePreview(def); } }), "Finger scoops"));
+          if (o.scoop) body.append(row("Scoop radius", app.numField({ value: o.scoopR, id: "bn-scoopR", len: true, min: 1, step: 1, live: true, onCommit: (v) => { o.scoopR = v; schedulePreview(def); } }), "bn-scoopR"));
+          body.append(el("label", { class: "check", title: "A sloped shelf at the back of each compartment for a label" }, el("input", { type: "checkbox", id: "bn-label", checked: o.label, onchange: (e) => { o.label = e.target.checked; def.render(); schedulePreview(def); } }), "Label lips"));
+          if (o.label) body.append(row("Lip width", app.numField({ value: o.labelW, id: "bn-labelW", len: true, min: 2, step: 1, live: true, onCommit: (v) => { o.labelW = v; schedulePreview(def); } }), "bn-labelW"));
+        }
+        body.append(el("label", { class: "check", title: "A foot under the bin fits into the rim of the bin below, so bins stack" }, el("input", { type: "checkbox", id: "bn-stack", checked: o.stack, onchange: (e) => { o.stack = e.target.checked; def.render(); schedulePreview(def); } }), "Stackable"));
+        if (o.stack) body.append(row("Foot height", app.numField({ value: o.foot, id: "bn-foot", len: true, min: 1, step: 0.5, live: true, onCommit: (v) => { o.foot = v; schedulePreview(def); } }), "bn-foot"));
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "bn-lid", checked: o.lid, onchange: (e) => { o.lid = e.target.checked; def.render(); schedulePreview(def); } }), "Lid (made next to the bin)"));
+        if (o.lid || o.stack) body.append(row("Fit clearance", app.numField({ value: o.clear, id: "bn-clear", len: true, min: 0, step: 0.05, live: true, onCommit: (v) => { o.clear = v; schedulePreview(def); } }), "bn-clear"));
+        let msg = "";
+        try { const c = binParts(o).cell; msg = `Each compartment: ${withUnit(c.w, 1)} x ${withUnit(c.d, 1)}, ${withUnit(c.h, 1)} deep.`; } catch (err) { msg = err.message; }
+        body.append(el("div", { class: "hint", id: "bn-info", style: { padding: "2px 0" } }, msg));
+        void info;
+      },
+      start() { schedulePreview(def); },
+      handler: {
+        hover(e) { if (st.placed) return; const mat = placeOn(e, st.id); if (mat) { st.m = arr(mat); schedulePreview(def); } },
+        down(e) { const mat = placeOn(e, st.id); if (mat) { st.m = arr(mat); st.placed = true; schedulePreview(def); } return true; },
+      },
+    };
+    openCmd(def);
+  }
+
+
+  // ------------------------------------------------------------------ quick hinges
+  // Ready-made hinges: print-in-place, pin or living. Point at a face (or the ground) to lay it
+  // there with its pin along the face, spin it, click to place, then OK. Leaf A and leaf B are
+  // separate bodies (they print together); Join a leaf to your part to fix it on.
+  function hingeCmd(editingId = null) {
+    const existing = editingId ? findBody(store.doc, editingId) : null;
+    let pref = {}; try { pref = JSON.parse(localStorage.getItem("jumpstart3d.hinge") || "{}") || {}; } catch (e) {}
+    const h0 = existing ? existing.hinge : null;
+    const st = { o: { ...HINGE_DEFAULTS, ...(h0 || pref) }, id: existing ? existing.id : uid("b"), bId: h0 && h0.bId || uid("b"), pinId: h0 && h0.pinId || uid("b"),
+      m: existing ? existing.m.slice() : null, placed: !!existing, spin: 0, base: null };
+    if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 1), round(t.y, 1), 0)); }
+    st.base = st.m.slice();
+    const ids = () => [st.id, st.bId, st.pinId];
+    const placeAt = (mat) => { st.base = arr(mat); st.m = arr(M4(st.base).multiply(new THREE.Matrix4().makeRotationZ((st.spin * Math.PI) / 180))); };
+    let info = null;
+    const def = {
+      title: existing ? "Edit hinge" : "Quick Hinge",
+      apply(doc) {
+        const parts = hingeParts(st.o);
+        info = parts.info;
+        const kindName = (HINGE_TYPES.find((x) => x[0] === st.o.type) || HINGE_TYPES[0])[1];
+        let a = findBody(doc, st.id);
+        if (!a) { a = { id: st.id, name: nextName(doc, st.o.type === "living" ? "Living hinge" : "Hinge"), seq: nextSeq(doc), color: "#d08a2e", hole: false, hidden: false, m: st.m.slice(), node: parts.a }; doc.bodies.push(a); }
+        a.node = parts.a; a.m = st.m.slice();
+        a.hinge = { ...st.o, bId: parts.b ? st.bId : null, pinId: parts.pin ? st.pinId : null, kind: kindName };
+        const side = (id, node, name, color, off) => {
+          let b = findBody(doc, id);
+          if (node) {
+            const M = arr(off ? M4(st.m).multiply(off) : M4(st.m));
+            if (!b) { b = { id, name: a.name + " " + name, seq: nextSeq(doc), color, hole: false, hidden: false, m: M, node }; doc.bodies.push(b); }
+            else { b.node = node; b.m = M; }
+            b.hingePart = st.id;
+          } else if (b) doc.bodies = doc.bodies.filter((x) => x.id !== id);
+        };
+        if (parts.b && !/leaf A$/.test(a.name)) a.name = a.name.replace(/( leaf A)?$/, " leaf A");
+        side(st.bId, parts.b, "leaf B".replace(/^/, ""), "#5b8fd6", null);
+        const bb = findBody(doc, st.bId); if (bb) bb.name = a.name.replace(/ leaf A$/, "") + " leaf B";
+        side(st.pinId, parts.pin, "pin", "#8a8f98", new THREE.Matrix4().makeTranslation(0, -(st.o.leafW + 8), 0));
+        const pb = findBody(doc, st.pinId); if (pb) pb.name = a.name.replace(/ leaf A$/, "") + " pin";
+      },
+      ok() {
+        try { const { bId, pinId, kind, ...keep } = st.o; void bId; void pinId; void kind; localStorage.setItem("jumpstart3d.hinge", JSON.stringify(keep)); } catch (e) {}
+        commit(def, existing ? "Edit hinge" : "Hinge");
+      },
+      onDelete: existing ? () => { closeCmd(false); deleteBodies(ids().filter((id) => findBody(store.doc, id))); } : null,
+      hint: () => existing ? "Change the hinge, then OK." : "Point at a face to lay the hinge on it (pin along the face), or on the ground. Spin it, click to place, then OK. Use Join to fix a leaf to your part.",
+      build(body) {
+        const o = st.o;
+        const num = (label, k, opt = {}) => el("label", {}, label, app.numField({ value: o[k], id: "hg-" + k, len: opt.len !== false, min: opt.min ?? 0.1, max: opt.max ?? 1e5, step: opt.step ?? 0.5, live: true, onCommit: (v) => { o[k] = opt.int ? Math.max(1, Math.round(v)) : v; schedulePreview(def); def.render(); } }));
+        const r3 = (...kids) => el("div", { class: "row3" }, ...kids);
+        body.append(row("Type", seg(HINGE_TYPES.map(([v, l, t]) => [v, l, t]), o.type, (v) => { o.type = v; if (v === "pip" && o.clear < 0.3) o.clear = 0.4; if (v === "pin" && o.clear > 0.3) o.clear = 0.25; def.render(); schedulePreview(def); }, "hg-type")));
+        const presets = o.type === "living" ? [["Small", { len: 30, leafW: 12, leafT: 2, gap: 2.5, thin: 0.45 }], ["Box lid", { len: 60, leafW: 20, leafT: 2.4, gap: 3, thin: 0.5 }], ["Large", { len: 100, leafW: 30, leafT: 3, gap: 4, thin: 0.6 }]]
+          : [["Small", { len: 25, dia: 6, knuckles: 5, leafW: 12, leafT: 2 }], ["Box lid", { len: 40, dia: 8, knuckles: 5, leafW: 16, leafT: 2.4 }], ["Door", { len: 80, dia: 12, knuckles: 7, leafW: 30, leafT: 3.2 }], ["Large", { len: 120, dia: 16, knuckles: 9, leafW: 40, leafT: 4 }]];
+        body.append(row("Size", el("div", { class: "seg", id: "hg-presets", style: { flexWrap: "wrap" } }, ...presets.map(([l, v]) => el("button", { onclick: () => { Object.assign(o, v); def.render(); schedulePreview(def); } }, l))), "hg-presets"));
+        if (o.type === "living") {
+          body.append(r3(num("Length", "len", { min: 6 }), num("Leaf width", "leafW", { min: 3 }), num("Leaf thickness", "leafT", { min: 0.8 })));
+          body.append(r3(num("Bend gap", "gap", { min: 1 }), num("Strip thickness", "thin", { min: 0.2, step: 0.05 })));
+          body.append(el("div", { class: "hint", style: { padding: "2px 0" } }, "Print it flat in PETG, PP or TPU (PLA cracks after a few bends). Two or three wall lines across the strip are enough."));
+        } else {
+          body.append(r3(num("Length", "len", { min: 6 }), num("Barrel", "dia", { min: 3 }), num("Knuckles", "knuckles", { len: false, int: true, min: 3, max: 25, step: 2 })));
+          body.append(r3(num("Leaf width", "leafW", { min: 3 }), num("Leaf thickness", "leafT", { min: 0.6 }), num("Clearance", "clear", { min: 0.05, step: 0.05 })));
+          if (o.type === "pin") body.append(row("Pin", seg(PIN_KINDS.map(([v, l]) => [v, l]), o.pin, (v) => { o.pin = v; def.render(); schedulePreview(def); }, "hg-pin")));
+          body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "hg-screws", checked: o.screws, onchange: (e) => { o.screws = e.target.checked; def.render(); schedulePreview(def); } }), "Screw holes in the leaves"));
+          if (o.screws) body.append(row("Screw hole", app.numField({ value: o.screwD, id: "hg-screwD", len: true, min: 1.5, step: 0.1, live: true, onCommit: (v) => { o.screwD = v; schedulePreview(def); } }), "hg-screwD"));
+        }
+        body.append(row("Spin", el("div", { style: { display: "flex", gap: "6px" } }, app.numField({ value: st.spin, id: "hg-spin", min: -360, max: 360, step: 15, live: true, onCommit: (v) => { st.spin = v; placeAt(M4(st.base)); schedulePreview(def); } }),
+          el("button", { class: "btn", id: "hg-spin90", title: "Turn the hinge a quarter turn on the face", onclick: () => { st.spin = (st.spin + 90) % 360; placeAt(M4(st.base)); def.render(); schedulePreview(def); } }, "↻ 90°")), "hg-spin"));
+        let msg = "";
+        try {
+          const p = hingeParts(o).info;
+          msg = o.type === "living" ? `Strip ${withUnit(p.strip, 2)} thick.` : o.type === "pip" ? `${p.knuckles} knuckles; pin ${withUnit(p.pinD, 2)} in a ${withUnit(p.hole, 2)} hole (${withUnit(o.clear, 2)} gap). Print it flat as it is, then work it back and forth to free it.` : `${p.knuckles} knuckles; pin hole ${withUnit(p.hole, 2)}` + (o.pin === "printed" ? `, printed pin ${withUnit(p.pinD, 2)} (made beside the hinge).` : ".");
+        } catch (err) { msg = err.message; }
+        body.append(el("div", { class: "hint", id: "hg-info", style: { padding: "2px 0" } }, msg));
+        void info;
+      },
+      start() { schedulePreview(def); },
+      handler: {
+        hover(e) { if (st.placed) return; const mat = hingePlace(e); if (mat) { placeAt(mat); schedulePreview(def); } },
+        down(e) { const mat = hingePlace(e); if (mat) { placeAt(mat); st.placed = true; schedulePreview(def); } return true; },
+      },
+    };
+    function hingePlace(e) {
+      const g = app.gridStep(), mine = new Set(ids());
+      const hit = scene.pickFace(e, (b) => !mine.has(b.id) && !b.hole);
+      if (hit) return hit.normal.z > 0.999 ? new THREE.Matrix4().makeTranslation(round(hit.point.x, g), round(hit.point.y, g), hit.point.z) : frameOnFace(hit.point, hit.normal);
+      const p = vp.rayPlane(e, new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+      return p ? new THREE.Matrix4().makeTranslation(round(p.x, g), round(p.y, g), 0) : null;
+    }
     openCmd(def);
   }
 
@@ -5849,6 +6393,9 @@ export function initAdvanced(app) {
     else if (b.node.t === "coil") coilCmd({ body: b.id });
     else if (b.node.t === "loft") loftCmd({ body: b.id });
     else if (b.node.t === "mirror") app.toast("A mirror follows its original body. Edit the original, or delete the mirror and make a new one.");
+    else if (b.fastener) fastenerCmd(b.id);
+    else if (b.bin) binCmd(b.id);
+    else if (b.hinge || b.hingePart) hingeCmd(b.hinge ? b.id : b.hingePart);
     else if (b.node.t === "group") combineInfo(b);
     else if (b.sculpt) app.toast("This is a sculpt: switch to Chisel to keep sculpting it. Here you can move it, scale it or cut holes in it.");
     else if (b.node.t === "mesh" || b.node.t === "step") app.toast("This is an imported model: move it, scale it, cut holes in it or add features to it.");
@@ -6012,8 +6559,9 @@ export function initAdvanced(app) {
       ]);
       group("Print", "", [
         { id: "ps-r-play", label: "Play print", title: "Watch the part being printed, layer by layer", icon: "motion", fn: () => { psim.togglePlay(); renderRibbon(); } },
+        { id: "ps-r-gcode", label: "Export G-code", title: "Save the sliced plate as a .gcode file for your printer (SD card, USB stick or the printer's app)", icon: "archExport", fn: () => psim.exportGcode() },
       ]);
-      ribbon.append(el("div", { class: "note" }, "Simulation only: no G-code is made."));
+      ribbon.append(el("div", { class: "note" }, "Slice, preview, then export G-code for your printer."));
       return;
     }
     if (workspace === "simulate") {
@@ -6043,6 +6591,11 @@ export function initAdvanced(app) {
       group("Voxels", "", [
         { id: "sim-voxel", label: "Voxel Studio", title: "Turn the selected objects (or all) into cubes you can paint face by face, then export STL or 3MF or add them to the design (your design is not changed until you add it)", icon: "voxel", fn: () => app.voxel.open() },
       ]);
+      group("Makers", "", [
+        { id: "sim-bins", label: "Bin & Box Maker", title: "Make small part bins and organiser boxes: a grid of compartments (square, round or hex), finger scoops, label lips, stackable feet and a lid", icon: "box", fn: () => binCmd() },
+        { id: "sim-fasteners", label: "Fasteners", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch)", icon: "thread", fn: () => fastenerCmd() },
+        { id: "sim-hinge", label: "Quick Hinge", title: "Ready-made hinges: print-in-place, pin or living hinges, without FlexiGen", icon: "hinge", fn: () => hingeCmd() },
+      ]);
       group("Woodcraft", "", [
         { id: "sim-chipcarve", label: "Chip Carving", title: "Chip carve a board, plate, log or a shape from your design with chip knives, a stab knife, pencil and sanding block. Pen pressure sets the depth. Add it to the design or export STL, 3MF or OBJ.", icon: "chipcarve", fn: () => app.carve.open() },
         { id: "sim-lathe", label: "Lathe", title: "Turn a body or a wood blank on a virtual lathe", icon: "lathe", fn: () => app.lathe.open() },
@@ -6057,6 +6610,9 @@ export function initAdvanced(app) {
         { id: "sim-reset", label: "Reset pose", title: "Put moved parts back", icon: "clearSim", fn: () => sim.resetPose() },
         { id: "sim-apply", label: "Apply pose", title: "Keep the moved positions in the design", icon: "move", fn: () => sim.applyPose() },
       ]);
+      group("Glass", "", [
+        { id: "sim-sglass", label: "Stained Glass", title: "Turn an object or a lamp shade into stained glass (a Tiffany-style lamp or a glass statue): glass and frame thickness, painting, STL / 3MF / OBJ export", icon: "stainedglass", fn: () => app.stainedGlass.open() },
+      ]);
       ribbon.append(el("button", { class: "ibtn panel-toggle", style: { alignSelf: "center" }, onclick: () => browser.classList.toggle("collapsed") }, el("span", { class: "lbl" }, "Browser")));
       return;
     }
@@ -6064,10 +6620,8 @@ export function initAdvanced(app) {
       { id: "ad-sketch", label: "Sketch", title: "Create sketch (S)", icon: "sketch", fn: () => createSketchCmd() },
       { id: "ad-extrude", label: "Extrude", title: "Extrude (E)", icon: "extrude", fn: () => extrudeCmd("extrude") },
       { id: "ad-sketch3d", label: "3D Sketch", title: "Draw lines in 3D on a body, a virtual sphere or cube, or in the air, with a split camera view. Works with touch, pen, mouse and trackpad.", icon: "spline", fn: () => app.sketch3d.open() },
-      { id: "ad-chipcarve", label: "Chip Carving", title: "Chip carve a board, plate, log or a shape from your design with knives; pen pressure sets the depth. The result is a mesh body.", icon: "chipcarve", fn: () => app.carve.open() },
-      { id: "ad-lathe", label: "Lathe", title: "Turn a body or a wood blank on a virtual lathe with chisels (Space is the pedal), then hollow it out. The result is a mesh body.", icon: "lathe", fn: () => app.lathe.open() },
       { id: "ad-hole", label: "Hole", title: "Hole (H): simple, counterbore, countersink or tapped, with standard screw sizes", icon: "hole", fn: () => holeCmd() },
-      { id: "ad-features", label: "Advanced Create", title: "Revolve, sweep, pipe, coil, loft, mirror, hole and thread", icon: "features", dropdown: [
+      { id: "ad-features", label: "Advanced Create", title: "Revolve, sweep, pipe, coil, loft, mirror, hole, thread and fasteners", icon: "features", dropdown: [
         { id: "ad-revolve", label: "Revolve", title: "Revolve (Shift+R)", icon: "revolve", fn: () => extrudeCmd("revolve") },
         { id: "ad-sweep", label: "Sweep", title: "Sweep a profile along a path", icon: "sweep", fn: () => extrudeCmd("sweep") },
         { id: "ad-pipe", label: "Pipe", title: "A round, square or triangular tube along a path", icon: "pipe", fn: () => pipeCmd() },
@@ -6078,7 +6632,8 @@ export function initAdvanced(app) {
         { id: "ad-holepattern", label: "Hole pattern", title: "Rows, staggered rows or a circle of round, square, hex or slot holes on a flat face", icon: "hole", fn: () => holePattern.cmd() }, // jumpstart-3d: hole pattern
         { id: "ad-thread", label: "Thread", title: "Modeled metric (ISO) and inch (UNC / UNF) threads on round faces", icon: "thread", fn: () => threadCmd() },
         { id: "ad-thread-offset", label: "Thread print offset…", title: "Loosen printed threads", icon: "thread", fn: () => threadOffsetCmd() },
-        { id: "ad-fastener", label: "Fastener", title: "Bolts, nuts, threaded rods and tap cutters, metric and inch", icon: "thread", fn: () => fasteners.cmd() }, // jumpstart-3d: fasteners
+        { id: "ad-fasteners", label: "Fasteners", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch), with optional modeled threads", icon: "thread", fn: () => fastenerCmd() },
+        { id: "ad-hinge", label: "Quick Hinge", title: "Ready-made hinges: print-in-place, pin (filament, screw or printed pin) or living hinges, laid on any face", icon: "hinge", fn: () => hingeCmd() },
         { id: "ad-gear", label: "Gear", title: "Spur gears, bevel gears and racks by module and tooth count", icon: "gear", fn: () => gears.cmd() }, // jumpstart-3d: gears
         { id: "ad-nameplate", label: "Name plate", title: "A tag or name plate sized to its text, with raised or cut-in letters", icon: "tag", fn: () => namePlate.cmd() }, // jumpstart-3d: name plates
         { id: "ad-knurl", label: "Knurled knob", title: "A knob or grip with straight V grooves all round and an optional round, hex or D bore", icon: "knurl", fn: () => knurl.cmd() }, // jumpstart-3d: knurl
@@ -6109,7 +6664,9 @@ export function initAdvanced(app) {
       { id: "ad-insert", label: "Insert", title: "Insert an SVG, DXF, picture, model or supplier part", icon: "import", dropdown: [
         { id: "ad-ins-svg", label: "SVG drawing", title: "Insert an SVG drawing as a sketch", icon: "svgfile", fn: () => insertFile("svg") },
         { id: "ad-ins-dxf", label: "DXF drawing", title: "Insert a DXF drawing as a sketch", icon: "dxffile", fn: () => insertFile("dxf") },
-        { id: "ad-ins-img", label: "Image to trace", title: "Place a picture to trace over (canvas)", icon: "image", fn: () => insertFile("image") },
+        { id: "ad-ins-img", label: "Image on a face", title: "Put a picture on a flat face of a body (or the workplane) to trace over by hand or with Auto trace", icon: "image", fn: () => insertFile("image") },
+        { id: "ad-ins-fast", label: "Fasteners (bolts, nuts…)", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins in metric and inch sizes, with optional modeled threads", icon: "thread", fn: () => fastenerCmd() },
+        { id: "ad-ins-hinge", label: "Quick Hinge", title: "Ready-made hinges: print-in-place, pin or living", icon: "hinge", fn: () => hingeCmd() },
         { id: "ad-ins-model", label: "STL / OBJ / 3MF / STEP model", title: "Import a 3D model: an STL, OBJ or 3MF mesh, or a STEP solid", icon: "import", fn: () => insertFile("model") }, // jumpstart-3d: OBJ import
         // jumpstart-3d: insert supplier parts
         { id: "ad-ins-realpart", label: "Real part from a supplier…", title: "Find a supplier part and import its downloaded model", icon: "import", fn: () => app.insertPart.open() },
@@ -6146,6 +6703,12 @@ export function initAdvanced(app) {
     group("Inspect", "", [
       { id: "ad-measure", label: "Measure", title: "Measure sizes, distances and angles (I)", icon: "measure", fn: () => measureCmd() },
       { id: "ad-section", label: "Section Analysis", title: "Cut the view with a plane to look inside your design (the design doesn't change)", icon: "section", fn: () => sectionCmd() },
+    ]);
+    // far right: the parts library, then the workshop tools (each opens in its own window)
+    group("Workshop", "", [
+      { id: "ad-fastbtn", label: "Fasteners", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch), with optional modeled threads", icon: "thread", fn: () => fastenerCmd() },
+      { id: "ad-chipcarve", label: "Chip Carving", title: "Chip carve a board, plate, log or a shape from your design with knives; pen pressure sets the depth. The result is a mesh body.", icon: "chipcarve", fn: () => app.carve.open() },
+      { id: "ad-lathe", label: "Lathe", title: "Turn a body or a wood blank on a virtual lathe with chisels (Space is the pedal), then hollow it out. The result is a mesh body.", icon: "lathe", fn: () => app.lathe.open() },
     ]);
     ribbon.append(el("button", { class: "ibtn panel-toggle", style: { alignSelf: "center" }, onclick: () => browser.classList.toggle("collapsed") }, el("span", { class: "lbl" }, "Browser")));
   }
@@ -6501,6 +7064,7 @@ export function initAdvanced(app) {
     } else if (ids.length > 1) body.append(el("div", { class: "hint", style: { padding: 0 } }, `${ids.length} items selected.`));
     if (ids.length) body.append(el("button", { class: "btn danger", onclick: () => sketcher.deleteSelection() }, "Delete selected"));
     if (!["select", "trim", "dim", "mirror"].includes(sketcher.tool)) body.append(el("button", { class: "btn", id: "pal-stop", onclick: () => { sketcher.done(); app.status(); } }, "Stop drawing (Esc)")); // jumpstart-3d: sketch mirror (it has its own Cancel)
+    if (sk) body.append(el("label", { class: "check", title: "Cut away the part of the bodies between you and the sketch plane (view only), like Fusion's Slice" }, el("input", { type: "checkbox", id: "pal-slice", checked: !!(app.sketchSlice && app.sketchSlice.on), onchange: (e) => app.setSketchSlice(e.target.checked) }), "Slice (see inside bodies)"));
     if (sk) body.append(el("div", { class: "hint", style: { padding: 0 } }, `${regionsFor(sk).length} closed profile${regionsFor(sk).length === 1 ? "" : "s"}.`));
     palette.append(body);
     palette.append(el("footer", {}, el("button", { class: "btn", id: "pal-extrude", title: "Go straight to Extrude (E)", onclick: () => app.quickExtrude() }, "Extrude (E)"), el("button", { class: "btn primary", id: "pal-finish", onclick: () => app.exitSketch() }, "Finish sketch")));
@@ -6542,8 +7106,9 @@ export function initAdvanced(app) {
 
   const sim = initSimulate(app, { vp, scene, openCmd, closeCmd, commit, schedulePreview, pickBaseFace, baseOf, drawLine, drawFace, drawDot, clearOv, row, seg, pickbox, sliderRow });
   function jointCmd(id) { sim.jointCmd(id); }
-  const { pipeCmd, coilCmd } = initPipeCoil(app, { vp, scene, openCmd, closeCmd, commit, schedulePreview, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawDot, clearOv, row, seg, pickbox, pickSketchCurve, pathPts, deleteFeature, frameFrom });
-  const fasteners = initFasteners(app, { openCmd, commit, row, seg, offsetSelect, STD }); // jumpstart-3d: fasteners
+  const pc = initPipeCoil(app, { vp, scene, openCmd, closeCmd, commit, schedulePreview, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawDot, clearOv, row, seg, pickbox, pickSketchCurve, pathPts, deleteFeature, frameFrom });
+  const { pipeCmd, coilCmd } = pc;
+  const fasteners = initFasteners(app, { STD }); // jumpstart-3d: fasteners (JS3D.fastener; the dialog is fastenerCmd)
   const holePattern = initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv, offsetSelect, pitchRow, planeFromFace, CLEAR, CBORE, CSINK, TAP, isInchKey }); // jumpstart-3d: hole pattern
   const fillOpen = initFillOpenings(app, { openCmd, commit, schedulePreview, deleteFeature, pickbox, pickBaseFace, baseOf, drawFace, ov, clearOv }); // jumpstart-3d: fill openings
   const faceBox = initFaceBox(app, { openCmd, commit, schedulePreview, row, seg, pickBaseFace, drawFace, ov, clearOv, planeFromFace }); // jumpstart-3d: box on face
@@ -6558,7 +7123,7 @@ export function initAdvanced(app) {
     el("button", { class: "btn", id: "section-edit", title: "Change the section", onclick: () => { if (app.mode !== "advanced") app.setMode("advanced"); sectionCmd(); } }, "Edit"),
     el("button", { class: "xbtn", id: "section-clear", "aria-label": "Turn off section analysis", title: "Turn off section analysis", html: ICON.close, onclick: () => section.clear() }));
   vp.canvas.parentElement.append(secChip);
-  section.onChange((info) => { secChip.hidden = !info; if (info) secChip.querySelector(".txt").textContent = "Section: " + (info.ref.label || "plane") + (info.d ? ` ${info.d > 0 ? "+" : ""}${withUnit(info.d, 1)}` : ""); });
+  section.onChange((info) => { secChip.hidden = !info || !!info.slice; if (info) secChip.querySelector(".txt").textContent = "Section: " + (info.ref.label || "plane") + (info.d ? ` ${info.d > 0 ? "+" : ""}${withUnit(info.d, 1)}` : ""); });
   const { measureCmd } = initMeasure(app, { vp, openCmd, closeCmd, pickBaseFace, pickBaseEdge, edgeWorldPts, drawLine, drawFace, drawDot, clearOv, row, seg });
   const plateUpdate = () => app.plateView && app.plateView.update(); // jumpstart-3d: printer plate. the overhang overlay steps aside while a simulation workspace is open
   const psim = initPrintSim(app, { vp, scene, openCmd, closeCmd, row, seg, sliderRow, onView: () => { if (app.mode === "advanced") renderRibbon(); }, onOpen: plateUpdate, onClose: () => leftPrintSim() });
@@ -6658,6 +7223,7 @@ export function initAdvanced(app) {
     editItem,
     // shared with Beginner mode
     createSketch: (opts) => createSketchCmd(opts || {}),
+    hinge: (id) => hingeCmd(id || null),
     pattern: () => patternCmd(),
     align: () => alignCmd(),
     move: () => moveCmd(),
@@ -6686,7 +7252,7 @@ export function initAdvanced(app) {
     },
     showBuildErrors,
     paramRows, // jumpstart-3d: parameters
-    fastener: () => fasteners.cmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners
+    fastener: () => fastenerCmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners (one dialog: J.Siwek's library)
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
     fillOpenings: () => fillOpen.cmd(), // jumpstart-3d: fill openings
     faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face

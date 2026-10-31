@@ -279,5 +279,5 @@ export function initPipeCoil(app, X) {
     openCmd(def);
   }
 
-  return { pipeCmd, coilCmd };
+  return { pipeCmd, coilCmd, edgeSeg, chainSegs };
 }

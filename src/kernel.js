@@ -4,7 +4,7 @@ import { readStepShape, beginStepBuild, stepStage, denseStep } from "./stepload.
 // and meshes. Runs inside a Web Worker in the app, and directly in Node for tests.
 import * as R from "replicad";
 import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: the round-face-safe merge after a boolean (exported for the STEP import)
-import { fontBytes } from "./fonts.js";
+import { fontBytes, registerFont } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
 import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
 import { fillOpenings, analyseOpenings, chooseOpenings } from "./fillopen.js"; // jumpstart-3d: fill openings
@@ -92,6 +92,11 @@ function roundOff(shape, p) {
   // Clamped below half the smallest dimension: OpenCascade can hang otherwise.
   const lim = Math.min(clampPos(p.w), clampPos(p.d), clampPos(p.h)) / 2 * 0.96;
   p = { ...p, r: Math.min(p.r || 0, lim), c: Math.min(p.c || 0, lim) };
+  // rounded upright corners only (bins, trays, plates)
+  const rv = Math.min(p.rv || 0, Math.min(clampPos(p.w), clampPos(p.d)) / 2 * 0.96);
+  if (rv > 0) {
+    try { const s = shape.fillet(rv, (e) => e.inDirection("Z")); shape.delete(); shape = s; } catch (e) { throw new Error("Corner radius is too large for this shape"); }
+  }
   if (p.r > 0) {
     try { const s = shape.fillet(p.r); shape.delete(); return s; } catch (e) { throw new Error("Radius is too large for this shape"); }
   }
@@ -345,7 +350,7 @@ function buildPrim(kind, p) {
 function textDrawing(t) {
   const str = String(t.str || "").replace(/\s+$/, "");
   if (!str.trim()) throw new Error("Type some text first");
-  const fontName = ["sans", "serif", "mono"].includes(t.font) ? t.font : "sans";
+  const fontName = KNOWN_FONTS.has(t.font) ? t.font : "sans";
   const font = R.getFont(fontName);
   const cap = (font.tables.os2 && font.tables.os2.sCapHeight) || font.unitsPerEm * 0.7;
   const fontSize = clampPos(t.size || 10) * font.unitsPerEm / cap;
@@ -583,6 +588,18 @@ function swSeg(s) {
       }
     };
   }
+  if (s.t === "bsp") {
+    // a smooth curve through points: walked as the polyline through them (for stations and trims)
+    const P = s.pts, cum = [0];
+    for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + V.len(V.sub(P[i], P[i - 1])));
+    const total = cum[cum.length - 1] || 1;
+    const loc = (u) => { const L = Math.max(0, Math.min(1, u)) * total; let i = 1; while (i < P.length - 1 && cum[i] < L) i++; const w = (L - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1); return { i, w }; };
+    return {
+      s, len: total,
+      at: (u) => { const { i, w } = loc(u); return { p: V.lerp(P[i - 1], P[i], w), t: V.nrm(V.sub(P[i], P[i - 1])) }; },
+      cut: (f) => { const { i, w } = loc(f); const pts = P.slice(0, i).concat([V.lerp(P[i - 1], P[i], w)]); return pts.length < 2 ? { t: "line", a: P[0], b: P[1] } : { t: "bsp", a: pts[0], b: pts[pts.length - 1], pts }; },
+    };
+  }
   throw new Error("Unsupported path segment");
 }
 function swTrim(segs, f) {
@@ -716,6 +733,68 @@ function swTwistTaper(wire, segs, taper, twist, isHole) {
   }
 }
 
+// Path + guide rail (like Fusion's): the profile turns about the path to keep facing the rail and
+// (with scale on) grows or shrinks with its distance from the path. At each station along the
+// path the rail is found where it crosses the plane across the path there.
+function railPoints(railSegs) {
+  const pts = [];
+  for (const s of railSegs) {
+    if (s.t === "bsp") { for (const q of s.pts) pts.push(q); continue; }
+    const g = swSeg(s);
+    const n = s.t === "line" ? 1 : 64;
+    for (let i = pts.length ? 1 : 0; i <= n; i++) pts.push(g.at(i / n).p);
+  }
+  return pts;
+}
+function railAt(R0, p, t, prev) {
+  const V = swV;
+  let best = null, bd = Infinity;
+  for (let i = 1; i < R0.length; i++) {
+    const a = R0[i - 1], b = R0[i];
+    const da = V.dot(V.sub(a, p), t), db = V.dot(V.sub(b, p), t);
+    if ((da > 0) === (db > 0) && Math.abs(da) > 1e-12 && Math.abs(db) > 1e-12) continue;
+    const u = Math.abs(da - db) < 1e-15 ? 0 : da / (da - db);
+    const q = V.lerp(a, b, Math.max(0, Math.min(1, u)));
+    // nearest crossing to the path point (and to the last one, so a wavy rail is followed in order)
+    const d = V.len(V.sub(q, p)) + (prev ? 0.25 * V.len(V.sub(q, prev)) : 0);
+    if (d < bd) { bd = d; best = q; }
+  }
+  if (best) return best;
+  // no crossing (the rail is shorter than the path): the nearest rail point
+  for (const q of R0) { const d = V.len(V.sub(q, p)); if (d < bd) { bd = d; best = q; } }
+  return best;
+}
+function swGuide(wire, segs, railSegs, scale) {
+  const V = swV;
+  const R0 = railPoints(railSegs);
+  if (R0.length < 2) throw new Error("Pick a guide rail: a sketch curve or body edges");
+  let n = Math.max(8, Math.min(48, segs.length * 8));
+  const S = swStations(segs, n), P0 = S.st[0].p, t0 = S.st[0].t;
+  const across = (v, t) => V.sub(v, V.mul(t, V.dot(v, t)));
+  let q = railAt(R0, P0, t0, null);
+  const v0 = across(V.sub(q, P0), t0), L0 = V.len(v0);
+  if (L0 < 1e-4) throw new Error("The guide rail must not touch the path where the sweep starts");
+  const wires = [];
+  try {
+    let prev = q;
+    for (const st2 of S.st) {
+      q = railAt(R0, st2.p, st2.t, prev); prev = q;
+      const v = across(V.sub(q, st2.p), st2.t), L = V.len(v);
+      const vt = swApply(st2.A, v0); // where the start direction is carried with no turning
+      const ang = L > 1e-9 ? Math.atan2(V.dot(V.cross(vt, v), st2.t), V.dot(vt, v)) : 0;
+      const k = scale && L > 1e-9 ? L / L0 : 1;
+      const Rm = swMat3(swRot(st2.t, ang), st2.A);
+      const RP = swApply(Rm, P0), tr = V.sub(st2.p, V.mul(RP, k));
+      const m = [Rm[0][0] * k, Rm[1][0] * k, Rm[2][0] * k, 0, Rm[0][1] * k, Rm[1][1] * k, Rm[2][1] * k, 0, Rm[0][2] * k, Rm[1][2] * k, Rm[2][2] * k, 0, tr[0], tr[1], tr[2], 1];
+      wires.push(transformShape(wire.clone(), m));
+    }
+    const spine = sweepPath(segs);
+    try { return swPipe(spine, wires); }
+    catch (e) { throw new Error("Couldn't sweep along this path with this guide rail. Keep the rail beside the path, about the same length, without sharp turns."); }
+    finally { spine.delete(); }
+  } finally { wires.forEach((w) => w.delete && w.delete()); }
+}
+
 function buildSweep(node) {
   if (!node.regions || !node.regions.length) throw new Error("Select a closed profile to sweep");
   const pl = planeOf(node.plane);
@@ -733,12 +812,14 @@ function buildSweep(node) {
   const perp = node.orient !== "parallel";
   const frac = Math.max(1e-3, Math.min(1, node.dist == null ? 1 : +node.dist || 1));
   const taper = perp ? +node.taper || 0 : 0, twist = perp ? +node.twist || 0 : 0;
-  const special = Math.abs(taper) > 1e-9 || Math.abs(twist) > 1e-9;
+  const rail = node.railSegs && node.railSegs.length ? node.railSegs : null;
+  const special = !!rail || Math.abs(taper) > 1e-9 || Math.abs(twist) > 1e-9;
   if (frac < 1 - 1e-9 && segs.length) segs = swTrim(segs, frac);
   if (special) {
-    if (segs.length === 1 && segs[0].t === "circle") throw new Error("Twist and taper need an open path. Set Distance below 1, or use a path that is not a closed loop.");
+    const what = rail ? "A guide rail needs" : "Twist and taper need";
+    if (segs.length === 1 && segs[0].t === "circle") throw new Error(what + " an open path. Set Distance below 1, or use a path that is not a closed loop.");
     const start = segs[0].a;
-    if (Math.abs(Vec.dot(Vec.sub(start, node.plane.o), Vec.norm(node.plane.n))) > 1e-3) throw new Error("For twist and taper, the profile must sit at the start of the path.");
+    if (Math.abs(Vec.dot(Vec.sub(start, node.plane.o), Vec.norm(node.plane.n))) > 1e-3) throw new Error((rail ? "For a guide rail" : "For twist and taper") + ", the profile must sit at the start of the path.");
   }
   const spine = sweepPath(segs);
   let out = null;
@@ -747,7 +828,7 @@ function buildSweep(node) {
       if (r.text) throw new Error("Text profiles can't be swept yet");
       const solidOf = (loop, hole) => {
         const sk = loopDrawing(loop).sketchOnPlane(pl);
-        try { return special ? swTwistTaper(sk.wire, segs, taper, twist, hole) : pipe(sk.wire, spine, node.orient); } finally { sk.delete(); }
+        try { return rail ? swGuide(sk.wire, segs, rail, node.railScale !== false) : special ? swTwistTaper(sk.wire, segs, taper, twist, hole) : pipe(sk.wire, spine, node.orient); } finally { sk.delete(); }
       };
       let s1 = solidOf(r.outer, false);
       if (Math.abs(R.measureVolume(s1)) < 1e-9) throw new Error("Couldn't sweep");
@@ -1075,7 +1156,13 @@ function applyMod(shape, mod, node) { // jumpstart-3d: STEP parts (#173). node: 
       let out;
       if (mod.op === "cut") out = shape.cut(tool);
       else if (mod.op === "intersect") out = shape.intersect(tool);
-      else out = shape.fuse(tool);
+      else {
+        // join: a tool made of many solids (a pattern of ribs, say) is fused in one go, and the
+        // result is checked, so the tools can never just disappear
+        const parts = solidsOf(tool);
+        out = fuseMany([shape.clone(), ...parts.map((x) => x.clone())]);
+        for (const x of parts) x.delete();
+      }
       tool.delete(); shape.delete();
       return out;
     }
@@ -2375,7 +2462,7 @@ function helixWire(pitch, height, radius, center, dir, left, shift = 0) {
 function glyphDrawings(t) {
   const str = String(t.str || "");
   if (!str.trim()) throw new Error("Type some text first");
-  const fontName = ["sans", "serif", "mono"].includes(t.font) ? t.font : "sans";
+  const fontName = KNOWN_FONTS.has(t.font) ? t.font : "sans";
   const font = R.getFont(fontName);
   const cap = (font.tables.os2 && font.tables.os2.sCapHeight) || font.unitsPerEm * 0.7;
   const fontSize = clampPos(t.size || 10) * font.unitsPerEm / cap;
@@ -3224,7 +3311,19 @@ function stableKey(node) {
 // Files a design brings in (STL meshes, STEP models) are sent to the worker once as
 // "assets"; nodes refer to them by id, so the big data never travels with every rebuild.
 const assets = new Map(); // id -> { kind, bytes: Uint8Array }
-export function setAsset(id, kind, bytes) { assets.set(id, { kind, bytes }); }
+export function setAsset(id, kind, bytes) {
+  if (kind === "font") {
+    // a Text-tool font from the main page
+    const name = id.replace(/^font:/, "");
+    registerFont(name, bytes);
+    fontWait = fontWait.then(() => R.loadFont(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), name, true)).then(() => KNOWN_FONTS.add(name)).catch((e) => console.warn("font", name, e));
+    return;
+  }
+  assets.set(id, { kind, bytes });
+}
+const KNOWN_FONTS = new Set(["sans", "serif", "mono"]);
+let fontWait = Promise.resolve();
+export const fontsReady = () => fontWait;
 export function hasAsset(id) { return assets.has(id); }
 function assetBytes(node) {
   const a = assets.get(node.asset);
@@ -3435,13 +3534,14 @@ function buildGroup(node) {
     (k.hole ? holes : solids).push(s);
   }
   let base;
+  // many small touching pieces (stained-glass leading): kept as one compound, not fused (fast)
+  if (node.op === "compound" && !holes.length) { const c = compoundOf(solids); for (const x of solids) x.delete(); return c; }
   if (node.op === "intersect") {
     if (solids.length < 2) throw new Error("Intersect needs at least two solid bodies");
     base = solids[0];
     for (let i = 1; i < solids.length; i++) { const n = base.intersect(solids[i]); base.delete(); solids[i].delete(); base = n; }
   } else if (solids.length) {
-    base = solids[0];
-    for (let i = 1; i < solids.length; i++) { const n = base.fuse(solids[i]); base.delete(); solids[i].delete(); base = n; }
+    base = fuseMany(solids);
   } else {
     // a group made only of holes stays a hole
     base = holes.shift();
@@ -3449,6 +3549,50 @@ function buildGroup(node) {
   }
   for (const h of holes) { const n = base.cut(h); base.delete(); h.delete(); base = n; }
   return base;
+}
+
+// the solids of a shape (a compound's pieces, or the shape itself)
+function solidsOf(shape) {
+  const T = OC.TopAbs_ShapeEnum, out = [];
+  const ex = new OC.TopExp_Explorer(shape.wrapped, T.TopAbs_SOLID, T.TopAbs_SHAPE);
+  for (; ex.More(); ex.Next()) out.push(R.cast(OC.TopoDS.Solid(ex.Current())));
+  ex.delete();
+  return out.length ? out : [shape.clone()];
+}
+function compoundOf(shapes) {
+  const b = new OC.TopoDS_Builder(), c = new OC.TopoDS_Compound();
+  b.MakeCompound(c);
+  for (const x of shapes) for (const so of solidsOf(x)) b.Add(c, so.wrapped);
+  b.delete();
+  return R.cast(c);
+}
+// Fuse solids into one. One fuse with all of them is much faster and more reliable than adding
+// them one at a time (64 overlapping swept ribs: 40 s and right, instead of minutes and empty).
+// A result that lost material is refused: then one at a time, each step checked, and a piece
+// that won't fuse is kept as its own solid rather than lost.
+function fuseMany(solids) {
+  if (solids.length === 1) return solids[0];
+  const vols = solids.map((x) => Math.abs(safeVolume(x)) || 0);
+  const vmax = Math.max(...vols), vsum = vols.reduce((a, b) => a + b, 0);
+  const trust = vols.every((v) => v > 1e-9); // (a volume that can't be measured can't be checked)
+  const ok = (r, lo, hi) => { if (!r) return false; if (!trust) return true; const v = Math.abs(safeVolume(r)); return v >= lo * 0.999 - 1e-6 && v <= hi * 1.001 + 1e-6; };
+  if (solids.length > 2) {
+    const r = fuseAllTools(solids[0], solids.slice(1));
+    if (ok(r, vmax, vsum)) { for (const x of solids) x.delete(); return r; }
+    if (r) r.delete();
+  }
+  let base = solids[0], vb = vols[0];
+  const loose = [];
+  for (let i = 1; i < solids.length; i++) {
+    let n = null;
+    try { n = base.fuse(solids[i]); } catch (e) { n = null; }
+    if (ok(n, Math.max(vb, vols[i]), vb + vols[i])) { base.delete(); solids[i].delete(); base = n; vb = Math.abs(safeVolume(n)); }
+    else { if (n) n.delete(); loose.push(solids[i]); }
+  }
+  if (!loose.length) return base;
+  const c = compoundOf([base, ...loose]);
+  base.delete(); for (const x of loose) x.delete();
+  return c;
 }
 
 // ---------------------------------------------------------------- meshing

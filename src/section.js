@@ -79,7 +79,11 @@ export function initSection(app, vp, scene) {
     for (const view of scene.views.values()) {
       if (!view.mesh) continue;
       const visible = view.group.visible !== false && view.mesh.visible !== false && !!view.body && !view.body.hidden;
-      if (!on || !visible) { unclip(view); drop(view); continue; }
+      // a sketch Slice cuts only the bodies that were there when it started, so a new body an
+      // extrude previews stays whole
+      const only = S.info && S.info.only;
+      const skip = only && (!view.body || !only.has(view.body.id) || !!view.body.cmdPreview);
+      if (!on || !visible || skip) { unclip(view); drop(view); continue; }
       live.add(view);
       for (const m of view.mats) if (m.clippingPlanes !== S.planes) { m.clippingPlanes = S.planes; m.needsUpdate = true; }
       if (view.edges && view.edges.material.clippingPlanes !== S.planes) { view.edges.material.clippingPlanes = S.planes; view.edges.material.needsUpdate = true; }
@@ -104,7 +108,7 @@ export function initSection(app, vp, scene) {
       p.front.renderOrder = 1001 + order * 3;
       p.cap.renderOrder = 1002 + order * 3;
       order++;
-      p.back.visible = p.front.visible = p.cap.visible = solid;
+      p.back.visible = p.front.visible = p.cap.visible = solid && !(S.info && S.info.cap === false);
       const col = new THREE.Color(view.body.color || "#a7b0ba");
       p.cap.material.color.copy(col).lerp(new THREE.Color("#ffffff"), 0.12);
       const wantHatch = !(S.info && S.info.hatch === false);
@@ -138,7 +142,7 @@ export function initSection(app, vp, scene) {
   vp.pick = (e, objects) => {
     const hits = pick0(e, objects);
     if (!S.plane) return hits;
-    return hits.filter((h) => !(h.object.userData && h.object.userData.bodyView) || clip.distanceToPoint(h.point) >= -1e-6);
+    return hits.filter((h) => { const bv = h.object.userData && h.object.userData.bodyView; if (!bv) return true; const only = S.info && S.info.only; if (only && bv.body && (!only.has(bv.body.id) || bv.body.cmdPreview)) return true; return clip.distanceToPoint(h.point) >= -1e-6; });
   };
 
   // the section: a reference plane (origin, normal), pushed d along its normal; by default the

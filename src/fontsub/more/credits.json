@@ -1,0 +1,380 @@
+[
+ {
+  "key": "anton",
+  "orig": "Anton",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/anton",
+  "bytes": 17344
+ },
+ {
+  "key": "bebas",
+  "orig": "Bebas Neue",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2019 The Bebas Neue Project Authors (https://github.com/dharmatype/Bebas-Neue)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/bebasneue",
+  "bytes": 16136
+ },
+ {
+  "key": "archivo",
+  "orig": "Archivo Black",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2017 The Archivo Black Project Authors (https://github.com/Omnibus-Type/ArchivoBlack)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/archivoblack",
+  "bytes": 21128
+ },
+ {
+  "key": "montserrat",
+  "orig": "Montserrat",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/montserrat",
+  "bytes": 31900
+ },
+ {
+  "key": "oswald",
+  "orig": "Oswald",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/oswald",
+  "bytes": 22804
+ },
+ {
+  "key": "lato",
+  "orig": "Lato",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2011-2015 by tyPoland Lukasz Dziedzic (http://www.typoland.com/) with Reserved Font Name \"Lato\". Licensed under the SIL Open Font License, Version 1.1 (http://scripts.sil.org/OFL).",
+  "src": "https://github.com/google/fonts/tree/main/ofl/lato",
+  "bytes": 42292
+ },
+ {
+  "key": "fredoka",
+  "orig": "Fredoka",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2016 The Fredoka Project Authors (https://github.com/hafontia/Fredoka-One)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/fredoka",
+  "bytes": 32832
+ },
+ {
+  "key": "varela",
+  "orig": "Varela Round",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2023 The Varela Round Project Authors (https://github.com/alefalefalef/Varela-Round-Hebrew/), with Reserved Font Names 'Varela' and 'Varela Round'.",
+  "src": "https://github.com/google/fonts/tree/main/ofl/varelaround",
+  "bytes": 31904
+ },
+ {
+  "key": "nunito",
+  "orig": "Nunito",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/nunito",
+  "bytes": 28776
+ },
+ {
+  "key": "baloo",
+  "orig": "Baloo 2",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2019 The Baloo 2 Project Authors (https://github.com/EkType/Baloo2)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/baloo2",
+  "bytes": 36552
+ },
+ {
+  "key": "robotoslab",
+  "orig": "Roboto Slab",
+  "rfn": false,
+  "lic": "Apache License 2.0",
+  "copy": "Copyright 2018 The Roboto Slab Project Authors (https://github.com/googlefonts/robotoslab)",
+  "src": "https://github.com/google/fonts/tree/main/apache/robotoslab",
+  "bytes": 21904
+ },
+ {
+  "key": "alfaslab",
+  "orig": "Alfa Slab One",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2016 The Alfa Slab One Project Authors (http://www.jmsole.cl | info@jmsole.cl), with Reserved Font Name \"Alfa Slab\".",
+  "src": "https://github.com/google/fonts/tree/main/ofl/alfaslabone",
+  "bytes": 20472
+ },
+ {
+  "key": "abril",
+  "orig": "Abril Fatface",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2011, Copyright (c) 2011, TypeTogether (www.type-together.com), with Reserved Font Names \"Abril\" and \"Abril Fatface\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/abrilfatface",
+  "bytes": 29820
+ },
+ {
+  "key": "cinzel",
+  "orig": "Cinzel",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/cinzel",
+  "bytes": 31416
+ },
+ {
+  "key": "ultra",
+  "orig": "Ultra",
+  "rfn": false,
+  "lic": "Apache License 2.0",
+  "copy": "Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved. Available under the Apache 2.0 licence.\rhttp://www.apache.org/licenses/LICENSE-2.0.html",
+  "src": "https://github.com/google/fonts/tree/main/apache/ultra",
+  "bytes": 26368
+ },
+ {
+  "key": "lobster",
+  "orig": "Lobster",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2010 The Lobster Project Authors (https://github.com/impallari/The-Lobster-Font), with Reserved Font Name \"Lobster\".",
+  "src": "https://github.com/google/fonts/tree/main/ofl/lobster",
+  "bytes": 48152
+ },
+ {
+  "key": "pacifico",
+  "orig": "Pacifico",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2018 The Pacifico Project Authors (https://github.com/googlefonts/Pacifico)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/pacifico",
+  "bytes": 34720
+ },
+ {
+  "key": "dancing",
+  "orig": "Dancing Script",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2016 The Dancing Script Project Authors (https://github.com/googlefonts/DancingScript), with Reserved Font Name \"Dancing Script\".",
+  "src": "https://github.com/google/fonts/tree/main/ofl/dancingscript",
+  "bytes": 47528
+ },
+ {
+  "key": "marker",
+  "orig": "Permanent Marker",
+  "rfn": false,
+  "lic": "Apache License 2.0",
+  "copy": "Copyright (c) 2010 by Font Diner, Inc. All rights reserved.",
+  "src": "https://github.com/google/fonts/tree/main/apache/permanentmarker",
+  "bytes": 65772
+ },
+ {
+  "key": "caveat",
+  "orig": "Caveat",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/caveat",
+  "bytes": 54196
+ },
+ {
+  "key": "kalam",
+  "orig": "Kalam",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2014 Indian Type Foundry (info@indiantypefoundry.com)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/kalam",
+  "bytes": 27976
+ },
+ {
+  "key": "bangers",
+  "orig": "Bangers",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2010 The Bangers Project Authors (https://github.com/googlefonts/bangers)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/bangers",
+  "bytes": 30824
+ },
+ {
+  "key": "luckiest",
+  "orig": "Luckiest Guy",
+  "rfn": false,
+  "lic": "Apache License 2.0",
+  "copy": "Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved. Available under the Apache 2.0 licence.\rhttp://www.apache.org/licenses/LICENSE-2.0.html",
+  "src": "https://github.com/google/fonts/tree/main/apache/luckiestguy",
+  "bytes": 36964
+ },
+ {
+  "key": "bungee",
+  "orig": "Bungee",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2023 The Bungee Project Authors (https://github.com/djrrb/Bungee)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/bungee",
+  "bytes": 21568
+ },
+ {
+  "key": "titan",
+  "orig": "Titan One",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2011 Rodrigo Fuenzalida (hello@rfuenzalida.com), with Reserved Font Name \"Titan One\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/titanone",
+  "bytes": 24636
+ },
+ {
+  "key": "lilita",
+  "orig": "Lilita One",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2011 Juan Montoreano (juan@remolacha.biz), with Reserved Font Names \"Lilita One\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/lilitaone",
+  "bytes": 23276
+ },
+ {
+  "key": "chewy",
+  "orig": "Chewy",
+  "rfn": false,
+  "lic": "Apache License 2.0",
+  "copy": "Copyright (c) 2010 by Font Diner, Inc DBA Sideshow. All rights reserved.",
+  "src": "https://github.com/google/fonts/tree/main/apache/chewy",
+  "bytes": 31140
+ },
+ {
+  "key": "cherry",
+  "orig": "Cherry Bomb One",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2019 The Cherry Bomb Project Authors (https://github.com/satsuyako/CherryBomb)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/cherrybombone",
+  "bytes": 31660
+ },
+ {
+  "key": "creepster",
+  "orig": "Creepster",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2011, Font Diner, Inc (diner@fontdiner.com), with Reserved Font Names \"Creepster\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/creepster",
+  "bytes": 55252
+ },
+ {
+  "key": "orbitron",
+  "orig": "Orbitron",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2018 The Orbitron Project Authors (https://github.com/theleagueof/orbitron), with Reserved Font Name: \"Orbitron\".",
+  "src": "https://github.com/google/fonts/tree/main/ofl/orbitron",
+  "bytes": 15372
+ },
+ {
+  "key": "audiowide",
+  "orig": "Audiowide",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2012 by Brian J. Bonislawsky DBA Astigmatic (AOETI) (astigma@astigmatic.com), with Reserved\rFont Name \"Audiowide\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/audiowide",
+  "bytes": 30532
+ },
+ {
+  "key": "russo",
+  "orig": "Russo One",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2011-2012, Jovanny Lemonad (jovanny.ru), with Reserved Font Name \"Russo\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/russoone",
+  "bytes": 17776
+ },
+ {
+  "key": "pixel",
+  "orig": "Press Start 2P",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2012 The Press Start 2P Project Authors (cody@zone38.net), with Reserved Font Name \"Press Start 2P\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/pressstart2p",
+  "bytes": 16056
+ },
+ {
+  "key": "blackops",
+  "orig": "Black Ops One",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2022 The PinyonScript Project Authors (https://github.com/SorkinType/Black-Ops)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/blackopsone",
+  "bytes": 47476
+ },
+ {
+  "key": "stencil",
+  "orig": "Allerta Stencil",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2009, Matt McInerney <matt@pixelspread.com> with Reserved Font Name Allerta.",
+  "src": "https://github.com/google/fonts/tree/main/ofl/allertastencil",
+  "bytes": 14836
+ },
+ {
+  "key": "sairastencil",
+  "orig": "Saira Stencil One",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2019 The Saira Stencil Project Authors (https://github.com/Omnibus-Type/Saira)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/sairastencilone",
+  "bytes": 22928
+ },
+ {
+  "key": "fraktur",
+  "orig": "UnifrakturMaguntia",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2010 j. 'mach' wust with Reserved Font Name UnifrakturMaguntia.\nCopyright (c) 2009 Peter Wiegel.\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.",
+  "src": "https://github.com/google/fonts/tree/main/ofl/unifrakturmaguntia",
+  "bytes": 51696
+ },
+ {
+  "key": "pirata",
+  "orig": "Pirata One",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2012, Rodrigo Fuenzalida, Nicolas Massi (www.taip.com.ar / abc.taip.com.ar), with Reserved Font Name 'Pirata'",
+  "src": "https://github.com/google/fonts/tree/main/ofl/pirataone",
+  "bytes": 25388
+ },
+ {
+  "key": "rye",
+  "orig": "Rye",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright (c) 2010 by Sorkin Type Co with Reserved Font Name Rye.\r\rThis Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL",
+  "src": "https://github.com/google/fonts/tree/main/ofl/rye",
+  "bytes": 67840
+ },
+ {
+  "key": "typewriter",
+  "orig": "Special Elite",
+  "rfn": false,
+  "lic": "Apache License 2.0",
+  "copy": "Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved. Available under the Apache 2.0 licence.\rhttp://www.apache.org/licenses/LICENSE-2.0.html",
+  "src": "https://github.com/google/fonts/tree/main/apache/specialelite",
+  "bytes": 108284
+ },
+ {
+  "key": "graduate",
+  "orig": "Graduate",
+  "rfn": true,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2012 The Graduate Project Authors (https://github.com/etunni/graduate) with Reserved Font Name \"Graduate\"",
+  "src": "https://github.com/google/fonts/tree/main/ofl/graduate",
+  "bytes": 18412
+ },
+ {
+  "key": "staatliches",
+  "orig": "Staatliches",
+  "rfn": false,
+  "lic": "SIL Open Font License 1.1",
+  "copy": "Copyright 2018 The Staatliches Project Authors (https://github.com/googlefonts/staatliches)",
+  "src": "https://github.com/google/fonts/tree/main/ofl/staatliches",
+  "bytes": 23740
+ }
+]
