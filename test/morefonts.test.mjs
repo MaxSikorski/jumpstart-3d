@@ -104,3 +104,61 @@ test("fonts that arrive while a Rounded sans build of the text is with the worke
   assert.equal(r.k.meshes.get(t.key).mesh, "bangers");
   r.done();
 });
+
+test("a stalled batch clears stale marks before its bodies retry", () => {
+  const r = rig(async () => FONTS_TEXT);
+  const a = item("a", textNode("bangers")), b = item("b", textNode("sans"));
+  r.k.waitFor = null;
+  r.k.worker.terminate = () => {};
+  r.k.start = () => { r.k.ready = true; r.k.pump(); };
+  r.k.stalled = KernelClient.prototype.stalled;
+  try {
+    r.k.request([a, b]);
+    const batch = r.k.inflight;
+    r.k.stale.add(a.key);
+    r.k.stalled(batch);
+    assert.equal(r.k.stale.has(a.key), false);
+    r.k.handle({ type: "built", req: r.k.inflightReq, results: [{ id: "a", rev: a.key, ok: true, mesh: "fresh" }] });
+    assert.equal(r.k.meshes.get(a.key).mesh, "fresh");
+    assert.deepEqual(r.builds(), [["a", "b"], ["a"], ["b"]]);
+  } finally { r.done(); }
+});
+
+test("a stale reply does not requeue a body replaced by an edit", () => {
+  const r = rig(async () => FONTS_TEXT);
+  const old = item("t", textNode("bangers")), updated = item("t", textNode("sans"));
+  r.k.waitFor = null;
+  try {
+    r.k.request([old]);
+    r.k.stale.add(old.key);
+    r.k.prune(new Set([updated.key]));
+    r.k.request([updated]);
+    r.k.handle({ type: "built", req: r.k.inflightReq, results: [{ id: "t", rev: old.key, ok: true }] });
+    assert.deepEqual(r.builds(), [["t"], ["t"]]);
+    assert.equal(r.k.inflight[0].key, updated.key);
+    assert.equal(r.k.queue.has(old.key), false);
+  } finally { r.done(); }
+});
+
+for (const reply of ["built", "error"]) {
+  test(`a probe ignores a stale ${reply} reply and receives the fresh build`, async () => {
+    const r = rig(async () => FONTS_TEXT);
+    const t = item("t", textNode("bangers"));
+    r.k.waitFor = null;
+    try {
+      const probe = r.k.probe(t);
+      r.k.stale.add(t.key);
+      const req = r.k.inflightReq;
+      if (reply === "built") r.k.handle({ type: "built", req, results: [{ id: "t", rev: t.key, ok: true, mesh: "fallback" }] });
+      else r.k.handle({ type: "error", req, error: "fallback failed" });
+      assert.equal(r.k.probes.has(t.key), true);
+      assert.deepEqual(r.builds(), [["t"], ["t"]]);
+      r.k.handle({ type: "built", req: r.k.inflightReq, results: [{ id: "t", rev: t.key, ok: true, mesh: "fresh" }] });
+      assert.equal((await probe).mesh, "fresh");
+    } finally {
+      const done = r.k.probes.get(t.key);
+      if (done) done({ ok: false });
+      r.done();
+    }
+  });
+}

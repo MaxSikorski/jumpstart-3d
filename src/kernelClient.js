@@ -72,17 +72,19 @@ export class KernelClient {
       if (msg.req !== undefined && (msg.req !== this.inflightReq || !this.inflight)) return;
       clearTimeout(this.watchdog);
       clearTimeout(this.noteTimer); // jumpstart-3d: clear the long-build note when results arrive
+      const fresh = []; // jumpstart-3d: probes must wait for a rebuilt stale result
       for (const r of msg.results) {
         this.solo.delete(r.rev); // jumpstart-3d
         r.key = r.rev;
         delete r.rev;
         if (this.dropStale(r.key)) continue; // jumpstart-3d: extra fonts
+        fresh.push(r); // jumpstart-3d: only retained results can settle probes
         this.meshes.set(r.key, r);
         this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       }
       this.inflight = null;
       this.perf && this.perf.done(msg.results); // jumpstart-3d: perf panel
-      this.settleProbes(msg.results); // jumpstart-3d: Code CAD
+      this.settleProbes(fresh); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(msg.results);
       this.pump();
     } else if (msg.type === "step") {
@@ -101,9 +103,11 @@ export class KernelClient {
       this.inflight = null;
       items.forEach((b) => this.solo.delete(b.key)); // jumpstart-3d
       const res = items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
-      res.forEach((r) => { if (!this.dropStale(r.key, items)) this.meshes.set(r.key, r); }); // jumpstart-3d: extra fonts
+      // jumpstart-3d: stale errors cannot settle probes either.
+      const fresh = res.filter((r) => !this.dropStale(r.key, items));
+      fresh.forEach((r) => this.meshes.set(r.key, r));
       this.perf && this.perf.done(res); // jumpstart-3d: perf panel
-      this.settleProbes(res); // jumpstart-3d: Code CAD
+      this.settleProbes(fresh); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(res);
       this.pump();
     }
@@ -112,7 +116,7 @@ export class KernelClient {
   dropStale(key, items = this.inflight || []) {
     if (!this.stale.delete(key)) return false;
     const it = items.find((b) => b.key === key);
-    if (it) this.queue.set(key, it);
+    if (it && (!this.needed || this.needed.has(key))) this.queue.set(key, it);
     return true;
   }
   // jumpstart-3d: STEP parts (#173). Over 160 results, the oldest ones that no body of the open design needs go. A design of 200 bodies used to lose its first
@@ -184,6 +188,8 @@ export class KernelClient {
     this.onBusy && this.onBusy(true);
   }
   stalled(batch) {
+    // jumpstart-3d: the abandoned worker cannot deliver these stale replies.
+    for (const b of batch) this.stale.delete(b.key);
     this.perf && this.perf.abort(batch); // jumpstart-3d: perf panel
     // OpenCascade occasionally loops forever on extreme fillets; restart the worker.
     try { this.worker.terminate(); } catch (e) {}
