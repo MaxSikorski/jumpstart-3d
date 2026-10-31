@@ -850,7 +850,9 @@ export class Sketcher {
       if (ent && !ent.proj) pids = entPts(ent);
       if (ent && ent.t === "arc") pids = [ent.c, ent.a, ent.b];
     }
-    if (pids.some((pid) => isPinned(sk, pid))) pids = []; // jumpstart-3d: fixed constraint (projected, on the origin or Fixed: it stays)
+    if (pids.some((pid) => sk.ents.some((x) => x.proj && entPts(x).includes(pid)))) pids = [];
+    // jumpstart-3d: fixed constraint. A pinned point (on the origin, or Fixed) stays and the solver moves the rest about it: a drag is refused only when the grabbed point is pinned, or when every point of the shape is
+    else if (hit.startsWith("pt:") ? isPinned(sk, pids[0]) : pids.length && pids.every((pid) => isPinned(sk, pid))) pids = [];
     const textEnt = !hit.startsWith("pt:") && sk.ents.find((x) => x.id === hit && x.t === "text");
     this.drag = { start: raw, pids, orig: new Map(sk.pts.filter((p) => pids.includes(p.id)).map((p) => [p.id, [p.x, p.y]])), moved: false, hit, add: e.shiftKey, text: textEnt ? textEnt.id : null };
     this.redraw();

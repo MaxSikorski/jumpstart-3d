@@ -390,3 +390,35 @@ test("a fixed corner is not moved by the arrow keys or the inspector: nothing ch
   expect((await sketch()).pts, "arc and corner unchanged").toEqual(mid.pts);
   expect((await toasts()).filter((m) => m === "That point is fixed.").length, "one toast for the nudge, the arc centre and the corner").toBe(3);
 });
+
+test("a line with one end on the origin: dragging its free end or its middle holds the origin end and moves the rest about it; no toast; the pinned end itself stays", async () => {
+  test.setTimeout(240_000);
+  await openBlank();
+  await run(() => {
+    const s = window.__app.sketcher;
+    s.edit("Line", (sk) => { sk.pts.push({ id: "o0", x: 0, y: 0 }, { id: "o1", x: 30, y: 0 }); sk.ents.push({ id: "e0", t: "line", a: "o0", b: "o1" }); });
+    s.applyConstraint("coincident", [{ kind: "pt", pid: "o0" }, { kind: "origin" }]);
+  });
+  expect((await sketch()).cons.some((c) => c.t === "origin"), "the origin pin is there").toBe(true);
+  await fitAll();
+  const toasts = await catchToasts();
+  await run(() => window.__app.sketcher.setTool("select"));
+  const dragFrom = async ([sx, sy], by) => { await page.mouse.move(sx, sy); await page.mouse.down(); await page.mouse.move(sx + by[0], sy + by[1], { steps: 8 }); await page.mouse.up(); };
+  // the free end: it follows the mouse, the origin end stays
+  await dragFrom(await screenOf(30, 0), [0, -60]);
+  let o0 = await pin("o0"), o1 = await pin("o1");
+  expect(Math.hypot(...o0), "origin end stays").toBeLessThan(1e-6);
+  expect(o1[1], "the free end moved up").toBeGreaterThan(3);
+  // the middle: the origin end stays, the line moves about it
+  const mid = [o1[0] / 2, o1[1] / 2], before = o1;
+  await dragFrom(await screenOf(...mid), [60, 0]);
+  o0 = await pin("o0"); o1 = await pin("o1");
+  expect(Math.hypot(...o0), "origin end still stays").toBeLessThan(1e-6);
+  expect(Math.hypot(o1[0] - before[0], o1[1] - before[1]), "the line moved about the origin end").toBeGreaterThan(1);
+  // the pinned end itself: nothing moves
+  const keep = await pin("o1");
+  await dragFrom(await screenOf(0, 0), [0, -60]);
+  expect(await pin("o0")).toEqual([0, 0]);
+  expect(await pin("o1")).toEqual(keep);
+  expect(await toasts(), "no toast").toEqual([]);
+});
