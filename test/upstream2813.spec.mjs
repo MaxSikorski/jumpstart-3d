@@ -5,13 +5,14 @@
 //  - Floor Planner (Architect): opens with its own three.js r128 built in, its tutorial chooser lists ten projects, Quick save keeps a
 //    named plan, and nothing is fetched from the web
 //  - Quick Hinge, Bin & Box Maker, Stained Glass Studio: a dome lamp added to the design, the square mission lamp built in the studio
-//  - an extra Text font builds a body and the font pickers list the extra fonts
+//  - an extra Text font builds a body and the font pickers list the extra fonts; on the site the fonts (1.9 MB) and the Floor Planner
+//    page (1 MB) are fetched only when first needed, and without a connection the text builds in Rounded sans with a toast
 //  - Sweep with a guide rail grows the profile to follow the rail; a sketch inside a body turns Slice on; Image on a face
 //  - the merged Fasteners dialog (his parts library with our thread fit): one entry in Advanced Create, a threaded bolt and nut in ISO and UNC
 // His own tests (JumpStart-3D-v2.8.1.3-full-source/tests/*.cjs) are screenshot scripts; the checks below assert real state.
 import { test, expect } from "@playwright/test";
 import { deflateSync, crc32 } from "node:zlib";
-import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc, body, prim, IDENTITY } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc, body, prim, buildOf } from "./helpers.mjs";
 import { readStl, meshReport } from "./fuzz-checks.mjs";
 import { BUILD, VERSION } from "../src/version.js";
 
@@ -94,9 +95,12 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
   await page.press("#ps-oscale", "Enter");
   await expect.poll(async () => (await plate()).box, { timeout: 60_000 }).toEqual([45, 60]);
   await expect(page.locator("#ps-osize")).toContainText("60");
-  await page.fill("#ps-ocount", "2");
-  await page.click("#ps-odup");
-  await expect.poll(async () => (await plate()).copies, { timeout: 60_000 }).toBe(2);
+  // the count box goes back to 1 whenever the panel redraws (a slice finishing): ask again for what is still missing
+  await expect.poll(async () => {
+    const c = (await plate()).copies;
+    if (c < 2) { await page.fill("#ps-ocount", String(2 - c)); await page.click("#ps-odup"); }
+    return (await plate()).copies;
+  }, { timeout: 60_000, intervals: [1500] }).toBe(2);
   const placed = await plate();
   await page.click("#ps-arrange");
   await expect.poll(async () => (await plate()).at, { timeout: 60_000 }).not.toBe(placed.at);
@@ -117,6 +121,8 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
 // ---------------------------------------------------------------- Floor Planner
 test("Floor Planner: opens with three.js r128 built in, its tutorial chooser lists ten projects, Quick save keeps the plan, nothing from the web", async ({}, info) => {
   await loadDoc(page, newDoc("Plan", "beginner"));
+  const fetched = (file) => requests.some((u) => u.endsWith("/helpers/" + file));
+  expect(fetched("floorplan.html"), "the planner page is not part of the start").toBe(false);
   const from = requests.length;
   await page.click("#mode-arch");
   await page.click("#ar-floorplanner");
@@ -126,6 +132,7 @@ test("Floor Planner: opens with three.js r128 built in, its tutorial chooser lis
   expect(await inner.evaluate(() => THREE.REVISION)).toBe("128");
   await frame.locator("#fp-tuts").click();
   await expect(frame.locator(".jt-card")).toHaveCount(10);
+  expect(fetched("floorplan.html")).toBe(buildOf(info) === "site"); // fetched when opened; the single file has it inline
   await frame.locator(".jt-back .jt-x").click();
   await expect(frame.locator(".jt-back")).toHaveCount(0);
   // draw a room through the planner's own state, then Quick save with a name
@@ -225,8 +232,11 @@ test("Stained Glass Studio: a dome lamp goes into the design as error-free bodie
 });
 
 // ---------------------------------------------------------------- Text fonts
-test("an extra Text font (Bangers) builds a body that differs from the Rounded sans one, and the font picker lists the extra fonts", async () => {
-  const text = (id, font, x) => ({ ...body(id, font, prim("text", { text: "Hello 3D", size: 10, w: 60, d: 12, h: 3, font }), T(0, x, 0)), seq: x + 2 });
+const textBody = (id, font, x) => ({ ...body(id, font, prim("text", { text: "Hello 3D", size: 10, w: 60, d: 12, h: 3, font }), T(0, x, 0)), seq: x + 2 });
+test("an extra Text font (Bangers) builds a body that differs from the Rounded sans one, and the font picker lists the extra fonts", async ({}, info) => {
+  const text = textBody;
+  // nothing so far needed them: the site has not fetched the fonts (the single file carries them inline)
+  expect(requests.some((u) => u.endsWith("/helpers/fonts_more.js"))).toBe(false);
   await loadDoc(page, newDoc("Fonts", "beginner", { bodies: [text("t1", "sans", 0), text("t2", "bangers", 20), text("t3", "fraktur", 40)] }));
   const list = await okAll();
   const v = Object.fromEntries(list.map((b) => [b.name, b.volume]));
@@ -234,10 +244,32 @@ test("an extra Text font (Bangers) builds a body that differs from the Rounded s
   expect(Math.abs(v.bangers - v.sans) / v.sans).toBeGreaterThan(0.02);
   await run(() => window.__app.select(["t2"]));
   await expect(page.locator("#insp-font")).toBeVisible();
-  expect(await page.locator("#insp-font option").count()).toBeGreaterThanOrEqual(45);
+  expect(requests.filter((u) => u.endsWith("/helpers/fonts_more.js")).length).toBe(buildOf(info) === "site" ? 1 : 0); // once, when the design needed them
+  await expect.poll(() => page.locator("#insp-font option").count()).toBeGreaterThanOrEqual(45);
   expect(await page.locator("#insp-font optgroup").count()).toBeGreaterThan(3);
   await expect(page.locator("#insp-font")).toHaveValue("bangers");
   await run(() => window.__app.select([]));
+});
+
+test("site, no connection: a design in an extra font builds in Rounded sans with a plain toast, and the picker keeps the classic fonts", async ({ browser }, info) => {
+  test.skip(buildOf(info) !== "site", "the single file has the fonts inline");
+  const p = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  const errs = watchErrors(p);
+  try {
+    await p.route("**/helpers/fonts_more.js", (r) => r.abort("internetdisconnected"));
+    await boot(p, info);
+    await p.evaluate(() => { const a = window.__app, t = a.toast; window.__toasts = []; a.toast = (m, ...r) => { window.__toasts.push(String(m)); return t.call(a, m, ...r); }; });
+    await loadDoc(p, newDoc("Offline fonts", "beginner", { bodies: [textBody("t1", "sans", 0), textBody("t2", "bangers", 20)] }));
+    expect(await p.evaluate(() => window.__toasts)).toEqual(["The extra fonts need a connection the first time, so text in them uses Rounded sans for now."]);
+    const list = await bodies(p);
+    for (const b of list) expect(b.error, b.name).toBeNull();
+    const v = Object.fromEntries(list.map((b) => [b.name, b.volume]));
+    expect(v.bangers).toBeCloseTo(v.sans, 0); // the same text in the default font
+    await p.evaluate(() => window.__app.select(["t2"]));
+    await expect(p.locator("#insp-font")).toBeVisible();
+    await expect.poll(() => p.locator("#insp-font option").count()).toBe(3);
+    expect(errs.filter((e) => !/fonts_more|ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(e))).toEqual([]);
+  } finally { await p.close(); }
 });
 
 // ---------------------------------------------------------------- Sweep, Slice, Image on a face

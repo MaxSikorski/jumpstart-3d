@@ -20,7 +20,9 @@ import { initTutorials } from "./tutorials.js";
 import * as THREE from "three";
 import { Viewport, ViewCube } from "./viewport.js";
 import { KernelClient } from "./kernelClient.js";
-import "./fonts_more.js";
+// jumpstart-3d: the extra fonts (fonts_more.js) load on first use: morefonts.js, not an import here
+import { initMoreFonts } from "./morefonts.js";
+import { helperAsset, helperFailText } from "./helperpages.js";
 import { extraFonts, FONT_GROUPS, FONT_NAMES } from "./fonts.js";
 import { SceneSync } from "./scene.js";
 import { Sketcher } from "./sketcher.js";
@@ -158,6 +160,7 @@ function boot() {
   }));
   kernel.onBusy = () => app.status();
   for (const [k, b] of extraFonts()) kernel.addAsset("font:" + k, "font", b);
+  app.moreFonts = initMoreFonts(app, { helperAsset, helperFailText }); // jumpstart-3d: extra fonts on first use
   kernel.start();
   const scene = (app.scene = new SceneSync(vp, kernel));
   vp.zoomTargets = () => scene.meshes();

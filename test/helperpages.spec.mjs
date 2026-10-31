@@ -3,7 +3,7 @@
 // Case 4 allows a service worker in its own context (the config blocks it elsewhere) and takes the network away after it has installed.
 import { test, expect } from "@playwright/test";
 import { serve } from "../mcp/serve.mjs";
-import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, cpSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -227,17 +227,16 @@ test("an on-use helper file is not saved at install; the service worker keeps it
   quarantine(info, ["site-webkit"], "WebKit's internal error with a service worker under Playwright on Linux");
   test.skip(buildOf(info) !== "site", SITE_ONLY);
   test.setTimeout(240_000);
-  // no on-use file exists yet, so a copy of docs/ gets one: helpers/fake-data.json, listed in ON_USE as build.mjs would
+  // a copy of docs/, so the server can be stopped; helpers/fonts_more.js (J.Siwek's extra fonts) is on-use in tools/helper-files.mjs
   const live = mkdtempSync(join(tmpdir(), "js3d-onuse-"));
   cpSync("docs", live, { recursive: true });
-  writeFileSync(join(live, "helpers", "fake-data.json"), 'js3d-build:0000000000\n{"rows":[1,2,3]}');
-  writeFileSync(join(live, "sw.js"), readFileSync(join(live, "sw.js"), "utf8").replace("const ON_USE = [];", 'const ON_USE = ["helpers/fake-data.json"];'));
+  expect(readFileSync(join(live, "sw.js"), "utf8")).toContain('"helpers/fonts_more.js"');
   const server = await serve(live);
   let context;
   try {
     context = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
     const page = await context.newPage();
-    const kept = () => page.evaluate(async () => { const n = (await caches.keys()).find((k) => k.startsWith("jumpstart-3d-")); return (await (await caches.open(n)).keys()).map((r) => new URL(r.url).pathname).filter((p) => p.includes("fake-data")); });
+    const kept = () => page.evaluate(async () => { const n = (await caches.keys()).find((k) => k.startsWith("jumpstart-3d-")); return (await (await caches.open(n)).keys()).map((r) => new URL(r.url).pathname).filter((p) => p.includes("fonts_more")); });
     await skipIntro(page);
     await page.goto(server.url);
     await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
@@ -247,11 +246,11 @@ test("an on-use helper file is not saved at install; the service worker keeps it
     await page.reload(); // now the worker controls the page
     await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
     expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
-    expect(await page.evaluate(() => fetch("helpers/fake-data.json").then((r) => r.text()))).toContain('"rows"');
-    await expect.poll(kept).toEqual(["/helpers/fake-data.json"]);
+    expect(await page.evaluate(() => fetch("helpers/fonts_more.js").then((r) => r.text()))).toContain("MORE_FONTS");
+    await expect.poll(kept).toEqual(["/helpers/fonts_more.js"]);
     await server.close();
     await context.setOffline(true);
-    expect(await page.evaluate(() => fetch("helpers/fake-data.json").then((r) => r.text())), "served from the cache offline").toContain('"rows"');
+    expect(await page.evaluate(() => fetch("helpers/fonts_more.js").then((r) => r.text())), "served from the cache offline").toContain("MORE_FONTS");
   } finally {
     await context?.close();
     await server.close();

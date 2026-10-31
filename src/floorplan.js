@@ -1,7 +1,9 @@
 // Floor Planner: the Blueprint Floorplanner, opened from Architect in its own window over the app.
 // It keeps running while hidden, so a plan is still there when it's opened again (until the page
 // closes). Saving goes through JumpStart 3D, and the tutorials read its state through __fp.
-import FP_HTML from "./floorplan.html";
+// jumpstart-3d: the Floor Planner page (1 MB) loads the first time it is opened (helperpages.js), with a Loading note and Close until then
+import { helperAsset, helperLoadingNote, helperFailText } from "./helperpages.js";
+let FP_HTML = "";
 
 export function initFloorPlan(app) {
   let frame = null, ifr = null, ready = false;
@@ -25,8 +27,21 @@ export function initFloorPlan(app) {
       ifr.title = "Floor Planner";
       ifr.id = "floorplan-frame";
       ready = false;
-      ifr.srcdoc = FP_HTML;
-      frame.append(ifr);
+      // jumpstart-3d: the page arrives on first use; a failed download closes the planner with a toast and is tried again next time
+      const note = helperLoadingNote(() => close());
+      note.style.color = "#fff";
+      ifr.style.visibility = "hidden";
+      const mine = frame;
+      helperAsset("floorplan.html").then((html) => {
+        if (frame !== mine) return;
+        FP_HTML = html; note.done(); ifr.style.visibility = ""; ifr.srcdoc = html;
+      }, (e) => {
+        if (frame !== mine) return;
+        note.done(); close(); frame.remove(); frame = ifr = null;
+        app.toast(helperFailText("the Floor Planner", e), "err");
+      });
+      frame.append(ifr, note);
+      // end jumpstart-3d
       document.body.append(frame);
     }
     frame.hidden = false;

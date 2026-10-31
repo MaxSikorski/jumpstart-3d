@@ -137,6 +137,9 @@ export class KernelClient {
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
+    // jumpstart-3d: a build that uses an extra font waits until the fonts are loaded (morefonts.js; it always settles)
+    if (this.waitFor && !this.fontWait) { const w = this.waitFor([...this.queue.values()]); if (w) { this.fontWait = w.then(() => { this.fontWait = null; this.pump(); }); return; } }
+    if (this.fontWait) return;
     // send small batches so the screen updates progressively
     // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
@@ -196,6 +199,8 @@ export class KernelClient {
     this.start();
   }
   step(bodies) {
+    const w = this.waitFor && this.waitFor(bodies); // jumpstart-3d: extra fonts on first use (a STEP export of text in one)
+    if (w) return w.then(() => this.step(bodies));
     const req = ++this.req;
     return new Promise((resolve, reject) => {
       this.stepWaiters.set(req, { resolve, reject });
