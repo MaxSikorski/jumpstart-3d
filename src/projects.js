@@ -329,6 +329,7 @@ export function initProjects(app) {
     remote.tabs(modal.querySelector(".mbody"), close); // jumpstart-3d: remote
     await saveNow();
     const fr = await mirror.row(); if (fr) grid.before(fr); // jumpstart-3d: copies in a folder
+    const nr = app.backupNudge && app.backupNudge.row(); if (nr) grid.before(nr); // jumpstart-3d: backup reminder (only when turned off)
     const list = await listAll();
     grid.innerHTML = "";
     grid.append(el("div", { class: "newcards" },
@@ -659,6 +660,7 @@ export function initProjects(app) {
   const n = (k) => `${k} design${k === 1 ? "" : "s"}`;
   async function backupAll() {
     const saved = await saveNow();
+    const t0 = Date.now(); // jumpstart-3d: backup reminder (the open design is saved just above; whatever changes after this moment may not be in the file)
     const designs = [];
     let bad = 0;
     for (const entry of await ps.list()) { // jumpstart-3d: designs storage
@@ -676,6 +678,7 @@ export function initProjects(app) {
     const now = new Date();
     if (!await offer(`jumpstart-3d-backup-${now.toLocaleDateString("en-CA")}.json`, JSON.stringify({ app: "jumpstart-3d", backup: 1, when: now.toISOString(), last: ls.get(LS_PREF + ".last"), designs }))) return;
     app.toast(`Backed up ${n(designs.length)}` + (bad ? `, ${n(bad)} could not be read` : ""), bad ? "err" : undefined);
+    window.dispatchEvent(new CustomEvent("js3d:backup-done", { detail: { at: t0 } })); // jumpstart-3d: backup reminder (src/backupnudge.js)
   }
   async function restoreBackup(file) {
     let j;

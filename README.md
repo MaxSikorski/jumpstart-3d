@@ -215,6 +215,22 @@ clearing site data. After the browser restarts, open Your designs and click **Al
 **Restore from a folder…** (any browser on a computer) adds the designs back from such a folder.
 Your browser may say "upload"; nothing leaves your computer.
 
+### Back up to Google Drive (or Dropbox, OneDrive)
+
+1. Install the provider's free desktop app (Google Drive for desktop, Dropbox or OneDrive) and sign in.
+2. In JumpStart 3D, open **Your designs** and click **Save copies into a folder…** (Chrome or Edge on a
+   computer).
+3. Pick a folder inside the synced folder, such as `My Drive/JumpStart 3D`.
+
+The app keeps writing your designs into that folder and the provider's app uploads them, even later
+if you were offline. On another computer, install the same app and use **Restore from a folder…**.
+JumpStart 3D itself never talks to Google, Dropbox or Microsoft.
+
+The single file (jumpstart-3d.html) also offers a backup now and then: when your computer is online
+and a design has changed since its last backup, a small note asks "Back up your N designs?". It asks
+at most once a day, and **Don't ask again** turns it off (**Your designs** has a **Turn on** button
+to bring it back).
+
 ### Your server tab
 
 The **Your server** tab in Your designs keeps designs in a folder on a WebDAV server (Nextcloud, a

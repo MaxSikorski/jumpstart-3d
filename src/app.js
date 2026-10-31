@@ -60,6 +60,7 @@ import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
 // jumpstart-3d: insert supplier parts
 import { initInsertPart } from "./insertpart.js";
 import { initDropImport } from "./dropimport.js"; // jumpstart-3d: drop import
+import { initBackupNudge } from "./backupnudge.js"; // jumpstart-3d: backup reminder
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -364,6 +365,7 @@ app.voxel = initVoxel(app);
     app.refreshUI("version");
     app.tutorials.resumeIfAny();
     app.sharelink.offer(); // jumpstart-3d: share link. a design link that opened the page is offered now that the saved design is loaded
+    app.backupNudge = initBackupNudge(app); // jumpstart-3d: backup reminder. single file only (null on the site); the saved designs are listed now
   });
   load.hideSplash(); // jumpstart-3d: load. the workspace is built: let the mouse in
 }

@@ -50,14 +50,15 @@ export function initFolder({ ps, toast, fileSafe }) {
   async function choose() {
     let handle;
     try { handle = await window.showDirectoryPicker({ id: "jumpstart-3d", mode: "readwrite" }); }
-    catch (e) { if (!e || e.name !== "AbortError") toast("That folder can't be used: " + ((e && e.message) || "the browser refused it"), "err"); return; }
+    catch (e) { if (!e || e.name !== "AbortError") toast("That folder can't be used: " + ((e && e.message) || "the browser refused it"), "err"); return false; }
     const next = { handle, name: handle.name, files: {} };
-    if (!await ps.setMeta(KEY, next)) { toast("Couldn't remember the folder.", "err"); return; }
+    if (!await ps.setMeta(KEY, next)) { toast("Couldn't remember the folder.", "err"); return false; }
     record = next;
     status = { kind: "ok" };
     fill();
     toast(`Copies of your designs will be saved to ${q()}.`);
     now();
+    return true; // jumpstart-3d: backup reminder (it asks whether a folder was chosen)
   }
   async function allow() {
     try { await record.handle.requestPermission(MODE); } catch (e) {}
@@ -144,6 +145,8 @@ export function initFolder({ ps, toast, fileSafe }) {
   return {
     soon,
     now,
+    choose, // jumpstart-3d: backup reminder (src/backupnudge.js): the same flow as the button; true when a folder was chosen
+    async info() { await loaded; return { supported, chosen: !!record, files: record ? record.files : null }; }, // jumpstart-3d: backup reminder
     async row() {
       await loaded;
       if (!supported) return null;

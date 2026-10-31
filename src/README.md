@@ -15,6 +15,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `params.js` | Named parameters that drive sketch and feature sizes |
 | `projstore.js` | Designs kept in IndexedDB, with a localStorage fallback |
 | `folder.js` | Copies of designs in a folder the user picks |
+| `backupnudge.js` | Single file only: when online and a design changed since its last backup, a quiet once-a-day note offers a backup file or folder copies (reuses `backupAll` and `folder.choose`); `shouldAsk` is the pure rule; hooked in `app.js` after `projects.start()` |
 | `remote.js` | "Your server" tab: designs on a WebDAV server |
 | `sharelink.js` | Share link: a small design inside a web address |
 | `holepattern.js` | Rows, staggered rows or a circle of holes on a face |
