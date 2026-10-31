@@ -3,7 +3,7 @@
 These three pages run inside JumpStart 3D in iframes. The built pages are
 committed as `src/flexigen.html`, `src/meshstep.html` and `src/chisel.html`,
 so `node build.mjs` needs nothing from this folder. The three pages carry a
-placeholder; `src/helperfonts.js` inserts `src/helper-three.html` when a page opens.
+placeholder; `src/helperpages.js` loads a page on first use (inline in the single file, from `docs/helpers/` on the site) and `src/helperfonts.js` inserts `src/helper-three.html` when it opens.
 
 What is here is the author's source for them, from the v1.94 source release:
 

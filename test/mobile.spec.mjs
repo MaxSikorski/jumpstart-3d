@@ -162,6 +162,7 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
   expect(errors).toEqual([]);
   for (const f of STARTUP) expect(seen.has(f), `no response for ${f}`).toBe(true);
   expect([...new Set(noLength)], "responses sent without a content-length (the byte count is incomplete; a server that streams chunked is being reused)").toEqual([]);
+  expect([...seen.keys()].filter((p) => p.startsWith("/helpers/")), "the helper pages load only when a helper opens (src/helperpages.js), never during the walk").toEqual([]);
   expect(seen.get("/app.js"), "app.js was not sent gzipped: a server without gzip is being reused").toBe("gzip");
   expect.soft(t.usable, "workspace usable (ms)").toBeLessThanOrEqual(BUDGET.usable);
   expect.soft(t.ready, "engine ready (ms)").toBeLessThanOrEqual(BUDGET.ready);

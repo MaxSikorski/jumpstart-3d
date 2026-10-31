@@ -84,7 +84,8 @@ export function readStepShape(OC, R, bytes) {
           _stepTest.rejectFastOnce = false;
         if (!attempt && (!roots || !solids || !isValid || forced))
           continue;
-        if (!solids && !count(shape, OC.TopAbs_ShapeEnum.TopAbs_FACE))
+        // a file of curves only (a wire) is not empty: it builds, shows as lines and exports (same rule as isEmptyShape in kernel.js)
+        if (!solids && !count(shape, OC.TopAbs_ShapeEnum.TopAbs_FACE) && !count(shape, OC.TopAbs_ShapeEnum.TopAbs_VERTEX))
           throw new Error(EMPTY);
         const result = shape;
         shape = null;

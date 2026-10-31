@@ -1,10 +1,13 @@
-// jumpstart-3d: offline. The hosted site's service worker: keeps the page, the app, the worker and the geometry engine on this computer, so the next visit opens at once and works without a connection.
+// jumpstart-3d: offline. The hosted site's service worker: keeps the page, the app, the worker, the geometry engine and the helper pages on this computer, so the next visit opens at once and works without a connection.
 // Never remove sw.js from the site: a 404 on the update check keeps the old worker serving its cache forever; to retire it, publish a sw.js that calls self.registration.unregister().
-const VERSION = "dev"; // build.mjs replaces this line with a hash of the files below and the fonts
+const VERSION = "dev"; // build.mjs replaces this line with a hash of the files below, the fonts and the helper pages
 const CACHE = "jumpstart-3d-" + VERSION;
 const FILES = ["./", "app.js", "worker.js", "occt-gz.wasm"];
 const FONTS = []; // build.mjs puts the font files (fonts/*.woff2) here: offline, the page keeps its own lettering
-const urls = () => FILES.concat(FONTS).map((f) => new URL(f, self.registration.scope).href);
+const HELPERS = []; // build.mjs puts the helper files saved at install (helpers/*, mode "precache") here: the app fetches them on first use, so they must be here for offline use
+const ON_USE = []; // build.mjs puts the helper files saved on first use (mode "on-use") here: not part of the install, kept the first time the app fetches them
+const urls = () => FILES.concat(FONTS, HELPERS).map((f) => new URL(f, self.registration.scope).href);
+const onUse = () => ON_USE.map((f) => new URL(f, self.registration.scope).href);
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   // "no-cache": revalidate against the browser's HTTP cache (Pages answers 304 with no body for files just downloaded)
@@ -19,6 +22,13 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== scope.origin) return; // chat model APIs: untouched (the agent WebSocket never reaches a service worker)
   let key = url.origin + url.pathname; // a query string (link previews) does not matter
   if (req.mode === "navigate" && key === scope.href + "index.html") key = scope.href;
+  if (onUse().includes(key)) { // saved into this version's cache the first time it arrives whole
+    e.respondWith(caches.match(key, { cacheName: CACHE }).then((hit) => hit || fetch(req).then((res) => {
+      if (res.ok && res.status === 200) { const copy = res.clone(); e.waitUntil(caches.open(CACHE).then((c) => c.put(key, copy))); }
+      return res;
+    })));
+    return;
+  }
   if (!urls().includes(key)) return; // og-image.png, sw.js itself: the network as usual
   e.respondWith(caches.match(key, { cacheName: CACHE }).then((hit) => hit || fetch(req)));
 });
