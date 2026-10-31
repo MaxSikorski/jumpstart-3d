@@ -107,6 +107,24 @@ export function initAdvanced(app) {
     const nLocal = h.face.normal.clone();
     return { body: base.body.id, base, face, info: base.data.faceInfo[face], point: h.point.clone(), normal: nLocal.clone().transformDirection(base.m), nLocal, distance: h.distance };
   }
+  // jumpstart-3d: edge pick hint (#239)
+  let lastEdgePickHint = -Infinity;
+  function edgePickHint(e, kind, only) {
+    const hit = vp.pick(e, scene.meshes())[0];
+    if (!hit) return;
+    const b = hit.object.userData.bodyView && hit.object.userData.bodyView.body;
+    if (!b) return;
+    const now = performance.now();
+    if (now - lastEdgePickHint < 3000) return;
+    const verb = kind === "fillet" ? "round" : "chamfer";
+    const message = b.hole ? `A hole has no edges to ${verb}. Click a solid body.`
+      : b.locked ? "This body is locked. Unlock it to change its edges (Ctrl+L)."
+        : only && b.id !== only ? `You are editing another body's ${kind}. Finish that first.`
+          : !baseOf(b.id) ? "This body didn't build, so its edges can't be picked. Undo or fix its last change."
+            : `No edge to ${verb} here: smooth surfaces and joins have none. Click a sharp edge.`;
+    lastEdgePickHint = now;
+    app.toast(message);
+  }
   // Is this point on a body's surface visible, or is some face in front of it? Checked along the
   // line of sight to the point itself (not the pointer), so edges deep inside cuts and holes, whose
   // walls are seen at a glancing angle, still count as visible.
@@ -1584,6 +1602,8 @@ export function initAdvanced(app) {
           const a = overArrow(e);
           if (a) { arrowDrag = { ...a, f: axisDragger(e, a.origin, a.n), v0: cur().value }; vp.canvas.style.cursor = "grabbing"; return true; }
           const h = pickTarget(e);
+          // jumpstart-3d: edge pick hint (#239)
+          if (!h) edgePickHint(e, st.kind, st.lockedBody);
           if (!h) return true;
           const s = cur();
           if (editing && !s.items.length) s.keep = null; // clicking edges picks a new set of edges
@@ -1621,8 +1641,11 @@ export function initAdvanced(app) {
         return { key: eh.body + ":e" + eh.edge, body: eh.body, base: eh.base, edges, face: null };
       }
       const fh = pickBaseFace(e, filter);
-      const fe = fh && fh.base.data.faceEdges && fh.base.data.faceEdges[fh.face];
-      if (fe && fe.length) return { key: fh.body + ":f" + fh.face, body: fh.body, base: fh.base, edges: fe.slice(), face: fh.face };
+      // jumpstart-3d: edge pick hint (#239): only edges the app draws count; a face whose edges are all hidden (seams, smooth joins, a mesh ball) picked
+      // invisible edges, which left an empty selection and threw in arrowAnchor (no points to take the middle of)
+      const drawn = (ei) => { const g = fh.base.data.edgeGroups[ei]; return !!g && g[1] > 0; };
+      const fe = fh && fh.base.data.faceEdges && fh.base.data.faceEdges[fh.face] && fh.base.data.faceEdges[fh.face].filter(drawn);
+      if (fe && fe.length) return { key: fh.body + ":f" + fh.face, body: fh.body, base: fh.base, edges: fe, face: fh.face };
       return null;
     }
     // where the drag arrow sits: the middle of the active set's first edge, pointing into the body
