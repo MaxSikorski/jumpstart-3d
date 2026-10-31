@@ -51,8 +51,8 @@ export function initFlexiGen(app) {
       w.__flexi.load(soup, name);
     };
     // jumpstart-3d: helper pages load on demand (the site fetches the page the first time; the single file has it inline)
-    const note = helperLoadingNote();
-    helperPage("flexigen").then((html) => { if (frame && ifr.isConnected) { note.remove(); ifr.srcdoc = html; } }, () => { if (frame && ifr.isConnected) { close(); app.toast(helperFailText("FlexiGen"), "err"); } });
+    const note = helperLoadingNote(() => close());
+    helperPage("flexigen").then((html) => { if (frame && ifr.isConnected) { note.done(); ifr.srcdoc = html; } }, (e) => { if (frame && ifr.isConnected) { close(); app.toast(helperFailText("FlexiGen", e), "err"); } });
     frame.append(note, ifr);
     document.body.append(frame);
     app.flexiOpen = true;

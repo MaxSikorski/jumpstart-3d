@@ -3,6 +3,9 @@
 // Case 4 allows a service worker in its own context (the config blocks it elsewhere) and takes the network away after it has installed.
 import { test, expect } from "@playwright/test";
 import { serve } from "../mcp/serve.mjs";
+import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { watchErrors, boot, loadDoc, newDoc, body, prim, buildOf, quarantine } from "./helpers.mjs";
 
 const SITE_ONLY = "the single file has no site to fetch from";
@@ -109,5 +112,136 @@ test("offline, after the service worker has installed, every helper still opens"
   } finally {
     await context?.close();
     await server.close();
+  }
+});
+
+// ---- review round 1 ----
+// a route that answers nothing; unroute() lets every held request go on to the server
+const hold = async (page) => { await page.route("**/helpers/*", () => {}); return { release: () => page.unroute("**/helpers/*") }; };
+
+test("Chisel stays closed when you leave while its page is still downloading", async ({ page }, info) => {
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  const errors = watchErrors(page);
+  await skipIntro(page);
+  await boot(page, info);
+  const gate = await hold(page);
+  await page.click("#mode-chisel");
+  await expect(page.locator("#chisel-host")).toContainText("Loading");
+  await page.click("#mode-beginner");
+  await gate.release();
+  await page.waitForFunction(() => { const f = document.querySelector("#chisel-host iframe"); return !!(f && f.contentWindow && f.contentWindow.__chisel); }, null, { timeout: 30_000 });
+  await page.evaluate(() => new Promise((ok) => setTimeout(ok, 600))); // a negative: give a late enter() the chance it must not take
+  expect(await page.evaluate(() => window.__app.mode)).toBe("beginner");
+  await expect(page.locator("#chisel-host")).toBeHidden();
+  await page.click("#mode-chisel"); // and it opens normally afterwards, from the page it already has
+  await expect(page.locator("#chisel-host")).toBeVisible();
+  expect(await page.evaluate(() => window.__app.mode)).toBe("chisel");
+  expect(errors, "console or page errors").toEqual([]);
+});
+
+test("a download that never ends can be closed with the button or Escape, and the timeout says so", async ({ page }, info) => {
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  await page.addInitScript(() => { window.__JS3D_HELPER_TIMEOUT_MS = 1500; });
+  await skipIntro(page);
+  await boot(page, info);
+  await loadDoc(page, box20());
+  await page.route("**/helpers/*", () => {}); // never answers
+
+  await page.evaluate(() => window.__app.flexigen.open("b1"));
+  await expect(page.locator("#flexigen")).toContainText("Loading");
+  await page.locator("#flexigen button", { hasText: "Close" }).click();
+  await expect(page.locator("#flexigen")).toHaveCount(0);
+
+  await page.evaluate(() => window.__app.meshstep.open());
+  await expect(page.locator(".meshstep")).toContainText("Loading");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".meshstep")).toHaveCount(0);
+
+  await page.click("#mode-chisel");
+  await page.locator("#chisel-host button", { hasText: "Close" }).click();
+  expect(await page.evaluate(() => window.__app.mode)).toBe("beginner");
+
+  // left open, the 1.5 s limit gives up with the plain message; the next try starts afresh
+  await page.evaluate(() => window.__app.meshstep.open());
+  await expect(page.locator(".toast", { hasText: "Mesh to STEP needs a connection the first time" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".meshstep")).toHaveCount(0);
+  await page.unroute("**/helpers/*");
+  await page.evaluate(() => window.__app.meshstep.open());
+  await helperFrame(page).waitForFunction(() => !!window.__meshstep, null, { timeout: 30_000 });
+});
+
+test("a helper file from another build says to reload instead of mixing versions", async ({ page }, info) => {
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  await skipIntro(page);
+  await boot(page, info);
+  await loadDoc(page, box20());
+  await page.route("**/helpers/flexigen.html", async (route) => {
+    const r = await route.fetch();
+    await route.fulfill({ response: r, body: (await r.text()).replace(/^js3d-build:[0-9a-f]+/, "js3d-build:0000000000") });
+  });
+  await page.evaluate(() => window.__app.flexigen.open("b1"));
+  await expect(page.locator(".toast", { hasText: "A newer version was installed: reload the page to use FlexiGen" })).toBeVisible();
+  await expect(page.locator("#flexigen")).toHaveCount(0);
+});
+
+test("on the first visit, offline before the service worker controls the page, a helper still opens", async ({ browser }, info) => {
+  quarantine(info, ["site-webkit"], "WebKit's internal error with a service worker under Playwright on Linux");
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  test.setTimeout(240_000);
+  const server = await serve("docs");
+  let context;
+  try {
+    context = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
+    const page = await context.newPage();
+    await skipIntro(page);
+    await page.goto(server.url);
+    await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
+    await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 30_000 }).toBe("activated");
+    expect(await page.evaluate(() => navigator.serviceWorker.controller), "this page is not controlled yet (no reload)").toBeNull();
+    await expect.poll(() => page.evaluate(async () => { const n = (await caches.keys()).find((k) => k.startsWith("jumpstart-3d-")); return n ? (await (await caches.open(n)).keys()).filter((r) => r.url.includes("/helpers/")).length : 0; })).toBe(4);
+    await server.close();
+    await context.setOffline(true); // no reload: the page keeps its own, uncontrolled self
+    await page.evaluate(() => window.__app.meshstep.open());
+    await helperFrame(page).waitForFunction(() => !!window.__meshstep, null, { timeout: 30_000 });
+    await expect(page.locator(".toast", { hasText: "needs a connection" })).toHaveCount(0);
+  } finally {
+    await context?.close();
+    await server.close();
+  }
+});
+
+test("an on-use helper file is not saved at install; the service worker keeps it the first time it is fetched", async ({ browser }, info) => {
+  quarantine(info, ["site-webkit"], "WebKit's internal error with a service worker under Playwright on Linux");
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  test.setTimeout(240_000);
+  // no on-use file exists yet, so a copy of docs/ gets one: helpers/fake-data.json, listed in ON_USE as build.mjs would
+  const live = mkdtempSync(join(tmpdir(), "js3d-onuse-"));
+  cpSync("docs", live, { recursive: true });
+  writeFileSync(join(live, "helpers", "fake-data.json"), 'js3d-build:0000000000\n{"rows":[1,2,3]}');
+  writeFileSync(join(live, "sw.js"), readFileSync(join(live, "sw.js"), "utf8").replace("const ON_USE = [];", 'const ON_USE = ["helpers/fake-data.json"];'));
+  const server = await serve(live);
+  let context;
+  try {
+    context = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
+    const page = await context.newPage();
+    const kept = () => page.evaluate(async () => { const n = (await caches.keys()).find((k) => k.startsWith("jumpstart-3d-")); return (await (await caches.open(n)).keys()).map((r) => new URL(r.url).pathname).filter((p) => p.includes("fake-data")); });
+    await skipIntro(page);
+    await page.goto(server.url);
+    await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
+    await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 30_000 }).toBe("activated");
+    await expect.poll(() => page.evaluate(async () => { const n = (await caches.keys()).find((k) => k.startsWith("jumpstart-3d-")); return n ? (await (await caches.open(n)).keys()).filter((r) => r.url.includes("/helpers/")).length : 0; })).toBe(4);
+    expect(await kept(), "not part of the install").toEqual([]);
+    await page.reload(); // now the worker controls the page
+    await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
+    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    expect(await page.evaluate(() => fetch("helpers/fake-data.json").then((r) => r.text()))).toContain('"rows"');
+    await expect.poll(kept).toEqual(["/helpers/fake-data.json"]);
+    await server.close();
+    await context.setOffline(true);
+    expect(await page.evaluate(() => fetch("helpers/fake-data.json").then((r) => r.text())), "served from the cache offline").toContain('"rows"');
+  } finally {
+    await context?.close();
+    await server.close();
+    rmSync(live, { recursive: true, force: true });
   }
 });

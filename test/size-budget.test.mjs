@@ -27,6 +27,8 @@ test("gzipSize is the size of the gzipped text", () => {
 test("the committed budget is a real number close to the built app", () => {
   const recorded = JSON.parse(readFileSync(new URL("../size-budget.json", import.meta.url), "utf8"))["docs/app.js gzip bytes"];
   assert.ok(Number.isInteger(recorded) && recorded > 500_000, "size-budget.json holds the gzipped size of docs/app.js");
+  const helpers = JSON.parse(readFileSync(new URL("../size-budget.json", import.meta.url), "utf8"))["docs/helpers gzip bytes"];
+  assert.ok(Number.isInteger(helpers) && helpers > 100_000, "size-budget.json holds the gzipped total of docs/helpers");
 });
 
 test("build.mjs fails on a lowered budget and passes after --bump-budget", { timeout: 180_000 }, () => {
