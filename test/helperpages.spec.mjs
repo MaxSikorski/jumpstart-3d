@@ -4,6 +4,7 @@
 import { test, expect } from "@playwright/test";
 import { serve } from "../mcp/serve.mjs";
 import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { watchErrors, boot, loadDoc, newDoc, body, prim, buildOf, quarantine } from "./helpers.mjs";
@@ -170,18 +171,30 @@ test("a download that never ends can be closed with the button or Escape, and th
   await helperFrame(page).waitForFunction(() => !!window.__meshstep, null, { timeout: 30_000 });
 });
 
-test("a helper file from another build says to reload instead of mixing versions", async ({ page }, info) => {
+test("a helper file from another build says to reload, after asking the server once more", async ({ page }, info) => {
   test.skip(buildOf(info) !== "site", SITE_ONLY);
   await skipIntro(page);
   await boot(page, info);
   await loadDoc(page, box20());
+  const asked = [];
   await page.route("**/helpers/flexigen.html", async (route) => {
+    asked.push(route.request().url());
     const r = await route.fetch();
     await route.fulfill({ response: r, body: (await r.text()).replace(/^js3d-build:[0-9a-f]+/, "js3d-build:0000000000") });
   });
   await page.evaluate(() => window.__app.flexigen.open("b1"));
   await expect(page.locator(".toast", { hasText: "A newer version was installed: reload the page to use FlexiGen" })).toBeVisible();
   await expect(page.locator("#flexigen")).toHaveCount(0);
+  expect(asked.length, "once more, then the toast").toBe(2);
+  // an old copy in the HTTP cache: the second ask gets the right file and the helper opens
+  await page.unroute("**/helpers/flexigen.html");
+  let n = 0;
+  await page.route("**/helpers/flexigen.html", async (route) => {
+    const r = await route.fetch();
+    await route.fulfill({ response: r, body: n++ ? await r.text() : (await r.text()).replace(/^js3d-build:[0-9a-f]+/, "js3d-build:0000000000") });
+  });
+  await page.evaluate(() => window.__app.flexigen.open("b1"));
+  await helperFrame(page).waitForFunction(() => !!window.__flexi, null, { timeout: 30_000 });
 });
 
 test("on the first visit, offline before the service worker controls the page, a helper still opens", async ({ browser }, info) => {
@@ -243,5 +256,73 @@ test("an on-use helper file is not saved at install; the service worker keeps it
     await context?.close();
     await server.close();
     rmSync(live, { recursive: true, force: true });
+  }
+});
+
+test("Escape works in the app again after Close on a slow Chisel download", async ({ page }, info) => {
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  await skipIntro(page);
+  await boot(page, info);
+  await loadDoc(page, box20());
+  await page.route("**/helpers/*", () => {}); // never answers
+  await page.click("#mode-chisel");
+  await page.locator("#chisel-host button", { hasText: "Close" }).click();
+  expect(await page.evaluate(() => [window.__app.mode, window.__store.doc.mode]), "the design is not left in Chisel mode").toEqual(["beginner", "beginner"]);
+  await page.evaluate(() => window.__app.select(["b1"]));
+  expect(await page.evaluate(() => window.__app.sel.length)).toBe(1);
+  await page.keyboard.press("Escape");
+  expect(await page.evaluate(() => window.__app.sel.length), "Escape reached the app").toBe(0);
+  // coming back while it still loads shows the note again, with its Close
+  await page.click("#mode-chisel");
+  await expect(page.locator("#chisel-host")).toBeVisible();
+  await expect(page.locator("#chisel-host")).toContainText("Loading");
+  await page.keyboard.press("Escape");
+  expect(await page.evaluate(() => window.__app.mode)).toBe("beginner");
+});
+
+// A server that sends a helper file in slow pieces (and the rest of docs/ as it is), to tell a stall from a slow link.
+async function slowSite(pace) {
+  const base = await serve("docs");
+  const server = createServer(async (req, res) => {
+    const path = new URL(req.url, "http://x").pathname;
+    const slow = pace[path];
+    if (slow) {
+      const body = readFileSync("docs" + path), step = Math.ceil(body.length / 3);
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      for (let i = 0; i < 3; i++) {
+        res.write(body.subarray(i * step, (i + 1) * step));
+        if (i === 0 && slow.stallAfterFirst) return; // never ends
+        await new Promise((ok) => setTimeout(ok, slow.gap));
+      }
+      res.end();
+      return;
+    }
+    const r = await fetch(base.url + path.slice(1));
+    res.writeHead(r.status, { "content-type": r.headers.get("content-type") || "application/octet-stream" });
+    res.end(Buffer.from(await r.arrayBuffer()));
+  });
+  await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+  return { url: `http://127.0.0.1:${server.address().port}/`, close: async () => { server.closeAllConnections(); await new Promise((ok) => server.close(ok)); await base.close(); } };
+}
+
+test("the wait limit counts time without data: a slow steady download finishes, a stalled one gives up", async ({ page }, info) => {
+  test.skip(buildOf(info) !== "site", SITE_ONLY);
+  test.setTimeout(180_000);
+  const site = await slowSite({ "/helpers/meshstep.html": { gap: 700 }, "/helpers/flexigen.html": { stallAfterFirst: true } });
+  try {
+    await page.addInitScript(() => { window.__JS3D_HELPER_TIMEOUT_MS = 1200; try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+    await page.goto(site.url);
+    await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
+    // about 2.1 s in all, over the 1.2 s limit, but never 1.2 s without a piece
+    const t0 = Date.now();
+    await page.evaluate(() => window.__app.meshstep.open());
+    await helperFrame(page).waitForFunction(() => !!window.__meshstep, null, { timeout: 30_000 });
+    expect(Date.now() - t0, "took longer than the limit in all").toBeGreaterThan(1200);
+    await page.evaluate(() => window.__app.meshstep.close());
+    await loadDoc(page, box20());
+    await page.evaluate(() => window.__app.flexigen.open("b1"));
+    await expect(page.locator(".toast", { hasText: "FlexiGen needs a connection the first time" })).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await site.close();
   }
 });

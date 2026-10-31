@@ -235,12 +235,12 @@ export function initChisel(app) {
     ifr.title = "Chisel sculpting";
     readyP = new Promise((r) => { readyRes = r; });
     // jumpstart-3d: helper pages load on demand. A failed load closes Chisel again and tells the user; the next try starts afresh.
-    const note = helperLoadingNote(() => app.setMode("beginner")), mine = host;
+    const note = helperLoadingNote(() => app.switchMode("beginner")), mine = host;
     helperPage("chisel").then((html) => { if (host === mine) { note.done(); ifr.srcdoc = html; } }, (e) => {
       if (host !== mine) return;
       host.remove(); host = ifr = readyP = null;
       readyRes(false); readyRes = null;
-      if (app.mode === "chisel") { app.toast(helperFailText("Chisel", e), "err"); app.setMode("beginner"); }
+      if (app.mode === "chisel") { app.toast(helperFailText("Chisel", e), "err"); app.switchMode("beginner"); }
     });
     host.append(note, ifr);
     document.body.append(host);
@@ -378,7 +378,9 @@ export function initChisel(app) {
 
   let introDue = true; // jumpstart-3d: the first-visit notice waits for the first Chisel that really opens (enter() may stop early)
   async function enter() {
-    if (await ensure() === false || app.mode !== "chisel") return; // jumpstart-3d: the page could not be loaded, or the user already left (Close, a slow download)
+    const ready = ensure();
+    if (host) host.hidden = false; // jumpstart-3d: shows the Loading note while the page downloads
+    if (await ready === false || app.mode !== "chisel") return; // jumpstart-3d: the page could not be loaded, or the user already left (Close, a slow download)
     host.hidden = false;
     showLevel(true);
     await load();

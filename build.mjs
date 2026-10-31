@@ -10,7 +10,7 @@
 // src/meshstep.html, src/chisel.html) are committed already built (the site fetches them from docs/helpers/; the single file has them inline); see
 // tools/helpers/README.md to regenerate them.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, statSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { createHash } from "node:crypto"; // jumpstart-3d: offline
@@ -53,11 +53,9 @@ const camWorkerPlugin = { name: "camworker", setup(b) {
 // Each file in docs/helpers/ starts with a "js3d-build:<id>" line; the id is also built into the site's app.js, so a page that finds a
 // helper file of another version (a release went live while it was open) says so instead of mixing versions.
 const HELPERS_ID = helpersId((f) => readFileSync(join(src, f)));
+const helperRealPaths = new Set(Object.keys(HELPER_FILES).map((n) => realpathSync(join(src, n)))); // esbuild hands over real paths, so a symlinked checkout (macOS /tmp) must match too
 const helperImports = (inline) => ({ name: "helper-files", setup(b) {
-  b.onLoad({ filter: /./ }, (a) => {
-    const f = Object.keys(HELPER_FILES).find((n) => a.path === join(src, n));
-    return f ? { contents: inline ? readFileSync(a.path, "utf8") : "", loader: "text" } : undefined;
-  });
+  b.onLoad({ filter: /./ }, (a) => helperRealPaths.has(a.path) ? { contents: inline ? readFileSync(a.path, "utf8") : "", loader: "text" } : undefined);
 } });
 
 rmSync(out, { recursive: true, force: true });
