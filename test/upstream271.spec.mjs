@@ -53,7 +53,7 @@ test.describe("version 2.7.1", () => {
   }, index);
 
   test("the splash and About show the version with the 2.7.1 and 2.6 notes", async () => {
-    expect(VERSION).toMatch(/^2\.7\./); // 2.7.3 and later keep these notes (upstream273.spec.mjs checks the newest)
+    expect(VERSION).toMatch(/^2\.\d+\./); // 2.7.3 and later keep these notes (upstream2813.spec.mjs checks the newest)
     const label = `Version ${VERSION} · community build ${BUILD}`;
     expect(await page.locator("#sp-ver").textContent()).toBe(label);
     await page.click("#btn-about");
