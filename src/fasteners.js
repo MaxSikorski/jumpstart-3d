@@ -267,6 +267,18 @@ export function fastenerPart(kindId, std, size, length, opts = {}) {
   // end jumpstart-3d
   return { node, name, color };
 }
+// jumpstart-3d: fasteners. The lowest point of a part's solid (hole children left out), in its own coordinates: a part never put on a
+// face is lifted by this to stand on the bed. Flipped children (heads, tips) reach down from their place by their height.
+export function partLowZ(node) {
+  let low = Infinity;
+  for (const c of node.children || []) {
+    if (c.hole) continue;
+    const z = c.m[14], down = c.m[10] < 0;
+    low = Math.min(low, c.node.t === "group" ? z + partLowZ(c.node) : down ? z - c.node.p.h : z);
+  }
+  return low === Infinity ? 0 : low;
+}
+// end jumpstart-3d
 function fmtInch(x) {
   const w = Math.floor(x + 1e-9), f = x - w;
   const fr = [[1 / 8, "1/8"], [3 / 16, "3/16"], [1 / 4, "1/4"], [3 / 8, "3/8"], [1 / 2, "1/2"], [5 / 8, "5/8"], [3 / 4, "3/4"], [7 / 8, "7/8"]].find(([v]) => Math.abs(v - f) < 1e-6);

@@ -223,12 +223,42 @@ test("the turns guard: a hint at 64 turns, a refusal at 160, and the same refusa
   await setLength(200);
   await expect(page.locator("#cmd")).toContainText("Too many turns (160; the most is 150). Make it shorter or pick a larger size.");
   await expect(page.locator("#cmd-ok")).toBeDisabled();
+  // and there is no preview (openCmd drops it for a command that is not valid), so 160 turns never reach the engine
+  await expect.poll(() => run(() => __store.view.bodies.some((x) => x.fastener))).toBe(false);
   await page.click('#cmd button[aria-label="Cancel"]');
   expect(await run(() => JS3D.list().length)).toBe(0);
   const too = "Too many turns (160; the most is 150). Make it shorter or pick a larger size.";
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 200 }))).toBe(too);
   expect(await failure(() => JS3D.fastener({ type: "bolt", size: "M8", length: 200 }))).toBe(too);
   expect(await run(() => JS3D.list().length)).toBe(0);
+});
+
+test("editing a part from the dialog keeps the print offset the Thread print offset tool gave it", async () => {
+  await fresh("advanced");
+  await openFromRibbon();
+  await choose({ kind: "rod", size: "M8", len: 20, threads: true });
+  await page.selectOption("#fs-clear", "0");
+  await page.click("#cmd-ok");
+  const [rod] = await built();
+  await run((id) => JS3D.select([id]), rod.id);
+  await page.click("#ad-features");
+  await page.click("#ad-thread-offset");
+  await page.selectOption("#to-clear", "-0.2");
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  expect(await run((id) => JS3D.get(id).node.mods.map((m) => m.clear), rod.id)).toEqual([-0.2]);
+  // double-click the rod to edit it, make it longer, OK
+  await run(() => JS3D.fit());
+  await expect.poll(() => run(() => window.__app.vp.isMoving())).toBe(false);
+  const box = await page.locator("#viewport canvas").first().boundingBox();
+  const [sx, sy] = await run((id) => { const b = window.__store.doc.bodies.find((x) => x.id === id); const V = window.__app.vp.view.target.constructor; return window.__app.vp.project(new V(b.m[12], b.m[13], b.m[14] + 10)); }, rod.id);
+  await page.mouse.dblclick(box.x + sx, box.y + sy);
+  await expect(page.locator("#fs-clear")).toHaveValue("-0.2");
+  await setLength(24);
+  await page.click("#cmd-ok");
+  await expect(page.locator("#cmd")).toBeHidden();
+  expect(await run((id) => JS3D.get(id).node.mods.map((m) => m.clear), rod.id)).toEqual([-0.2]);
+  expect(await run((id) => __store.doc.bodies.find((b) => b.id === id).fastener.len, rod.id)).toBe(24);
 });
 
 test("JS3D.fastener refuses bad input with plain messages and adds nothing", async () => {
@@ -313,8 +343,9 @@ test("in inch units the dialog starts in inch sizes and names the part in inches
     const [bolt] = await built();
     expect(bolt.name).toBe('Hex bolt 1/4"-20 x 1"');
     expect(bolt.error).toBeNull();
-    expect(bolt.bbox.min[2]).toBeCloseTo(-25.4, 2);
-    expect(bolt.bbox.max[2]).toBeCloseTo(0.163 * 25.4, 2);
+    // Beginner: never put on a face, it stands on the bed (the shank's end at z = 0, the head on top)
+    expect(bolt.bbox.min[2]).toBeCloseTo(0, 2);
+    expect(bolt.bbox.max[2]).toBeCloseTo(25.4 + 0.163 * 25.4, 2);
   } finally { await page.click("#unit-toggle"); }
 });
 
@@ -337,6 +368,7 @@ test("Beginner: a second Fastener from the dialog starts beside the first one, n
   const overlapXY = bolt.bbox.min[0] < nut.bbox.max[0] && bolt.bbox.max[0] > nut.bbox.min[0] && bolt.bbox.min[1] < nut.bbox.max[1] && bolt.bbox.max[1] > nut.bbox.min[1];
   expect(overlapXY, "the nut sits on the bolt").toBe(false);
   expect(nut.bbox.min[2]).toBeCloseTo(0, 3);
+  expect(bolt.bbox.min[2]).toBeCloseTo(0, 2); // stands on the bed, not through it
 });
 
 test("Beginner: a tap cutter from the dialog stays inside the box at 0,0 and Group cuts it (review of the F8 fix)", async ({}, info) => {

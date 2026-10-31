@@ -251,27 +251,43 @@ test("an extra Text font (Bangers) builds a body that differs from the Rounded s
   expect(await page.locator("#insp-font optgroup").count()).toBeGreaterThan(3);
   await expect(page.locator("#insp-font")).toHaveValue("bangers");
   await run(() => window.__app.select([]));
+  // the Name plate stays with the three classic fonts, in its dialog and through the page API, extra fonts loaded or not
+  expect(await page.evaluate(() => { try { JS3D.namePlate({ text: "A", font: "bangers" }); return null; } catch (e) { return e.message; } })).toBe('font must be "sans", "serif" or "mono"');
+  await run(() => window.__app.advanced.namePlate());
+  await expect(page.locator("#np-font option")).toHaveCount(3);
+  await page.click('#cmd button[aria-label="Cancel"]');
 });
 
-test("site, no connection: a design in an extra font builds in Rounded sans with a plain toast, and the picker keeps the classic fonts", async ({ browser }, info) => {
+test("site, no connection: text in an extra font builds in Rounded sans with one toast; back online, a font picker gets the fonts and the text is built again in its own font", async ({ browser }, info) => {
   test.skip(buildOf(info) !== "site", "the single file has the fonts inline");
-  const p = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  // a first visit with no service worker yet (it would otherwise save the fonts quietly once the engine is ready)
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, serviceWorkers: "block" });
+  const p = await context.newPage();
   const errs = watchErrors(p);
   try {
     await p.route("**/helpers/fonts_more.js", (r) => r.abort("internetdisconnected"));
     await boot(p, info);
     await p.evaluate(() => { const a = window.__app, t = a.toast; window.__toasts = []; a.toast = (m, ...r) => { window.__toasts.push(String(m)); return t.call(a, m, ...r); }; });
     await loadDoc(p, newDoc("Offline fonts", "beginner", { bodies: [textBody("t1", "sans", 0), textBody("t2", "bangers", 20)] }));
-    expect(await p.evaluate(() => window.__toasts)).toEqual(["The extra fonts need a connection the first time, so text in them uses Rounded sans for now."]);
-    const list = await bodies(p);
-    for (const b of list) expect(b.error, b.name).toBeNull();
-    const v = Object.fromEntries(list.map((b) => [b.name, b.volume]));
-    expect(v.bangers).toBeCloseTo(v.sans, 0); // the same text in the default font
+    const vols = async () => Object.fromEntries((await bodies(p)).map((b) => { expect(b.error, b.name).toBeNull(); return [b.name, b.volume]; }));
+    const offline = await vols();
+    expect(offline.bangers).toBeCloseTo(offline.sans, 0); // the same text in the default font
+    // a picker opened while still offline tries again quietly and keeps the classic fonts
     await p.evaluate(() => window.__app.select(["t2"]));
     await expect(p.locator("#insp-font")).toBeVisible();
     await expect.poll(() => p.locator("#insp-font option").count()).toBe(3);
+    expect(await p.evaluate(() => window.__toasts)).toEqual(["The extra fonts need a connection the first time, so text in them uses Rounded sans for now."]);
+    // back online: the next picker gets the fonts, shows the body's own font and the text is built again in Bangers
+    await p.unroute("**/helpers/fonts_more.js");
+    await p.evaluate(() => window.__app.select([]));
+    await p.evaluate(() => window.__app.select(["t2"]));
+    await expect.poll(() => p.locator("#insp-font option").count(), { timeout: 30_000 }).toBeGreaterThanOrEqual(45);
+    await expect(p.locator("#insp-font")).toHaveValue("bangers");
+    await waitIdle(p);
+    await expect.poll(async () => Math.abs((await vols()).bangers - offline.sans) / offline.sans, { timeout: 30_000 }).toBeGreaterThan(0.02);
+    expect((await vols()).sans).toBe(offline.sans);
     expect(errs.filter((e) => !/fonts_more|ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(e))).toEqual([]);
-  } finally { await p.close(); }
+  } finally { await context.close(); }
 });
 
 // ---------------------------------------------------------------- Sweep, Slice, Image on a face

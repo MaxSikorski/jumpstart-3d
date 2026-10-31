@@ -137,20 +137,26 @@ export class KernelClient {
   }
   pump() {
     if (!this.ready || this.inflight || !this.queue.size) return;
-    // jumpstart-3d: a build that uses an extra font waits until the fonts are loaded (morefonts.js; it always settles)
-    if (this.waitFor && !this.fontWait) { const w = this.waitFor([...this.queue.values()]); if (w) { this.fontWait = w.then(() => { this.fontWait = null; this.pump(); }); return; } }
-    if (this.fontWait) return;
+    // jumpstart-3d: a body whose text uses an extra font waits in the queue until the fonts are in (morefonts.js); the others go on.
+    // The wait always ends (loaded or not), and then the queue is pumped again.
+    const held = (it) => {
+      const w = this.waitFor && this.waitFor(it);
+      if (w && !this.fontWait) this.fontWait = Promise.resolve(w).catch(() => {}).finally(() => { this.fontWait = null; this.pump(); });
+      return !!w;
+    };
     // send small batches so the screen updates progressively
     // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
     const heavy = (it) => { if (it.node && it.node.t === "group" && (it.node.children || []).length > 40) return true; const j = JSON.stringify(it.node); return j.includes('"asset"') || j.includes('"t":"facepat"') || j.includes('"t":"shell"') || j.includes('"logs":true') || (j.includes('"pipe"') && (j.includes('"bez"') || j.includes('"bsp"'))); }; // jumpstart-3d: a shell (hollow) goes alone with the long time limit: an oval capsule's Auto hollow takes 20-35 s
     const batch = [];
     for (const [k, it] of this.queue) {
+      if (held(it)) continue; // jumpstart-3d: extra fonts
       const alone = (b) => heavy(b) || this.solo.has(b.key); // jumpstart-3d: a retried body also goes alone
       if (batch.length && (alone(it) || alone(batch[0]))) break;
       batch.push(it); this.queue.delete(k);
       if (batch.length >= 4 || alone(it)) break;
     }
+    if (!batch.length) return; // jumpstart-3d: extra fonts (everything queued is waiting for them)
     this.inflight = batch;
     this.perf && this.perf.start(); // jumpstart-3d: perf panel
     // jumpstart-3d: identify the active batch separately from export requests.
@@ -199,8 +205,8 @@ export class KernelClient {
     this.start();
   }
   step(bodies) {
-    const w = this.waitFor && this.waitFor(bodies); // jumpstart-3d: extra fonts on first use (a STEP export of text in one)
-    if (w) return w.then(() => this.step(bodies));
+    const w = this.waitFor && bodies.map((b) => this.waitFor(b)).find(Boolean); // jumpstart-3d: extra fonts (a STEP export of text in one)
+    if (w) return Promise.resolve(w).catch(() => {}).then(() => this.step(bodies));
     const req = ++this.req;
     return new Promise((resolve, reject) => {
       this.stepWaiters.set(req, { resolve, reject });

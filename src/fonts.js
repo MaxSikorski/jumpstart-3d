@@ -27,7 +27,7 @@ export function fontSelect(id, value) {
     for (const k of keys) { const o = document.createElement("option"); o.value = k; o.textContent = FONT_NAMES[k] || k; if (k === value) o.selected = true; og.append(o); }
     s.append(og);
   }
-  if (fontSelect.onBuild) fontSelect.onBuild(s); // jumpstart-3d: the extra fonts load on first use (morefonts.js)
+  if (fontSelect.onBuild) fontSelect.onBuild(s, value); // jumpstart-3d: the extra fonts load on first use (morefonts.js)
   return s;
 }
 export function fontBytes(name) {

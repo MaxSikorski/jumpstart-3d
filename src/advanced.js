@@ -48,7 +48,7 @@ import { FACEPAT, facePatCells } from "./facepat.js";
 import { binParts, BIN_DEFAULTS } from "./bins.js";
 import { hingeParts, HINGE_DEFAULTS, HINGE_TYPES, PIN_KINDS } from "./hinges.js";
 import { FASTENER_KINDS, kindOf as fastKind, sizesFor, LENGTHS, defaultLength, fastenerPart, holeSizes } from "./fasteners.js";
-import { sizeData } from "./fasteners.js"; // jumpstart-3d: fasteners (pitch and size for the turns guard and the F8 spacing)
+import { sizeData, partLowZ } from "./fasteners.js"; // jumpstart-3d: fasteners (pitch and size for the turns guard and the F8 spacing; standing on the bed)
 
 const BODY_COLORS = ["#9fb1c4", "#c9a27a", "#8fb79a", "#b49ac8", "#c98f8f", "#8fb8c9"];
 
@@ -5965,7 +5965,9 @@ export function initAdvanced(app) {
     const st = { kind: (f0 || pref).kind || "shcs", std: (f0 || pref).std || (getUnit() === "in" ? "inch" : "metric"), size: (f0 || pref).size || null, len: f0 ? f0.len : null, threads: f0 ? !!f0.threads : !!pref.threads,
       id: existing ? existing.id : uid("b"), m: existing ? existing.m.slice() : null, placed: !!existing, where: null };
     // jumpstart-3d: fasteners. Our thread fit on his library: a print offset per part (ISO profile caps), left-hand threads, the turns guard.
-    Object.assign(st, { clear: f0 && f0.clear != null ? f0.clear : store.doc.threadOffset || 0, left: f0 ? !!f0.left : false, pointed: !!existing });
+    // An existing part keeps the offset and hand its thread has now (the Thread print offset tool or the Thread dialog may have changed them).
+    const tm = existing && f0 && f0.kind !== "cutter" ? threadMods(existing.node)[0] : null;
+    Object.assign(st, { clear: tm ? tm.clear || 0 : f0 && f0.clear != null ? f0.clear : store.doc.threadOffset || 0, left: tm ? !!tm.left : f0 ? !!f0.left : false, pointed: !!existing });
     const threaded = () => st.kind === "cutter" || (st.threads && !!fastKind(st.kind).thread);
     const pitchNow = () => { const sd = sizeData(st.std, st.size); return sd ? sd.p : 1; };
     const turns = () => (threaded() && fastKind(st.kind).len ? Math.round(st.len / pitchNow()) : 0);
@@ -6005,7 +6007,8 @@ export function initAdvanced(app) {
         b.fastener = { kind: st.kind, std: st.std, size: st.size, len: st.len, threads: st.threads, name: pt.name };
         // jumpstart-3d: fasteners. A tap cutter is a hole; one never put on a face stands on the ground (it goes down from its origin).
         if (st.kind === "cutter" || (f0 && f0.kind === "cutter")) b.hole = st.kind === "cutter";
-        if (st.kind === "cutter" && !st.pointed) b.m[14] += st.len;
+        // and in Beginner any new part never put on a face stands on the bed (its lowest point at z = 0), as our dialog did
+        if (!st.pointed && !existing && (st.kind === "cutter" || app.mode === "beginner")) b.m[14] -= partLowZ(pt.node);
         Object.assign(b.fastener, { clear: st.clear, left: st.left });
         // end jumpstart-3d
       },

@@ -53,9 +53,9 @@ test("a file in on-use mode is left out of the install list and is the only one 
   assert.deepEqual(slot("ON_USE", filled), ["helpers/big-data.json"]);
 });
 
-test("the extra fonts and the Floor Planner page are on-use: never downloaded in the background (Max, 2026-10-30)", () => {
-  assert.deepEqual(helperLists().onUse.sort(), ["helpers/floorplan.html", "helpers/fonts_more.js"]);
-  assert.deepEqual(helperLists().precache.sort(), ["helpers/chisel.html", "helpers/flexigen.html", "helpers/helper-three.html", "helpers/meshstep.html"]);
+test("the extra fonts are saved quietly after the engine is ready; the Floor Planner page only when opened (Max, 2026-10-30)", () => {
+  assert.deepEqual(helperLists().onUse, ["helpers/floorplan.html"]);
+  assert.deepEqual(helperLists().precache.sort(), ["helpers/chisel.html", "helpers/flexigen.html", "helpers/fonts_more.js", "helpers/helper-three.html", "helpers/meshstep.html"]);
 });
 
 test("an unknown mode is refused", () => {
