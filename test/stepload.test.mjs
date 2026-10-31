@@ -99,7 +99,10 @@ test("real checked reader restores statics, retries with a fresh reader, preserv
   surfaces.forEach(f => f.delete());
   shape.delete();
   restored();
-  assert.throws(() => read(fixture("wire-circle.step")), /no solids or surfaces/);
+  shape = read(fixture("wire-circle.step")); // curves only: not empty, it builds as lines (booleans.spec)
+  assert.equal(shape.edges.length, 1);
+  shape.edges.forEach(e => e.delete());
+  shape.delete();
   restored();
   {
     readers.length = 0;
