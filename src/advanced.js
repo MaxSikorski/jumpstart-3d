@@ -532,7 +532,7 @@ export function initAdvanced(app) {
         body.append(pickbox(!st.geo, st.geo ? el("span", {}, el("b", {}, findBody(store.doc, st.body)?.name || "Body"), " · " + KIND[st.geo.kind]) : "Click a face", null));
         const txt = el("input", { class: "num", id: "em-text", value: st.str, style: { fontFamily: "var(--f-ui)" }, "aria-label": "Text" });
         txt.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { st.str = txt.value; app.submitCommand(); } });
-        txt.addEventListener("input", () => { st.str = txt.value; clearTimeout(st.tt); st.tt = setTimeout(() => refresh(false), 350); });
+        txt.addEventListener("input", () => { st.str = txt.value; updateOverlapHint(); clearTimeout(st.tt); st.tt = setTimeout(() => refresh(false), 350); }); // jumpstart-3d: update the overlap warning while typing
         body.append(row("Text", txt, "em-text"));
         body.append(row("Font", textFontSelect(st.font, (v) => { st.font = v; refresh(false); }, "em-font"), "em-font"));
         body.append(row("Style", seg([["emboss", "Emboss (raised)"], ["deboss", "Deboss (cut in)"]], st.mode, (v) => { st.mode = v; refresh(); }, "em-mode")));
@@ -542,6 +542,8 @@ export function initAdvanced(app) {
         r3.append(el("label", {}, "Angle °", app.numField({ value: st.angle, id: "em-angle", step: 15, onCommit: (v) => { st.angle = v; refresh(false); } })));
         body.append(r3);
         if (st.geo && st.geo.kind === "cyl") body.append(row("Direction", seg([[false, "Around"], [true, "Along"]], st.along, (v) => { st.along = v; refresh(); }, "em-along")));
+        // jumpstart-3d: keep one overlap hint available for live updates.
+        body.append(def.overlapHint = el("div", { class: "hint", id: "em-overlap" }));
         // fix text that reads backwards or upside down
         const flip = el("div", { class: "seg", id: "em-flip" },
           el("button", { id: "em-mirror", "aria-pressed": st.mirror, title: "Mirror the text left to right (for text that reads backwards, or to read correctly from the other side)", onclick: () => { st.mirror = !st.mirror; refresh(); } }, "⇋ Mirror"),
@@ -583,6 +585,7 @@ export function initAdvanced(app) {
           const f = pickBaseFace(e, (b) => b.id === st.body);
           if (!f || !f.info) return;
           st.geo = geoFromPick(f, st.snap !== !!e.altKey);
+          updateOverlapHint(); // jumpstart-3d: face changes can alter the available circumference.
           draw();
           const now = performance.now();
           if (now - st.lastPrev > 350) { st.lastPrev = now; schedulePreview(def); }
@@ -620,7 +623,7 @@ export function initAdvanced(app) {
           drawDot(P, 0x1f4fa8, 10);
           if (st.geo.kind === "plane") {
             const [x, up] = axesOf().map((v) => v.clone().transformDirection(base.m));
-            const [w, h] = textSize(st.str, st.size, st.font);
+            const [w, h] = textSize(String(st.str), st.size, st.font);
             drawTextGhost(P, x, up, w, h, st.angle || 0);
             if (st.geo.fc) drawDot(new THREE.Vector3(...st.geo.fc).applyMatrix4(base.m), 0x7fa6e0, 7);
           }
@@ -628,7 +631,18 @@ export function initAdvanced(app) {
       }
       vp.request();
     }
-    function refresh(rerender = true) { if (rerender) def.render(); draw(); schedulePreview(def); }
+    // jumpstart-3d: refresh the warning even when controls are not rerendered.
+    function updateOverlapHint() {
+      if (!def.overlapHint) return;
+      let message = "";
+      if (st.geo && st.geo.kind === "cyl" && !st.along && String(st.str || "").trim()) {
+        const length = textSize(String(st.str), st.size, st.font)[0] * Math.abs(Math.cos((st.angle || 0) * Math.PI / 180)), around = 2 * Math.PI * st.geo.r;
+        if (length > around) message = `The text is ${length.toFixed(1)} mm long but only ${around.toFixed(1)} mm fits around this face, so the ends overlap.`;
+      }
+      def.overlapHint.textContent = message;
+      def.overlapHint.hidden = !message;
+    }
+    function refresh(rerender = true) { if (rerender) def.render(); updateOverlapHint(); draw(); schedulePreview(def); }
     openCmd(def);
   }
   // ------------------------------------------------------------------ Pattern on face
@@ -6804,7 +6818,7 @@ export function initAdvanced(app) {
     function draw() {
       clearOv();
       if (!st.at) return;
-      const [w, h] = textSize(st.str, st.size, st.font);
+      const [w, h] = textSize(String(st.str), st.size, st.font);
       const lift = st.at.n.clone().multiplyScalar(st.h + 0.05);
       drawTextGhost(st.at.p.clone().add(lift), st.at.x, upOf(st.at), w, h, st.angle || 0, st.placed ? 0x1f4fa8 : 0xe8a317);
       if (st.at.c && st.placed) drawDot(st.at.c, 0x7fa6e0, 7);
