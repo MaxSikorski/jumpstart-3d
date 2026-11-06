@@ -25,6 +25,7 @@ test.beforeAll(async ({ browser }, info) => {
     };
   });
   await boot(page, info);
+  await page.evaluate(() => { window.__app.kernel.disk = false; }); // keep saved-shape lookups from splitting batches
 });
 test.afterAll(async () => { await page.close(); });
 test.afterEach(async () => {
@@ -32,7 +33,7 @@ test.afterEach(async () => {
   expect(errors, "console or page errors").toEqual([]);
 });
 
-// five bodies with sizes no other test uses, so the first four go in one batch and the fifth in the next
+// Five bodies with sizes no other test uses.
 const doc = () => newDoc("perf five", "beginner", {
   bodies: [
     body("p1", "Block", prim("box", { w: 31.1, d: 12, h: 8, r: 0, c: 0 })),
@@ -47,6 +48,14 @@ const parse = () => page.evaluate(() => {
   const rows = [...document.querySelectorAll("#perfpanel tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent));
   return { rows, sum: document.querySelector("#perfpanel .pp-sum").textContent };
 });
+async function populatePanel() {
+  await page.evaluate(() => window.__app.perf.open());
+  await loadDoc(page, doc());
+  await page.evaluate(() => { window.__previousPerf = window.__app.perf.last; });
+  await page.click("#perfpanel [data-pp=rebuild]");
+  await page.waitForFunction(() => window.__app.perf.last !== window.__previousPerf && window.__app.perf.last?.rows.length === 5, null, { timeout: 60_000 });
+  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(5, { timeout: 60_000 });
+}
 
 test("closed: no DOM, no style, no recorder", async () => {
   await loadDoc(page, doc());
@@ -65,7 +74,7 @@ test("Ctrl+Alt+P opens it; Rebuild all lists one row per body, slowest first, wi
   expect([...ms].sort((a, b) => b - a)).toEqual(ms);
   expect(rows.map((r) => r[3]).sort()).toEqual(["Ball", "Block", "Post", "Rounded", "Tall box"]);
   expect(rows.every((r) => +r[2] > 0)).toBe(true);
-  expect(rows.map((r) => +r[1]).sort()).toEqual([1, 1, 1, 1, 2]);
+  expect(rows.map((r) => +r[1]).sort((a, b) => a - b)).toEqual([1, 1, 1, 1, 2]);
   expect(rows.find((r) => r[3] === "Rounded")[4]).toBe("Box, Fillet");
   const total = parseFloat(/Total ([\d.]+) ms/.exec(sum)[1]);
   expect(Math.abs(total - ms.reduce((a, b) => a + b, 0))).toBeLessThanOrEqual(0.05 * ms.length + 0.1);
@@ -73,6 +82,7 @@ test("Ctrl+Alt+P opens it; Rebuild all lists one row per body, slowest first, wi
 });
 
 test("Copy writes the same plain text the table shows", async () => {
+  await populatePanel();
   await page.click("#perfpanel [data-pp=copy]");
   const { text, copiedText, rows } = await page.evaluate(() => ({ text: window.__app.perf.text(), copiedText: window.__copied, rows: [...document.querySelectorAll("#perfpanel tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent)) }));
   expect(copiedText).toBe(text);
@@ -82,6 +92,7 @@ test("Copy writes the same plain text the table shows", async () => {
 });
 
 test("Close removes the panel and its style", async () => {
+  await populatePanel();
   await page.click("#perfpanel [data-pp=close]");
   expect(await page.evaluate(() => ({ panel: !!document.getElementById("perfpanel"), style: [...document.head.querySelectorAll("style")].some((s) => s.textContent.includes("#perfpanel")) }))).toEqual({ panel: false, style: false });
   await page.keyboard.press("Control+Alt+KeyP");

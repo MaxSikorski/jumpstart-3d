@@ -408,7 +408,8 @@ export function initBridge(app) {
       const bodies = (opts.ids ? idList(opts.ids).map(need) : store.doc.bodies).filter((b) => !b.hole && !b.hidden);
       const failed = bodies.find((b) => app.scene.errors.has(b.id));
       if (failed) throw new Error(`"${failed.name}" has a build error (${app.scene.errors.get(failed.id)}); fix it before exporting`);
-      const bytes = bodies.length ? await app.projects[FILES[kind]](bodies) : null;
+      const items = bodies.length && (kind === "stl" || kind === "3mf") ? await app.projects.exportItems(bodies) : bodies;
+      const bytes = bodies.length ? await app.projects[FILES[kind]](items) : null;
       if (!bytes) throw new Error("nothing to export: holes and hidden shapes are left out");
       return bytes;
     },
