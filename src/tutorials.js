@@ -520,7 +520,7 @@ export function initTutorials(app) {
         if (!loud) { hideSpot(); return; } // the automatic pointer at a new step has nothing to show under the open panel
         cur.mini = true; render(); // Show me makes the panel small; on a phone render() moves it to the top of the 3D view
         if (covered()) { // still covered (the small panel at the top left of a tablet): move it to the other half of the 3D view
-          const vp = document.getElementById("viewport").getBoundingClientRect(), q = t.getBoundingClientRect(), h = panel.getBoundingClientRect().height;
+          const vp = document.getElementById("viewport").getBoundingClientRect(), r = t.getBoundingClientRect(), fr = t.ownerDocument !== document && app.chisel && app.chisel.frameRect && app.chisel.frameRect(), q = { top: r.top + (fr ? fr.top : 0), height: r.height }, h = panel.getBoundingClientRect().height; // jumpstart-3d: a target inside Chisel's frame is measured in page coordinates
           const st = document.querySelector(".status"), dk = document.getElementById("shapes");
           let bottom = (st ? st.getBoundingClientRect().top : innerHeight) - 6;
           if (dk && !dk.hidden && dk.getClientRects().length && dk.getBoundingClientRect().height > 20) bottom = Math.min(bottom, dk.getBoundingClientRect().top - 6);
