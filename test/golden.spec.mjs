@@ -35,6 +35,9 @@ test.beforeAll(async ({ browser }, info) => {
   // J1 end.
   page = await browser.newPage();
   errors = watchErrors(page);
+  // 2.9.3: STL and 3MF from the menu are meshed again from the exact shapes. Standard keeps the gate quick (the default, Fine, makes the
+  // springs design 2.5 million triangles and two minutes of meshing); upstream293.spec.mjs checks Fine against the view's mesh.
+  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
   await boot(page, info);
 });
 // J1: A filtered or failed run must not publish a complete manifest.

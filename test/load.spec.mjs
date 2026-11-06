@@ -8,9 +8,10 @@ import { readdirSync, readFileSync, writeFileSync, mkdtempSync, cpSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../mcp/serve.mjs";
+import { helperLists } from "../tools/helper-files.mjs";
 import { watchErrors, buildOf, quarantine } from "./helpers.mjs";
 
-const HELPER_COUNT = readdirSync("docs/helpers").length; // the helper pages the service worker keeps (src/helperpages.js)
+const HELPER_COUNT = helperLists().precache.length; // the helper files the service worker saves at install (tools/helper-files.mjs "precache"); "on-use" ones (the Floor Planner) are kept only once fetched
 const NOT_SINGLE = "the single file embeds the engine";
 const SITE_ONLY = "the install manifest is part of the site build";
 const meshes = (page) => page.evaluate(() => window.__app.scene.meshes().length);

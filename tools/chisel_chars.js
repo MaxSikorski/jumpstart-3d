@@ -191,7 +191,12 @@ const CHARS = (() => {
     const f = sdf(parts, k);
     const b = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
     for (const p of parts) { if (p.sub) continue; const q = bbox(p); for (let i = 0; i < 3; i++) { b[i] = Math.min(b[i], q[i]); b[i + 3] = Math.max(b[i + 3], q[i + 3]); } }
-    const ext = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]), h = ext / res, pad = 2 * h + k;
+    return meshField(f, b, k, res);
+  }
+  // any distance function f over the box b (x0 y0 z0 x1 y1 z1) -> an even mesh; h (cell size) can be
+  // given directly instead of res
+  function meshField(f, b, k, res, cell, iters = 2) {
+    const ext = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]), h = cell || ext / res, pad = 2 * h + k;
     const x0 = b[0] - pad, y0 = b[1] - pad, z0 = b[2] - pad;
     const nx = Math.ceil((b[3] - b[0] + 2 * pad) / h) + 1, ny = Math.ceil((b[4] - b[1] + 2 * pad) / h) + 1, nz = Math.ceil((b[5] - b[2] + 2 * pad) / h) + 1;
     const F = new Float32Array(nx * ny * nz), at = (i, j, l) => (l * ny + j) * nx + i;
@@ -226,7 +231,7 @@ const CHARS = (() => {
     }
     const pos = new Float32Array(V), idx = new Uint32Array(I);
     // a light smoothing pass takes the grid look off
-    relax(pos, idx, 2);
+    relax(pos, idx, iters);
     return { pos, idx };
   }
   function relax(pos, idx, iters) {
@@ -267,7 +272,7 @@ const CHARS = (() => {
     return { pos: m.pos, idx: m.idx, bones, rig: spec.rig, name: ch.name, parts, k: ch.k * s };
   }
   const partDist = (p, x, y, z) => (p.t === 'c' ? roundCone(x, y, z, p) : ellipsoid(x, y, z, p));
-  return { LIST, build, mesh, partDist };
+  return { LIST, build, mesh, meshField, partDist, smin, bbox };
 })();
 
 // add a character to the scene (like Add shape): standing on the floor, in front of the camera

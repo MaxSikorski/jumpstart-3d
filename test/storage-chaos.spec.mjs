@@ -575,7 +575,7 @@ scenario("Save (button and Ctrl+S) shows the error, never 'Saved as', while writ
   }
   await page.evaluate(() => { window.__chaosFailWrites = false; window.__toasts.length = 0; });
   await page.click("#btn-save");
-  await page.waitForFunction(() => window.__toasts.some((t) => /^Saved as ".+ v\d+"$/.test(t.text)), null, { timeout: 10_000 });
+  await page.waitForFunction(() => window.__toasts.some((t) => /^Saved as ".+ v\d+"( and downloaded .+\.json)?$/.test(t.text)), null, { timeout: 10_000 });
   expect(await page.evaluate(() => window.__saved), "the retry that worked calls onSaved once").toBe(1);
   expect((await toasts()).filter((t) => t === NOSAVE), "and raises no error").toEqual([]);
   await closeClean(page);

@@ -431,15 +431,53 @@ export class Viewport {
     // Mouse: left = tool, right = orbit, middle / shift+right = pan, wheel = zoom.
     // Touch: tap = click, drag on empty space = orbit (or the tool's drag when it
     // claims the touch), two fingers = pan + pinch zoom, double-tap = double-click.
+    // Tablet & Pencil mode (penMode, for iPad): the pencil is a precise pointer like a mouse's left
+    // button (click, draw, drag handles, box select, hover where the iPad has pencil hover);
+    // fingers move the view (one: orbit, two: pan and pinch) and tap to select; a hand resting on
+    // the screen while the pencil is down is ignored; a long press is a right-click; a two-finger
+    // tap is undo and a three-finger tap redo. shiftDown: the on-screen Shift key.
     const c = this.canvas;
     let drag = null;
     let lastTap = null;
     const pointers = new Map();
     this.touchMode = false;
+    this.penMode = false;
+    this.penSeen = false;
+    this.shiftDown = false;
+    let penDown = false, penLast = null, press = null, multi = null;
+    const ignored = new Set(); // palm touches while the pencil is down
+    // the on-screen Shift key: handlers see shiftKey held
+    const wrap = (e) => (this.shiftDown && !e.shiftKey ? new Proxy(e, { get: (t, k) => (k === "shiftKey" ? true : typeof t[k] === "function" ? t[k].bind(t) : t[k]) }) : e);
+    const LONG = 550;
+    const longPress = (e) => {
+      clearTimeout(press && press.timer);
+      press = { x: e.clientX, y: e.clientY, id: e.pointerId, timer: setTimeout(() => {
+        if (!press) return;
+        press.fired = true;
+        if (drag && drag.mode === "tool") this.handler && this.handler.cancel && this.handler.cancel();
+        drag = drag ? { mode: "done" } : null;
+        this.onContext && this.onContext({ clientX: press.x, clientY: press.y, preventDefault() {}, pointerType: "touch" });
+      }, LONG) };
+    };
+    this.endShift = null; // set by the app: the Shift key lets go after one use
     c.addEventListener("contextmenu", (e) => e.preventDefault());
-    c.addEventListener("pointerdown", (e) => {
+    c.addEventListener("pointerdown", (e0) => {
+      const e = wrap(e0);
+      if (this.penMode) {
+        if (e.pointerType === "pen") { penDown = true; this.penSeen = true; }
+        else if (e.pointerType === "touch" && (penDown || (penLast && performance.now() - penLast < 250))) { ignored.add(e.pointerId); return; }
+        // taps with several fingers: two = undo, three = redo (no movement, quick)
+        if (e.pointerType === "touch") {
+          if (!multi || pointers.size === 0) multi = { t: performance.now(), n: 0, moved: false, start: new Map() };
+          multi.n = Math.max(multi.n, pointers.size + 1);
+          multi.start.set(e.pointerId, [e.clientX, e.clientY]);
+        }
+        // a long press with a finger is a right-click (the pencil holds still while drawing)
+        if (pointers.size === 0 && e.pointerType === "touch") longPress(e); else { clearTimeout(press && press.timer); press = null; }
+      }
       c.focus({ preventScroll: true });
-      this.touchMode = e.pointerType === "touch" || e.pointerType === "pen";
+      // a pencil in Tablet & Pencil mode is as precise as a mouse
+      this.touchMode = e.pointerType === "touch" || (e.pointerType === "pen" && !this.penMode);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 2) {
         // second finger: abandon whatever the first finger started; pan + pinch
@@ -451,7 +489,9 @@ export class Viewport {
       this.anim = null;
       if (this.touchMode) {
         this.handler && this.handler.hover && this.handler.hover(e);
-        if (this.handler && this.handler.wantsTouch && this.handler.wantsTouch(e) && this.handler.down(e) !== false) {
+        // Tablet & Pencil mode, once the pencil has been used: fingers only move the view (and tap)
+        const fingersNavigate = this.penMode && this.penSeen && e.pointerType === "touch";
+        if (!fingersNavigate && this.handler && this.handler.wantsTouch && this.handler.wantsTouch(e) && this.handler.down(e) !== false) {
           drag = { mode: "tool" };
         } else {
           drag = { mode: "touchnav", x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
@@ -473,9 +513,15 @@ export class Viewport {
       drag = { mode: pan ? "pan" : "orbit", x: e.clientX, y: e.clientY, moved: false, button: btn };
       c.setPointerCapture(e.pointerId);
     });
-    c.addEventListener("pointermove", (e) => {
+    c.addEventListener("pointermove", (e0) => {
+      const e = wrap(e0);
+      if (ignored.has(e.pointerId)) return;
+      if (press && press.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) { clearTimeout(press.timer); press = null; }
+      if (multi && multi.start.has(e.pointerId)) { const s0 = multi.start.get(e.pointerId); if (Math.hypot(e.clientX - s0[0], e.clientY - s0[1]) > 12) multi.moved = true; }
       if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (!drag) { if (e.pointerType === "mouse") this.handler && this.handler.hover && this.handler.hover(e); return; }
+      // hover: the mouse, and a pencil held just above the screen (iPad pencil hover)
+      if (!drag) { if (e.pointerType === "mouse" || (this.penMode && e.pointerType === "pen")) this.handler && this.handler.hover && this.handler.hover(e); return; }
+      if (drag.mode === "done") return;
       this.moving();
       if (drag.mode === "tool") { this.handler && this.handler.move && this.handler.move(e); return; }
       if (drag.mode === "touch2") {
@@ -511,14 +557,39 @@ export class Viewport {
         lastTap = { t: now, x: e.clientX, y: e.clientY };
         this.tapping = true; // (handlers: this press is a tap, not the start of a gesture on a handle)
         try { if (this.handler && this.handler.down && this.handler.down(e) !== false) this.handler.up && this.handler.up(e); } finally { this.tapping = false; }
+        this.endShift && this.endShift();
       }
     };
-    const end = (e) => {
+    const end = (e0) => {
+      const e = wrap(e0);
+      if (ignored.delete(e.pointerId)) return;
+      if (e.pointerType === "pen") { penDown = false; penLast = performance.now(); }
+      if (press && press.id === e.pointerId) { clearTimeout(press.timer); if (press.fired) { press = null; pointers.delete(e.pointerId); if (pointers.size === 0) drag = null; return; } press = null; }
       const had = pointers.delete(e.pointerId);
+      // a quick tap with two or three fingers: undo / redo
+      if (this.penMode && multi && e.pointerType === "touch" && pointers.size === 0) {
+        const m = multi; multi = null;
+        if (!m.moved && m.n >= 2 && performance.now() - m.t < 400 && e.type === "pointerup") {
+          drag = null;
+          this.onFingerTap && this.onFingerTap(m.n);
+          return;
+        }
+      }
       if (!drag || !had) return;
-      if (drag.mode === "tool") { const r = this.handler && this.handler.up && this.handler.up(e); if (r === "tap" && e.type === "pointerup") tap(e); } // jumpstart-3d: pivot. a handle pressed without moving is a tap on what is under it
+      if (drag.mode === "done") { if (pointers.size === 0) drag = null; return; }
+      if (drag.mode === "tool") {
+        const r = this.handler && this.handler.up && this.handler.up(e);
+        if (r === "tap" && e.type === "pointerup") tap(e); // jumpstart-3d: pivot. a handle pressed without moving is a tap on what is under it
+        // a pencil: two quick taps in the same place are a double-click (edit a feature, a dimension)
+        else if (this.penMode && e.pointerType === "pen" && e.type === "pointerup") {
+          const now = performance.now();
+          if (lastTap && lastTap.pen && now - lastTap.t < 380 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 14) { lastTap = null; this.handler && this.handler.dblclick && this.handler.dblclick(e); }
+          else lastTap = { t: now, x: e.clientX, y: e.clientY, pen: true };
+        }
+        this.endShift && this.endShift();
+      }
       else if (drag.mode === "orbit" && !drag.moved && drag.button === 2) this.onContext && this.onContext(e);
-      else if (drag.mode === "touchnav" && !drag.moved && e.type === "pointerup") tap(e);
+      else if (drag.mode === "touchnav" && !drag.moved && e.type === "pointerup") tap(e); // jumpstart-3d: pivot. the tap above (his touch tap, with the press flag)
       if (pointers.size === 0) drag = null;
       else if (drag.mode === "touch2") drag = { mode: "touch2wait" };
     };
@@ -547,7 +618,7 @@ export class Viewport {
     });
     c.addEventListener("gestureend", (e) => { e.preventDefault(); setTimeout(() => { gest = null; }, 60); });
     c.addEventListener("dblclick", (e) => { if (!this.touchMode) this.handler && this.handler.dblclick && this.handler.dblclick(e); });
-    c.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") this.handler && this.handler.leave && this.handler.leave(e); });
+    c.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" || (this.penMode && e.pointerType === "pen")) this.handler && this.handler.leave && this.handler.leave(e); });
   }
   // screen tolerance in px for picking: fingers need more room than a mouse
   tol(px) { return this.touchMode ? px * 2 : px; }

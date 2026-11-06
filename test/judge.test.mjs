@@ -367,8 +367,8 @@ const invalidFacets = [
 ];
 const indexedMesh = facets => ({ vertices: facets.flat(), triangles: facets.flatMap((_, i) => [i * 3, i * 3 + 1, i * 3 + 2]) });
 function projectSTL(facets, matrix = IDENTITY) {
-  const app = { scene: { views: new Map([['body', { data: indexedMesh(facets), group: { matrix: { elements: matrix } } }]]) } };
-  return stlWriter('src/projects.js', 'stlBytes', '  async function exportSTL', { app })([{ id: 'body' }]);
+  // 2.9.3: the writer takes the meshes to write ({ data, m }; a list of bodies goes through the view's meshes first)
+  return stlWriter('src/projects.js', 'stlBytes', '  async function exportSTL')([{ data: indexedMesh(facets), m: { elements: matrix } }]);
 }
 const stlWriters = [
   ['projects', projectSTL],

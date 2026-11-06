@@ -917,5 +917,30 @@ function applyHollow() {
 function applyBoolean(op) {""")
 R("</style>", """.hrow{display:flex;align-items:center;gap:8px;margin:8px 0}.hrow label{flex:1}.hrow input{width:76px}
 </style>""")
+# ================= tutorials: what Chisel is doing (for the tutorial checks) =================
+R("function endStroke() { if (stroke) { const o = stroke.o; stroke = null;", "function endStroke() { if (stroke) { const o = stroke.o; stroke = null; TUT_STROKES++; const tk = S.tool + (S.tool === 'standard' && S.invert ? '-' : ''); TUT_BY[tk] = (TUT_BY[tk] || 0) + 1;")
+R("async function saveBytes(name, bytes) {\n", "async function saveBytes(name, bytes) {\n  if (/\\.(stl|obj|3mf)$/i.test(name)) TUT_EXP++;\n")
+R("window.__chisel = {", """var TUT_EXP = 0, TUT_STROKES = 0, TUT_BY = {};
+window.__chisel = {
+  tut: () => ({ tool: S.tool, invert: !!S.invert, symX: !!S.symX, easy: !!S.easy, hist: undoStack.length, strokes: TUT_STROKES, by: { ...TUT_BY }, exported: TUT_EXP,
+    pup: typeof PUP !== 'undefined' && !!PUP.on, figSets: typeof FIG !== 'undefined' ? FIG.sets() : [], figLaid: typeof FIG !== 'undefined' ? !!FIG.st.laid : false,
+    objs: objects.map((o) => ({ name: o.name, tris: (o.idx.length / 3) | 0, rev: o.rev || 0, painted: typeof hasPaint === 'function' ? !!hasPaint(o) : false, skel: !!(o.skel && o.skel.bones && o.skel.bones.length), keys: o.anim && o.anim.keys ? o.anim.keys.length : 0, visible: o.visible !== false, jsId: o.jsId || null, y: o.mesh.position.y })) }),
+  el: (s) => document.querySelector(s),""")
+# ================= Action figures (ball-jointed, printable) =================
+s = s.replace(open(ROOT + '/tools/chisel_puppet.js').read(), open(ROOT + '/tools/chisel_puppet.js').read() + '\n' + open(ROOT + '/tools/chisel_figure.js').read(), 1)
+R('''      <div class="shapes chars" id="charShapes"></div>''', '''      <div class="shapes chars" id="charShapes"></div>
+      <div id="figSec"></div>''')
+R("  renderChars(); TEX._sel = undefined;", "  renderChars(); FIG.renderSec(); TEX._sel = undefined;")
+R("function refreshAll() { ", "function refreshAll() { if (typeof FIG !== 'undefined' && FIG._n !== objects.length) { FIG._n = objects.length; FIG.renderSec(); } ")
+R("</style>", """.fig-row{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}.fig-row select{flex:1 1 100%;min-width:0}
+.fig-dlg{position:fixed;z-index:60;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,94vw);max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--line-2);border-radius:10px;box-shadow:0 16px 50px rgba(0,0,0,.5);padding:14px 16px}
+.fig-dlg h3{margin:0 0 8px;font:600 13px/1 var(--cond);letter-spacing:.14em;text-transform:uppercase}
+.fig-tpls,.fig-seg{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:6px 0}
+.fig-dlg .chip.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.fig-dlg .chip.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.fig-sl{display:grid;grid-template-columns:110px 1fr 40px;gap:8px;align-items:center;margin:6px 0}.fig-sl input[type=number]{width:80px}
+.fig-note{color:var(--muted);font-size:12px;line-height:1.4;margin:6px 0}
+.fig-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+</style>""")
 open(ROOT + '/src/chisel.html', 'w').write(s)
-print('chisel.html (puppet)', len(s))
+print('chisel.html (puppet, figures)', len(s))

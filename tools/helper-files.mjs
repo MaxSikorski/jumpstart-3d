@@ -11,6 +11,7 @@ export const HELPER_FILES = {
   "helper-three.html": "precache",
   "fonts_more.js": "precache", // J.Siwek's 42 extra Text fonts (1.9 MB): saved quietly after the engine is ready (Max, 2026-10-30); src/morefonts.js parses the text
   "floorplan.html": "on-use", // the Floor Planner page (1 MB), when Architect opens it
+  "neon.html": "on-use", // J.Siwek's Neon Sign Builder (120 KB, plus the shared helper-three.html), when Simulate → Signs opens it (Max, 2026-11-05)
 };
 
 export const STAMP = "js3d-build:";
