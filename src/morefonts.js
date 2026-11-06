@@ -61,6 +61,8 @@ export function initMoreFonts(app, { helperAsset, helperFailText }) {
     for (const key of [...k.meshes.keys()]) if (uses({ key })) k.meshes.delete(key);
     for (const it of k.inflight || []) if (uses(it)) k.stale.add(it.key); // its reply would bring the Rounded sans shape: dropped, built again
     if (k.worker) k.worker.postMessage({ type: "clear" });
+    for (const it of (k.slow && k.slow.inflight) || []) if (uses(it)) k.stale.add(it.key); // the second engine (very slow bodies) too
+    if (k.slow && k.slow.worker) k.slow.worker.postMessage({ type: "clear" });
     if (!app.scene) return;
     for (const v of app.scene.views.values()) if (v.key && uses({ key: v.key })) v.key = null; // a view redraws only when its key changes
     if (app.scene.doc) app.scene.sync(app.scene.doc);
@@ -68,6 +70,7 @@ export function initMoreFonts(app, { helperAsset, helperFailText }) {
 
   // a body whose text uses an extra font waits for the fonts (kernelClient.js pump and step); after a failed load it goes ahead in
   // Rounded sans, and only a font picker tries again
+  app.kernel.fontless = (key) => state !== "ready" && uses({ key }); // a Rounded sans stand-in is never saved in the browser's meshes
   app.kernel.waitFor = (it) => (state === "ready" || state === "failed" || !uses(it) ? null : load());
 
   // a font picker starts the load and gets the extra fonts once they are in; it keeps the font it was made with (a body's own extra

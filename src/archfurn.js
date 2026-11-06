@@ -18,6 +18,7 @@ function shade(c, f) {
 }
 // a part's colour: "$" is the item's main colour (which can be changed), "$d"/"$dd" darker, "$l" lighter
 export function partColor(c, main) {
+  if (!/^#[0-9a-f]{6}$/i.test(String(main))) main = "#9a9a9a"; // jumpstart-3d: a colour from a project file goes into an SVG string and the 3D colours: only #rrggbb
   if (c === "$") return main;
   if (c === "$d") return shade(main, 0.75);
   if (c === "$dd") return shade(main, 0.5);
@@ -979,6 +980,7 @@ export function furnSolids(list, elevOf, glass) {
 // a small picture of the item seen from above (for the catalog tiles), 44 × 40
 const ICONS = new Map();
 export function furnSVG(it, col) {
+  if (col && !/^#[0-9a-f]{6}$/i.test(String(col))) col = null; // jumpstart-3d: only #rrggbb from a project file (the result is HTML)
   const key = it.id + (col || "");
   if (ICONS.has(key)) return ICONS.get(key);
   const parts = furnParts(it).filter((q) => !q.np || area(q) >= 15000).slice().sort((a, b) => a.top - b.top);

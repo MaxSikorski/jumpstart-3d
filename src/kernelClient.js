@@ -3,6 +3,18 @@ import { diskGet, diskPut, looseKey } from "./meshcache.js";
 import { VERSION as UP_VERSION, BUILD } from "./version.js";
 // jumpstart-3d: saved meshes belong to one community build (his VERSION stays the same across our builds, while our kernel changes)
 const VERSION = UP_VERSION + "+" + BUILD;
+// jumpstart-3d: a built mesh from a project file or the browser's saved meshes is used only when it has the shape the view draws
+// (a hand-edited or foreign file must not break drawing, nor be saved for later visits); a huge one is not saved in the browser
+const pairsIn = (g, max) => Array.isArray(g) && g.every((p) => Array.isArray(p) && p.length === 2 && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[0] >= 0 && p[1] >= 0 && p[0] + p[1] <= max);
+function meshOk(m) {
+  if (!m || !(m.vertices instanceof Float32Array) || !(m.normals instanceof Float32Array) || !(m.triangles instanceof Uint32Array) || !(m.lines instanceof Float32Array)) return false;
+  const nv = m.vertices.length / 3;
+  if (!Number.isInteger(nv) || m.normals.length !== m.vertices.length || m.triangles.length % 3 || m.lines.length % 3) return false;
+  for (let i = 0; i < m.triangles.length; i++) if (m.triangles[i] >= nv) return false;
+  return pairsIn(m.faceGroups, m.triangles.length) && pairsIn(m.edgeGroups, m.lines.length / 3);
+}
+const DISK_MAX = 20 * 1048576;
+const diskSize = (m) => ["vertices", "normals", "triangles", "lines"].reduce((n, k) => n + ((m && m[k] && m[k].byteLength) || 0), 0);
 // bodies that took at least this long to build are remembered in the browser for next time
 const DISK_MS = 1500;
 // How much work a body is, in "curved tools" (about 20 s each): sweeps, lofts, revolves, pipes and
@@ -118,7 +130,7 @@ export class KernelClient {
       for (const r of res) {
         if (this.dropStale(r.key, items)) continue; // jumpstart-3d: extra fonts
         if (r.ok && r.ms) this.buildMs.set(r.key, r.ms);
-        if (r.ok && this.disk && r.ms >= DISK_MS) diskPut(VERSION, r.key, r.mesh, r.ms);
+        if (r.ok && this.disk && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
         this.meshes.set(r.key, r);
       }
       this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
@@ -209,7 +221,7 @@ export class KernelClient {
         delete r.rev;
         if (this.dropStale(r.key)) continue; // jumpstart-3d: extra fonts
         if (r.ok && r.ms) this.buildMs.set(r.key, r.ms);
-        if (r.ok && this.disk && r.ms >= DISK_MS) diskPut(VERSION, r.key, r.mesh, r.ms);
+        if (r.ok && this.disk && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
         this.meshes.set(r.key, r);
         this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       }
@@ -258,6 +270,7 @@ export class KernelClient {
   }
   has(key) { const r = this.meshes.get(key); return !!r && !r.stopped; }
   get(key) { return this.meshes.get(key); }
+  fontless() { return false; } // jumpstart-3d: extra fonts. morefonts.js: true for a key whose text needs fonts not in yet (such a mesh is not saved in the browser)
   isPending(key) { return this.queue.has(key) || this.looking.has(key) || (this.inflight || []).some((b) => b.key === key) || this.slow.queue.has(key) || (this.slow.inflight || []).some((b) => b.key === key); }
   isLooking() { return this.looking.size > 0; }
   // the stand-in shown while a very slow body builds (an earlier step of it), if built
@@ -295,7 +308,7 @@ export class KernelClient {
     diskGet(VERSION, it.key).then((hit) => {
       if (this.looking.get(it.key) !== it) return;
       this.looking.delete(it.key);
-      const mesh = hit && hit.mesh;
+      const mesh = hit && meshOk(hit.mesh) ? hit.mesh : null; // jumpstart-3d: meshOk
       if (hit && hit.ms) this.buildMs.set(it.key, hit.ms);
       if (mesh && !this.meshes.has(it.key)) {
         const r = { id: it.id, key: it.key, ok: true, mesh, fromDisk: true };
@@ -315,7 +328,7 @@ export class KernelClient {
   // meshes that came in a project file: used instead of building those bodies again
   seed(list) {
     // matched by looseKey when bodies are requested: the file may come from another browser
-    for (const it of list) if (it && it.key && it.mesh) this.seeded.set(looseKey(it.key), { mesh: it.mesh, ms: it.ms });
+    for (const it of list) if (it && typeof it.key === "string" && meshOk(it.mesh)) this.seeded.set(looseKey(it.key), { mesh: it.mesh, ms: it.ms });
   }
   // drop queued work nobody needs any more
   prune(neededKeys) {
@@ -327,11 +340,19 @@ export class KernelClient {
     this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
   }
   pump() {
+    // jumpstart-3d: a body whose text uses an extra font waits in the queue until the fonts are in (morefonts.js); the others go on.
+    // The wait always ends (loaded or not), and then the queue is pumped again.
+    const held = (it) => {
+      const w = this.waitFor && this.waitFor(it);
+      if (w && !this.fontWait) this.fontWait = Promise.resolve(w).catch(() => {}).finally(() => { this.fontWait = null; this.pump(); });
+      return !!w;
+    };
     // very slow bodies go to the second engine; meanwhile the body as it was before its last
     // heavy features (quick to build) stands in for it, see-through
     for (const [k, it] of [...this.queue]) {
       if (it.verySlow || curvedTools(JSON.stringify(it.node)) >= VERY_SLOW) {
         if (it.verySlow) continue;
+        if (held(it)) continue; // jumpstart-3d: extra fonts (the second engine never builds text before the fonts are in)
         const pre = standInNode(it.node), pk = "pre:" + k;
         const wantPre = pre && !this.meshes.has(pk) && !this.queue.has(pk);
         if (this.oneEngine) {
@@ -348,13 +369,6 @@ export class KernelClient {
     }
     this.pumpSlow();
     if (!this.ready || this.inflight || !this.queue.size) return;
-    // jumpstart-3d: a body whose text uses an extra font waits in the queue until the fonts are in (morefonts.js); the others go on.
-    // The wait always ends (loaded or not), and then the queue is pumped again.
-    const held = (it) => {
-      const w = this.waitFor && this.waitFor(it);
-      if (w && !this.fontWait) this.fontWait = Promise.resolve(w).catch(() => {}).finally(() => { this.fontWait = null; this.pump(); });
-      return !!w;
-    };
     // send small batches so the screen updates progressively
     // heavy parts (imported meshes, face patterns, 3D Sketch tubes along free curves) go one at a time, each with
     // its own time limit, so a few of them never add up past the limit together
@@ -387,7 +401,8 @@ export class KernelClient {
     const limit = batch.some((it) => it.verySlow) ? 7200000 : Math.min(1200000, Math.max(slow ? 120000 : 25000, 25000 + curved * 20000)) * (this.quality || 1); // jumpstart-3d: finer mesh detail gets more time
     // jumpstart-3d: wording uses production time, even when tests shorten scheduling.
     this.buildLimitMs = limit;
-    this.watchdog = setTimeout(() => this.stalled(batch), this.watchdogMs || limit); // jumpstart-3d: watchdogMs is a test-only override
+    // jumpstart-3d: an STL/3MF/STEP export already with the worker runs first: its time does not count against this batch
+    this.watchdog = setTimeout(() => this.stalled(batch), this.watchdogMs || limit + (this.stepWaiters.size ? 240000 : 0)); // jumpstart-3d: watchdogMs is a test-only override
     // jumpstart-3d: a long build gets its note in the status bar after 3 s
     this.inflightAt = Date.now(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => this.onBusy && this.onBusy(true), 3000);
     this.onBusy && this.onBusy(true);

@@ -197,7 +197,8 @@ export function initProjects(app) {
     try {
       const { resolveNode, bodyKey } = await import("./store.js");
       const keys = [];
-      for (const b of store.doc.bodies || []) { try { keys.push(bodyKey(resolveNode(b.node, store.doc))); } catch (e) {} }
+      const q = app.kernel && app.kernel.quality > 1 ? "@q" + app.kernel.quality : ""; // jumpstart-3d: mesh detail (scene.js keys carry it)
+      for (const b of store.doc.bodies || []) { try { keys.push(bodyKey(resolveNode(b.node, store.doc)) + q); } catch (e) {} }
       const slow = app.kernel && app.kernel.slowMeshes ? app.kernel.slowMeshes(keys) : [];
       if (slow.length) {
         const items = [];
@@ -682,7 +683,7 @@ export function initProjects(app) {
   }
   // jumpstart-3d: send to slicer. the same bytes and name as Export > 3MF, handed to the slicer (src/sendslicer.js)
   async function sendToSlicer() {
-    const bytes = threeMFBytes(await exportItems()); // jumpstart-3d: the print mesh, as Export > 3MF
+    const bytes = threeMFBytes(); // jumpstart-3d: the view's mesh, straight away: a wait for the finer mesh would lose the tap a phone's share sheet needs
     if (!bytes) { app.toast("Nothing to export yet. Holes on their own aren't exported."); return; }
     if (await handOff(app, exportName() + ".3mf", await bytes, offerModel)) app.onExport && app.onExport("3mf"); // jumpstart-3d: send to slicer
   }

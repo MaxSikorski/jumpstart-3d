@@ -98,6 +98,27 @@ test("Save downloads the project file by default; the Open/Export switch turns i
   await run(() => { localStorage.removeItem("jumpstart.saveDownload"); });
 });
 
+// ---------------------------------------------------------------- finer STL for printing
+test("STL from the menu is meshed again from the exact shape (Fine by default, finer than Standard); JS3D.export keeps the view's mesh", async () => {
+  await loadDoc(page, newDoc("Round", "beginner", { bodies: [body("b1", "Peg", prim("cylinder", { w: 30, d: 30, h: 10 }))] }));
+  await okAll();
+  const tris = (buf) => buf.readUInt32LE(80);
+  const menuStl = async () => {
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 90_000 }), (async () => { await page.click("#btn-export"); await page.click('#menu-export button[data-act="stl"]'); })()]);
+    const chunks = []; for await (const c of await dl.createReadStream()) chunks.push(c);
+    return Buffer.concat(chunks);
+  };
+  const a = await run(() => JS3D.export("stl"));
+  const view = tris(Buffer.from(a.buffer, a.byteOffset, a.byteLength));
+  await run(() => localStorage.removeItem("jumpstart.exportQuality"));
+  const fine = tris(await menuStl());
+  await run(() => localStorage.setItem("jumpstart.exportQuality", "standard"));
+  const standard = tris(await menuStl());
+  await run(() => localStorage.removeItem("jumpstart.exportQuality"));
+  expect(standard, "Standard is finer than the view").toBeGreaterThan(view);
+  expect(fine, "Fine is finer than Standard").toBeGreaterThan(standard);
+});
+
 // ---------------------------------------------------------------- layouts
 test("layouts: the theme menu switches Default, Simplified, Clean, Classic CAD and Tablet; the ribbon moves; the choice is kept", async () => {
   await loadDoc(page, newDoc("Layouts", "advanced"));

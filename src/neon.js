@@ -22,7 +22,9 @@ export function initNeon(app) {
     for (let i = 0; i < T.length; i++) { const k = T[i] * 3; p.set(P[k], P[k + 1], P[k + 2]).applyMatrix4(M); out[i * 3] = p.x; out[i * 3 + 1] = p.y; out[i * 3 + 2] = p.z; }
     return out;
   };
-  window.__JS3D_NEON_READY__ = () => {
+  window.__JS3D_NEON_READY__ = async () => {
+    // jumpstart-3d: 11 of its 12 fonts are the extra fonts, which load on first use here (morefonts.js); without them it would get Rounded sans
+    if (app.moreFonts) await app.moreFonts.load();
     const w = frame && frame.querySelector("iframe").contentWindow;
     if (!w || !w.__neon) return;
     const fonts = {};
