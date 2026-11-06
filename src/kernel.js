@@ -480,6 +480,13 @@ function buildRevolve(node) {
 // Sweep (Fusion-style): closed profiles swept along a path of sketch lines and arcs.
 function sweepPath(segs) {
   if (!segs || !segs.length) throw new Error("Pick a path: a sketch line, arc or a chain of them");
+  // jumpstart-3d: reject degenerate arcs before passing them to OpenCascade.
+  for (const s of segs) if (s.t === "arc") {
+    const u = s.m.map((x, i) => x - s.a[i]), v = s.b.map((x, i) => x - s.a[i]);
+    const scale = Math.max(Math.hypot(...u), Math.hypot(...v));
+    const cross = Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
+    if (Math.hypot(...u) <= 1e-6 || Math.hypot(...v) <= 1e-6 || Math.hypot(...s.m.map((x, i) => x - s.b[i])) <= 1e-6 || cross <= 1e-6 * scale * scale) throw new Error("An arc in the path is too flat or too small to build: redraw it");
+  }
   const edges = segs.flatMap((s) => (s.t === "line" ? [R.makeLine(s.a, s.b)] : s.t === "arc" ? [R.makeThreePointArc(s.a, s.m, s.b)] : s.t === "bez" ? s.spans.map((b) => R.makeBezierCurve(b)) : s.t === "bsp" ? [bsplineThrough(s.pts)] : [R.makeCircle(s.r, s.c, s.n)]));
   return R.assembleWire(edges);
 }

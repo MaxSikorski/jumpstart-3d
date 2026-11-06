@@ -515,3 +515,181 @@ test("a Fixed in a link: needs a point and a position, once per point, and never
   bad((d) => { fx(d); d.sketches[0].cons.push({ id: "k2", t: "origin", p: "p0" }); }, "damaged", /twice/);
   bad((d) => { fx(d); d.sketches[0].ents[0].proj = true; }, "damaged", /projected/);
 });
+
+test("new parts and sweep paths survive sharing and reject unsafe data", async () => {
+  const { BIN_DEFAULTS, binParts } = await import('../src/bins.js');
+  const { HINGE_DEFAULTS, hingeParts } = await import('../src/hinges.js');
+  const body = fixture('beginner-box').bodies[0];
+  const doc = fixture('beginner-box');
+  const bin = { ...BIN_DEFAULTS, cols: 1, rows: 1, scoop: false, lid: true };
+  const bp = binParts(bin);
+  const hinge = { ...HINGE_DEFAULTS, type: 'living' };
+  const hp = hingeParts(hinge);
+  const b = (id, node, extra) => ({ ...structuredClone(body), id, node, ...extra });
+  const examples = [
+    [b('bin', bp.bin, { bin: { ...bin, lidId: 'lid' } }), b('lid', bp.lid, { binLid: 'bin' })],
+    [b('hinge', hp.a, { hinge: { ...hinge, bId: null, pinId: null, kind: 'Living hinge' } })],
+    [b('rounded', { t: 'prim', kind: 'box', p: { w: 10, d: 10, h: 10, rv: 2 }, mods: [] }, {})],
+    [b('sweep', { t: 'sweep', sketch: 's1', profiles: [{ key: 'e0,e1,e2,e3', pt: [15, 10] }], edgeSegs: [{ t: 'line', a: [0,0,0], b: [0,0,10] }], railEdgeSegs: [{ t: 'bsp', a: [1,0,0], b: [1,0,10], pts: [[1,0,0],[1,0,10]] }], railScale: true, mods: [] }, {})],
+  ];
+  const skdoc = fixture('advanced-sketch-extrude');
+  const sk = skdoc.sketches[0];
+  for (const bodies of examples) {
+    const d = { ...structuredClone(doc), bodies, sketches: bodies[0].id === 'sweep' ? [{ ...structuredClone(sk), id: 's1' }] : [] };
+    const link = await makeLink(d, BASE);
+    assert.equal(link.ok, true, link.message);
+    assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  }
+  const d = { ...structuredClone(doc), bodies: examples[0], sketches: [] };
+  for (const change of [{ extra: 1 }, { w: NaN }, { w: Infinity }, { w: 100001 }, { cols: -1 }]) {
+    const x = structuredClone(d); Object.assign(x.bodies[0].bin, change); throwsShare(() => validateEnvelope(env(x)));
+  }
+  const s = { ...structuredClone(doc), bodies: examples[3], sketches: [{ ...structuredClone(sk), id: 's1' }] };
+  for (const change of [{ extra: 1 }, { a: [0, 0, Infinity] }, { a: [0, 0, 100001] }]) {
+    const x = structuredClone(s); Object.assign(x.bodies[0].node.edgeSegs[0], change); throwsShare(() => validateEnvelope(env(x)));
+  }
+  const x = structuredClone(s); x.bodies[0].node.railEdgeSegs[0].pts = Array(LIMITS.SKETCH_ITEMS + 1).fill([0,0,0]); throwsShare(() => validateEnvelope(env(x)));
+  const y = structuredClone(s); y.bodies[0].node.rail = { sketch: 's1', ents: ['missing'] }; throwsShare(() => validateEnvelope(env(y)));
+});
+
+test("hinge companions and sketch guide rails check their references and settings", async () => {
+  const { HINGE_DEFAULTS, hingeParts } = await import('../src/hinges.js');
+  const d = fixture('advanced-sketch-extrude'), base = d.bodies[0], sk = d.sketches[0];
+  const options = { ...HINGE_DEFAULTS, type: 'pin', pin: 'printed' }, parts = hingeParts(options);
+  const body = (id, node, extra) => ({ ...structuredClone(base), id, node, ...extra });
+  d.bodies = [body('a', parts.a, { hinge: { ...options, bId: 'b', pinId: 'pin', kind: 'Pin hinge' } }), body('b', parts.b, { hingePart: 'a' }), body('pin', parts.pin, { hingePart: 'a' })];
+  const link = await makeLink(d, BASE); assert.equal(link.ok, true, link.message); assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  for (const change of [{ extra: true }, { knuckles: -1 }, { knuckles: 26 }, { type: 'bad' }, { pin: 'bad' }, { len: Infinity }]) {
+    const x = structuredClone(d); Object.assign(x.bodies[0].hinge, change); throwsShare(() => validateEnvelope(env(x)));
+  }
+  const e = sk.ents.find((item) => item.t === 'line');
+  const s = fixture('advanced-sketch-extrude');
+  s.bodies[0].node = { t: 'sweep', sketch: sk.id, profiles: [{ key: 'e0,e1,e2,e3', pt: [15, 10] }], path: { sketch: sk.id, ents: [e.id] }, rail: { sketch: sk.id, ents: [e.id] }, railScale: false, mods: [] };
+  const sl = await makeLink(s, BASE); assert.equal(sl.ok, true, sl.message); assert.deepEqual(await readFragment(sl.url.split('#')[1]), snapshot(s));
+  for (const change of [{ sketch: 'missing' }, { ents: ['missing'] }, { extra: true }, { ents: Array(LIMITS.SKETCH_ITEMS + 1).fill(e.id) }]) {
+    const x = structuredClone(s); Object.assign(x.bodies[0].node.rail, change); throwsShare(() => validateEnvelope(env(x)));
+  }
+  for (const rv of [-1, Infinity, 100001, '2']) { const x = fixture('beginner-box'); x.bodies[0].node.p.rv = rv; throwsShare(() => validateEnvelope(env(x))); }
+});
+
+
+test("unchecked segment fields and edge paths on other nodes are refused", () => {
+  for (const key of ['pathSegs', 'railSegs']) {
+    const d = fixture('beginner-box'); d.bodies[0].node[key] = [{ t: 'line', a: [0, 0, 0], b: [0, 0, 1] }];
+    throwsShare(() => validateEnvelope(env(d)), 'unsupported', new RegExp(key));
+  }
+  const d = fixture('beginner-box'); d.bodies[0].node.edgeSegs = [];
+  throwsShare(() => validateEnvelope(env(d)), 'damaged');
+});
+
+test("part references agree in both directions and cannot refer to themselves", () => {
+  const base = fixture('beginner-box'); const body = base.bodies[0];
+  const b = (id, extra) => ({ ...structuredClone(body), id, ...extra });
+  for (const bodies of [
+    [b('a', { bin: { lidId: 'b' } }), b('b', {})],
+    [b('a', { bin: {} }), b('b', { binLid: 'a' })],
+    [b('a', { hinge: { bId: 'b' } }), b('b', {})],
+    [b('a', { hinge: {} }), b('b', { hingePart: 'a' })],
+    [b('a', { hinge: { bId: 'b', pinId: 'b' } }), b('b', { hingePart: 'a' })],
+    ...[{ bin: { lidId: 'a' } }, { binLid: 'a' }, { hinge: { bId: 'a' } }, { hinge: { pinId: 'a' } }, { hingePart: 'a' }].map((x) => [b('a', x)]),
+  ]) { const d = { ...base, bodies }; throwsShare(() => validateEnvelope(env(d)), 'damaged'); }
+});
+
+test("deleted part companions are dropped from shared links", async () => {
+  const base = fixture('beginner-box'), body = base.bodies[0];
+  for (const extra of [{ bin: { lidId: 'gone' } }, { binLid: 'gone' }, { hinge: { bId: 'gone', pinId: 'gone2' } }, { hingePart: 'gone' }]) {
+    const d = { ...base, bodies: [{ ...structuredClone(body), ...extra }] };
+    const link = await makeLink(d, BASE); assert.equal(link.ok, true, link.message);
+    const shared = (await readFragment(link.url.split('#')[1])).bodies[0];
+    assert.equal(shared.bin?.lidId, undefined); assert.equal(shared.binLid, undefined);
+    assert.equal(shared.hinge?.bId, undefined); assert.equal(shared.hinge?.pinId, undefined); assert.equal(shared.hingePart, undefined);
+    assert.deepEqual(d.bodies[0], { ...body, ...extra });
+  }
+});
+
+test("path entries are unique and type maps ignore inherited names", () => {
+  const d = fixture('advanced-sketch-extrude'), sk = d.sketches[0], e = sk.ents[0].id;
+  for (const t of ['sweep', 'pipe']) for (const key of t === 'sweep' ? ['path', 'rail'] : ['path']) {
+    const x = structuredClone(d); x.bodies[0].node = { t, sketch: sk.id, profiles: [], path: { sketch: sk.id, ents: [e] }, mods: [] };
+    x.bodies[0].node[key] = { sketch: sk.id, ents: [e, e] };
+    throwsShare(() => validateEnvelope(env(x)), 'damaged', /duplicate/);
+  }
+  const x = structuredClone(d); x.sketches[0].ents[0].t = 'toString'; throwsShare(() => validateEnvelope(env(x)));
+  const y = structuredClone(d); y.bodies[0].node = { t: 'pipe', edgeSegs: [{ t: 'toString' }], mods: [] }; throwsShare(() => validateEnvelope(env(y)));
+  const z = fixture('beginner-box'); z.bodies[0].media = { id: 'toString' }; throwsShare(() => validateEnvelope(env(z)), 'damaged');
+});
+
+test("path and sketch types cannot be coerced into lookup keys", async () => {
+  const d = fixture('advanced-sketch-extrude');
+  d.bodies[0].node = { t: 'pipe', edgeSegs: [{ t: ['circle'], c: [0,0,0], n: [0,0,1], r: '1e309' }], mods: [] };
+  await rejects(() => readFragment(fragOf('d', deflateRawSync(utf8(env(d))))));
+  const s = fixture('advanced-sketch-extrude'); s.sketches[0].ents[0].t = ['line'];
+  throwsShare(() => validateEnvelope(env(s)));
+  const json = JSON.stringify(env(fixture('beginner-box'))).replace('"created":', '"created":1e309,"ignored":');
+  await rejects(() => readFragment(fragOf('d', deflateRawSync(utf8(json)))));
+});
+
+test("degenerate path arcs and zero normals are refused", () => {
+  const d = fixture('advanced-sketch-extrude');
+  const check = (segment) => { const x = structuredClone(d); x.bodies[0].node = { t: 'pipe', edgeSegs: [segment], mods: [] }; return () => validateEnvelope(env(x)); };
+  for (const m of [[1,0,0], [0,0,0], [1,1e-14,0]]) throwsShare(check({ t: 'arc', a: [0,0,0], m, b: [2,0,0] }));
+  throwsShare(check({ t: 'circle', c: [0,0,0], n: [0,0,0], r: 1 }));
+  validateEnvelope(env((() => { const x = structuredClone(d); x.bodies[0].node = { t: 'pipe', edgeSegs: [{ t: 'arc', a: [0,0,0], m: [1,1,0], b: [2,0,0] }], mods: [] }; return x; })()));
+  const s = structuredClone(d); s.sketches[0].plane.n = [0,0,0]; throwsShare(() => validateEnvelope(env(s)));
+  const mirror = fixture('beginner-box'); mirror.bodies.push({ ...structuredClone(mirror.bodies[0]), id: 'other' }); mirror.bodies[0].node = { t: 'mirror', srcBody: 'other', plane: { o: [0,0,0], n: [0,0,0] } }; throwsShare(() => validateEnvelope(env(mirror)), 'damaged', /normal/);
+  const fill = fixture('beginner-box'); fill.bodies[0].node.mods = [{ id: 'f', t: 'fillopen', plane: { o: [0,0,0], n: [0,0,0] }, keep: [] }]; throwsShare(() => validateEnvelope(env(fill)));
+});
+
+test("sketch paths only reference curve entities", () => {
+  const d = fixture('advanced-sketch-extrude'), sk = d.sketches[0];
+  sk.ents.push({ id: 'point1', t: 'point', p: sk.pts[0].id });
+  for (const t of ['pipe', 'sweep']) for (const key of t === 'sweep' ? ['path', 'rail'] : ['path']) {
+    const x = structuredClone(d); x.bodies[0].node = { t, sketch: sk.id, profiles: [], path: { sketch: sk.id, ents: [sk.ents[0].id] }, mods: [] };
+    x.bodies[0].node[key] = { sketch: sk.id, ents: ['point1'] };
+    throwsShare(() => validateEnvelope(env(x)));
+  }
+});
+
+test('arc tolerances reject close points and nearly straight paths', () => {
+  const d = fixture('advanced-sketch-extrude');
+  const check = (arc) => { const x = structuredClone(d); x.bodies[0].node = { t: 'pipe', edgeSegs: [arc], mods: [] }; return () => validateEnvelope(env(x)); };
+  for (const [a, m, b] of [
+    [[0,0,0], [1,1e-9,0], [2,0,0]],
+    [[0,0,0], [0,1e-6,0], [2,0,0]],
+    [[0,0,0], [1,1,0], [0,1e-6,0]],
+    [[0,0,0], [1,1,0], [1,1 + 5e-7,0]],
+  ]) throwsShare(check({ t: 'arc', a, m, b }), 'damaged');
+  check({ t: 'arc', a: [0,0,0], m: [1,0.01,0], b: [2,0,0] })();
+  const sk = d.sketches[0];
+  sk.pts.push({ id: 'arcC', x: 50, y: 50 }, { id: 'arcA', x: 60, y: 50 }, { id: 'arcB', x: 60, y: 50 });
+  sk.ents.push({ id: 'arc1', t: 'arc', c: 'arcC', a: 'arcA', b: 'arcB' });
+  for (const t of ['pipe', 'sweep', 'loft']) {
+    const x = structuredClone(d), path = { sketch: sk.id, ents: ['arc1'] };
+    x.bodies[0].node = t === 'loft' ? { t, sections: [], rail: path } : { t, sketch: sk.id, profiles: [], path };
+    throwsShare(() => validateEnvelope(env(x)), 'damaged');
+  }
+});
+
+test('loft paths and sections are allow-listed, and pipes need a path', () => {
+  const d = fixture('advanced-sketch-extrude'), sk = d.sketches[0];
+  const check = (node) => { const x = structuredClone(d); x.bodies[0].node = node; return () => validateEnvelope(env(x)); };
+  const rail = { sketch: sk.id, ents: [sk.ents[0].id] };
+  check({ t: 'loft', sections: [{ sketch: sk.id, ref: {} }, { point: { sketch: sk.id, id: sk.pts[0].id } }], rail })(); // the shape the loft tool writes for a point
+  throwsShare(check({ t: 'loft', sections: [{ point: { sketch: sk.id, id: sk.pts[0].id, junk: 1 } }] }));
+  throwsShare(check({ t: 'loft', sections: [{ point: { sketch: 'nope', id: sk.pts[0].id } }] }));
+  throwsShare(check({ t: 'loft', sections: [{ point: true }] }));
+  for (const bad of [{ ...rail, junk: 1 }, { ...rail, ents: [{ x: 1 }] }, { ...rail, ents: sk.ents[0].id }, {}]) throwsShare(check({ t: 'loft', sections: [], rail: bad }));
+  throwsShare(check({ t: 'loft', sections: [{ sketch: sk.id, junk: 1 }] }));
+  throwsShare(check({ t: 'pipe' }), 'damaged', /pipe path/);
+});
+
+test('tiny normals and conflicting part roles are refused', () => {
+  const d = fixture('beginner-box');
+  for (const n of [[1e-200,0,0], [1e-9,0,0]]) {
+    const x = structuredClone(d); x.bodies[0].node = { t: 'pipe', edgeSegs: [{ t: 'circle', c: [0,0,0], n, r: 1 }] };
+    throwsShare(() => validateEnvelope(env(x)), 'damaged');
+  }
+  for (const roles of [{ bin: {}, binLid: 'missing' }, { hinge: {}, hingePart: 'missing' }]) {
+    const x = structuredClone(d); Object.assign(x.bodies[0], roles); throwsShare(() => validateEnvelope(env(x)), 'damaged');
+  }
+});
