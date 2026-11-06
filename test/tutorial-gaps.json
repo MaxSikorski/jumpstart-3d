@@ -4,7 +4,6 @@
     "Advanced toolbar": [
       "ad-chipcarve",
       "ad-clearance",
-      "ad-fastbtn",
       "ad-fillopen",
       "ad-gears",
       "ad-hinge",
@@ -19,8 +18,7 @@
       "ad-pipe",
       "ad-plane-ang",
       "ad-plane-mid",
-      "ad-sketch3d",
-      "ad-sweep"
+      "ad-sketch3d"
     ],
     "Beginner toolbar": [
       "bb-chipcarve",
