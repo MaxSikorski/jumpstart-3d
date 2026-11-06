@@ -9,7 +9,7 @@ import { facePatCells } from "./facepat.js";
 import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
 import { fillOpenings, analyseOpenings, chooseOpenings } from "./fillopen.js"; // jumpstart-3d: fill openings
 import { shellField, isoSurface } from "./sdfshell.js";
-import { initMeshBool, meshBody, meshBrep, engineOf, qualityKey, setMeshQuality, clearMeshCache, setMeshBoolEnabled, meshBoolReason } from "./meshbool.js"; // jumpstart-3d: joins and cuts with an imported mesh run on Manifold
+import { initMeshBool, meshBody, meshBrep, engineOf, qualityKey, setMeshQuality, meshQuality, clearMeshCache, setMeshBoolEnabled, meshBoolReason } from "./meshbool.js"; // jumpstart-3d: joins and cuts with an imported mesh run on Manifold
 
 let OC = null;
 // a face normal as a unit vector (replicad's isn't normalized on curved faces)
@@ -4252,6 +4252,14 @@ export function exportMeshes(bodies, level = "fine") {
   const out = [];
   for (const b of bodies) {
     try {
+      // jumpstart-3d: a join or cut with an imported mesh is already a closed Manifold mesh; meshing its B-rep (one face per triangle,
+      // coplanar faces merged) again at a quality adds nothing and opened a thin oval cut's razor tip (9 open edges at Fine). Export that mesh.
+      const viaManifold = meshBody(b.node, meshQuality());
+      if (viaManifold) {
+        const { vertices, normals, triangles, faceGroups } = viaManifold;
+        out.push({ id: b.id, ok: true, mesh: { vertices, normals, triangles, faceGroups } });
+        continue;
+      }
       const shape = evalNode(b.node);
       const mesh = meshForExport(shape, level);
       shape.delete();
