@@ -11,7 +11,9 @@ const SOAK = { grass: 13, lawn: 13, dirt: 8, sand: 30, gravel: 25, rock: 1, mulc
 const SOAK_MAX = 60; // after this much has soaked in, the ground takes water much more slowly
 
 // L: the landscape (x0, y0, res, nx, ny); arr: its heights, water levels, grounds;
-// house: { mask: Uint8Array (1 = under the house), floor: floor height, doors: [{name, x, y}] }
+// house: { mask: Uint8Array (1 = under the house), floor: floor height, doors: [{name, x, y}],
+//   leak: Float32Array (for each cell under the house, how much of the rain gets in: 0 under a
+//   good roof, 1 open to the sky; a roof too flat for its shingles lets some through) }
 export function makeFlood(L, arr, house) {
   const { nx, ny } = L, n = nx * ny, H = arr.h;
   const d = new Float32Array(n), soaked = new Float32Array(n), soak = new Float32Array(n), peak = new Float32Array(n);
@@ -28,17 +30,22 @@ export function makeFlood(L, arr, house) {
     const q = j * nx + i; if (block[q]) continue;
     if ((i > 0 && block[q - 1]) || (i < nx - 1 && block[q + 1]) || (j > 0 && block[q - nx]) || (j < ny - 1 && block[q + nx])) ring.push(q);
   }
-  let roofCells = 0; for (let i = 0; i < n; i++) if (block[i]) roofCells++;
+  // rain on the roof runs off into the gutters; rain where there is no (good) roof falls inside
+  const leak = house.leak || new Float32Array(n);
+  let roofCells = 0, houseCells = 0, leakSum = 0;
+  for (let i = 0; i < n; i++) if (block[i]) { houseCells++; leakSum += leak[i]; roofCells += 1 - leak[i]; }
   const cellOf = (x, y) => { const i = Math.round((x - L.x0) / L.res), j = Math.round((y - L.y0) / L.res); return i >= 0 && j >= 0 && i < nx && j < ny ? j * nx + i : -1; };
   const doorCells = house.doors.map((dr) => ({ ...dr, q: cellOf(dr.x, dr.y) })).filter((dr) => dr.q >= 0 && !block[dr.q]);
   const out = new Float32Array(n);
-  const sim = { d, peak, t: 0, rained: 0, drained: 0, ring, doorCells, mode: null };
+  const sim = { d, peak, t: 0, rained: 0, drained: 0, ring, doorCells, mode: null, inside: 0, insidePeak: 0 };
   // one step of dt seconds: rain (mm per hour) falls, soaks in, flows; the edges drain away
   function step(dt, rain) {
     const r = (rain * dt) / 3600;
     if (r > 0) {
       for (let i = 0; i < n; i++) if (!block[i]) d[i] += r;
       if (ring.length && roofCells) { const share = (r * roofCells) / ring.length; for (const q of ring) d[q] += share; }
+      // the water that gets in spreads over the floor (it has nowhere to drain to)
+      if (houseCells && leakSum) { sim.inside += (r * leakSum) / houseCells; sim.insidePeak = Math.max(sim.insidePeak, sim.inside); }
       sim.rained += r;
     }
     for (let i = 0; i < n; i++) {
@@ -85,7 +92,7 @@ export function makeFlood(L, arr, house) {
     }
     for (let i = 0; i < n; i++) if (d[i] > peak[i]) peak[i] = d[i];
   }
-  function reset() { d.set(base); peak.set(base); soaked.fill(0); sim.t = sim.rained = sim.drained = 0; }
+  function reset() { d.set(base); peak.set(base); soaked.fill(0); sim.t = sim.rained = sim.drained = sim.inside = sim.insidePeak = 0; }
   // how the house is doing: the highest water against it (now, or at its worst), and each door
   function report(usePeak = true) {
     const W = usePeak ? peak : d;
@@ -94,13 +101,16 @@ export function makeFlood(L, arr, house) {
     const doors = doorCells.map((dr) => { const w = W[dr.q]; const top = H[dr.q] + w; return { ...dr, depth: w, over: w >= 3 ? top - house.floor : -Infinity }; });
     let maxDepth = 0; for (const q of ring) maxDepth = Math.max(maxDepth, W[q]);
     let wetCells = 0; for (let i = 0; i < n; i++) if (W[i] >= 3) wetCells++;
-    return { over: at >= 0 ? worst - house.floor : -Infinity, at: at >= 0 ? [L.x0 + (at % nx) * L.res, L.y0 + ((at / nx) | 0) * L.res] : null, maxDepth, doors, wetArea: wetCells * L.res * L.res, flooded: at >= 0 && worst > house.floor };
+    let open = 0, leaky = 0; for (let i = 0; i < n; i++) if (block[i]) { if (leak[i] >= 0.99) open++; else if (leak[i] > 0) leaky++; }
+    const roof = { open: houseCells ? open / houseCells : 0, leaky: houseCells ? leaky / houseCells : 0, depth: usePeak ? sim.insidePeak : sim.inside, why: house.roofWhy || "" };
+    return { over: at >= 0 ? worst - house.floor : -Infinity, at: at >= 0 ? [L.x0 + (at % nx) * L.res, L.y0 + ((at / nx) | 0) * L.res] : null, maxDepth, doors, wetArea: wetCells * L.res * L.res, flooded: at >= 0 && worst > house.floor, roof, rainIn: roof.depth >= 3 };
   }
   return Object.assign(sim, { step, rise, reset, report });
 }
 
 // the water of a flood test as a surface: one square per wet cell, deeper water darker
-export function floodMesh(L, arr, d, old) {
+// inside: { mask, floor, depth } for rain that got into the house (a sheet of water on its floor)
+export function floodMesh(L, arr, d, old, inside) {
   const { nx, ny, x0, y0, res } = L, H = arr.h;
   const pos = [], col = [], c = new THREE.Color(), shallow = new THREE.Color("#7cc4f0"), deep = new THREE.Color("#1d5fa8");
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -109,6 +119,15 @@ export function floodMesh(L, arr, d, old) {
     const z = H[q] + w, x = x0 + i * res, y = y0 + j * res, h2 = res / 2;
     c.copy(shallow).lerp(deep, Math.min(1, w / 600));
     for (const [px, py] of [[x - h2, y - h2], [x + h2, y - h2], [x + h2, y + h2], [x - h2, y - h2], [x + h2, y + h2], [x - h2, y + h2]]) { pos.push(px, py, z); col.push(c.r, c.g, c.b); }
+  }
+  if (inside && inside.depth >= 3) {
+    const z = inside.floor + inside.depth, h2 = res / 2;
+    c.copy(shallow).lerp(deep, Math.min(1, inside.depth / 600));
+    for (let q = 0; q < nx * ny; q++) {
+      if (!inside.mask[q]) continue;
+      const x = x0 + (q % nx) * res, y = y0 + ((q / nx) | 0) * res;
+      for (const [px, py] of [[x - h2, y - h2], [x + h2, y - h2], [x + h2, y + h2], [x - h2, y - h2], [x + h2, y + h2], [x - h2, y + h2]]) { pos.push(px, py, z); col.push(c.r, c.g, c.b); }
+    }
   }
   let m = old;
   if (!m) { m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.78, roughness: 0.2, depthWrite: false })); m.renderOrder = 4; }

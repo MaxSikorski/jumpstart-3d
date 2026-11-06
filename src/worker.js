@@ -1,7 +1,7 @@
 // Web Worker hosting the OpenCascade kernel.
 import opencascade from "replicad-opencascadejs";
 import { gunzip } from "./inflate.js";
-import { initKernel, buildBodies, exportStep, clearCache, setAsset, errorText, fontsReady } from "./kernel.js";
+import { initKernel, buildBodies, exportMeshes, contactPairs, exportStep, clearCache, setAsset, errorText, fontsReady } from "./kernel.js";
 import { runCodeCad } from "./codecad-worker.js"; // jumpstart-3d: Code CAD
 import { startManifold, manifoldReady } from "./meshbool.js"; // jumpstart-3d: Manifold mesh booleans
 
@@ -80,6 +80,21 @@ self.onmessage = async (ev) => {
       self.postMessage({ type: "coded", req: msg.req, bytes: r.bytes }, [r.bytes]);
     } else if (msg.type === "dropasset") { // jumpstart-3d: Code CAD. frees the bytes of a file the design no longer has
       setAsset(msg.id, "step", new Uint8Array(0));
+    } else if (msg.type === "exportMesh") {
+      // STL / 3MF: every body meshed again from its exact shape, finer than the view
+      await ready;
+      await fontsReady();
+      await manifoldReady(); // jumpstart-3d: Manifold
+      const res = exportMeshes(msg.bodies, msg.level);
+      const transfer = [];
+      for (const r of res) if (r.ok) transfer.push(r.mesh.vertices.buffer, r.mesh.normals.buffer, r.mesh.triangles.buffer);
+      self.postMessage({ type: "exportMesh", req: msg.req, results: res }, transfer);
+    } else if (msg.type === "contacts") {
+      // Clearance: bodies that touch or overlap
+      await ready;
+      await fontsReady();
+      await manifoldReady(); // jumpstart-3d: Manifold
+      self.postMessage({ type: "contacts", req: msg.req, results: contactPairs(msg.bodies, msg.gap) });
     } else if (msg.type === "asset") {
       setAsset(msg.id, msg.kind, new Uint8Array(msg.bytes));
       if (msg.kind === "mesh") startManifold(); // jumpstart-3d: Manifold, fire and forget (a failed start leaves OpenCascade doing the booleans)

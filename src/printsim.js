@@ -97,6 +97,8 @@ export function initPrintSim(app, X) {
     pickFace: false, layerMax: 0,
     // filaments: slots[i] = { color }, and the slot each body prints with (grouped by color at first)
     slots: [], slotOf: new Map(), colorBy: "auto",
+    // full color: every design color mixed from cyan, magenta, yellow, black and white filaments
+    cmyk: { on: false, n: 6, surf: true, inks: null },
     // color painting: faces painted with a filament; tool: null | "paint" | "fill" | "erase"
     paint: new Map(), paintTool: null, brush: 0,
     // G-code (like Orca's process and filament settings)
@@ -799,6 +801,7 @@ export function initPrintSim(app, X) {
   // painted faces: st.paint = Map(bodyId -> Map(faceIndex -> slot))
   const paintOf = (id, f) => { const m = st.paint.get(id); return m && m.has(f) ? m.get(f) : null; };
   function usedSlots() {
+    if (cmykOn()) return inkSlots();
     const set = new Set();
     for (const id of st.ids) {
       const sl = st.slotOf.get(id);
@@ -829,7 +832,65 @@ export function initPrintSim(app, X) {
     const B = S.base, ts = triSlots(), bodySlot = W.ids.map((id) => st.slotOf.get(id) ?? 0);
     const out = new Int16Array(B.lown.length);
     for (let i = 0; i < out.length; i++) out[i] = B.ltri[i] >= 0 ? ts[B.ltri[i]] : bodySlot[B.lown[i]];
+    if (cmykOn()) cmykLines(out, B);
     return out;
+  }
+  // ---- full color (CMYK + white). Each design color is matched by a mix of the five inks: N
+  // layers in a cycle, so many of each (the counts whose average color is closest, in linear
+  // light). Walls take the inks in turn, one per layer, spread evenly through the cycle so the
+  // thin layers blend by eye; top and bottom skins change ink line by line. With "surfaces only",
+  // inner walls and infill print white (fewer changes, the same look).
+  const INKS = [["C", "Cyan", "#00a3e0"], ["M", "Magenta", "#e5007e"], ["Y", "Yellow", "#ffe600"], ["K", "Black", "#1d1d1f"], ["W", "White", "#f4f4f1"]];
+  const cmykOn = () => st.cmyk.on && multiOK();
+  const inkSlots = () => (st.cmyk.inks || []).filter((i) => st.slots[i]);
+  function ensureInks() {
+    const T = toolsOf(), room = T.kind === "heads" ? Math.max(T.heads, T.slots || 0) : T.slots || 1, n = room >= 5 ? 5 : 4;
+    if (st.cmyk.inks && st.cmyk.inks.length === n && st.cmyk.inks.every((i) => st.slots[i] && st.slots[i].ink)) return;
+    st.cmyk.inks = INKS.slice(0, n).map(([k, name, c]) => { let i = st.slots.findIndex((q) => q.ink === k); if (i < 0) { st.slots.push({ color: c, ink: k, name }); i = st.slots.length - 1; } return i; });
+  }
+  const lin = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)), unlin = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+  // (hex parsed by hand: three.js colors are already in linear light)
+  const rgbL = (c) => { const h = toHex(c); return [1, 3, 5].map((i) => lin(parseInt(h.slice(i, i + 2), 16) / 255)); };
+  const hexOf = (v) => "#" + v.map((x) => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, "0")).join("");
+  const MIX = new Map();
+  function mixFor(color) {
+    const N = st.cmyk.n, inks = inkSlots(), key = toHex(color) + N + ":" + inks.map((i) => st.slots[i].color).join();
+    if (MIX.has(key)) return MIX.get(key);
+    const tgt = rgbL(color), cols = inks.map((i) => rgbL(st.slots[i].color));
+    let best = null, bestE = Infinity;
+    const cnt = new Array(inks.length).fill(0);
+    const rec = (j, left) => {
+      if (j === inks.length - 1) {
+        cnt[j] = left;
+        let e = 0; for (let ch = 0; ch < 3; ch++) { let v = 0; for (let q = 0; q < inks.length; q++) v += (cnt[q] / N) * cols[q][ch]; const d = unlin(Math.min(1, v)) - unlin(tgt[ch]); e += d * d; }
+        if (e < bestE) { bestE = e; best = cnt.slice(); }
+        return;
+      }
+      for (let c = 0; c <= left; c++) { cnt[j] = c; rec(j + 1, left - c); }
+    };
+    rec(0, N);
+    // the cycle: each ink as evenly spread as it can be
+    const seq = [], used = new Array(inks.length).fill(0);
+    for (let p = 0; p < N; p++) { let bi = 0, bd = -Infinity; for (let q = 0; q < inks.length; q++) { const d = (best[q] * (p + 1)) / N - used[q]; if (best[q] > used[q] && d > bd) { bd = d; bi = q; } } used[bi]++; seq.push(inks[bi]); }
+    const mixed = [0, 1, 2].map((ch) => unlin(Math.min(1, inks.reduce((s, _, q) => s + (best[q] / N) * cols[q][ch], 0))));
+    const out = { counts: best, seq, inks, hex: hexOf(mixed), err: Math.sqrt(bestE / 3) };
+    MIX.set(key, out);
+    return out;
+  }
+  function cmykLines(out, B) {
+    ensureInks();
+    const inks = inkSlots(), isInk = new Set(inks), white = inks.find((i) => st.slots[i].ink === "W") ?? inks[0], N = st.cmyk.n;
+    let k = 0, inLayer = 0, end = (B.layerEnd[0] || 0) / 2;
+    for (let i = 0; i < out.length; i++) {
+      while (i >= end && k < B.layerEnd.length - 1) { k++; end = (B.layerEnd[k] || 0) / 2; inLayer = 0; }
+      inLayer++;
+      const s = out[i];
+      if (isInk.has(s)) continue;
+      const kind = B.lkind ? GK[B.lkind[i]] : "outer", skin = kind === "top" || kind === "bottom";
+      if (st.cmyk.surf && kind !== "outer" && !skin) { out[i] = white; continue; }
+      const m = mixFor(st.slots[s] ? st.slots[s].color : "#a7b0ba");
+      out[i] = m.seq[(skin ? inLayer + k : k) % N];
+    }
   }
   // what one filament change costs on this printer: seconds, and whether it swaps / purges
   function changeCost(T, from, to, loaded) {
@@ -1412,11 +1473,28 @@ export function initPrintSim(app, X) {
             const on = !!st.paintTool && st.paintTool !== "erase" && st.brush === sl;
             const rowEl = el("div", { class: "psfrow" + (on ? " on" : "") + (used.includes(sl) ? "" : " idle"), id: "ps-frow-" + sl, role: "radio", "aria-checked": on ? "true" : "false", tabindex: 0, title: "Paint with F" + (sl + 1),
               onclick: () => { st.brush = sl; if (!st.paintTool || st.paintTool === "erase") st.paintTool = "paint"; st.view = "model"; applyView(); renderPanel(); } },
-              ci, el("b", {}, "F" + (sl + 1)), el("span", {}, where), el("i", {}, g ? fmt(g, 1) + " g" : used.includes(sl) ? "" : "not used"));
+              ci, el("b", {}, "F" + (sl + 1)), el("span", {}, q.ink ? `${q.name} · ${where}` : where), el("i", {}, g ? fmt(g, 1) + " g" : used.includes(sl) ? "" : "not used"));
             fl.append(rowEl);
           }
-          const canAdd = st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, MAX_SLOTS)); // jumpstart-3d: painted 3MF (the file codes 15 filaments)
+          const canAdd = !cmykOn() && st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, MAX_SLOTS)); // jumpstart-3d: painted 3MF (the file codes 15 filaments)
           body.append(el("div", { class: "subhead" }, `Filaments (${used.length} used)`), fl);
+          // full color from CMYK (+ white)
+          const cm = st.cmyk;
+          body.append(el("label", { class: "check", title: "Mix any color from cyan, magenta, yellow, black and white filaments, changing filament layer by layer" }, el("input", { type: "checkbox", id: "ps-cmyk", checked: cmykOn(), onchange: (e) => { cm.on = e.target.checked; if (cm.on) ensureInks(); MIX.clear(); filamentsChanged(); renderPanel(); } }), "Full color (CMYK)"));
+          if (cmykOn()) {
+            ensureInks();
+            body.append(row("Mix over", seg([[4, "4 layers"], [6, "6 layers"], [8, "8 layers"]], cm.n, (v) => { cm.n = v; MIX.clear(); filamentsChanged(); renderPanel(); }, "ps-cmyk-n")));
+            body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ps-cmyk-surf", checked: cm.surf, onchange: (e) => { cm.surf = e.target.checked; filamentsChanged(); renderPanel(); } }), "Color the outside only (inner walls and infill in white)"));
+            const targets = [...new Set(st.ids.flatMap((id) => { const a = [st.slotOf.get(id)]; const m = st.paint.get(id); if (m) a.push(...m.values()); return a; }))].filter((i) => i != null && st.slots[i] && !st.slots[i].ink);
+            const list = el("div", { class: "pscmyk", id: "ps-cmyk-list" });
+            for (const i of targets) {
+              const m = mixFor(st.slots[i].color), pct = m.inks.map((s, q) => [st.slots[s].ink, m.counts[q]]).filter((x) => x[1]).map(([k, c]) => `${k} ${Math.round((c / cm.n) * 100)}%`).join(" · ");
+              list.append(el("div", { class: "pscmyk-row", title: "Wanted color → what the mix looks like" }, el("span", { class: "sw", style: { background: toHex(st.slots[i].color) } }), el("span", {}, "→"), el("span", { class: "sw", style: { background: m.hex } }), el("span", { class: "pscmyk-pct" }, pct)));
+            }
+            body.append(list);
+            const n = inkSlots().length;
+            body.append(el("div", { class: "hint", style: { padding: 0 } }, `${n === 5 ? "Load cyan, magenta, yellow, black and white" : "This printer has 4 spaces: load cyan, magenta, yellow and black"} (F${inkSlots()[0] + 1}-F${inkSlots()[n - 1] + 1}). Each color is mixed over ${cm.n} layers, so use thin layers (0.08-0.12 mm): the layers blend by eye. It changes filament often, so expect more time and purge.${lastPlan ? ` This print: ${lastPlan.changes} changes, ${fmt((lastPlan.flushVol || 0) / 1000 * 1.24, 1)} g purged.` : ""}`));
+          }
           if (canAdd) fl.append(el("button", { class: "btn psadd", id: "ps-addfil", onclick: () => { st.slots.push({ color: nextFilColor() }); st.brush = st.slots.length - 1; renderPanel(); } }, "+ Add filament"));
           // color painting
           body.append(row("Paint", seg([["off", "Off"], ["paint", "Faces"], ["fill", "Whole body"], ["erase", "Erase"]], st.paintTool || "off", (v) => { st.paintTool = v === "off" ? null : v; if (st.paintTool) { st.view = "model"; applyView(); } hoverFace(-1); renderPanel(); }, "ps-paint")));

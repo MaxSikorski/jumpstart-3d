@@ -1,0 +1,1476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Sign Builder</title>
+<script>/*js3d:three*/</script>
+<style>
+:root { --bg: #07030f; --bg2: #110725; --bg3: #1a0b33; --ln: #3b1f6b; --tx: #f3e9ff; --mut: #b9a6d9; --pink: #ff2bd6; --cyan: #00f0ff; --lime: #b6ff3b; --yel: #ffe14d; --org: #ff8a1f; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--tx); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: linear-gradient(90deg, #12052a, #2a0838 50%, #071c2c); border-bottom: 1px solid var(--ln); flex-wrap: wrap; }
+h1 { margin: 0; font-size: 21px; letter-spacing: 3px; font-weight: 800; color: #fff; text-shadow: 0 0 6px var(--pink), 0 0 16px var(--pink), 0 0 30px #ff2bd699; white-space: nowrap; }
+h1 span { color: #fff; text-shadow: 0 0 6px var(--cyan), 0 0 16px var(--cyan), 0 0 30px #00f0ff99; }
+.sub { color: var(--mut); font-size: 12.5px; }
+.btn { background: var(--bg3); border: 1px solid #5a2fa0; border-radius: 8px; padding: 6px 12px; cursor: pointer; color: var(--tx); min-height: 34px; }
+.btn:hover { border-color: var(--cyan); box-shadow: 0 0 10px #00f0ff55; }
+.btn:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--yel); outline-offset: 2px; }
+.btn.hot { background: linear-gradient(180deg, #ff3fdc, #c0109f); border-color: #ff8bf0; color: #fff; font-weight: 700; box-shadow: 0 0 12px #ff2bd688; }
+.btn.cy { border-color: var(--cyan); color: #c9fbff; }
+.btn[aria-pressed="true"] { border-color: var(--yel); color: #fff6c4; box-shadow: 0 0 0 1px var(--yel) inset, 0 0 12px #ffe14d55; }
+.btn:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.tools .sep { width: 1px; height: 24px; background: var(--ln); margin: 0 4px; }
+.btn.ic { min-width: 36px; padding: 4px 8px; font-size: 16px; }
+#toast { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); background: #120626ee; border: 1px solid var(--cyan); color: #fff; padding: 8px 14px; border-radius: 20px; box-shadow: 0 0 14px #00f0ff55; font-size: 13px; pointer-events: none; }
+#toast[hidden] { display: none; }
+#back { margin-left: auto; border-color: var(--yel); color: var(--yel); font-weight: 700; }
+body { display: flex; flex-direction: column; }
+main { display: flex; flex: 1; min-height: 0; }
+#side { width: 340px; flex: none; background: var(--bg2); border-right: 1px solid var(--ln); display: flex; flex-direction: column; min-height: 0; }
+#tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 6px; border-bottom: 1px solid var(--ln); }
+#tabs button { padding: 6px 2px; font-size: 11.5px; border-radius: 6px; background: transparent; border: 1px solid transparent; cursor: pointer; color: var(--mut); line-height: 1.15; }
+#tabs button[aria-selected="true"] { color: #fff; border-color: var(--pink); text-shadow: 0 0 6px var(--pink); background: #2a0b3f; }
+#tabs b { display: block; font-size: 15px; }
+#panel { flex: 1; overflow: auto; padding: 10px 12px 20px; }
+h2 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin: 14px 0 6px; color: var(--cyan); text-shadow: 0 0 8px #00f0ff88; }
+h2:first-child { margin-top: 2px; }
+.hint { color: var(--mut); font-size: 12.5px; margin: 4px 0 8px; }
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row > label { flex: 0 0 106px; color: var(--mut); font-size: 12.5px; }
+.row > :not(label) { flex: 1; min-width: 0; }
+input[type=text], input[type=number], select, textarea { background: #0b0418; border: 1px solid #4a2a85; border-radius: 6px; padding: 6px 8px; width: 100%; }
+textarea { resize: vertical; min-height: 54px; font-size: 16px; }
+input[type=range] { width: 100%; accent-color: var(--pink); }
+input[type=color] { width: 44px; height: 32px; padding: 0; border: 1px solid #4a2a85; border-radius: 6px; background: #0b0418; flex: none !important; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.grid.g4 { grid-template-columns: repeat(4, 1fr); }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; border: 1px solid #3b1f6b; border-radius: 8px; background: #0e0520; cursor: pointer; font-size: 11px; color: var(--mut); text-align: center; line-height: 1.15; }
+.tile svg { width: 40px; height: 34px; }
+.tile:hover { border-color: var(--cyan); color: #fff; }
+.tile[aria-pressed="true"] { border-color: var(--yel); color: #fff; box-shadow: 0 0 10px #ffe14d44; }
+.items { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #3b1f6b; border-radius: 8px; background: #0e0520; cursor: pointer; text-align: left; width: 100%; }
+.item[aria-pressed="true"] { border-color: var(--pink); box-shadow: 0 0 10px #ff2bd655; }
+.item .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+.sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #0007; cursor: pointer; padding: 0; }
+.sw[aria-pressed="true"] { outline: 2px solid #fff; outline-offset: 2px; }
+.inl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.inl input[type=number] { width: 76px; flex: none; }
+.note { background: #1c0d33; border: 1px solid #5a2fa0; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin: 8px 0; }
+.note.warn { border-color: var(--org); color: #ffd9b8; }
+.note.ok { border-color: var(--lime); color: #e6ffc4; }
+.pieces { display: flex; flex-direction: column; gap: 4px; }
+.piece { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.piece span { flex: 1; }
+#view { flex: 1; position: relative; min-width: 0; background: radial-gradient(ellipse at center, #1a0b33 0%, #07030f 70%); }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#hud { position: absolute; left: 12px; top: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+#hud .btn { background: #120626cc; backdrop-filter: blur(4px); }
+#status { position: absolute; left: 12px; bottom: 10px; right: 12px; color: var(--mut); font-size: 12.5px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+#busy { position: absolute; right: 14px; top: 12px; padding: 6px 12px; border-radius: 20px; background: #120626e0; border: 1px solid var(--pink); color: #fff; font-weight: 600; box-shadow: 0 0 14px #ff2bd677; }
+#busy[hidden] { display: none; }
+.lightbtn[aria-pressed="true"] { background: linear-gradient(180deg, #ff3fdc, #a10b88); color: #fff; }
+@media (max-width: 820px) { main { flex-direction: column-reverse; } #side { width: auto; height: 46%; border-right: 0; border-top: 1px solid var(--ln); } h1 { font-size: 17px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>NEON <span>SIGN</span> BUILDER</h1>
+  <div class="sub">Glowing signs to 3D print: shells for LED strips that snap onto a backing</div>
+  <div class="tools" role="toolbar" aria-label="Project and editing">
+    <button class="btn" id="p-new" type="button" title="Start a new sign">New</button>
+    <button class="btn" id="p-open" type="button" title="Open a saved Neon sign project (Ctrl/⌘ O)">Open…</button>
+    <button class="btn cy" id="p-save" type="button" title="Save this sign as a project file you can open again (Ctrl/⌘ S)">💾 Save project</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="btn ic" id="e-undo" type="button" title="Undo (Ctrl/⌘ Z)" aria-label="Undo">↶</button>
+    <button class="btn ic" id="e-redo" type="button" title="Redo (Ctrl/⌘ Shift Z or Ctrl Y)" aria-label="Redo">↷</button>
+    <button class="btn ic" id="e-cut" type="button" title="Cut the selected part (Ctrl/⌘ X)" aria-label="Cut">✂</button>
+    <button class="btn ic" id="e-copy" type="button" title="Copy the selected part (Ctrl/⌘ C)" aria-label="Copy">⧉</button>
+    <button class="btn ic" id="e-paste" type="button" title="Paste (Ctrl/⌘ V)" aria-label="Paste">📋</button>
+    <button class="btn ic" id="e-del" type="button" title="Delete the selected part (Delete)" aria-label="Delete">🗑</button>
+    <input type="file" id="p-file" accept=".json,application/json" hidden>
+  </div>
+  <button class="btn" id="back" type="button" title="Close the Neon Sign Builder. Your design is not changed.">← Back to JumpStart 3D</button>
+</header>
+<main>
+  <aside id="side">
+    <div id="tabs" role="tablist" aria-label="Steps">
+      <button role="tab" data-tab="design" aria-selected="true"><b>✎</b>Design</button>
+      <button role="tab" data-tab="tube" aria-selected="false"><b>◎</b>Tubes</button>
+      <button role="tab" data-tab="backing" aria-selected="false"><b>▭</b>Backing</button>
+      <button role="tab" data-tab="print" aria-selected="false"><b>⎙</b>Print</button>
+      <button role="tab" data-tab="light" aria-selected="false"><b>✺</b>Light</button>
+    </div>
+    <div id="panel" role="tabpanel"></div>
+  </aside>
+  <div id="view">
+    <canvas id="cv" aria-label="The sign in 3D. Drag a part of the sign to move it; drag elsewhere to turn the view; scroll to zoom."></canvas>
+    <div id="hud">
+      <button class="btn lightbtn" id="lights" type="button" aria-pressed="false" title="Turn the sign on: see it glow in the dark">💡 Lights on</button>
+      <button class="btn" id="front" type="button" title="Look straight at the sign">Front view</button>
+      <button class="btn" id="tilt" type="button" title="Look at the sign from an angle">3D view</button>
+      <button class="btn" id="explode" type="button" aria-pressed="false" title="Pull the shells up off the backing, and the pieces apart">Exploded</button>
+    </div>
+    <div id="busy" hidden>Building…</div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <div id="status"></div>
+  </div>
+</main>
+<script>
+/* ===== Neon Sign Builder: geometry =====
+   Everything in mm. The sign lies flat: x right, y up the sign, z up out of it (towards the viewer
+   when it hangs on a wall). Tubes are centre lines (polylines); the shells round them and the
+   backing under them are built from distance fields: shells with surface nets in 3D, the backing
+   as stacked 2D layers (contours by marching squares, extruded). */
+const NG = (() => {
+  // ------------------------------------------------------------ raster helpers
+  // exact Euclidean distance transform (Felzenszwalb): f has 0 on "sites", Infinity elsewhere
+  function edt1(f, n, d, v, z) {
+    let k = 0; v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+    for (let q = 1; q < n; q++) {
+      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+      k++; v[k] = q; z[k] = s; z[k + 1] = Infinity;
+    }
+    k = 0;
+    for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+  }
+  // distance (in pixels) from each pixel to the nearest pixel where site(i) is true
+  function edt(W, H, site) {
+    const INF = 1e20, g = new Float64Array(W * H), n = Math.max(W, H), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+    for (let i = 0; i < W * H; i++) g[i] = site(i) ? 0 : INF;
+    for (let x = 0; x < W; x++) { for (let y = 0; y < H; y++) f[y] = g[y * W + x]; edt1(f, H, d, v, z); for (let y = 0; y < H; y++) g[y * W + x] = d[y]; }
+    for (let y = 0; y < H; y++) { for (let x = 0; x < W; x++) f[x] = g[y * W + x]; edt1(f, W, d, v, z); for (let x = 0; x < W; x++) g[y * W + x] = Math.sqrt(d[x]); }
+    return g;
+  }
+  // Zhang-Suen thinning of a binary image (1 = ink), in place
+  function thin(img, W, H) {
+    const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : img[y * W + x]);
+    let changed = true; const del = [];
+    while (changed) {
+      changed = false;
+      for (let pass = 0; pass < 2; pass++) {
+        del.length = 0;
+        for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+          if (!img[y * W + x]) continue;
+          const p2 = at(x, y - 1), p3 = at(x + 1, y - 1), p4 = at(x + 1, y), p5 = at(x + 1, y + 1), p6 = at(x, y + 1), p7 = at(x - 1, y + 1), p8 = at(x - 1, y), p9 = at(x - 1, y - 1);
+          const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+          if (B < 2 || B > 6) continue;
+          const A = (!p2 && p3) + (!p3 && p4) + (!p4 && p5) + (!p5 && p6) + (!p6 && p7) + (!p7 && p8) + (!p8 && p9) + (!p9 && p2);
+          if (A !== 1) continue;
+          if (pass === 0 ? (p2 * p4 * p6 || p4 * p6 * p8) : (p2 * p4 * p8 || p2 * p6 * p8)) continue;
+          del.push(y * W + x);
+        }
+        if (del.length) changed = true;
+        for (const i of del) img[i] = 0;
+      }
+    }
+    return img;
+  }
+  // the skeleton as polylines: walk from ends and junctions; then small spurs are pruned
+  function traceSkeleton(img, W, H, minSpur) {
+    const N = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+    const nb = (i) => { const x = i % W, y = (i / W) | 0, o = []; for (const [dx, dy] of N) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < W && Y < H && img[Y * W + X]) o.push(Y * W + X); } return o; };
+    // staircase corners: a pixel with two side-by-side 4-neighbours (N and E, say) and nothing on the
+    // opposite sides is not needed (N and E touch diagonally); removing it leaves a one-pixel 8-connected line
+    const at = (x, y) => x >= 0 && y >= 0 && x < W && y < H && img[y * W + x];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!img[y * W + x]) continue;
+      const n = at(x, y - 1), e = at(x + 1, y), s = at(x, y + 1), w = at(x - 1, y);
+      if ((n && e && !s && !w && !at(x - 1, y + 1)) || (e && s && !n && !w && !at(x - 1, y - 1)) || (s && w && !n && !e && !at(x + 1, y - 1)) || (w && n && !s && !e && !at(x + 1, y + 1))) img[y * W + x] = 0;
+    }
+    const deg = new Uint8Array(W * H); const px = [];
+    for (let i = 0; i < W * H; i++) if (img[i]) { deg[i] = nb(i).length; px.push(i); }
+    const node = (i) => deg[i] !== 2;
+    const used = new Set(), key = (a, b) => (a < b ? a + ":" + b : b + ":" + a), paths = [];
+    const walk = (s, n1) => {
+      const P = [s], prev0 = s; let prev = prev0, cur = n1; used.add(key(s, n1));
+      while (true) {
+        P.push(cur);
+        if (node(cur) && cur !== s) break;
+        const nx = nb(cur).filter((q) => q !== prev && !used.has(key(cur, q)));
+        if (!nx.length) break;
+        // prefer the 4-neighbour (keeps diagonal staircases from forking)
+        nx.sort((a, b) => (Math.abs((a % W) - (cur % W)) + Math.abs(((a / W) | 0) - ((cur / W) | 0))) - (Math.abs((b % W) - (cur % W)) + Math.abs(((b / W) | 0) - ((cur / W) | 0))));
+        const q = nx[0]; used.add(key(cur, q)); prev = cur; cur = q;
+        if (cur === s) { P.push(s); break; }
+      }
+      return P;
+    };
+    for (const i of px) if (node(i) && deg[i] > 0) for (const q of nb(i)) if (!used.has(key(i, q))) paths.push({ pts: walk(i, q) });
+    // closed loops with no ends or junctions (an O)
+    for (const i of px) if (deg[i] === 2) { const q = nb(i).find((q2) => !used.has(key(i, q2))); if (q !== undefined && !nb(i).every((q2) => used.has(key(i, q2)))) paths.push({ pts: walk(i, q), loop: true }); }
+    // prune spurs: short paths that end at a pixel with one neighbour and start at a junction
+    const out = [];
+    for (const p of paths) {
+      const a = p.pts[0], b = p.pts[p.pts.length - 1];
+      const len = p.pts.length;
+      const spur = len < minSpur && ((deg[a] === 1 && deg[b] >= 3) || (deg[b] === 1 && deg[a] >= 3));
+      if (!spur && len >= 3) out.push(p.pts.map((i) => [i % W, (i / W) | 0]));
+    }
+    return out;
+  }
+  // skeleton pieces into long strokes: short spurs dropped, then pieces whose ends meet and carry on in
+  // the same direction joined (a strip goes through a junction rather than stopping at it)
+  function joinPaths(paths, spur) {
+    const arc = (P) => { let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); return L; };
+    const near = (q, P0, skip) => { for (const P of P0) { if (P === skip) continue; for (const p of P) if (Math.abs(p[0] - q[0]) <= 2.5 && Math.abs(p[1] - q[1]) <= 2.5) return true; } return false; };
+    let L = paths.map((P) => P.slice());
+    for (let pass = 0; pass < 3; pass++) {
+      // spurs: short, hanging off another stroke at one end and free at the other
+      L = L.filter((P) => { if (isClosed(P) || arc(P) >= spur) return true; const a = near(P[0], L, P), b = near(P[P.length - 1], L, P); return a === b; });
+      // tiny pieces between junctions merge into whatever they touch
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const ends = [];
+        L.forEach((P, k) => { if (isClosed(P) || P.length < 2) return; const n = P.length - 1, m = Math.min(n, 6); ends.push({ k, s: 0, p: P[0], d: norm(P[0][0] - P[m][0], P[0][1] - P[m][1]) }, { k, s: 1, p: P[n], d: norm(P[n][0] - P[n - m][0], P[n][1] - P[n - m][1]) }); });
+        let best = null;
+        for (let i = 0; i < ends.length; i++) for (let j = i + 1; j < ends.length; j++) {
+          const A = ends[i], B = ends[j], gap = Math.hypot(A.p[0] - B.p[0], A.p[1] - B.p[1]);
+          if (gap > 4.5) continue;
+          if (A.k === B.k && L[A.k].length < 8) continue;
+          const turn = 1 + (A.d[0] * B.d[0] + A.d[1] * B.d[1]); // 0 = straight through, 2 = doubling back
+          if (turn > 0.9) continue;
+          const sc = turn + gap * 0.05;
+          if (!best || sc < best.sc) best = { A, B, sc };
+        }
+        if (!best) break;
+        const { A, B } = best;
+        if (A.k === B.k) { const P = L[A.k]; P.push(P[0].slice()); }
+        else {
+          let P = L[A.k], Q = L[B.k];
+          if (A.s === 0) P = P.slice().reverse();
+          if (B.s === 1) Q = Q.slice().reverse();
+          L[A.k] = [...P, ...Q]; L.splice(B.k, 1);
+        }
+        changed = true;
+      }
+    }
+    return L;
+  }
+  const norm = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+  // marching squares: loops where field = 0 (inside negative); returns [[x,y],...] in grid units
+  // prims (optional): the fields F was made from (by max / min); each crossing is placed where the
+  // field that changes sign there crosses, so every field made from them shares the same points
+  function contours(F, W, H, prims) {
+    const segs = [];
+    let i0 = 0, i1 = 0;
+    const lerp = (a, b) => { if (prims) for (const P of prims) { const pa = P[i0], pb = P[i1]; if ((pa < 0) !== (pb < 0)) return pa / (pa - pb); } return a / (a - b); };
+    const at = (u, v) => { i0 = u; i1 = v; };
+    for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
+      const ia = y * W + x, ib = ia + 1, ic = ia + W + 1, id = ia + W;
+      const a = F[ia], b = F[ib], c = F[ic], d = F[id];
+      let k = (a < 0 ? 1 : 0) | (b < 0 ? 2 : 0) | (c < 0 ? 4 : 0) | (d < 0 ? 8 : 0);
+      if (k === 0 || k === 15) continue;
+      if (!prims) { var T = [x + lerp(a, b), y, 'h' + x + ',' + y], R = [x + 1, y + lerp(b, c), 'v' + (x + 1) + ',' + y], B = [x + 1 - lerp(c, d), y + 1, 'h' + x + ',' + (y + 1)], L = [x, y + 1 - lerp(d, a), 'v' + x + ',' + y]; }
+      else { at(ia, ib); T = [x + lerp(a, b), y, 'h' + x + ',' + y]; at(ib, ic); R = [x + 1, y + lerp(b, c), 'v' + (x + 1) + ',' + y]; at(id, ic); B = [x + lerp(d, c), y + 1, 'h' + x + ',' + (y + 1)]; at(ia, id); L = [x, y + lerp(a, d), 'v' + x + ',' + y]; }
+      // segments go with the inside on the left
+      const S = {
+        1: [[L, T]], 2: [[T, R]], 3: [[L, R]], 4: [[R, B]], 6: [[T, B]], 7: [[L, B]], 8: [[B, L]], 9: [[B, T]], 11: [[B, R]], 12: [[R, L]], 13: [[R, T]], 14: [[T, L]],
+      };
+      if (k === 5 || k === 10) {
+        const m = prims ? 1 : (a + b + c + d) / 4;
+        if (k === 5) segs.push(...(m < 0 ? [[L, B], [R, T]] : [[L, T], [R, B]]));
+        else segs.push(...(m < 0 ? [[T, L], [B, R]] : [[T, R], [B, L]]));
+      } else segs.push(...S[k]);
+    }
+    // join into loops
+    const K = (p) => p[2];
+    const from = new Map();
+    for (const s of segs) from.set(K(s[0]), s);
+    const loops = [], done = new Set();
+    for (const s of segs) {
+      if (done.has(s)) continue;
+      const L0 = []; let cur = s;
+      while (cur && !done.has(cur)) { done.add(cur); L0.push([cur[0][0], cur[0][1]]); cur = from.get(K(cur[1])); }
+      if (L0.length > 2) loops.push(L0);
+    }
+    return loops;
+  }
+  // Ramer-Douglas-Peucker
+  function rdp(P, eps, closed) {
+    if (P.length < 3) return P.slice();
+    const keep = new Uint8Array(P.length); keep[0] = keep[P.length - 1] = 1;
+    const st = [[0, P.length - 1]];
+    while (st.length) {
+      const [i, j] = st.pop(); let md = -1, mi = -1;
+      const ax = P[i][0], ay = P[i][1], bx = P[j][0], by = P[j][1], L = Math.hypot(bx - ax, by - ay) || 1e-9;
+      for (let k = i + 1; k < j; k++) { const d = Math.abs((bx - ax) * (ay - P[k][1]) - (ax - P[k][0]) * (by - ay)) / L; if (d > md) { md = d; mi = k; } }
+      if (md > eps) { keep[mi] = 1; st.push([i, mi], [mi, j]); }
+    }
+    const out = P.filter((_, k) => keep[k]);
+    void closed;
+    return out;
+  }
+  // a closed loop (first point repeated at the end): split at the far point and simplify each half
+  function rdpLoop(P, eps) {
+    let far = 0, fd = -1; for (let i = 1; i < P.length - 1; i++) { const d = Math.hypot(P[i][0] - P[0][0], P[i][1] - P[0][1]); if (d > fd) { fd = d; far = i; } }
+    if (far < 1) return P.slice();
+    const A = rdp(P.slice(0, far + 1), eps), B = rdp(P.slice(far), eps);
+    return [...A, ...B.slice(1)];
+  }
+  function chaikin(P, n, closed) {
+    let Q = P;
+    for (let it = 0; it < n; it++) {
+      const R = closed ? [] : [Q[0]];
+      const m = closed ? Q.length : Q.length - 1;
+      for (let i = 0; i < m; i++) { const a = Q[i], b = Q[(i + 1) % Q.length]; R.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); }
+      if (!closed) R.push(Q[Q.length - 1]);
+      Q = R;
+    }
+    return Q;
+  }
+  const isClosed = (P) => P.length > 3 && Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) < 1e-6;
+
+  // ------------------------------------------------------------ a mask (canvas) to tube centre lines
+  // mask: Uint8Array W×H (1 = ink); mode "center" (skeleton) or "outline" (the edge, inset by r px);
+  // returns polylines in pixel units, smoothed
+  function maskToPaths(mask, W, H, mode, rPx, smooth = 2) {
+    if (mode === "outline") {
+      const din = edt(W, H, (i) => !mask[i]); // distance to the outside, for ink pixels
+      const F = new Float32Array(W * H);
+      for (let i = 0; i < W * H; i++) F[i] = mask[i] ? rPx - din[i] : rPx + 1;
+      const loops = contours(F, W, H).map((L) => { const C = chaikin(rdpLoop([...L, L[0]], 0.35).slice(0, -1), smooth, true); return [...C, C[0]]; }).filter((L) => L.length > 4);
+      // parts too thin for a tube inside their edge (thin lines) get one tube down their middle
+      const dE = edt(W, H, (i) => mask[i] && din[i] > rPx);
+      const thinM = new Uint8Array(W * H); let any = 0;
+      for (let i = 0; i < W * H; i++) if (mask[i] && dE[i] > rPx + 1.5) { thinM[i] = 1; any++; }
+      if (any > 4) for (const P of maskToPaths(thinM, W, H, "center", rPx, smooth)) { let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (L > rPx * 2) loops.push(P); }
+      return loops;
+    }
+    const din = edt(W, H, (i) => !mask[i]);
+    let maxR = 0; for (let i = 0; i < W * H; i++) if (mask[i] && din[i] > maxR) maxR = din[i];
+    const img = new Uint8Array(mask);
+    thin(img, W, H);
+    let paths = traceSkeleton(img, W, H, Math.max(4, maxR * 1.6));
+    paths = joinPaths(paths, Math.max(4, maxR * 1.6));
+    return paths.map((P) => { const closed = isClosed(P); const Q = closed ? rdpLoop(P, 0.6) : rdp(P, 0.6); const C = chaikin(closed ? Q.slice(0, -1) : Q, smooth, closed); return closed ? [...C, C[0]] : C; }).filter((P) => P.length >= 2);
+  }
+
+  // ------------------------------------------------------------ distance to the tubes (2D grid)
+  // G: { x0, y0, c (cell mm), W, H }; paths in mm; returns Float32 distance (mm), capped at cap
+  function pathDistance(G, paths, cap) {
+    const D = new Float32Array(G.W * G.H).fill(cap);
+    for (const P of paths) for (let s = 0; s + 1 < P.length; s++) {
+      const ax = P[s][0], ay = P[s][1], bx = P[s + 1][0], by = P[s + 1][1], dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-12;
+      const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - cap - G.x0) / G.c)), i1 = Math.min(G.W - 1, Math.ceil((Math.max(ax, bx) + cap - G.x0) / G.c));
+      const j0 = Math.max(0, Math.floor((Math.min(ay, by) - cap - G.y0) / G.c)), j1 = Math.min(G.H - 1, Math.ceil((Math.max(ay, by) + cap - G.y0) / G.c));
+      for (let j = j0; j <= j1; j++) { const y = G.y0 + j * G.c; for (let i = i0; i <= i1; i++) { const x = G.x0 + i * G.c; let t = ((x - ax) * dx + (y - ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const d = Math.hypot(x - ax - t * dx, y - ay - t * dy); const k = j * G.W + i; if (d < D[k]) D[k] = d; } }
+    }
+    return D;
+  }
+
+  // ------------------------------------------------------------ the shell (3D, surface nets)
+  // T: tube settings { a: outer half width, Ho: outer height, ri: inner half width, Hi: inner height, bump }
+  function shellSDF(d, z, T) {
+    const oz = T.Ho - T.a, iz = T.Hi - T.ri;
+    const outer = z > oz ? Math.hypot(d, z - oz) - T.a : d - T.a;
+    const inner = z > iz ? Math.hypot(d, z - iz) - T.ri : d - T.ri;
+    let f = Math.max(outer, -inner, -z);
+    if (T.bump) {
+      // a small ridge round the bottom of the walls: it clicks into the groove's notch
+      const br = T.a + T.bump - Math.max(0, z - 1.3) * 0.9 - Math.max(0, 0.7 - z) * 0.9;
+      const b = Math.max(d - br, 0.25 - z, z - 1.9, -inner);
+      f = Math.min(f, b);
+    }
+    return f;
+  }
+  // surface nets over a 3D grid built slice by slice from a 2D distance grid
+  // clip(x, y): extra 2D field (negative inside) to cut a piece out (tiles); returns { pos: Float32Array, idx: Uint32Array }
+  function shellMesh(G, D, T, clip) {
+    const W = G.W, H = G.H, c = G.c, z0 = -1.5 * c, NZ = Math.ceil((T.Ho + 3 * c - z0) / c) + 1, BIG = 1e3;
+    const reach = T.a + T.bump + 2 * c;
+    const act = new Uint8Array(W * H);
+    const clipF = clip ? new Float32Array(W * H) : null;
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const k = j * W + i; if (D[k] < reach) { act[k] = 1; if (clipF) clipF[k] = clip(G.x0 + i * c, G.y0 + j * c); } }
+    const cube = new Uint8Array(W * H);
+    for (let j = 0; j < H - 1; j++) for (let i = 0; i < W - 1; i++) { const k = j * W + i; if (act[k] || act[k + 1] || act[k + W] || act[k + W + 1]) cube[k] = 1; }
+    const slice = (kz, out) => { const z = z0 + kz * c; for (let k = 0; k < W * H; k++) { if (!act[k]) { out[k] = BIG; continue; } let f = shellSDF(D[k], z, T); if (clipF) f = Math.max(f, clipF[k]); out[k] = f; } };
+    let A = new Float32Array(W * H), B = new Float32Array(W * H);
+    let prev = new Int32Array(W * H).fill(-1), cur = new Int32Array(W * H).fill(-1);
+    const pos = [], idx = [];
+    // corners: bit = dx + 2dy + 4dz
+    const CO = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
+    const ED = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+    const v = new Float32Array(8);
+    const quad = (a, b, cc, d, dir) => {
+      // two triangles, wound so the normal points along dir (towards the outside)
+      const P = (n) => [pos[n * 3], pos[n * 3 + 1], pos[n * 3 + 2]];
+      const pa = P(a), pb = P(b), pc = P(cc);
+      const nx = (pb[1] - pa[1]) * (pc[2] - pa[2]) - (pb[2] - pa[2]) * (pc[1] - pa[1]), ny = (pb[2] - pa[2]) * (pc[0] - pa[0]) - (pb[0] - pa[0]) * (pc[2] - pa[2]), nz = (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]);
+      if (nx * dir[0] + ny * dir[1] + nz * dir[2] >= 0) idx.push(a, b, cc, a, cc, d); else idx.push(a, cc, b, a, d, cc);
+    };
+    slice(0, A);
+    for (let kz = 0; kz < NZ - 1; kz++) {
+      slice(kz + 1, B);
+      cur.fill(-1);
+      const z = z0 + kz * c;
+      for (let j = 0; j < H - 1; j++) for (let i = 0; i < W - 1; i++) {
+        const k = j * W + i; if (!cube[k]) continue;
+        v[0] = A[k]; v[1] = A[k + 1]; v[2] = A[k + W]; v[3] = A[k + W + 1]; v[4] = B[k]; v[5] = B[k + 1]; v[6] = B[k + W]; v[7] = B[k + W + 1];
+        let m = 0; for (let q = 0; q < 8; q++) if (v[q] < 0) m |= 1 << q;
+        if (m === 0 || m === 255) continue;
+        let sx = 0, sy = 0, sz = 0, n = 0;
+        for (const [p, q] of ED) { const vp = v[p], vq = v[q]; if ((vp < 0) === (vq < 0)) continue; const t = vp / (vp - vq); sx += CO[p][0] + (CO[q][0] - CO[p][0]) * t; sy += CO[p][1] + (CO[q][1] - CO[p][1]) * t; sz += CO[p][2] + (CO[q][2] - CO[p][2]) * t; n++; }
+        cur[k] = pos.length / 3;
+        pos.push(G.x0 + (i + sx / n) * c, G.y0 + (j + sy / n) * c, z + (sz / n) * c);
+      }
+      // faces round each edge that crosses the surface (edges from corner 0 of each cube)
+      for (let j = 0; j < H - 1; j++) for (let i = 0; i < W - 1; i++) {
+        const k = j * W + i; if (cur[k] < 0) continue;
+        const v0 = A[k], inside0 = v0 < 0;
+        // x edge: cubes (i,j,k) (i,j-1,k) (i,j-1,k-1) (i,j,k-1)
+        if (j > 0 && kz > 0 && (A[k + 1] < 0) !== inside0) { const a = cur[k], b = cur[k - W], cc = prev[k - W], d = prev[k]; if (b >= 0 && cc >= 0 && d >= 0) quad(a, b, cc, d, inside0 ? [1, 0, 0] : [-1, 0, 0]); }
+        // y edge: cubes (i,j,k) (i-1,j,k) (i-1,j,k-1) (i,j,k-1)
+        if (i > 0 && kz > 0 && (A[k + W] < 0) !== inside0) { const a = cur[k], b = cur[k - 1], cc = prev[k - 1], d = prev[k]; if (b >= 0 && cc >= 0 && d >= 0) quad(a, b, cc, d, inside0 ? [0, 1, 0] : [0, -1, 0]); }
+        // z edge: cubes (i,j,k) (i-1,j,k) (i-1,j-1,k) (i,j-1,k)
+        if (i > 0 && j > 0 && (B[k] < 0) !== inside0) { const a = cur[k], b = cur[k - 1], cc = cur[k - 1 - W], d = cur[k - W]; if (b >= 0 && cc >= 0 && d >= 0) quad(a, b, cc, d, inside0 ? [0, 0, 1] : [0, 0, -1]); }
+      }
+      [A, B] = [B, A]; [prev, cur] = [cur, prev];
+    }
+    return { pos: new Float32Array(pos), idx: new Uint32Array(idx) };
+  }
+
+  // ------------------------------------------------------------ the backing (2D layers)
+  // F: Float32 field on grid G (negative inside); extruded between z0 and z1; returns triangles (flat array)
+  function extrudeField(G, F, z0, z1, out) {
+    const loops = contours(F, G.W, G.H).map((L) => rdpLoop([...L, L[0]], 0.08).slice(0, -1)).filter((L) => L.length >= 3).map((L) => L.map(([x, y]) => [G.x0 + x * G.c, G.y0 + y * G.c]));
+    const area = (L) => { let s = 0; for (let i = 0; i < L.length; i++) { const a = L[i], b = L[(i + 1) % L.length]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; };
+    const inside = (p, L) => { let c = false; for (let i = 0, j = L.length - 1; i < L.length; j = i++) if ((L[i][1] > p[1]) !== (L[j][1] > p[1]) && p[0] < ((L[j][0] - L[i][0]) * (p[1] - L[i][1])) / (L[j][1] - L[i][1]) + L[i][0]) c = !c; return c; };
+    // outer loops and holes by how deeply each is nested; outers anticlockwise, holes clockwise
+    const all = loops.filter((L) => Math.abs(area(L)) > 0.3).map((L) => ({ L, a: Math.abs(area(L)) }));
+    const groups = [];
+    for (const q of all) {
+      const depth = all.filter((o) => o !== q && o.a > q.a && inside(q.L[0], o.L)).length;
+      q.hole = depth % 2 === 1;
+      if ((area(q.L) > 0) === q.hole) q.L.reverse();
+    }
+    for (const q of all) if (!q.hole) groups.push({ o: q.L, a: q.a, h: [] });
+    groups.sort((p, q) => p.a - q.a);
+    for (const q of all) if (q.hole) { const g = groups.find((G0) => G0.a > q.a && inside(q.L[0], G0.o)); if (g) g.h.push(q.L); }
+    const V2 = (p) => new THREE.Vector2(p[0], p[1]);
+    const tri = (a, b, c) => out.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+    const flat = (a, b, c, z, up) => { const cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); if ((cr > 0) === up) tri([a[0], a[1], z], [b[0], b[1], z], [c[0], c[1], z]); else tri([a[0], a[1], z], [c[0], c[1], z], [b[0], b[1], z]); };
+    for (const g of groups) {
+      const pts = [...g.o, ...g.h.flat()];
+      const faces = THREE.ShapeUtils.triangulateShape(g.o.map(V2), g.h.map((h) => h.map(V2)));
+      for (const [a, b, c] of faces) { flat(pts[a], pts[b], pts[c], z1, true); flat(pts[a], pts[b], pts[c], z0, false); }
+      for (const L of [g.o, ...g.h]) for (let i = 0; i < L.length; i++) {
+        const p = L[i], q = L[(i + 1) % L.length];
+        tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1]);
+        tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]);
+      }
+    }
+    return out;
+  }
+
+  // a solid made of flat layers stacked up (each a region of the grid, from z0 to z1), as one closed
+  // mesh: walls round each layer, the bottom and top, and at each step only where the layers differ
+  function stackLayers(G, layers, prims, out) {
+    const tri = (a, b, c) => out.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+    const area = (L) => { let s2 = 0; for (let i = 0; i < L.length; i++) { const a = L[i], b = L[(i + 1) % L.length]; s2 += a[0] * b[1] - b[0] * a[1]; } return s2 / 2; };
+    const inside = (p, L) => { let c = false; for (let i = 0, j = L.length - 1; i < L.length; j = i++) if ((L[i][1] > p[1]) !== (L[j][1] > p[1]) && p[0] < ((L[j][0] - L[i][0]) * (p[1] - L[i][1])) / (L[j][1] - L[i][1]) + L[i][0]) c = !c; return c; };
+    const regions = (F, pr) => {
+      const all = contours(F, G.W, G.H, pr).filter((L) => L.length >= 3).map((L) => { const M = L.map(([x, y]) => [G.x0 + x * G.c, G.y0 + y * G.c]); return { L: M, s: area(M) }; }).filter((q) => Math.abs(q.s) > 1e-4);
+      // outer loops and holes by how deeply each is nested: outers anticlockwise, holes clockwise
+      for (const q of all) { q.a = Math.abs(q.s); }
+      for (const q of all) { q.hole = all.filter((o) => o !== q && o.a > q.a && inside(q.L[0], o.L)).length % 2 === 1; if ((q.s > 0) === q.hole) q.L.reverse(); }
+      const outers = all.filter((q) => !q.hole).sort((p, q) => p.a - q.a).map((q) => ({ o: q.L, a: q.a, h: [] }));
+      for (const q of all) if (q.hole) { const g = outers.find((G0) => G0.a > q.a && inside(q.L[0], G0.o)); if (g) g.h.push(q.L); }
+      return outers;
+    };
+    const cap = (F, z, up, pr) => {
+      for (const g of regions(F, pr)) {
+        const pts = [...g.o, ...g.h.flat()];
+        let faces = [];
+        // a tiny fixed nudge so the triangulator keeps points in a straight line (the walls use them)
+        const V = (p) => { const h = Math.sin(p[0] * 12.9898 + p[1] * 78.233) * 43758.5453; const r = h - Math.floor(h); return new THREE.Vector2(p[0] + (r - 0.5) * 2e-5, p[1] + (((r * 7.31) % 1) - 0.5) * 2e-5); };
+        try { faces = THREE.ShapeUtils.triangulateShape(g.o.map(V), g.h.map((h) => h.map(V))); } catch (e) {}
+        for (const [a, b, c] of faces) { const A = pts[a], B = pts[b], C = pts[c], cr = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]); if ((cr > 0) === up) tri([A[0], A[1], z], [B[0], B[1], z], [C[0], C[1], z]); else tri([A[0], A[1], z], [C[0], C[1], z], [B[0], B[1], z]); }
+      }
+    };
+    const walls = (F, z0, z1, pr) => {
+      for (const g of regions(F, pr)) for (const L of [g.o, ...g.h]) for (let i = 0; i < L.length; i++) {
+        const p = L[i], q = L[(i + 1) % L.length];
+        tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1]);
+        tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]);
+      }
+    };
+    const n = G.W * G.H;
+    // each layer names the fields it is made from (indices into prims), in the same order
+    const pr = (L) => L.p.map((i) => prims[i]), both = (A, B) => [...new Set([...A.p, ...B.p])].sort((a, b) => a - b).map((i) => prims[i]);
+    cap(layers[0].F, layers[0].z0, false, pr(layers[0]));
+    for (let k = 0; k < layers.length; k++) {
+      walls(layers[k].F, layers[k].z0, layers[k].z1, pr(layers[k]));
+      if (k + 1 < layers.length) {
+        const A = layers[k].F, B = layers[k + 1].F, U = new Float32Array(n), D2 = new Float32Array(n);
+        for (let i = 0; i < n; i++) { U[i] = Math.max(A[i], -B[i]); D2[i] = Math.max(B[i], -A[i]); }
+        const pb = both(layers[k], layers[k + 1]);
+        cap(U, layers[k].z1, true, pb); cap(D2, layers[k].z1, false, pb);
+      }
+    }
+    const L = layers[layers.length - 1]; cap(L.F, L.z1, true, pr(L));
+    return out;
+  }
+
+  // ------------------------------------------------------------ simple shapes' signed distance
+  const sdBox = (x, y, cx, cy, hw, hh, r = 0) => { const qx = Math.abs(x - cx) - hw + r, qy = Math.abs(y - cy) - hh + r; return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r; };
+  const sdEll = (x, y, cx, cy, rx, ry) => { const k = Math.min(rx, ry); return (Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * k; };
+  // a convex polygon (anticlockwise): the largest distance outside any edge
+  const sdPoly = (x, y, P) => { let m = -Infinity; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey) || 1; const d = ((x - a[0]) * ey - (y - a[1]) * ex) / L; if (d > m) m = d; } return m; };
+
+  return { rdpLoop, edt, thin, traceSkeleton, contours, rdp, chaikin, maskToPaths, pathDistance, shellSDF, shellMesh, extrudeField, stackLayers, sdBox, sdEll, sdPoly, isClosed };
+})();
+
+</script>
+<script>
+(() => {
+  const P = (() => { try { return window.parent !== window ? window.parent : null; } catch (e) { return null; } })();
+  const $ = (s) => document.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k.startsWith("on")) e[k] = v; else if (k === "style" && typeof v === "object") Object.assign(e.style, v); else if (k === "html") e.innerHTML = v; else e.setAttribute(k, v === true ? "" : v);
+    }
+    for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+    return e;
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const uid = () => Math.random().toString(36).slice(2, 9);
+
+  // ------------------------------------------------------------ catalogs
+  const FONTS = [
+    { id: "neon80", name: "Neon '80s script", key: "dancing", mode: "center", note: "The classic glowing script: one tube follows each stroke" },
+    { id: "surf", name: "Surf script", key: "pacifico", mode: "center" },
+    { id: "boldscript", name: "Bold script", key: "lobster", mode: "center" },
+    { id: "rounded", name: "Rounded", key: "varela", mode: "center" },
+    { id: "block", name: "Tall block capitals", key: "bebas", mode: "center" },
+    { id: "marquee", name: "Marquee", key: "bungee", mode: "outline" },
+    { id: "scifi", name: "Sci-fi", key: "orbitron", mode: "center" },
+    { id: "future", name: "Futuristic", key: "audiowide", mode: "center" },
+    { id: "bubbly", name: "Bubbly", key: "fredoka", mode: "outline" },
+    { id: "marker", name: "Marker pen", key: "marker", mode: "center" },
+    { id: "hand", name: "Handwriting", key: "caveat", mode: "center" },
+    { id: "sans", name: "Clean sans", key: "sans", mode: "center" },
+  ];
+  // shapes: centre lines in a 100 × 100 box (y down), as SVG paths
+  const SHAPES = [
+    { id: "heart", name: "Heart", d: "M50 88 C20 66 6 48 10 30 C14 12 38 8 50 28 C62 8 86 12 90 30 C94 48 80 66 50 88 Z" },
+    { id: "star", name: "Star", d: "M50 6 L61 38 L95 38 L67 58 L78 92 L50 71 L22 92 L33 58 L5 38 L39 38 Z" },
+    { id: "circle", name: "Ring", d: "M50 6 A44 44 0 1 1 49.9 6 Z" },
+    { id: "bolt", name: "Lightning", d: "M58 4 L24 54 L48 54 L38 96 L76 40 L52 40 L66 4 Z" },
+    { id: "moon", name: "Moon", d: "M64 8 A42 42 0 1 0 92 70 A34 34 0 1 1 64 8 Z" },
+    { id: "arrow", name: "Arrow", d: "M6 50 L82 50 M62 28 L86 50 L62 72" },
+    { id: "cloud", name: "Cloud", d: "M24 76 C8 76 6 54 22 50 C20 32 44 26 52 40 C58 24 84 28 82 48 C98 50 96 76 78 76 Z" },
+    { id: "note", name: "Music note", d: "M36 80 A10 8 0 1 1 35.9 80 M46 80 L46 18 L82 10 L82 70 M82 70 A10 8 0 1 1 81.9 70" },
+    { id: "smile", name: "Smiley", d: "M50 6 A44 44 0 1 1 49.9 6 Z M30 60 C40 76 60 76 70 60 M36 36 L36 42 M64 36 L64 42" },
+    { id: "flame", name: "Flame", d: "M50 94 C24 94 14 70 26 50 C32 40 30 28 38 18 C40 34 50 38 54 30 C58 22 54 12 60 6 C76 24 90 46 82 70 C76 86 64 94 50 94 Z" },
+    { id: "cocktail", name: "Cocktail", d: "M12 14 L88 14 L50 56 Z M50 56 L50 88 M30 90 L70 90 M70 6 L56 30" },
+    { id: "palm", name: "Palm tree", d: "M46 94 C50 70 50 50 48 30 M48 30 C36 18 18 20 8 30 M48 30 C46 14 60 6 72 8 M48 30 C64 22 82 28 92 40 M48 30 C40 40 30 46 22 58 M48 30 C58 40 66 50 70 62" },
+    { id: "sun", name: "Sun", d: "M50 28 A22 22 0 1 1 49.9 28 Z M50 4 L50 16 M50 84 L50 96 M4 50 L16 50 M84 50 L96 50 M17 17 L26 26 M74 74 L83 83 M83 17 L74 26 M26 74 L17 83" },
+    { id: "diamond", name: "Diamond", d: "M30 12 L70 12 L92 36 L50 90 L8 36 Z M8 36 L92 36" },
+    { id: "cactus", name: "Cactus", d: "M42 94 L42 16 C42 8 58 8 58 16 L58 94 M42 56 L26 56 C20 56 20 48 20 40 L20 30 M58 44 L74 44 C80 44 80 36 80 30 L80 22" },
+    { id: "wave", name: "Wave", d: "M4 50 C16 30 28 30 38 50 C48 70 60 70 70 50 C80 30 90 30 96 46" },
+    { id: "swash", name: "Underline swash", d: "M4 60 C30 52 60 50 96 44 C80 52 70 58 66 66" },
+    { id: "frame", name: "Rounded frame", d: "M14 10 L86 10 C92 10 96 14 96 20 L96 80 C96 86 92 90 86 90 L14 90 C8 90 4 86 4 80 L4 20 C4 14 8 10 14 10 Z" },
+    { id: "pizza", name: "Pizza slice", d: "M10 14 C40 4 70 6 92 18 L50 94 Z M40 30 A6 6 0 1 1 39.9 30 M62 40 A6 6 0 1 1 61.9 40 M50 62 A5 5 0 1 1 49.9 62" },
+    { id: "coffee", name: "Coffee cup", d: "M18 40 L74 40 L66 88 L26 88 Z M74 50 C92 50 92 72 70 72 M36 32 C30 24 42 18 36 8 M54 32 C48 24 60 18 54 8" },
+  ];
+  const STRIPS = [
+    { id: "flex6", name: "Neon flex 6 × 12 mm (top glow)", w: 6, h: 12, gap: 2, note: "Silicone neon flex that bends sideways: the best for curly script." },
+    { id: "flex8", name: "Neon flex 8 × 16 mm (top glow)", w: 8, h: 16, gap: 2, note: "A thicker neon flex: bolder lines, a bit less bendy." },
+    { id: "cob5", name: "COB LED strip 5 mm", w: 5, h: 2, gap: 10, note: "Thin dot-free strip lying flat; the shell's height spreads the light. Use side-bend (S-shaped) strips for curves." },
+    { id: "cob8", name: "COB LED strip 8 mm", w: 8, h: 2, gap: 11, note: "Standard 8 mm COB strip, lying flat under the diffuser." },
+    { id: "rgb10", name: "RGB LED strip 10 mm (5050)", w: 10, h: 3, gap: 13, note: "Colour-changing RGB strip. Its dots need a taller shell to blend." },
+    { id: "rgb12", name: "RGBW LED strip 12 mm", w: 12, h: 3, gap: 14, note: "Wide RGBW strip: big letters and shapes." },
+    { id: "custom", name: "My own strip size", w: 8, h: 3, gap: 10 },
+  ];
+  const TEMPLATES = [
+    { id: "contour", name: "Follows the design", note: "Cut to the shape of the sign, like real neon on acrylic" },
+    { id: "rrect", name: "Rounded rectangle" }, { id: "rect", name: "Rectangle" }, { id: "pill", name: "Pill" },
+    { id: "circle", name: "Circle" }, { id: "oval", name: "Oval" }, { id: "arch", name: "Arch top" }, { id: "hex", name: "Hexagon" },
+    { id: "cloud", name: "Cloud" }, { id: "bubble", name: "Speech bubble" }, { id: "none", name: "No backing (shells only)" }, { id: "import", name: "From my design" },
+  ];
+  const COLORS = [["Hot pink", "#ff2bd6"], ["Red", "#ff1e3c"], ["Orange", "#ff7a1a"], ["Yellow", "#ffe14d"], ["Lime", "#b6ff3b"], ["Green", "#2bff7a"], ["Ice blue", "#7df9ff"], ["Electric blue", "#2e6bff"], ["Purple", "#a34bff"], ["Warm white", "#ffd9a0"], ["Cool white", "#eaf4ff"]];
+  const PATTERNS = [["steady", "Steady"], ["breathe", "Breathe (slow pulse)"], ["blink", "Blink"], ["flicker", "Old neon flicker"], ["chase", "Chase"], ["sequence", "One at a time"], ["writeon", "Writes itself on"], ["strobe", "Strobe (3 flashes a second)"], ["rainbow", "RGB rainbow"], ["wave", "RGB colour wave"]];
+  let PRINTERS = [{ id: "a1", name: "Bambu Lab A1 / P1 / X1 (256 × 256)", w: 256, d: 256 }, { id: "mini", name: "Prusa MINI (180 × 180)", w: 180, d: 180 }, { id: "ender3", name: "Creality Ender-3 (220 × 220)", w: 220, d: 220 }, { id: "big", name: "Large (350 × 350)", w: 350, d: 350 }];
+
+  // ------------------------------------------------------------ state
+  const S = {
+    tab: "design", sel: null,
+    items: [],
+    tube: { strip: "flex6", w: 6, h: 12, gap: 2, wall: 1.2, top: 1.6, clr: 0.3, snap: true },
+    back: { tpl: "contour", margin: 14, thick: 6, groove: 3, col: "#1c1c26", holes: true, hang: true, imp: null, impName: "" },
+    print: { printer: "a1", w: 256, d: 256, split: true, dove: true },
+    light: { on: false, pattern: "steady", speed: 1, bright: 1, mode: "item", color: "#ff2bd6" },
+    explode: false,
+  };
+  const defaultItems = () => [
+    { id: uid(), type: "text", text: "Good Vibes", font: "neon80", mode: "center", size: 70, x: 0, y: 12, rot: 0, color: "#ff2bd6" },
+    { id: uid(), type: "shape", shape: "swash", size: 34, x: 8, y: -42, rot: 0, color: "#00f0ff", w: 1.9 },
+  ];
+  S.items = defaultItems();
+  S.sel = S.items[0].id;
+  const selItem = () => S.items.find((q) => q.id === S.sel);
+  // traced pictures are kept once here (an item names its picture); undo steps and copies share them
+  const IMGS = new Map(), IMPS = new Map();
+  const addImg = (src) => new Promise((res) => { if (!/^data:image\//.test(String(src))) return res(null); /* jumpstart-3d: only pictures inside the file (a project file could name a web address) */ for (const [k, v] of IMGS) if (v.src === src) return res(k); const k = "img" + uid(), el2 = new Image(); el2.onload = () => { IMGS.set(k, { src, el: el2 }); res(k); }; el2.onerror = () => res(null); el2.src = src; });
+  const imgEl = (k) => (IMGS.get(k) || {}).el;
+  const impKey = (imp) => { for (const [k, v] of IMPS) if (v === imp) return k; const k = "imp" + uid(); IMPS.set(k, imp); return k; };
+
+  // ------------------------------------------------------------ fonts (sent by JumpStart 3D)
+  const fontReady = new Map();
+  async function loadFonts(map) {
+    for (const [key, b64] of Object.entries(map || {})) {
+      try {
+        let u8; if (typeof b64 === "string") { const bin = atob(b64); u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); } else u8 = new Uint8Array(b64 instanceof ArrayBuffer ? b64 : b64.buffer.slice(b64.byteOffset, b64.byteOffset + b64.byteLength));
+        const ff = new FontFace("nf_" + key, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); await ff.load(); document.fonts.add(ff); fontReady.set(key, true);
+      } catch (e) { /* that font stays out */ }
+    }
+    pathCache.clear(); schedule();
+  }
+  const fontFamily = (id) => { const F = FONTS.find((f) => f.id === id) || FONTS[0]; return fontReady.has(F.key) ? '"nf_' + F.key + '"' : F.key === "sans" ? "system-ui, sans-serif" : /script|surf/.test(F.name.toLowerCase()) ? "cursive" : "sans-serif"; };
+
+  // ------------------------------------------------------------ items to centre lines (mm)
+  const pathCache = new Map();
+  const T = () => { const t = S.tube, ri = t.w / 2 + t.clr; return { ri, Hi: t.h + t.gap, a: ri + t.wall, Ho: t.h + t.gap + t.top, bump: t.snap ? 0.45 : 0 }; };
+  function itemPaths(it) {
+    const key = JSON.stringify([it.type, it.text, it.font, it.mode, it.size, it.shape, it.img && it.img.length, it.thr, it.inv, it.detail, it.w, T().a, fontReady.size]);
+    let base = pathCache.get(it.id);
+    if (!base || base.key !== key) { base = { key, paths: rawPaths(it) }; pathCache.set(it.id, base); }
+    const c = Math.cos((it.rot * Math.PI) / 180), s = Math.sin((it.rot * Math.PI) / 180);
+    return base.paths.map((P0) => P0.map(([x, y]) => [it.x + x * c - y * s, it.y + x * s + y * c]));
+  }
+  // a mask of ink (canvas) to paths in mm, centred
+  function canvasPaths(cv, mode, mmPerPx, rMm, smooth) {
+    const W = cv.width, H = cv.height, d = cv.getContext("2d").getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) mask[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+    const paths = NG.maskToPaths(mask, W, H, mode, rMm / mmPerPx, smooth);
+    return paths.map((P0) => P0.map(([x, y]) => [(x - W / 2) * mmPerPx, -(y - H / 2) * mmPerPx]));
+  }
+  function rawPaths(it) {
+    if (it.type === "text") {
+      const lines = String(it.text || "").split("\n").filter((l) => l.trim().length);
+      if (!lines.length) return [];
+      const fam = fontFamily(it.font), px = 150, cv = document.createElement("canvas"), g = cv.getContext("2d");
+      g.font = `${px}px ${fam}`;
+      const capPx = (g.measureText("H").actualBoundingBoxAscent || px * 0.7), lh = px * 1.15;
+      const W = Math.ceil(Math.max(...lines.map((l) => g.measureText(l).width)) + px * 0.6), H = Math.ceil(lh * lines.length + px * 0.5);
+      cv.width = W; cv.height = H;
+      g.font = `${px}px ${fam}`; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = "#000";
+      lines.forEach((l, i) => g.fillText(l, W / 2, px * 0.25 + capPx + i * lh + (lh - px) / 2));
+      const k = it.size / capPx;
+      const paths = canvasPaths(cv, it.mode || "center", k, T().a, 2);
+      return centre(paths);
+    }
+    if (it.type === "shape") {
+      const sh = SHAPES.find((q) => q.id === it.shape) || SHAPES[0], out = [];
+      const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"), p = document.createElementNS(NS, "path");
+      svg.style.position = "absolute"; svg.style.width = svg.style.height = "0"; svg.append(p); document.body.append(svg);
+      // each sub-path ("M …") separately
+      for (const sub of sh.d.split(/(?=M)/)) {
+        p.setAttribute("d", sub);
+        const L = p.getTotalLength(), n = Math.max(8, Math.ceil(L / 1.2)), pts = [];
+        for (let i = 0; i <= n; i++) { const q = p.getPointAtLength((L * i) / n); pts.push([(q.x - 50) * (it.size / 100) * (it.w || 1), -(q.y - 50) * (it.size / 100)]); }
+        if (/Z\s*$/i.test(sub)) pts[pts.length - 1] = pts[0].slice();
+        out.push(pts);
+      }
+      svg.remove();
+      return out;
+    }
+    if (it.type === "trace" && it.imgEl) {
+      const im = it.imgEl, sc = Math.min(1, 520 / Math.max(im.naturalWidth, im.naturalHeight)), W = Math.max(8, Math.round(im.naturalWidth * sc)), H = Math.max(8, Math.round(im.naturalHeight * sc));
+      const src = document.createElement("canvas"); src.width = W; src.height = H; const g = src.getContext("2d"); g.drawImage(im, 0, 0, W, H);
+      const d = g.getImageData(0, 0, W, H), o = document.createElement("canvas"); o.width = W + 8; o.height = H + 8;
+      const og = o.getContext("2d"), od = og.createImageData(W + 8, H + 8);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4, a = d.data[i + 3] / 255, lum = (0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]) / 255 * a + (1 - a);
+        let ink = lum < (it.thr ?? 0.5); if (it.inv) ink = !ink && a > 0.1;
+        if (ink) od.data[((y + 4) * (W + 8) + x + 4) * 4 + 3] = 255;
+      }
+      og.putImageData(od, 0, 0);
+      const k = it.size / H;
+      return centre(canvasPaths(o, it.mode || "outline", k, T().a, it.detail ?? 2).filter((P0) => P0.length > 3));
+    }
+    return [];
+  }
+  function centre(paths) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const P0 of paths) for (const [x, y] of P0) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (!isFinite(x0)) return paths;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    return paths.map((P0) => P0.map(([x, y]) => [x - cx, y - cy]));
+  }
+  // every tube of the sign: { pts, item, idx }
+  function allTubes() {
+    const out = [];
+    for (const it of S.items) for (const P0 of itemPaths(it)) if (P0.length >= 2) out.push({ pts: P0, item: it, idx: out.length });
+    return out;
+  }
+  // the tightest bend in a set of paths (mm), measured over about 8 mm
+  function tightest(tubes) {
+    let r = Infinity;
+    for (const t of tubes) {
+      const P0 = t.pts; let acc = [P0[0]];
+      for (const p of P0) { const q = acc[acc.length - 1]; if (Math.hypot(p[0] - q[0], p[1] - q[1]) >= 8) acc.push(p); }
+      for (let i = 1; i + 1 < acc.length; i++) {
+        const a = acc[i - 1], b = acc[i], c = acc[i + 1];
+        const ab = Math.hypot(b[0] - a[0], b[1] - a[1]), bc = Math.hypot(c[0] - b[0], c[1] - b[1]), ca = Math.hypot(a[0] - c[0], a[1] - c[1]);
+        const area2 = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+        if (area2 > 1e-6) r = Math.min(r, (ab * bc * ca) / (2 * area2));
+      }
+    }
+    return r;
+  }
+
+  // ------------------------------------------------------------ building the parts
+  let built = null, buildToken = 0;
+  const schedule = (() => { let t = 0; return (fast) => { clearTimeout(t); t = setTimeout(() => build(fast !== false), 250); }; })();
+  async function build(preview = true) {
+    const token = ++buildToken;
+    $("#busy").hidden = false;
+    await new Promise((r) => setTimeout(r, 20));
+    try {
+      const tubes = allTubes(), Tt = T();
+      if (!tubes.length) { built = { tubes, pieces: [], T: Tt }; show(); return built; }
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const t of tubes) for (const [x, y] of t.pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+      const B = S.back, pad = Tt.a + B.margin + Math.max(8, B.margin * 1.2) + 16;
+      // final: fine enough that the diffuser wall is over two cells thick (a thinner wall can come out non-manifold)
+      let c = preview ? clamp(Tt.a / 4.5, 0.45, 1.4) : clamp(Math.min(Tt.a / 7, S.tube.wall / 2.3), 0.3, 0.9);
+      while (((x1 - x0 + 2 * pad) / c) * ((y1 - y0 + 2 * pad) / c) > (preview ? 1.6e6 : 5e6)) c *= 1.15;
+      const G = { x0: x0 - pad, y0: y0 - pad, c, W: Math.ceil((x1 - x0 + 2 * pad) / c) + 1, H: Math.ceil((y1 - y0 + 2 * pad) / c) + 1 };
+      const D = NG.pathDistance(G, tubes.map((t) => t.pts), Tt.a + B.margin + 30);
+      // the backing's outline as a field on the grid (negative inside)
+      const plate = plateField(G, D, Tt, { x0: x0 - Tt.a - B.margin, x1: x1 + Tt.a + B.margin, y0: y0 - Tt.a - B.margin, y1: y1 + Tt.a + B.margin });
+      const holes = holeField(G, tubes, plate, Tt);
+      // the pieces: one, or a grid of tiles that each fit the bed (backing joined by dovetails)
+      let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
+      if (plate) for (let j = 0; j < G.H; j++) for (let i = 0; i < G.W; i++) if (plate[j * G.W + i] < 0) { const x = G.x0 + i * c, y = G.y0 + j * c; bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); by0 = Math.min(by0, y); by1 = Math.max(by1, y); }
+      if (!isFinite(bx0)) { bx0 = x0 - Tt.a - 2; bx1 = x1 + Tt.a + 2; by0 = y0 - Tt.a - 2; by1 = y1 + Tt.a + 2; }
+      const bed = { w: S.print.w - 8, d: S.print.d - 8 };
+      const nx = S.print.split ? Math.max(1, Math.ceil((bx1 - bx0) / bed.w)) : 1, ny = S.print.split ? Math.max(1, Math.ceil((by1 - by0) / bed.d)) : 1;
+      const tiles = makeTiles(bx0, bx1, by0, by1, nx, ny, plate, G);
+      const pieces = [];
+      const zF = B.thick - B.groove;
+      for (const tl of tiles) {
+        if (token !== buildToken) return null;
+        $("#busy").textContent = `Building piece ${pieces.length / 2 + 1} of ${tiles.length}…`;
+        await new Promise((r) => setTimeout(r, 0));
+        // the shells: cut straight at the tile's edges
+        const sub = subGrid(G, D, tl.rx0 - Tt.a - 2, tl.rx1 + Tt.a + 2, tl.ry0 - Tt.a - 2, tl.ry1 + Tt.a + 2);
+        if (sub) {
+          const m = NG.shellMesh(sub.G, sub.D, Tt, nx * ny > 1 ? (x, y) => NG.sdBox(x, y, (tl.rx0 + tl.rx1) / 2, (tl.ry0 + tl.ry1) / 2, (tl.rx1 - tl.rx0) / 2 - 0.1, (tl.ry1 - tl.ry0) / 2 - 0.1) : null);
+          if (m.idx.length) pieces.push({ kind: "shell", name: "Shells " + tl.name, tile: tl, mesh: m, z: S.back.tpl === "none" ? 0 : zF });
+        }
+        // the backing: stacked layers, each a flat outline extruded
+        if (plate) {
+          const tri = [];
+          const sg = subGrid(G, null, tl.bx0 - 2, tl.bx1 + 2, tl.by0 - 2, tl.by1 + 2);
+          if (sg) {
+            // the snap recess is at least a grid cell wide (narrower steps cannot be traced)
+            const recess = Tt.bump ? Math.max(Tt.bump + 0.15, sg.G.c * 1.2) : 0;
+            const Gs = sg.G, n = Gs.W * Gs.H, base = new Float32Array(n), F1 = new Float32Array(n), F2 = new Float32Array(n), PP = new Float32Array(n), PH = new Float32Array(n).fill(-1e3), PT = new Float32Array(n), G1 = new Float32Array(n), G2 = new Float32Array(n);
+            for (let j = 0; j < Gs.H; j++) for (let i = 0; i < Gs.W; i++) {
+              const k = j * Gs.W + i, gk = (j + sg.j0) * G.W + (i + sg.i0), x = Gs.x0 + i * Gs.c, y = Gs.y0 + j * Gs.c;
+              // nothing exactly 0 (the crossings are found by sign)
+              const nz = (v) => (v === 0 ? 1e-4 : v);
+              PP[k] = i === 0 || j === 0 || i === Gs.W - 1 || j === Gs.H - 1 ? Math.max(0.5, plate[gk]) : nz(plate[gk]); if (holes) PH[k] = nz(holes[gk]); PT[k] = nz(tl.field(x, y));
+              G1[k] = nz(-(D[gk] - (Tt.a + S.tube.clr))); G2[k] = nz(-(D[gk] - (Tt.a + S.tube.clr + recess)));
+              const f = Math.max(PP[k], PH[k], PT[k]);
+              base[k] = f; F1[k] = Math.max(f, G1[k]); F2[k] = Math.max(f, G2[k]);
+            }
+            const prims = [PP, PH, PT, G1, G2];
+            const L0 = { F: base, z0: 0, z1: zF, p: [0, 1, 2] }, L1 = (z0, z1) => ({ F: F1, z0, z1, p: [0, 1, 2, 3] });
+            // a straight-sided groove: the shell's snap ridge squeezes past its edge and holds
+            NG.stackLayers(Gs, [L0, L1(zF, B.thick)], prims, tri);
+          }
+          if (tri.length) { const q = { kind: "back", name: "Backing " + tl.name, tile: tl, soup: new Float32Array(tri) }, bb = bounds(q); if (tiles.length === 1 || (bb[3] - bb[0] > 12 && bb[4] - bb[1] > 12)) pieces.push(q); }
+        }
+      }
+      if (token !== buildToken) return null;
+      pieces.sort((p, q) => (p.tile.name < q.tile.name ? -1 : p.tile.name > q.tile.name ? 1 : p.kind === "back" ? -1 : 1));
+      built = { tubes, pieces, T: Tt, tiles, nx, ny, size: [bx1 - bx0, by1 - by0], preview, bend: tightest(tubes), zF };
+      show();
+      return built;
+    } finally { if (token === buildToken) { $("#busy").hidden = true; $("#busy").textContent = "Building…"; } }
+  }
+  // a window of the grid (and its distance values)
+  function subGrid(G, D, x0, x1, y0, y1) {
+    const i0 = clamp(Math.floor((x0 - G.x0) / G.c), 0, G.W - 1), i1 = clamp(Math.ceil((x1 - G.x0) / G.c), 0, G.W - 1), j0 = clamp(Math.floor((y0 - G.y0) / G.c), 0, G.H - 1), j1 = clamp(Math.ceil((y1 - G.y0) / G.c), 0, G.H - 1);
+    if (i1 - i0 < 2 || j1 - j0 < 2) return null;
+    const W = i1 - i0 + 1, H = j1 - j0 + 1, Gs = { x0: G.x0 + i0 * G.c, y0: G.y0 + j0 * G.c, c: G.c, W, H };
+    let Ds = null;
+    if (D) { Ds = new Float32Array(W * H); for (let j = 0; j < H; j++) Ds.set(D.subarray((j + j0) * G.W + i0, (j + j0) * G.W + i0 + W), j * W); }
+    return { G: Gs, D: Ds, i0, j0 };
+  }
+  // the backing's outline: a template round the design, the design's own shape, or a body from the design
+  function plateField(G, D, Tt, bb) {
+    const B = S.back, n = G.W * G.H, F = new Float32Array(n);
+    if (B.tpl === "none") return null;
+    const cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2, hw = (bb.x1 - bb.x0) / 2, hh = (bb.y1 - bb.y0) / 2;
+    if (B.tpl === "contour" || (B.tpl === "import" && !B.imp)) {
+      // the tubes grown by the margin, with the gaps between letters closed up
+      const R = Math.max(8, B.margin * 1.2), grow = Tt.a + B.margin + R;
+      const din = NG.edt(G.W, G.H, (i) => D[i] >= grow);
+      for (let i = 0; i < n; i++) F[i] = D[i] >= grow ? R : R - din[i] * G.c;
+      return F;
+    }
+    if (B.tpl === "import") {
+      // a body's outline seen from above, stretched to fit round the design
+      const I = B.imp, sc = Math.max((2 * hw) / I.w, (2 * hh) / I.h);
+      const site = (i) => { const x = G.x0 + (i % G.W) * G.c, y = G.y0 + ((i / G.W) | 0) * G.c; const u = Math.floor((x - cx) / sc + I.w / 2), v = Math.floor((y - cy) / sc + I.h / 2); return !(u >= 0 && v >= 0 && u < I.w && v < I.h && I.mask[v * I.w + u]); };
+      const dOut = NG.edt(G.W, G.H, (i) => !site(i)), dIn = NG.edt(G.W, G.H, site);
+      for (let i = 0; i < n; i++) F[i] = site(i) ? dOut[i] * G.c : -dIn[i] * G.c;
+      return F;
+    }
+    const r = Math.min(hw, hh);
+    for (let j = 0; j < G.H; j++) for (let i = 0; i < G.W; i++) {
+      const x = G.x0 + i * G.c, y = G.y0 + j * G.c; let f;
+      switch (B.tpl) {
+        case "rect": f = NG.sdBox(x, y, cx, cy, hw, hh, 2); break;
+        case "rrect": f = NG.sdBox(x, y, cx, cy, hw, hh, Math.min(28, r * 0.35)); break;
+        case "pill": f = NG.sdBox(x, y, cx, cy, hw + r * 0.3, hh, r); break;
+        case "circle": f = Math.hypot(x - cx, y - cy) - Math.hypot(hw, hh); break;
+        case "oval": f = NG.sdEll(x, y, cx, cy, hw * 1.32, hh * 1.32); break;
+        case "arch": { const a = NG.sdBox(x, y, cx, cy - hh * 0.15, hw, hh * 0.85, 3), b = Math.hypot(x - cx, y - (cy + hh * 0.7 - hw)) - hw; f = y > cy + hh * 0.7 - hw ? Math.min(a, b) : a; if (y > cy + hh * 0.7 - hw) f = Math.min(NG.sdBox(x, y, cx, cy - hh * 0.15 - hw * 0.0, hw, hh * 0.85 - 0.01, 3), b); break; }
+        case "hex": { const R2 = Math.max(hw / 0.866, hh) * 1.05, P0 = []; for (let k = 0; k < 6; k++) { const a = (Math.PI / 3) * k; P0.push([cx + R2 * Math.cos(a), cy + R2 * Math.sin(a)]); } f = NG.sdPoly(x, y, P0); break; }
+        case "cloud": { let m = NG.sdBox(x, y, cx, cy - hh * 0.2, hw * 0.92, hh * 0.65, Math.min(hw, hh) * 0.6); for (const [u, v, rr] of [[-0.55, 0.35, 0.5], [0, 0.55, 0.6], [0.55, 0.35, 0.5], [-0.9, -0.1, 0.4], [0.9, -0.1, 0.4]]) m = Math.min(m, Math.hypot(x - (cx + u * hw), y - (cy + v * hh)) - rr * Math.max(hh, hw * 0.5)); f = m; break; }
+        case "bubble": { const a = NG.sdBox(x, y, cx, cy, hw, hh, Math.min(30, r * 0.4)); const b = NG.sdPoly(x, y, [[cx - hw * 0.55, cy - hh + 2], [cx - hw * 0.15, cy - hh + 2], [cx - hw * 0.62, cy - hh - Math.min(40, hh * 0.6)]]); f = Math.min(a, b); break; }
+        default: f = NG.sdBox(x, y, cx, cy, hw, hh, 6);
+      }
+      F[j * G.W + i] = f;
+    }
+    return F;
+  }
+  // holes through the backing: for the wires (where each tube starts, and ends if it is open) and two for hanging
+  function holeField(G, tubes, plate, Tt) {
+    if (!plate) return null;
+    const pts = [];
+    if (S.back.holes) {
+      // one wire hole per separate tube (start), and one at the end of open tubes
+      for (const t of tubes) { const a = t.pts[0], b = t.pts[t.pts.length - 1]; pts.push([a[0], a[1], 3.2]); if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 3) pts.push([b[0], b[1], 3.2]); }
+    }
+    if (S.back.hang) {
+      let top = -Infinity, xl = Infinity, xr = -Infinity;
+      for (let j = 0; j < G.H; j++) for (let i = 0; i < G.W; i++) if (plate[j * G.W + i] < -12) { const x = G.x0 + i * G.c, y = G.y0 + j * G.c; if (y > top) top = y; xl = Math.min(xl, x); xr = Math.max(xr, x); }
+      if (isFinite(top)) for (const fx of [0.25, 0.75]) {
+        // the highest point inside the backing above each third, clear of the tubes
+        const xh = xl + (xr - xl) * fx;
+        for (let y = top; y > top - 200; y -= G.c) { const i = Math.round((xh - G.x0) / G.c), j = Math.round((y - G.y0) / G.c); if (i < 0 || j < 0 || i >= G.W || j >= G.H) continue; const k = j * G.W + i; if (plate[k] < -9 && pathDistAt(G, tubes, xh, y) > Tt.a + 8) { pts.push([xh, y, 2.6]); break; } }
+      }
+    }
+    if (!pts.length) return null;
+    const H0 = new Float32Array(G.W * G.H).fill(1e3);
+    for (const [px, py, r] of pts) { const i0 = Math.floor((px - r - 1 - G.x0) / G.c), i1 = Math.ceil((px + r + 1 - G.x0) / G.c), j0 = Math.floor((py - r - 1 - G.y0) / G.c), j1 = Math.ceil((py + r + 1 - G.y0) / G.c); for (let j = Math.max(0, j0); j <= Math.min(G.H - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(G.W - 1, i1); i++) { const k = j * G.W + i, d = Math.hypot(G.x0 + i * G.c - px, G.y0 + j * G.c - py) - r; if (d < H0[k]) H0[k] = d; } }
+    // the field is "distance into the hole" (positive inside): the backing is max(plate, hole)
+    for (let i = 0; i < H0.length; i++) H0[i] = -H0[i];
+    return H0;
+  }
+  const pathDistAt = (G, tubes, x, y) => { let m = Infinity; for (const t of tubes) for (let s = 0; s + 1 < t.pts.length; s++) { const a = t.pts[s], b = t.pts[s + 1], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-9, u = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / L2, 0, 1); m = Math.min(m, Math.hypot(x - a[0] - u * dx, y - a[1] - u * dy)); } return m; };
+  // tiles of the backing that each fit the bed, joined by dovetails (a tab sticks out of the left /
+  // lower tile into the next; that tile has the matching socket, a little bigger)
+  function makeTiles(x0, x1, y0, y1, nx, ny, plate, G) {
+    const tw = (x1 - x0) / nx, th = (y1 - y0) / ny, CL = 0.18, DEP = 10, NECK = 9, HEAD = 15, SP = 70;
+    const inside = (x, y) => { if (!plate) return false; const i = Math.round((x - G.x0) / G.c), j = Math.round((y - G.y0) / G.c); return i >= 0 && j >= 0 && i < G.W && j < G.H && plate[j * G.W + i] < -3; };
+    const tabs = [];
+    if (S.print.dove && plate) {
+      for (let ix = 1; ix < nx; ix++) for (let iy = 0; iy < ny; iy++) {
+        const X = x0 + ix * tw, ya = y0 + iy * th + 18, yb = y0 + (iy + 1) * th - 18;
+        for (let y = ya + ((yb - ya) % SP) / 2; y <= yb; y += SP) {
+          const poly = [[X - 0.01, y - NECK / 2], [X + DEP, y - HEAD / 2], [X + DEP, y + HEAD / 2], [X - 0.01, y + NECK / 2]];
+          if (poly.every(([px, py]) => inside(px, py)) && inside(X - 6, y)) tabs.push({ from: [ix - 1, iy], to: [ix, iy], poly });
+        }
+      }
+      for (let iy = 1; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+        const Y = y0 + iy * th, xa = x0 + ix * tw + 18, xb = x0 + (ix + 1) * tw - 18;
+        for (let x = xa + ((xb - xa) % SP) / 2; x <= xb; x += SP) {
+          const poly = [[x + NECK / 2, Y - 0.01], [x + HEAD / 2, Y + DEP], [x - HEAD / 2, Y + DEP], [x - NECK / 2, Y - 0.01]];
+          if (poly.every(([px, py]) => inside(px, py)) && inside(x, Y - 6)) tabs.push({ from: [ix, iy - 1], to: [ix, iy], poly });
+        }
+      }
+    }
+    const L = "ABCDEFGHIJKLMNOP", tiles = [];
+    for (let iy = ny - 1; iy >= 0; iy--) for (let ix = 0; ix < nx; ix++) {
+      const rx0 = x0 + ix * tw, rx1 = rx0 + tw, ry0 = y0 + iy * th, ry1 = ry0 + th, cx = (rx0 + rx1) / 2, cy = (ry0 + ry1) / 2;
+      const own = tabs.filter((t) => t.from[0] === ix && t.from[1] === iy), into = tabs.filter((t) => t.to[0] === ix && t.to[1] === iy);
+      const single = nx * ny === 1;
+      const field = (x, y) => {
+        if (single) return -1e3;
+        let f = NG.sdBox(x, y, cx, cy, tw / 2, th / 2);
+        for (const t of own) f = Math.min(f, NG.sdPoly(x, y, t.poly));
+        for (const t of into) f = Math.max(f, -(NG.sdPoly(x, y, t.poly) - CL));
+        return f;
+      };
+      tiles.push({ name: single ? "" : L[ny - 1 - iy] + (ix + 1), ix, iy, rx0, rx1, ry0, ry1, bx0: rx0 - (single ? 30 : 0), bx1: rx1 + (single ? 30 : DEP + 2), by0: ry0 - (single ? 30 : 0), by1: ry1 + (single ? 30 : DEP + 2), field, cx, cy });
+    }
+    for (const t of tiles) if (t.name === "") { t.bx0 = x0 - 30; t.bx1 = x1 + 30; t.by0 = y0 - 30; t.by1 = y1 + 30; t.rx0 = x0 - 60; t.rx1 = x1 + 60; t.ry0 = y0 - 60; t.ry1 = y1 + 60; }
+    return tiles;
+  }
+
+  // ------------------------------------------------------------ the 3D view
+  const cv = $("#cv");
+  const R3 = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  const dpr = () => Math.min(S.light.on ? 1.5 : 2, window.devicePixelRatio || 1);
+  R3.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, 1, 1, 20000);
+  cam.up.set(0, 1, 0); cam.position.set(0, -40, 600);
+  const ctl = new THREE.OrbitControls(cam, cv);
+  const amb = new THREE.AmbientLight(0xffffff, 0.55), sun = new THREE.DirectionalLight(0xffffff, 0.75), fill = new THREE.HemisphereLight(0xbfd8ff, 0x302040, 0.35);
+  sun.position.set(-200, 300, 600); scene.add(amb, sun, fill);
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ color: 0x4a4258, roughness: 0.95 }));
+  wall.position.z = -2; scene.add(wall);
+  const root = new THREE.Group(), glow = new THREE.Group(), lines = new THREE.Group();
+  scene.add(root, glow, lines);
+  const plights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight(0xff2bd6, 0, 900, 1.6); scene.add(l); return l; });
+  function resize() { const w = cv.clientWidth || 800, h = cv.clientHeight || 600; R3.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); draw(); }
+  addEventListener("resize", resize);
+  ctl.addEventListener("change", () => draw());
+  let raf = 0; const draw = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; ctl.update(); render(); }); };
+  const t0 = performance.now();
+  let tick = 0;
+  function render() {
+    const t = (performance.now() - t0) / 1000;
+    if (S.light.on) animateGlow(t);
+    R3.render(scene, cam);
+    // the light show runs at about 30 frames a second, leaving time for taps and clicks;
+    // a steady sign is drawn only when something changes
+    clearTimeout(tick);
+    if (S.light.on && S.light.pattern !== "steady") tick = setTimeout(draw, 33);
+  }
+  function fit(angle) {
+    if (!built || !built.tubes.length) return;
+    const b = new THREE.Box3(); for (const t of built.tubes) for (const [x, y] of t.pts) b.expandByPoint(new THREE.Vector3(x, y, 0));
+    b.expandByScalar(S.back.margin + 25);
+    const c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3()), dist = Math.max(s.x / cam.aspect, s.y) / (2 * Math.tan((cam.fov * Math.PI) / 360)) * 1.08;
+    ctl.target.copy(c);
+    if (angle) cam.position.set(c.x - dist * 0.35, c.y - dist * 0.55, dist * 0.8); else cam.position.set(c.x, c.y, dist);
+    cam.lookAt(c); ctl.update(); draw();
+  }
+  const mats = { shell: new THREE.MeshPhysicalMaterial({ color: 0xf4f2ff, roughness: 0.35, transmission: 0, transparent: true, opacity: 0.92, side: THREE.DoubleSide }), back: new THREE.MeshStandardMaterial({ color: 0x121218, roughness: 0.6, metalness: 0.05 }) };
+  function clearGroup(g) { for (const o of [...g.children]) { g.remove(o); o.traverse((q) => { if (q.geometry) q.geometry.dispose(); }); } }
+  function show() {
+    clearGroup(root); clearGroup(glow); clearGroup(lines);
+    if (!built) return;
+    mats.back.color.set(S.back.col);
+    const ex = S.explode;
+    for (const p of built.pieces) {
+      const g = new THREE.BufferGeometry();
+      if (p.kind === "shell") { g.setAttribute("position", new THREE.BufferAttribute(p.mesh.pos, 3)); g.setIndex(new THREE.BufferAttribute(p.mesh.idx, 1)); }
+      else g.setAttribute("position", new THREE.BufferAttribute(p.soup, 3));
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, p.kind === "shell" ? mats.shell : mats.back);
+      const tl = p.tile, sx = ex && built.nx > 1 ? (tl.ix - (built.nx - 1) / 2) * 24 : 0, sy = ex && built.ny > 1 ? (tl.iy - (built.ny - 1) / 2) * 24 : 0;
+      m.position.set(sx, sy, p.kind === "shell" ? p.z + (ex ? 40 : 0) : 0);
+      m.userData.piece = p;
+      root.add(m);
+    }
+    // the light inside: a glowing core along each tube, and a soft halo round it
+    const zc = (S.back.tpl === "none" ? 0 : built.zF) + built.T.Hi * 0.45 + (ex ? 40 : 0);
+    // one mesh for all the cores and one for all the halos (a few draw calls, however many tubes),
+    // each tube's number and colour carried on its vertices
+    const parts = [[], []];
+    built.tubes.forEach((t, i) => {
+      const pts = t.pts.map(([x, y]) => new THREE.Vector3(x, y, zc));
+      if (pts.length < 2) return;
+      const closed = NG.isClosed(t.pts), curve = new THREE.CatmullRomCurve3(closed ? pts.slice(0, -1) : pts, closed, "centripetal");
+      const len = curve.getLength(), seg = Math.max(6, Math.min(600, Math.round(len / 3)));
+      const col = new THREE.Color(S.light.mode === "one" ? S.light.color : t.item.color || "#ff2bd6");
+      [[built.T.ri * 0.55, 6], [built.T.a * 2, 8]].forEach(([rad, radial], kind) => parts[kind].push({ g: new THREE.TubeGeometry(curve, seg, rad, radial, closed), i, col }));
+    });
+    parts.forEach((list, kind) => {
+      if (!list.length) return;
+      const geo = mergeTubes(list), mesh = new THREE.Mesh(geo, glowMat(kind, built.tubes.length));
+      mesh.renderOrder = 5 + kind; mesh.userData.glow = kind; mesh.frustumCulled = false;
+      mesh.visible = S.light.on || (kind === 0 && !ex);
+      glow.add(mesh);
+    });
+    // the centre lines while designing (selected item brighter)
+    for (const t of built.tubes) {
+      const geo = new THREE.BufferGeometry().setFromPoints(t.pts.map(([x, y]) => new THREE.Vector3(x, y, S.back.thick + built.T.Ho + 1)));
+      const l = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: t.item.id === S.sel ? 0xffe14d : 0x7f6aa8, transparent: true, opacity: t.item.id === S.sel ? 0.95 : 0.45 }));
+      l.visible = !S.light.on; lines.add(l);
+    }
+    applyLights();
+    renderPanel(true);
+    status();
+    draw();
+    commit(); if (hi >= 0 && !restoring) hsel[hi] = S.sel; edButtons();
+  }
+  // the glowing core (kind 0) and halos (1, 2): colour and brightness from the light show
+  const glowUniforms = { uTime: { value: 0 }, uPat: { value: 0 }, uSpeed: { value: 1 }, uBright: { value: 1 }, uRGB: { value: 0 } };
+  const PAT_ID = Object.fromEntries(PATTERNS.map(([k], i) => [k, i]));
+  function mergeTubes(list) {
+    let nv = 0, ni = 0; for (const { g } of list) { nv += g.attributes.position.count; ni += g.index.count; }
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), idx = new Float32Array(nv), col = new Float32Array(nv * 3), I = new Uint32Array(ni);
+    let v = 0, k = 0;
+    for (const { g, i, col: c } of list) {
+      const n = g.attributes.position.count;
+      pos.set(g.attributes.position.array, v * 3); nor.set(g.attributes.normal.array, v * 3); uv.set(g.attributes.uv.array, v * 2);
+      for (let q = 0; q < n; q++) { idx[v + q] = i; col[(v + q) * 3] = c.r; col[(v + q) * 3 + 1] = c.g; col[(v + q) * 3 + 2] = c.b; }
+      const gi = g.index.array; for (let q = 0; q < gi.length; q++) I[k + q] = gi[q] + v;
+      v += n; k += gi.length; g.dispose();
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("normal", new THREE.BufferAttribute(nor, 3)); geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    geo.setAttribute("aIdx", new THREE.BufferAttribute(idx, 1)); geo.setAttribute("aCol", new THREE.BufferAttribute(col, 3)); geo.setIndex(new THREE.BufferAttribute(I, 1));
+    return geo;
+  }
+  function glowMat(kind, n) {
+    return new THREE.ShaderMaterial({
+      uniforms: { ...glowUniforms, uN: { value: n }, uKind: { value: kind } },
+      transparent: true, depthWrite: kind === 0, blending: kind ? THREE.AdditiveBlending : THREE.NormalBlending,
+      vertexShader: "attribute float aIdx; attribute vec3 aCol; varying float vIdx; varying vec3 vCol; varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv=uv; vIdx=aIdx; vCol=aCol; vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }",
+      fragmentShader: `uniform float uTime,uPat,uSpeed,uBright,uN,uKind,uRGB; varying float vIdx; varying vec3 vCol; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+        float h(float x){ return fract(sin(x*127.1)*43758.5453); }
+        vec3 hsv(float hh){ vec3 k=clamp(abs(mod(hh*6.0+vec3(0.,4.,2.),6.)-3.)-1.,0.,1.); return k; }
+        void main(){
+          float t=uTime*uSpeed, u=vUv.x, I=1.0, uIdx=floor(vIdx+0.5); vec3 c=vCol;
+          if(uPat==1.0) I=0.3+0.7*(0.5+0.5*sin(t*2.0));
+          else if(uPat==2.0) I=step(0.45,fract(t*0.8));
+          else if(uPat==3.0){ float f=h(floor(t*14.0)+uIdx*7.3); I=f>0.9?0.15:(0.85+0.15*h(floor(t*40.0)+uIdx)); if(h(floor(t*0.7)+uIdx*3.1)>0.82&&fract(t*0.7)<0.25) I*=0.3+0.7*step(0.5,h(floor(t*8.0))); }
+          else if(uPat==4.0) I=0.15+0.85*step(0.5,fract(u*4.0-t*0.8));
+          else if(uPat==5.0){ float k=floor(fract(t*0.18)*(uN+2.0)); I=uIdx<k?1.0:0.06; if(k>=uN+1.0) I=0.06+0.94*step(0.5,fract(t*3.0)); }
+          else if(uPat==6.0){ float p=fract(t*0.08)*(uN+1.5)-uIdx; I=u<p?1.0:0.0; }
+          else if(uPat==7.0) I=0.08+0.92*step(0.75,fract(uTime*min(uSpeed*3.0,3.0)));
+          if(uPat==8.0) c=hsv(fract(t*0.12));
+          else if(uPat==9.0) c=hsv(fract(u*0.8+uIdx*0.17-t*0.25));
+          I*=uBright;
+          if(uKind==0.0){ gl_FragColor=vec4(mix(c,vec3(1.0),0.55*I)*max(I,0.12),1.0); return; }
+          float rim=pow(abs(dot(normalize(vN),normalize(vV))),2.0);
+          gl_FragColor=vec4(c*I, rim*I*0.5);
+        }`,
+    });
+  }
+  function applyLights() {
+    const on = S.light.on;
+    glowUniforms.uPat.value = PAT_ID[S.light.pattern] || 0; glowUniforms.uSpeed.value = S.light.speed; glowUniforms.uBright.value = S.light.bright;
+    amb.intensity = on ? 0.06 : 0.55; sun.intensity = on ? 0.05 : 0.75; fill.intensity = on ? 0.04 : 0.35;
+    wall.material.color.set(on ? 0x1a1424 : 0x4a4258);
+    scene.background = new THREE.Color(on ? 0x030106 : 0x150a26);
+    mats.shell.opacity = on ? 0.55 : 0.92; mats.shell.color.set(on ? 0xffffff : 0xf4f2ff); mats.shell.depthWrite = !on;
+    glow.children.forEach((m) => { m.visible = on || (m.userData.glow === 0 && !S.explode); });
+    if (R3.getPixelRatio() !== dpr()) { R3.setPixelRatio(dpr()); resize(); }
+    lines.children.forEach((l) => { l.visible = !on; });
+    // coloured light on the wall from the sign
+    const cols = [...new Set(S.items.map((q) => (S.light.mode === "one" ? S.light.color : q.color)))];
+    let bb = null; if (built && built.tubes.length) { bb = new THREE.Box3(); for (const t of built.tubes) for (const [x, y] of t.pts) bb.expandByPoint(new THREE.Vector3(x, y, 0)); }
+    plights.forEach((l, k) => {
+      l.intensity = on && bb ? 300 * S.light.bright : 0;
+      if (bb) { const c = bb.getCenter(new THREE.Vector3()), s = bb.getSize(new THREE.Vector3()); l.position.set(c.x + (k % 2 ? 0.3 : -0.3) * s.x, c.y + (k < 2 ? 0.25 : -0.25) * s.y, 60); }
+      l.color.set(cols[k % cols.length] || "#ff2bd6");
+    });
+    $("#lights").setAttribute("aria-pressed", String(on)); $("#lights").textContent = on ? "💡 Lights off" : "💡 Lights on";
+    draw();
+  }
+  function animateGlow(t) {
+    glowUniforms.uTime.value = t;
+    // the wall glow follows the show (roughly)
+    const p = S.light.pattern; let k = 1;
+    if (p === "breathe") k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * S.light.speed * 2)); else if (p === "blink") k = (t * S.light.speed * 0.8) % 1 > 0.45 ? 1 : 0.05; else if (p === "strobe") k = (t * Math.min(S.light.speed * 3, 3)) % 1 > 0.75 ? 1 : 0.08; else if (p === "flicker") k = 0.85 + 0.15 * Math.random();
+    const rgb = p === "rainbow" || p === "wave";
+    plights.forEach((l, i) => { l.intensity = 300 * S.light.bright * k; if (rgb) l.color.setHSL(((t * S.light.speed * 0.12) + i * 0.2) % 1, 1, 0.55); });
+  }
+
+  // ------------------------------------------------------------ dragging parts of the sign
+  const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+  const planeAt = (e) => { const r = cv.getBoundingClientRect(), v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(v, cam); const p = new THREE.Vector3(); return ray.ray.intersectPlane(plane, p) ? p : null; };
+  function itemAt(p) {
+    let best = null, bd = Infinity;
+    for (const it of S.items) for (const P0 of itemPaths(it)) for (let s = 0; s + 1 < P0.length; s++) {
+      const a = P0[s], b = P0[s + 1], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-9, u = clamp(((p.x - a[0]) * dx + (p.y - a[1]) * dy) / L2, 0, 1), d = Math.hypot(p.x - a[0] - u * dx, p.y - a[1] - u * dy);
+      if (d < bd) { bd = d; best = it; }
+    }
+    return bd < Math.max(12, T().a * 2.5) ? best : null;
+  }
+  let drag = null;
+  cv.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.shiftKey) return;
+    const p = planeAt(e); if (!p) return;
+    const it = itemAt(p); if (!it) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    S.sel = it.id; drag = { it, p0: p, x0: it.x, y0: it.y, id: e.pointerId };
+    cv.setPointerCapture(e.pointerId);
+    show();
+  }, true);
+  cv.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    e.stopImmediatePropagation();
+    const p = planeAt(e); if (!p) return;
+    drag.it.x = Math.round(drag.x0 + p.x - drag.p0.x); drag.it.y = Math.round(drag.y0 + p.y - drag.p0.y);
+    // only the centre lines follow while dragging; the parts are rebuilt when it is let go
+    const dx = drag.it.x - drag.x0, dy = drag.it.y - drag.y0;
+    lines.children.forEach((l, k) => { if (built.tubes[k] && built.tubes[k].item === drag.it) l.position.set(dx, dy, 0); });
+    glow.children.forEach((m) => m.visible = false);
+    draw();
+  }, true);
+  cv.addEventListener("pointerup", (e) => { if (!drag || e.pointerId !== drag.id) return; e.stopImmediatePropagation(); const moved = drag.it.x !== drag.x0 || drag.it.y !== drag.y0; drag = null; if (moved) schedule(); else show(); }, true);
+
+  // ------------------------------------------------------------ the panels
+  const panel = $("#panel");
+  const row = (label, ctl2) => el("div", { class: "row" }, el("label", {}, label), ctl2);
+  const num = (v, on, a = {}) => { const i = el("input", { type: "number", value: v, step: a.step || 1, min: a.min, max: a.max, "aria-label": a.label || "" }); i.onchange = () => { const x = parseFloat(i.value); if (isFinite(x)) on(clamp(x, a.min ?? -1e9, a.max ?? 1e9)); }; return i; };
+  const slider = (v, on, a) => { const i = el("input", { type: "range", min: a.min, max: a.max, step: a.step || 1, value: v, "aria-label": a.label || "" }); i.oninput = () => on(+i.value, false); i.onchange = () => on(+i.value, true); return i; };
+  const sel = (list, v, on, label) => { const s = el("select", { "aria-label": label || "" }, ...list.map(([k, n]) => el("option", { value: k, selected: k === v }, n))); s.onchange = () => on(s.value); return s; };
+  const swatches = (v, on) => el("div", { class: "swatches" }, ...COLORS.map(([n, c]) => el("button", { class: "sw", type: "button", title: n, "aria-label": n, "aria-pressed": String(c === v), style: { background: c, boxShadow: `0 0 8px ${c}` }, onclick: () => on(c) })), (() => { const i = el("input", { type: "color", value: v, "aria-label": "Any colour" }); i.onchange = () => on(i.value); return i; })());
+  const shapeSVG = (d) => `<svg viewBox="-6 -6 112 112" aria-hidden="true"><path d="${d}" fill="none" stroke="#ff7af0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px #ff2bd6)"/></svg>`;
+  let lastPanel = "";
+  function renderPanel(soft) {
+    const key = S.tab + "|" + S.sel + "|" + S.items.length;
+    if (soft && key === lastPanel && S.tab !== "print") return;
+    lastPanel = key;
+    const top = panel.scrollTop;
+    panel.replaceChildren();
+    ({ design: designPanel, tube: tubePanel, backing: backPanel, print: printPanel, light: lightPanel })[S.tab]();
+    panel.scrollTop = top;
+  }
+  const change = (fn, now) => { fn(); if (now !== false) schedule(); renderPanel(); };
+  function designPanel() {
+    panel.append(el("h2", {}, "Add to the sign"));
+    panel.append(el("div", { class: "inl" },
+      el("button", { class: "btn hot", type: "button", id: "add-text", onclick: () => addItem({ type: "text", text: "Neon", font: "neon80", mode: "center", size: 50 }) }, "＋ Text"),
+      el("button", { class: "btn cy", type: "button", id: "add-shape", onclick: () => addItem({ type: "shape", shape: "heart", size: 60 }) }, "＋ Shape"),
+      el("label", { class: "btn", style: { display: "inline-flex", alignItems: "center" } }, "＋ Trace an image", (() => { const f = el("input", { type: "file", accept: "image/*", id: "add-image", style: { display: "none" } }); f.onchange = () => f.files[0] && traceFile(f.files[0]); return f; })())));
+    panel.append(el("h2", {}, "On the sign"));
+    const list = el("div", { class: "items", id: "items" });
+    for (const it of S.items) list.append(el("button", { class: "item", type: "button", "aria-pressed": String(it.id === S.sel), onclick: () => { S.sel = it.id; show(); renderPanel(); } }, el("span", { class: "dot", style: { background: it.color, boxShadow: "0 0 6px " + it.color } }), el("span", {}, it.type === "text" ? "“" + it.text.replace(/\n/g, " / ") + "”" : it.type === "shape" ? (SHAPES.find((q) => q.id === it.shape) || {}).name : "Traced image")));
+    panel.append(list);
+    const it = selItem();
+    if (!it) { panel.append(el("p", { class: "hint" }, "Add text, a shape or an image to start.")); return; }
+    panel.append(el("h2", {}, it.type === "text" ? "Text" : it.type === "shape" ? "Shape" : "Traced image"));
+    if (it.type === "text") {
+      const ta = el("textarea", { id: "txt", "aria-label": "The words (Enter starts a new line)", rows: 2 }); ta.value = it.text;
+      ta.oninput = () => { it.text = ta.value; schedule(); };
+      panel.append(ta);
+      panel.append(row("Font", sel(FONTS.map((f) => [f.id, f.name]), it.font, (v) => change(() => { it.font = v; it.mode = (FONTS.find((f) => f.id === v) || {}).mode || "center"; }), "Font")));
+      const F = FONTS.find((f) => f.id === it.font); if (F && F.note) panel.append(el("p", { class: "hint" }, F.note));
+      panel.append(row("Tube follows", sel([["center", "the middle of each stroke (neon)"], ["outline", "the outline of each letter"]], it.mode, (v) => change(() => { it.mode = v; }), "Tube follows")));
+      panel.append(row("Letter height", num(it.size, (v) => change(() => { it.size = v; }), { min: 15, max: 600, label: "Capital letter height (mm)" })));
+    } else if (it.type === "shape") {
+      panel.append(el("div", { class: "grid g4", id: "shapes" }, ...SHAPES.map((q) => el("button", { class: "tile", type: "button", "aria-pressed": String(q.id === it.shape), "data-shape": q.id, onclick: () => change(() => { it.shape = q.id; }), html: shapeSVG(q.d) + "<span>" + q.name + "</span>" }))));
+      panel.append(row("Height", num(it.size, (v) => change(() => { it.size = v; }), { min: 15, max: 800, label: "Shape height (mm)" })));
+      panel.append(row("Stretch wide", slider(Math.round((it.w || 1) * 100), (v, end) => { it.w = v / 100; if (end) change(() => {}); }, { min: 40, max: 300, label: "Stretch the shape sideways (%)" })));
+    } else {
+      panel.append(row("Size (tall)", num(it.size, (v) => change(() => { it.size = v; }), { min: 20, max: 800, label: "Height (mm)" })));
+      panel.append(row("Dark below", slider(Math.round((it.thr ?? 0.5) * 100), (v, end) => { it.thr = v / 100; if (end) change(() => {}); }, { min: 5, max: 95, label: "Darkness threshold" })));
+      panel.append(row("Tube follows", sel([["outline", "the edges of shapes"], ["center", "the middle of lines (line art)"]], it.mode, (v) => change(() => { it.mode = v; }), "Tube follows")));
+      panel.append(row("Smoothing", sel([["1", "a little"], ["2", "some"], ["3", "a lot"]], String(it.detail ?? 2), (v) => change(() => { it.detail = +v; }), "Smoothing")));
+      panel.append(el("label", { class: "row" }, el("input", { type: "checkbox", checked: !!it.inv, onchange: (e) => change(() => { it.inv = e.target.checked; }), style: { flex: "none", width: "auto" } }), "Light parts glow instead of dark"));
+      panel.append(el("p", { class: "hint" }, "Clear, high-contrast logos and line drawings trace best. Thin lines: “middle of lines”. Solid shapes: “edges”."));
+    }
+    panel.append(row("Turn", slider(it.rot, (v, end) => { it.rot = v; if (end) change(() => {}); else { schedule(); } }, { min: -180, max: 180, label: "Turn (degrees)" })));
+    panel.append(el("h2", {}, "Glow colour"));
+    panel.append(swatches(it.color, (c) => { it.color = c; show(); renderPanel(); }));
+    panel.append(el("div", { class: "inl", style: { marginTop: "10px" } },
+      el("button", { class: "btn", type: "button", title: "Ctrl/⌘ D", onclick: dup }, "Duplicate"),
+      el("button", { class: "btn", type: "button", id: "del-item", title: "Delete key", onclick: del }, "Delete")));
+    panel.append(el("p", { class: "hint" }, "Drag a part of the sign in the view to move it (or nudge it with the arrow keys; Shift for 10 mm). Drag anywhere else to turn the view, right-drag (or Shift) to slide it, scroll to zoom. Ctrl/⌘ Z undoes, C copies, V pastes."));
+  }
+  function addItem(o) { const it = { id: uid(), x: 0, y: 0, rot: 0, color: COLORS[S.items.length % COLORS.length][1], ...o }; if (!o.x && !o.y && built && built.tubes.length) { let y0 = Infinity; for (const t of built.tubes) for (const [, y] of t.pts) y0 = Math.min(y0, y); it.y = Math.round(y0 - (it.size || 50) / 2 - 20); } S.items.push(it); S.sel = it.id; schedule(); renderPanel(); }
+  function traceFile(f) {
+    const r = new FileReader();
+    r.onload = async () => { const k = await addImg(r.result); if (k) addItem({ type: "trace", img: k, imgEl: imgEl(k), size: 120, thr: 0.5, mode: "outline", detail: 2 }); };
+    r.readAsDataURL(f);
+  }
+  function tubePanel() {
+    const t = S.tube, Tt = T();
+    panel.append(el("h2", {}, "LED strip"));
+    panel.append(el("p", { class: "hint" }, "Pick the LED strip you will use: the shells are sized to hold it, with room for the light to spread."));
+    panel.append(el("div", { class: "items", id: "strips" }, ...STRIPS.map((q) => el("button", { class: "item", type: "button", "aria-pressed": String(q.id === t.strip), "data-strip": q.id, onclick: () => change(() => { t.strip = q.id; if (q.id !== "custom") { t.w = q.w; t.h = q.h; t.gap = q.gap; } pathCache.clear(); }) }, el("span", {}, q.name)))));
+    const q = STRIPS.find((x) => x.id === t.strip); if (q && q.note) panel.append(el("p", { class: "hint" }, q.note));
+    if (t.strip === "custom") { panel.append(row("Strip width", num(t.w, (v) => change(() => { t.w = v; pathCache.clear(); }), { min: 3, max: 30, step: 0.5, label: "Strip width (mm)" }))); panel.append(row("Strip height", num(t.h, (v) => change(() => { t.h = v; }), { min: 1, max: 30, step: 0.5, label: "Strip height (mm)" }))); }
+    panel.append(el("h2", {}, "The shell (the neon tube)"));
+    panel.append(row("Light space", num(t.gap, (v) => change(() => { t.gap = v; }), { min: 0, max: 30, step: 0.5, label: "Space above the strip for the light to spread (mm)" })));
+    panel.append(row("Diffuser wall", num(t.wall, (v) => change(() => { t.wall = v; pathCache.clear(); }), { min: 0.8, max: 3, step: 0.1, label: "Side wall thickness (mm)" })));
+    panel.append(row("Top", num(t.top, (v) => change(() => { t.top = v; }), { min: 0.8, max: 4, step: 0.1, label: "Top thickness (mm)" })));
+    panel.append(row("Fit clearance", num(t.clr, (v) => change(() => { t.clr = v; pathCache.clear(); }), { min: 0, max: 1, step: 0.05, label: "Clearance round the strip and in the groove (mm)" })));
+    panel.append(el("label", { class: "row" }, el("input", { type: "checkbox", checked: t.snap, onchange: (e) => change(() => { t.snap = e.target.checked; }), style: { flex: "none", width: "auto" } }), "Snap-fit ridge: a small ridge round the foot of each shell squeezes into the groove and holds it"));
+    panel.append(el("div", { class: "note" }, `Shell: ${(Tt.a * 2).toFixed(1)} mm wide × ${Tt.Ho.toFixed(1)} mm tall, rounded on top like a glass tube. Inside: ${(Tt.ri * 2).toFixed(1)} × ${Tt.Hi.toFixed(1)} mm for a ${t.w} × ${t.h} mm strip. Print the shells in white or natural (translucent) PLA or PETG so they glow.`));
+    if (built && isFinite(built.bend)) {
+      const minR = /flex/.test(t.strip) ? 15 : /cob/.test(t.strip) ? 12 : 25, ok = built.bend >= minR;
+      panel.append(el("div", { class: "note " + (ok ? "ok" : "warn") }, ok ? `Tightest bend: ${built.bend.toFixed(0)} mm radius. Your strip can follow it.` : `Tightest bend: ${built.bend.toFixed(0)} mm radius, tighter than this strip likes (about ${minR} mm). Make the letters bigger, choose a smoother font, or cut the strip and join it there.`));
+    }
+  }
+  function backPanel() {
+    const B = S.back;
+    panel.append(el("h2", {}, "Backing shape"));
+    panel.append(el("div", { class: "grid", id: "templates" }, ...TEMPLATES.map((q) => el("button", { class: "tile", type: "button", "aria-pressed": String(q.id === B.tpl), "data-tpl": q.id, title: q.note || q.name, onclick: () => { if (q.id === "import") pickBody(); else change(() => { B.tpl = q.id; }); } }, el("span", { html: tplSVG(q.id) }), el("span", {}, q.name)))));
+    if (B.tpl === "import") panel.append(el("div", { class: "note" }, B.imp ? `Using “${B.impName}” from your design (its outline from above), stretched to fit round the sign.` : "Pick a shape from your design: select one body in Beginner or Advanced first."));
+    if (B.tpl === "import") panel.append(el("button", { class: "btn", type: "button", onclick: () => pickBody() }, "Choose a shape from my design…"));
+    panel.append(row("Margin", num(B.margin, (v) => change(() => { B.margin = v; }), { min: 4, max: 80, label: "Space round the tubes (mm)" })));
+    panel.append(row("Thickness", num(B.thick, (v) => change(() => { B.thick = Math.max(v, B.groove + 2); }), { min: 4, max: 15, step: 0.5, label: "Backing thickness (mm)" })));
+    panel.append(row("Groove depth", num(B.groove, (v) => change(() => { B.groove = Math.min(v, B.thick - 2); }), { min: 2.2, max: 8, step: 0.2, label: "How deep the shells sit (mm)" })));
+    panel.append(row("Colour", (() => { const i = el("input", { type: "color", value: B.col, "aria-label": "Backing colour" }); i.onchange = () => { B.col = i.value; show(); }; return el("div", { class: "inl" }, i, ...[["Black", "#1c1c26"], ["White", "#f2f2f4"], ["Clear", "#bfe3f5"], ["Wood", "#8a5a34"]].map(([n, c]) => el("button", { class: "btn", type: "button", onclick: () => { B.col = c; show(); renderPanel(); } }, n))); })()));
+    panel.append(el("label", { class: "row" }, el("input", { type: "checkbox", checked: B.holes, onchange: (e) => change(() => { B.holes = e.target.checked; }), style: { flex: "none", width: "auto" } }), "Wire holes where each tube starts and ends"));
+    panel.append(el("label", { class: "row" }, el("input", { type: "checkbox", checked: B.hang, onchange: (e) => change(() => { B.hang = e.target.checked; }), style: { flex: "none", width: "auto" } }), "Two holes for hanging it on the wall"));
+    panel.append(el("p", { class: "hint" }, "The shells press into grooves in the backing. With the snap-fit ridge on, they push in snugly and hold; if your printer runs loose, a dot of glue in the groove fixes it. The strip lies in the groove under each shell; its wires go through the holes to the back."));
+  }
+  const tplSVG = (id) => {
+    const P0 = { contour: "M8 26 C8 14 20 16 22 22 C26 12 40 14 40 24 C46 26 46 34 38 34 L12 34 C4 34 4 28 8 26 Z", rrect: "M8 10 H36 Q42 10 42 16 V28 Q42 34 36 34 H8 Q2 34 2 28 V16 Q2 10 8 10 Z", rect: "M3 10 H41 V34 H3 Z", pill: "M14 10 H30 A12 12 0 0 1 30 34 H14 A12 12 0 0 1 14 10 Z", circle: "M22 6 A16 16 0 1 1 21.9 6 Z", oval: "M22 9 A19 13 0 1 1 21.9 9 Z", arch: "M6 36 V20 A16 14 0 0 1 38 20 V36 Z", hex: "M12 7 H32 L42 22 L32 37 H12 L2 22 Z", cloud: "M10 32 C2 32 2 22 10 21 C10 12 22 10 25 17 C28 9 40 11 38 21 C45 22 44 32 36 32 Z", bubble: "M6 8 H38 Q42 8 42 12 V26 Q42 30 38 30 H18 L10 38 L12 30 H6 Q2 30 2 26 V12 Q2 8 6 8 Z", none: "M6 22 C12 10 18 34 24 22 C30 10 36 34 40 22", import: "M10 34 L10 14 L22 6 L34 14 L34 34 Z M18 34 V24 H26 V34" }[id] || "";
+    return `<svg viewBox="0 0 44 44" aria-hidden="true"><path d="${P0}" fill="${id === "none" ? "none" : "#2a1450"}" stroke="#7df9ff" stroke-width="2" stroke-linejoin="round" style="filter: drop-shadow(0 0 3px #00f0ff)"/></svg>`;
+  };
+  function printPanel() {
+    const Pr = S.print;
+    panel.append(el("h2", {}, "Your 3D printer"));
+    panel.append(row("Printer", sel(PRINTERS.map((p) => [p.id, p.name]), Pr.printer, (v) => change(() => { const p = PRINTERS.find((x) => x.id === v); Pr.printer = v; Pr.w = p.w; Pr.d = p.d; }), "Printer")));
+    panel.append(row("Bed", el("div", { class: "inl" }, num(Pr.w, (v) => change(() => { Pr.w = v; }), { min: 80, max: 1000, label: "Bed width (mm)" }), "×", num(Pr.d, (v) => change(() => { Pr.d = v; }), { min: 80, max: 1000, label: "Bed depth (mm)" }), "mm")));
+    panel.append(el("label", { class: "row" }, el("input", { type: "checkbox", checked: Pr.split, onchange: (e) => change(() => { Pr.split = e.target.checked; }), style: { flex: "none", width: "auto" } }), "Cut a big sign into pieces that fit the bed"));
+    panel.append(el("label", { class: "row" }, el("input", { type: "checkbox", checked: Pr.dove, onchange: (e) => change(() => { Pr.dove = e.target.checked; }), style: { flex: "none", width: "auto" } }), "Dovetail joints between backing pieces"));
+    if (built) {
+      const [sw, sh] = built.size || [0, 0];
+      const fits = sw <= Pr.w - 8 && sh <= Pr.d - 8;
+      panel.append(el("div", { class: "note " + (fits || (Pr.split && built.tiles.length > 1) ? "ok" : "warn"), id: "fitnote" }, fits ? `The sign is ${sw.toFixed(0)} × ${sh.toFixed(0)} mm: it fits your ${Pr.w} × ${Pr.d} mm bed in one piece.` : Pr.split ? `The sign is ${sw.toFixed(0)} × ${sh.toFixed(0)} mm, bigger than your bed: it is cut into ${built.nx} × ${built.ny} = ${built.tiles.length} pieces (A1, A2…)${Pr.dove ? " that lock together with dovetails. Glue them for a strong sign" : ""}.` : `The sign is ${sw.toFixed(0)} × ${sh.toFixed(0)} mm, bigger than your ${Pr.w} × ${Pr.d} mm bed. Turn on cutting into pieces.`));
+      panel.append(el("h2", {}, "Export"));
+      panel.append(el("p", { class: "hint" }, "Exports are built at full detail first (it takes a moment). Shells: white or natural PLA/PETG, no supports. Backing: any colour, flat side down."));
+      panel.append(el("div", { class: "inl" },
+        el("button", { class: "btn hot", type: "button", id: "exp-3mf", onclick: () => exportAll("3mf") }, "All parts · 3MF"),
+        el("button", { class: "btn cy", type: "button", id: "exp-stl", onclick: () => exportAll("stl") }, "All parts · STL files")));
+      panel.append(el("h2", {}, "Pieces"));
+      const L = el("div", { class: "pieces", id: "pieces" });
+      for (const p of built.pieces) L.append(el("div", { class: "piece" }, el("span", {}, (p.kind === "shell" ? "◎ " : "▭ ") + p.name + " · " + pieceSize(p)), el("button", { class: "btn", type: "button", onclick: () => exportOne(p, "stl") }, "STL"), el("button", { class: "btn", type: "button", onclick: () => exportOne(p, "3mf") }, "3MF")));
+      panel.append(L);
+      if (built.preview) panel.append(el("p", { class: "hint" }, "The view shows a quick preview; exports use finer detail."));
+    }
+  }
+  function pieceSize(p) { const b = bounds(p); return `${(b[3] - b[0]).toFixed(0)} × ${(b[4] - b[1]).toFixed(0)} × ${(b[5] - b[2]).toFixed(0)} mm`; }
+  function bounds(p) { const A = p.kind === "shell" ? p.mesh.pos : p.soup, b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]; for (let i = 0; i < A.length; i += 3) for (let k = 0; k < 3; k++) { b[k] = Math.min(b[k], A[i + k]); b[k + 3] = Math.max(b[k + 3], A[i + k]); } return b; }
+  function lightPanel() {
+    const L = S.light;
+    panel.append(el("h2", {}, "Light show"));
+    panel.append(el("button", { class: "btn hot", type: "button", id: "light-toggle", onclick: () => { L.on = !L.on; applyLights(); renderPanel(); } }, L.on ? "Turn the sign off" : "💡 Turn the sign on"));
+    panel.append(el("h2", {}, "Pattern"));
+    panel.append(el("div", { class: "grid", id: "patterns" }, ...PATTERNS.map(([k, n]) => el("button", { class: "tile", type: "button", "aria-pressed": String(k === L.pattern), "data-pat": k, onclick: () => { L.pattern = k; if (!L.on) L.on = true; applyLights(); renderPanel(); } }, el("span", {}, n)))));
+    panel.append(row("Speed", slider(Math.round(L.speed * 100), (v) => { L.speed = v / 100; applyLights(); }, { min: 20, max: 300, label: "Speed (%)" })));
+    panel.append(row("Brightness", slider(Math.round(L.bright * 100), (v) => { L.bright = v / 100; applyLights(); }, { min: 20, max: 150, label: "Brightness (%)" })));
+    panel.append(el("h2", {}, "Colour"));
+    panel.append(row("Colours", sel([["item", "each part its own colour"], ["one", "one colour for all"]], L.mode, (v) => { L.mode = v; show(); renderPanel(); }, "Colour mode")));
+    if (L.mode === "one") panel.append(swatches(L.color, (c) => { L.color = c; show(); renderPanel(); }));
+    panel.append(el("p", { class: "hint" }, "RGB rainbow and colour wave need an RGB strip; the other patterns work with any strip and its controller."));
+  }
+  $("#tabs").onclick = (e) => { const b = e.target.closest("[data-tab]"); if (!b) return; S.tab = b.dataset.tab; [...$("#tabs").children].forEach((x) => x.setAttribute("aria-selected", String(x === b))); renderPanel(); };
+  $("#lights").onclick = () => { S.light.on = !S.light.on; applyLights(); if (S.tab === "light") renderPanel(); };
+  $("#front").onclick = () => fit(false);
+  $("#tilt").onclick = () => fit(true);
+  $("#explode").onclick = () => { S.explode = !S.explode; $("#explode").setAttribute("aria-pressed", String(S.explode)); show(); };
+  $("#back").onclick = () => P && P.__JS3D_NEON_CLOSE__ && P.__JS3D_NEON_CLOSE__();
+  function status() {
+    if (!built) return;
+    const n = built.pieces.length, sh = built.pieces.filter((p) => p.kind === "shell").length, bk = n - sh;
+    $("#status").textContent = built.tubes.length ? `${built.tubes.length} tube${built.tubes.length > 1 ? "s" : ""} · ${built.size[0].toFixed(0)} × ${built.size[1].toFixed(0)} mm · ${sh} shell piece${sh === 1 ? "" : "s"}${bk ? `, ${bk} backing piece${bk === 1 ? "" : "s"}` : ""}` : "Add text or a shape to start.";
+  }
+
+  // ------------------------------------------------------------ a backing from the design
+  async function pickBody() {
+    if (!P || !P.__JS3D_NEON_BODIES__) return;
+    const list = P.__JS3D_NEON_BODIES__();
+    if (!list.length) { alert("There are no shapes in your design yet. Make one in Beginner or Advanced, then come back."); return; }
+    const d = el("dialog", { style: { background: "#110725", color: "#f3e9ff", border: "1px solid #ff2bd6", borderRadius: "10px", minWidth: "300px" } },
+      el("h2", {}, "A shape from your design"), el("p", { class: "hint" }, "Its outline seen from above becomes the backing."),
+      el("div", { class: "items" }, ...list.map((b) => el("button", { class: "item", type: "button", onclick: () => { d.close(); useBody(b); } }, el("span", {}, b.name)))),
+      el("button", { class: "btn", type: "button", onclick: () => d.close() }, "Cancel"));
+    document.body.append(d); d.showModal(); d.addEventListener("close", () => d.remove());
+  }
+  function useBody(b) {
+    const soup = P.__JS3D_NEON_SOUP__(b.id); if (!soup) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < soup.length; i += 3) { x0 = Math.min(x0, soup[i]); x1 = Math.max(x1, soup[i]); y0 = Math.min(y0, soup[i + 1]); y1 = Math.max(y1, soup[i + 1]); }
+    const R = 400 / Math.max(x1 - x0, y1 - y0), W = Math.ceil((x1 - x0) * R) + 2, H = Math.ceil((y1 - y0) * R) + 2, c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d"); g.fillStyle = "#000";
+    for (let i = 0; i < soup.length; i += 9) { g.beginPath(); g.moveTo((soup[i] - x0) * R + 1, (soup[i + 1] - y0) * R + 1); g.lineTo((soup[i + 3] - x0) * R + 1, (soup[i + 4] - y0) * R + 1); g.lineTo((soup[i + 6] - x0) * R + 1, (soup[i + 7] - y0) * R + 1); g.closePath(); g.fill(); g.stroke(); }
+    const dd = g.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H); for (let i = 0; i < W * H; i++) mask[i] = dd[i * 4 + 3] > 100 ? 1 : 0;
+    S.back.imp = { w: W, h: H, mask }; S.back.impName = b.name; S.back.tpl = "import"; schedule(); renderPanel();
+  }
+
+  // ------------------------------------------------------------ export
+  async function finalBuild() { $("#busy").hidden = false; $("#busy").textContent = "Building at full detail…"; const b = await build(false); return b; }
+  const triCount = (p) => (p.kind === "shell" ? p.mesh.idx.length / 3 : p.soup.length / 9);
+  function forEachTri(p, f) { if (p.kind === "shell") { const A = p.mesh.pos, I = p.mesh.idx; for (let t = 0; t < I.length; t += 3) f(A, I[t] * 3, I[t + 1] * 3, I[t + 2] * 3, p.z); } else { const A = p.soup; for (let t = 0; t < A.length; t += 9) f(A, t, t + 3, t + 6, 0); } }
+  function stlBytes(list) {
+    const n = list.reduce((s, p) => s + triCount(p), 0), buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+    const head = "JumpStart 3D Neon Sign Builder"; for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i));
+    dv.setUint32(80, n, true); let o = 84;
+    for (const p of list) forEachTri(p, (A, a, b, c, z) => {
+      const ux = A[b] - A[a], uy = A[b + 1] - A[a + 1], uz = A[b + 2] - A[a + 2], vx = A[c] - A[a], vy = A[c + 1] - A[a + 1], vz = A[c + 2] - A[a + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+      for (const q of [a, b, c]) { dv.setFloat32(o, A[q], true); dv.setFloat32(o + 4, A[q + 1], true); dv.setFloat32(o + 8, A[q + 2] + z, true); o += 12; }
+      dv.setUint16(o, 0, true); o += 2;
+    });
+    return new Uint8Array(buf);
+  }
+  // 3MF: one object per piece with its colour; shells sit on the bed (z from 0) as they print
+  function threeMF(list) {
+    const esc = (s) => String(s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
+    const num = (x) => String(Math.round(x * 1e4) / 1e4);
+    const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">', ' <metadata name="Application">JumpStart 3D Neon Sign Builder</metadata>', ' <resources>', '  <basematerials id="1">'];
+    list.forEach((p) => out.push(`   <base name="${esc(p.name)}" displaycolor="${(p.kind === "shell" ? "#F4F2FF" : S.back.col).toUpperCase()}FF"/>`));
+    out.push("  </basematerials>");
+    list.forEach((p, k) => {
+      const idx = new Map(), V = [], Tr = [];
+      const vid = (A, q) => { const key = num(A[q]) + "," + num(A[q + 1]) + "," + num(A[q + 2]); let i = idx.get(key); if (i === undefined) { i = V.length; idx.set(key, i); V.push(`<vertex x="${num(A[q])}" y="${num(A[q + 1])}" z="${num(A[q + 2])}"/>`); } return i; };
+      forEachTri(p, (A, a, b, c) => { const i = vid(A, a), j = vid(A, b), l = vid(A, c); if (i !== j && j !== l && i !== l) Tr.push(`<triangle v1="${i}" v2="${j}" v3="${l}"/>`); });
+      out.push(`  <object id="${k + 2}" type="model" name="${esc(p.name)}" pid="1" pindex="${k}"><mesh><vertices>${V.join("")}</vertices><triangles>${Tr.join("")}</triangles></mesh></object>`);
+    });
+    out.push(" </resources>", " <build>");
+    // laid out side by side so nothing overlaps on the plate
+    let xo = 0;
+    list.forEach((p, k) => { const b = bounds(p); out.push(`  <item objectid="${k + 2}" transform="1 0 0 0 1 0 0 0 1 ${num(xo - b[0])} ${num(-b[1])} ${num(-b[2])}"/>`); xo += b[3] - b[0] + 10; });
+    out.push(" </build>", "</model>");
+    const enc = new TextEncoder();
+    return zip([
+      ["[Content_Types].xml", enc.encode('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>')],
+      ["_rels/.rels", enc.encode('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')],
+      ["3D/3dmodel.model", enc.encode(out.join("\n"))],
+    ]);
+  }
+  // a plain (stored) zip
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (u8) => { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  function zip(files) {
+    const parts = [], cen = []; let off = 0; const enc = new TextEncoder();
+    for (const [name, data] of files) {
+      const nm = enc.encode(name), crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(8, 0, true); h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+      parts.push(new Uint8Array(h.buffer), nm, data);
+      const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+      cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + data.length;
+    }
+    const cs = cen.reduce((s, x) => s + x.length, 0), e = new DataView(new ArrayBuffer(22)); e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cs, true); e.setUint32(16, off, true);
+    const all = [...parts, ...cen, new Uint8Array(e.buffer)], n = all.reduce((s, x) => s + x.length, 0), u = new Uint8Array(n); let o = 0; for (const x of all) { u.set(x, o); o += x.length; }
+    return u;
+  }
+  function save(name, bytes) {
+    if (P && P.__JS3D_SAVE__) { P.__JS3D_SAVE__(name, bytes); return; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([bytes])); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  // shells print on the bed: move each piece so its lowest point is at z = 0
+  const onBed = (p) => { const b = bounds(p); return { ...p, z: 0, name: p.name, kind: p.kind, mesh: p.mesh && { pos: p.mesh.pos.map((v, i) => (i % 3 === 2 ? v - b[2] : v)), idx: p.mesh.idx }, soup: p.soup && p.soup.map((v, i) => (i % 3 === 2 ? v - b[2] : v)) }; };
+  const fname = () => { const t = S.items.find((q) => q.type === "text"); return "neon-" + ((t && t.text) || "sign").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30); };
+  async function exportAll(fmt) {
+    const b = await finalBuild(); if (!b || !b.pieces.length) return;
+    const list = b.pieces.map(onBed);
+    if (fmt === "3mf") save(fname() + ".3mf", threeMF(list));
+    else for (const p of list) save(fname() + "-" + p.name.toLowerCase().replace(/\s+/g, "-") + ".stl", stlBytes([p]));
+    window.__neon.exports.push(fmt);
+  }
+  async function exportOne(p0, fmt) {
+    const b = await finalBuild(); if (!b) return;
+    const p = b.pieces.find((q) => q.name === p0.name); if (!p) return;
+    const q = onBed(p);
+    save(fname() + "-" + p.name.toLowerCase().replace(/\s+/g, "-") + "." + fmt, fmt === "3mf" ? threeMF([q]) : stlBytes([q]));
+    window.__neon.exports.push(fmt);
+  }
+
+  // ------------------------------------------------------------ undo and redo
+  // every change that reaches the view is a step (the view is redrawn after each change)
+  const snap = () => JSON.stringify({ items: S.items.map(({ imgEl: _e, ...q }) => q), tube: S.tube, back: { ...S.back, imp: S.back.imp ? impKey(S.back.imp) : null }, print: S.print, light: { ...S.light, on: undefined } });
+  // restoring is on until the sign from last time is back (so the default sign doesn't overwrite it)
+  let hist = [], hsel = [], hi = -1, restoring = true;
+  function commit() {
+    if (restoring) return;
+    const k = snap(); if (hist[hi] === k) return;
+    hist = hist.slice(0, hi + 1); hsel = hsel.slice(0, hi + 1); hist.push(k); hsel.push(S.sel); if (hist.length > 120) { hist.shift(); hsel.shift(); } hi = hist.length - 1;
+    edButtons(); autosave();
+  }
+  function restore(k, push) {
+    const o = JSON.parse(k);
+    S.items = o.items.map((q) => ({ ...q, imgEl: q.img ? imgEl(q.img) : undefined }));
+    S.tube = { ...S.tube, ...o.tube }; S.back = { ...S.back, ...o.back, imp: o.back.imp ? IMPS.get(o.back.imp) || null : null }; S.print = { ...S.print, ...o.print }; S.light = { ...S.light, ...o.light, on: S.light.on };
+    if (!S.items.some((q) => q.id === S.sel)) S.sel = S.items[0] ? S.items[0].id : null;
+    pathCache.clear(); lastPanel = ""; restoring = true;
+    build(true).finally(() => { restoring = false; if (push || hi < 0) commit(); edButtons(); autosave(); });
+    renderPanel();
+  }
+  // the part that was selected at that step is selected again
+  const undo = () => { if (hi > 0) { hi--; S.sel = hsel[hi] ?? S.sel; restore(hist[hi]); toast("Undone"); } };
+  const redo = () => { if (hi < hist.length - 1) { hi++; S.sel = hsel[hi] ?? S.sel; restore(hist[hi]); toast("Redone"); } };
+  function edButtons() {
+    $("#e-undo").disabled = hi <= 0; $("#e-redo").disabled = hi >= hist.length - 1;
+    const has = !!selItem(); $("#e-copy").disabled = $("#e-cut").disabled = $("#e-del").disabled = !has; $("#e-paste").disabled = !clip;
+  }
+  // ------------------------------------------------------------ copy, cut, paste, delete
+  let clip = null, pastes = 0;
+  const copy = () => { const it = selItem(); if (!it) return; const { imgEl: _e, ...q } = it; clip = JSON.parse(JSON.stringify(q)); pastes = 0; edButtons(); toast("Copied"); };
+  const del = () => { const it = selItem(); if (!it) return; S.items = S.items.filter((q) => q !== it); pathCache.delete(it.id); S.sel = S.items[0] ? S.items[0].id : null; schedule(); renderPanel(); };
+  const cut = () => { if (!selItem()) return; copy(); del(); toast("Cut"); };
+  const paste = () => { if (!clip) return; pastes++; addItem({ ...JSON.parse(JSON.stringify(clip)), id: uid(), x: clip.x + 20 * pastes, y: clip.y - 20 * pastes, imgEl: clip.img ? imgEl(clip.img) : undefined }); toast("Pasted"); };
+  const dup = () => { const it = selItem(); if (!it) return; const { imgEl: e2, ...q } = it; addItem({ ...JSON.parse(JSON.stringify(q)), imgEl: e2, id: uid(), x: it.x + 20, y: it.y - 20 }); };
+  const nudge = (dx, dy) => { const it = selItem(); if (!it) return; it.x += dx; it.y += dy; schedule(); };
+  let toastT = 0; function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 1600); }
+  // ------------------------------------------------------------ saving and opening a project
+  const FORMAT = "jumpstart3d-neon-sign";
+  const b64 = (u8) => { let s2 = ""; for (let i = 0; i < u8.length; i += 0x8000) s2 += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s2); };
+  const unb64 = (str) => { const b = atob(str), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  function projectJSON() {
+    const o = JSON.parse(snap());
+    for (const q of o.items) if (q.img) q.img = (IMGS.get(q.img) || {}).src || null;
+    if (o.back.imp) { const I = IMPS.get(o.back.imp); o.back.imp = I ? { w: I.w, h: I.h, mask: b64(I.mask) } : null; }
+    return JSON.stringify({ format: FORMAT, version: 1, app: "JumpStart 3D Neon Sign Builder", ...o });
+  }
+  async function loadProject(text) {
+    let o; try { o = JSON.parse(text); } catch (e) { toast("That file isn't a Neon sign project"); return false; }
+    if (!o || o.format !== FORMAT || !Array.isArray(o.items)) { toast("That file isn't a Neon sign project"); return false; }
+    for (const q of o.items) { if (q.img) q.img = await addImg(q.img); if (!q.id) q.id = uid(); }
+    o.items = o.items.filter((q) => q.type !== "trace" || q.img);
+    if (o.back && o.back.imp && o.back.imp.mask) { const I = { w: o.back.imp.w, h: o.back.imp.h, mask: unb64(o.back.imp.mask) }; o.back.imp = impKey(I); } else if (o.back) o.back.imp = null;
+    restore(JSON.stringify({ items: o.items, tube: o.tube || {}, back: o.back || {}, print: o.print || {}, light: o.light || {} }), true);
+    S.sel = S.items[0] ? S.items[0].id : null;
+    setTimeout(() => fit(false), 400);
+    return true;
+  }
+  function saveProject() { save(fname() + ".neon.json", new TextEncoder().encode(projectJSON())); window.__neon.saves++; toast("Project saved"); }
+  function openProject() { $("#p-file").value = ""; $("#p-file").click(); }
+  $("#p-file").onchange = async () => { const f = $("#p-file").files[0]; if (!f) return; if (await loadProject(await f.text())) toast("Opened " + f.name); };
+  function newSign() { const k = JSON.stringify({ items: defaultItems().map((q) => ({ ...q })), tube: { strip: "flex6", w: 6, h: 12, gap: 2, wall: 1.2, top: 1.6, clr: 0.3, snap: true }, back: { tpl: "contour", margin: 14, thick: 6, groove: 3, col: "#1c1c26", holes: true, hang: true, imp: null, impName: "" }, print: S.print, light: { pattern: "steady", speed: 1, bright: 1, mode: "item", color: "#ff2bd6" } }); restore(k, true); S.sel = S.items[0].id; setTimeout(() => fit(false), 400); toast("New sign (Undo brings the old one back)"); }
+  // the sign is kept between visits (in this browser) so closing the window loses nothing
+  const AUTO = "jumpstart3d.neon.autosave";
+  let autoT = 0;
+  function autosave() { clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem(AUTO, projectJSON()); } catch (e) { /* too big or not allowed: the Save button still works */ } }, 600); }
+  $("#p-new").onclick = newSign; $("#p-open").onclick = openProject; $("#p-save").onclick = saveProject;
+  $("#e-undo").onclick = undo; $("#e-redo").onclick = redo; $("#e-copy").onclick = copy; $("#e-cut").onclick = cut; $("#e-paste").onclick = paste; $("#e-del").onclick = del;
+  // keyboard shortcuts (not while typing in a box, where the box's own undo and copy work)
+  document.addEventListener("keydown", (e) => {
+    const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase(), typing = e.target.closest && e.target.closest("input, textarea, select, [contenteditable]");
+    if (mod && k === "s") { e.preventDefault(); saveProject(); return; }
+    if (mod && k === "o") { e.preventDefault(); openProject(); return; }
+    if (typing) return;
+    let done = true;
+    if (mod && k === "z" && !e.shiftKey) undo();
+    else if (mod && ((k === "z" && e.shiftKey) || k === "y")) redo();
+    else if (mod && k === "c") copy();
+    else if (mod && k === "x") cut();
+    else if (mod && k === "v") paste();
+    else if (mod && k === "d") dup();
+    else if (!mod && (e.key === "Delete" || e.key === "Backspace")) del();
+    else if (!mod && e.key.startsWith("Arrow")) { const st2 = e.shiftKey ? 10 : 1; nudge(e.key === "ArrowLeft" ? -st2 : e.key === "ArrowRight" ? st2 : 0, e.key === "ArrowUp" ? st2 : e.key === "ArrowDown" ? -st2 : 0); }
+    else done = false;
+    if (done) e.preventDefault();
+  });
+
+  // ------------------------------------------------------------ start
+  window.__neon = {
+    renderOnce: () => R3.render(scene, cam), applyLights, glow: () => glow, root: () => root, wall: () => wall,
+    exports: [], saves: 0, projectJSON, loadProject, undo, redo, copy, paste, hist: () => [hi, hist.length],
+    state: () => S, built: () => built, build, fit, show, setTab: (t) => { const b = document.querySelector(`[data-tab="${t}"]`); b && b.click(); },
+    load(o) { if (o.printers && o.printers.length) PRINTERS = o.printers; if (o.printer) { const p = PRINTERS.find((x) => x.id === o.printer); if (p) { S.print.printer = p.id; S.print.w = p.w; S.print.d = p.d; } } loadFonts(o.fonts || {}); renderPanel(); },
+    geo: NG, stlBytes, threeMF, onBed, renderer: R3,
+  };
+  resize(); renderPanel();
+  (async () => {
+    let back = null; try { back = localStorage.getItem(AUTO); } catch (e) {}
+    if (back && (await loadProject(back))) { hist = []; hsel = []; hi = -1; toast("Your last sign is back. New starts a fresh one."); }
+    else { restoring = false; build(true).then(() => fit(false)); }
+  })();
+  if (P && P.__JS3D_NEON_READY__) P.__JS3D_NEON_READY__();
+})();
+</script>
+</body>
+</html>

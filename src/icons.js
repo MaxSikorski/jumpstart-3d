@@ -39,6 +39,7 @@ export const ICON = {
   arcc: S('<path d="M20 12a8 8 0 0 0-8-8"/><path d="M12 12V4M12 12h8" stroke-dasharray="1.5 1.5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>'),
   polygon: S('<path d="M12 3l8 5v8l-8 5-8-5V8z"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>'),
   offset: S('<path d="M4 20h16M4 20V11h16v9" /><path d="M4 11V7h16v4" stroke-dasharray="2 2"/><path d="M12 9V2M9.5 4.5 12 2l2.5 2.5" stroke="#1f4fa8"/>'),
+  pin: S('<path d="M9 3h6l-1 7 3 3H7l3-3z"/><path d="M12 13v8"/>'),
   lock: S('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
   unlock: S('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>'),
   magnet: S('<path d="M6 3v8a6 6 0 0 0 12 0V3"/><path d="M6 3h4v8a2 2 0 0 0 4 0V3h4" /><path d="M6 7h4M14 7h4"/>'),
@@ -68,9 +69,9 @@ export const ICON = {
   clearSim: S('<circle cx="12" cy="12" r="8"/><path d="M8 8l8 8M16 8l-8 8"/>'),
   sweep: S('<path d="M4 19c4 0 5-3 7-7s4-7 9-7" stroke="#1f4fa8" stroke-dasharray="2 1.6"/><ellipse cx="5" cy="17" rx="2" ry="3.2"/><path d="M5 13.8c4 0 5-3 7-6.8s4-5 7.5-5.4M5 20.2c4.5 0 6-3.2 8-7s3.4-5.8 7-6"/>'),
   floorPlanner: S('<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 12h7v9M10 12V3M14 3v6h7M14 15h3" stroke="#1f4fa8"/><path d="M6 6h1M6 8h1" stroke-width="2.4"/>'),
+  gear: S('<path d="M12 2.5l1.3 2.4 2.6-.8.4 2.7 2.7.4-.8 2.6 2.4 1.3-2.4 1.3.8 2.6-2.7.4-.4 2.7-2.6-.8L12 21.5l-1.3-2.4-2.6.8-.4-2.7-2.7-.4.8-2.6L3.4 12l2.4-1.3L5 8.1l2.7-.4.4-2.7 2.6.8z"/><circle cx="12" cy="12" r="3" stroke="#1f4fa8"/>'),
   hinge: S('<path d="M3 7h7v10H3zM14 7h7v10h-7z"/><path d="M10 9h4M10 15h4" stroke="#1f4fa8" stroke-width="2.4"/><circle cx="12" cy="12" r="1.3" fill="#1f4fa8" stroke="none"/>'),
   thread: S('<path d="M8 3h8v18H8z"/><path d="M8 6l8-2M8 10l8-2M8 14l8-2M8 18l8-2" stroke="#1f4fa8"/>'),
-  gear: S('<circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5V6M12 18v3.5M2.5 12H6M18 12h3.5M5.3 5.3l2.5 2.5M16.2 16.2l2.5 2.5M5.3 18.7l2.5-2.5M16.2 7.8l2.5-2.5" stroke-width="2.6"/>'), // jumpstart-3d: gears
   tag: S('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="6.5" cy="12" r="1.3"/><path d="M10 10.5h7.5M10 13.5h5" stroke="#1f4fa8"/>'), // jumpstart-3d: name plates
   knurl: S('<rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 3v18M12 3v18M15 3v18" stroke="#1f4fa8"/>'), // jumpstart-3d: knurl
   spring: S('<path d="M7 4h10M7 20h10M8 4c6 1 6 3 0 4s-6 3 0 4 6 3 0 4-6 3 0 4" stroke="#1f4fa8"/>'), // jumpstart-3d: spring
@@ -88,6 +89,7 @@ export const ICON = {
   close: S('<path d="M6 6l12 12M18 6 6 18"/>'),
   body: S('<path d="M4 8l8-4 8 4-8 4z"/><path d="M4 8v8l8 4 8-4V8"/>'),
   combineIcon: S('<rect x="3" y="7" width="11" height="11" rx="1"/><circle cx="15" cy="10" r="6"/>'),
+  neon: S('<path d="M4 15c0-4 2-7 4-7s2 4 0 6M10 8v8l4-8v8" stroke="#ff2bd6"/><path d="M16 16c3 0 4-2 4-4s-1-4-3-4" stroke="#00b8d4"/><path d="M3 19h18" />'),
   stainedglass: S('<path d="M12 3 4 8v8l8 5 8-5V8z"/><path d="M12 3v18M4 8l16 8M20 8 4 16"/><path d="M8.5 6 8 18.5" stroke="#1f4fa8"/>'),
   chipcarve: S('<path d="M3 21l7.5-7.5"/><path d="M10.5 13.5l7-9.5 2.5 2.5-9.5 7z"/><path d="M14 21l3-5 3 5z" stroke="#1f4fa8"/><path d="M17 16v2.6" stroke="#1f4fa8"/>'),
   lathe: S('<path d="M1.5 12h3M19.5 12h3"/><path d="M4.5 8.5c3 0 3.5 2 6 2s3-2.5 5.5-2.5c2 0 3.5.8 3.5.8v6.4s-1.5.8-3.5.8c-2.5 0-3-2.5-5.5-2.5s-3 2-6 2z"/><path d="M12 22l2.5-6.5" stroke="#1f4fa8" stroke-width="2.2"/>'),
@@ -101,6 +103,11 @@ export const ICON = {
   archFloor: S('<path d="M2 15 12 10l10 5-10 5z" stroke="#1f4fa8"/><path d="M2 15v2.5l10 5 10-5V15"/>'),
   archPlan: S('<path d="M3 3h18v18H3z"/><path d="M3 10h8v11M11 14h10M15 3v7" stroke="#1f4fa8"/>'),
   archXray: S('<path d="M4 20V8l8-5 8 5v12z" stroke-dasharray="2.5 2.5"/><path d="M10 20v-6h4v6" stroke="#1f4fa8"/>'),
+  archHole: S('<path d="M2 14 12 9l10 5-10 5z"/><path d="M8 14l4-2 4 2-4 2z" fill="#e8a317" stroke="#b07a0c"/>'),
+  archStairs: S('<path d="M3 20h4v-4h4v-4h4V8h4V4h2" stroke="#1f4fa8"/><path d="M3 20h18V4"/>'),
+  archRail: S('<path d="M3 7h18" stroke="#1f4fa8"/><path d="M4 7v13M20 7v13M8 7v12M12 7v12M16 7v12M3 18h18"/>'),
+  archPorch: S('<path d="M2 10 12 5l10 5" stroke="#1f4fa8"/><path d="M4 10v8M20 10v8M12 10v8M3 18h18v3H3z"/>'),
+  archFurn: S('<path d="M5 11V8.5A2.5 2.5 0 0 1 7.5 6h9A2.5 2.5 0 0 1 19 8.5V11"/><path d="M3.5 11.5a1.5 1.5 0 0 1 3 0V13h11v-1.5a1.5 1.5 0 0 1 3 0V17h-17z" stroke="#1f4fa8"/><path d="M5.5 17v2M18.5 17v2"/>'),
   archLand: S('<path d="M2 18c3-5 5-7 8-4s5 1 7-1 4-1 5 1v6H2z"/><path d="M5 20c2-1 4-1 6 0s4 1 6 0" stroke="#3d8fd6"/><circle cx="17" cy="6" r="2.5" stroke="#4c8c39"/><path d="M17 8.5V12" stroke="#6b4a2b"/>'),
   archSim: S('<path d="M7 13a4 4 0 0 1 .5-8 5 5 0 0 1 9.5 1.5A3.3 3.3 0 0 1 17 13z"/><path d="M8 15.5l-1 2.5M12 15.5l-1 2.5M16 15.5l-1 2.5" stroke="#3d8fd6"/><path d="M3 21c2-1.3 4-1.3 6 0s4 1.3 6 0 4-1.3 6 0" stroke="#3d8fd6"/>'),
   archFinish: S('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 14h18M9 4v5M15 9v5M9 14v6" stroke="#a85b48"/>'),
