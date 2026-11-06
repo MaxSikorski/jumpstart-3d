@@ -393,8 +393,10 @@ test("Beginner: a tap cutter from the dialog stays inside the box at 0,0 and Gro
   quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
   await fresh("beginner");
   const id = await run(() => JS3D.add("box", { size: { w: 30, d: 30, h: 40 }, at: [0, 0, 0] }));
+  const before = await volumeOf(id); // waits for the box to build
   await run(() => JS3D.fit()); // the dialog drops the part at the view target: look at the box first
-  const before = await volumeOf(id);
+  // fit glides the camera for about 380 ms and the dialog copies the target when it opens: wait for it to stop
+  await expect.poll(() => run(() => window.__app.vp.isMoving())).toBe(false);
   await page.click("#bb-fastener");
   await choose({ kind: "cutter", size: "M8", len: 30 });
   await page.click("#cmd-ok");
