@@ -99,24 +99,34 @@ test("Save downloads the project file by default; the Open/Export switch turns i
 });
 
 // ---------------------------------------------------------------- finer STL for printing
-test("STL from the menu is meshed again from the exact shape (Fine by default, finer than Standard); JS3D.export keeps the view's mesh", async () => {
+test("STL and 3MF bridge exports match the menu at each quality (Fine by default)", async () => {
   await loadDoc(page, newDoc("Round", "beginner", { bodies: [body("b1", "Peg", prim("cylinder", { w: 30, d: 30, h: 10 }))] }));
   await okAll();
+  const viewTriangles = await run(() => window.__app.scene.views.get("b1").data.triangles.length / 3);
   const tris = (buf) => buf.readUInt32LE(80);
-  const menuStl = async () => {
-    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 90_000 }), (async () => { await page.click("#btn-export"); await page.click('#menu-export button[data-act="stl"]'); })()]);
+  const menu = async (kind) => {
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 90_000 }), (async () => { await page.click("#btn-export"); await page.click(`#menu-export button[data-act="${kind}"]`); })()]);
     const chunks = []; for await (const c of await dl.createReadStream()) chunks.push(c);
     return Buffer.concat(chunks);
   };
-  const a = await run(() => JS3D.export("stl"));
-  const view = tris(Buffer.from(a.buffer, a.byteOffset, a.byteLength));
-  await run(() => localStorage.removeItem("jumpstart.exportQuality"));
-  const fine = tris(await menuStl());
-  await run(() => localStorage.setItem("jumpstart.exportQuality", "standard"));
-  const standard = tris(await menuStl());
-  await run(() => localStorage.removeItem("jumpstart.exportQuality"));
-  expect(standard, "Standard is finer than the view").toBeGreaterThan(view);
-  expect(fine, "Fine is finer than Standard").toBeGreaterThan(standard);
+  const counts = {};
+  try {
+    for (const quality of [null, "standard", "fine", "extra"]) {
+      await run((q) => q ? localStorage.setItem("jumpstart.exportQuality", q) : localStorage.removeItem("jumpstart.exportQuality"), quality);
+      for (const kind of ["stl", "3mf"]) {
+        const downloaded = await menu(kind);
+        const bridge = Buffer.from(await run(async (k) => Array.from(await JS3D.export(k)), kind));
+        expect(bridge.equals(downloaded), `${quality || "default"} ${kind}`).toBe(true);
+        if (kind === "stl") counts[quality || "default"] = tris(downloaded);
+      }
+    }
+  } finally {
+    await run(() => localStorage.removeItem("jumpstart.exportQuality"));
+  }
+  expect(counts.default).toBe(counts.fine);
+  expect(counts.standard).toBeGreaterThan(viewTriangles);
+  expect(counts.fine).toBeGreaterThan(counts.standard);
+  expect(counts.extra).toBeGreaterThan(counts.fine);
 });
 
 // ---------------------------------------------------------------- layouts

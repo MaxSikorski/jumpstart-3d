@@ -479,11 +479,11 @@ export function initProjects(app) {
   ];
   const exportQ = () => { let v = null; try { v = localStorage.getItem(EXPORT_Q_KEY); } catch (e) {} return EXPORT_Q.some((q) => q[0] === v) ? v : "fine"; };
   // the bodies to export with their print meshes: [{ b, data, m }]
-  // jumpstart-3d: scripting bridge. the bodies with the view's mesh (JS3D.exportFile and the bridge keep these bytes)
+  // jumpstart-3d: scripting bridge. Bodies with the view's mesh for the byte writers.
   const viewItems = (bodies) => bodies.map((b) => ({ b, v: app.scene.views.get(b.id) })).filter((x) => x.v && x.v.data).map(({ b, v }) => ({ b, data: v.data, m: v.group.matrix }));
-  async function exportItems() {
+  async function exportItems(bodies = exportBodies()) { // jumpstart-3d: scripting bridge can supply bodies
     const items = [];
-    for (const b of exportBodies()) {
+    for (const b of bodies) { // jumpstart-3d: use the supplied bodies
       const v = app.scene.views.get(b.id);
       if (v && v.data) items.push({ b, data: v.data, m: v.group.matrix });
     }
@@ -927,7 +927,7 @@ export function initProjects(app) {
     newDesign: (mode) => createNew(null, mode),
     exportSTL,
     exportJSON, liveDoc: () => store.doc, importShared, // jumpstart-3d: share link
-    stlBytes, objBytes, threeMFBytes, stepBytes, glbBytes: glbBytesOf, // jumpstart-3d: scripting bridge
+    exportItems, stlBytes, objBytes, threeMFBytes, stepBytes, glbBytes: glbBytesOf, // jumpstart-3d: scripting bridge
     backupAll, restoreBackup, restoreFolder, // jumpstart-3d: backup
     get started() { return started; }, _store: ps, _folder: mirror, _remote: remote, // jumpstart-3d: designs storage, copies in a folder, remote (tests read these)
   };

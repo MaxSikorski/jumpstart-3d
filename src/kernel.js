@@ -3796,30 +3796,44 @@ function fuseMany(solids) {
 // Exports drop such zero-area facets, which left a slit at the tip (12 open edges in a 20 mm cone's STL). Each sliver
 // (a, b, m), m inside a-b, is swapped with the triangle (b, a, x) across a-b for (a, x, m) and (x, b, m): same surface,
 // no sliver, every edge still shared. Only within one face, so the face groups keep their ranges.
+// Export meshes run this too (millions of triangles), so a quick scan finds the slivers first and only faces that have
+// some are indexed; only those triangles and the ones a swap changed are looked at again (same swaps, same order).
 function flipSlivers(m) {
-  const V = m.vertices, T = m.triangles, P = (i) => [V[3 * i], V[3 * i + 1], V[3 * i + 2]];
-  const off = (a, b, p) => { // distance of p from line a-b, and where along a-b it falls (0..1)
-    const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]], L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
-    const c = [ab[1] * ap[2] - ab[2] * ap[1], ab[2] * ap[0] - ab[0] * ap[2], ab[0] * ap[1] - ab[1] * ap[0]];
-    return L2 ? [Math.hypot(...c) / Math.sqrt(L2), (ab[0] * ap[0] + ab[1] * ap[1] + ab[2] * ap[2]) / L2] : [0, -1];
+  const V = m.vertices, T = m.triangles, NV = V.length / 3;
+  let pa = 0, pb = 0; // where off() puts its answer: distance of p from line a-b, and where along a-b it falls (0..1)
+  const off = (a, b, p) => {
+    const ax = V[3 * a], ay = V[3 * a + 1], az = V[3 * a + 2];
+    const bx = V[3 * b] - ax, by = V[3 * b + 1] - ay, bz = V[3 * b + 2] - az, px = V[3 * p] - ax, py = V[3 * p + 1] - ay, pz = V[3 * p + 2] - az;
+    const L2 = bx * bx + by * by + bz * bz;
+    if (!L2) { pa = 0; pb = -1; return; }
+    const cx = by * pz - bz * py, cy = bz * px - bx * pz, cz = bx * py - by * px;
+    pa = Math.sqrt(cx * cx + cy * cy + cz * cz) / Math.sqrt(L2); pb = (bx * px + by * py + bz * pz) / L2;
   };
+  const sliverAt = (t, j) => { off(T[t + j], T[t + (j + 1) % 3], T[t + (j + 2) % 3]); return !(pa > 1e-5) && pb > 0 && pb < 1; };
+  const isSliver = (t) => sliverAt(t, 0) || sliverAt(t, 1) || sliverAt(t, 2);
   for (const g of m.faceGroups) {
-    const edge = new Map(), key = (u, v) => u + ">" + v, end = g.start + g.count;
+    const end = g.start + g.count, todo = [];
+    for (let t = g.start; t < end; t += 3) if (isSliver(t)) todo.push(t);
+    if (!todo.length) continue;
+    const edge = new Map(), key = (u, v) => u * NV + v;
     const index = (t, add) => { for (let j = 0; j < 3; j++) { const k = key(T[t + j], T[t + (j + 1) % 3]); if (add) edge.set(k, t); else edge.delete(k); } };
     for (let t = g.start; t < end; t += 3) index(t, true);
+    let at = 0; // a changed triangle may be a sliver now: it joins the list, in order (looked at later in this pass if after this one)
+    const recheck = (t) => { let i = 0; while (i < todo.length && todo[i] < t) i++; if (todo[i] !== t) { todo.splice(i, 0, t); if (i <= at) at++; } };
     for (let again = true, pass = 0; again && pass < 100; pass++) {
       again = false;
-      for (let t = g.start; t < end; t += 3) for (let j = 0; j < 3; j++) {
+      for (at = 0; at < todo.length; at++) for (let j = 0, t = todo[at]; j < 3; j++) {
         const a = T[t + j], b = T[t + (j + 1) % 3], mid = T[t + (j + 2) % 3];
-        const [h, along] = off(P(a), P(b), P(mid));
-        if (h > 1e-5 || !(along > 0 && along < 1)) continue;
+        if (!sliverAt(t, j)) continue;
         const n = edge.get(key(b, a));
         if (n === undefined || n === t) continue;
         const x = [T[n], T[n + 1], T[n + 2]].find((v) => v !== a && v !== b);
-        if (x === undefined || x === mid || off(P(a), P(b), P(x))[0] <= 1e-5) continue;
+        if (x === undefined || x === mid) continue;
+        off(a, b, x); if (pa <= 1e-5) continue;
         index(t, false); index(n, false);
         T[t] = a; T[t + 1] = x; T[t + 2] = mid; T[n] = x; T[n + 1] = b; T[n + 2] = mid;
         index(t, true); index(n, true);
+        recheck(n);
         again = true; break;
       }
     }
@@ -4225,6 +4239,7 @@ export function meshForExport(shape, level = "fine") {
   const { tol, ang } = exportTolerance(diag, level);
   const m = shape.mesh({ tolerance: tol, angularTolerance: ang });
   try { repairFaceMeshes(shape, m, tol, ang); } catch (err) {}
+  flipSlivers(m); // jumpstart-3d: as meshShape does: the STL writer drops a cone tip's zero-area slivers, which opened the Fine file (12 open edges)
   return {
     vertices: new Float32Array(m.vertices),
     normals: new Float32Array(m.normals),
