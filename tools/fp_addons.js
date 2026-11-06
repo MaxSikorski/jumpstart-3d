@@ -127,9 +127,14 @@
     if (!lsS(PLANS, all)) { alertBox('This browser would not save the plan (its storage is full or turned off). Use <b>Save to a file</b> instead.'); return false; }
     curName = name; lsS('fpCurName', name); FPB.saved = true;
     if (typeof STU !== 'undefined' && STU && typeof saveStu === 'function') { try { saveStu(); } catch (e) {} }
-    savedMsg('✓ Saved ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+    // every Save also downloads the plan file, so it is in Downloads even if the browser is cleared
+    // (school Chromebooks wipe browser storage at sign-out); it can be turned off in My plans
+    let dl = false;
+    if (saveDl()) { try { dlBlob(new Blob([JSON.stringify({ name: curName, t: Date.now(), data: snapPlan() })], { type: 'application/json' }), fileName()); dl = true; } catch (e) {} }
+    savedMsg('✓ Saved ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + (dl ? ' + downloaded' : ''));
     return true;
   }
+  function saveDl() { try { return localStorage.getItem('fpSaveDownload') !== 'off'; } catch (e) { return true; } }
   function quickSave() { if (curName && plans()[curName.toLowerCase()]) saveAs(curName); else nameDialog(); }
   function nameDialog(copy) {
     const parts = (curName || '').split(',').map((x) => x.trim());
@@ -152,7 +157,9 @@
     const all = Object.values(plans()).sort((a, b) => b.t - a.t);
     const d = modal('My plans', `<p class="jt-intro">Plans saved in this browser on this computer. To move a plan to another computer, use <b>Save to a file</b> and open it there.</p>
       <ul class="jt-plans">${all.length ? all.map((p) => `<li class="${p.name === curName ? 'cur' : ''}" data-k="${escH(p.name.toLowerCase())}"><span class="nm2"><b>${escH(p.name)}</b><small>Saved ${stamp(p.t)} · ${Math.round(p.data && p.data.FLR ? Object.values(p.data.FLR).reduce((s, L) => s + L.rooms.length, 0) : 0)} rooms</small></span><button class="jt-btn pri" data-a="open">Open</button><button class="jt-btn" data-a="del" title="Delete this saved plan">🗑</button></li>`).join('') : '<li><span class="nm2">No saved plans yet. Click 💾 Save to save this one.</span></li>'}</ul>
-      <div class="jt-row"><button class="jt-btn pri" id="jpsave">💾 Save${curName ? ' (' + escH(curName) + ')' : ''}</button><button class="jt-btn" id="jpcopy">Save as a new plan…</button><button class="jt-btn" id="jpfile">⬇ Save to a file</button><button class="jt-btn" id="jpopen">📂 Open a file…</button><button class="jt-btn" id="jpnew">New blank plan</button></div>`);
+      <div class="jt-row"><button class="jt-btn pri" id="jpsave">💾 Save${curName ? ' (' + escH(curName) + ')' : ''}</button><button class="jt-btn" id="jpcopy">Save as a new plan…</button><button class="jt-btn" id="jpfile">⬇ Save to a file</button><button class="jt-btn" id="jpopen">📂 Open a file…</button><button class="jt-btn" id="jpnew">New blank plan</button></div>
+      <label class="jt-intro" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="jpdl"${saveDl() ? ' checked' : ''}> Also download a plan file (.floorplan.json) every time I Save</label>`);
+    { const cb = d.querySelector('#jpdl'); if (cb) cb.onchange = () => { try { localStorage.setItem('fpSaveDownload', cb.checked ? 'on' : 'off'); } catch (e) {} }; }
     d.querySelector('.jt-plans').onclick = (e) => {
       const b = e.target.closest('button[data-a]'); if (!b) return; const li = b.closest('li'), p = plans()[li.dataset.k]; if (!p) return;
       if (b.dataset.a === 'open') { if (hasWork() && !confirmBox('Open “' + p.name + '”? Save first if you want to keep the plan you have now.')) return; loadPlan(p.data); curName = p.name; lsS('fpCurName', curName); d.remove(); savedMsg('📂 Opened ' + p.name); }

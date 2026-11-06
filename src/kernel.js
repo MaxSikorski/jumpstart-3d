@@ -449,12 +449,31 @@ function buildRevolve(node) {
       const w = pl.toWorldCoords([q0[0] * st[0], q0[1] * st[1]]).toTuple();
       const v = [w[0] - a[0], w[1] - a[1], w[2] - a[2]];
       const side = (v[1] * dn[2] - v[2] * dn[1]) * n[0] + (v[2] * dn[0] - v[0] * dn[2]) * n[1] + (v[0] * dn[1] - v[1] * dn[0]) * n[2];
-      if (side > 1e-6) pos = true;
-      if (side < -1e-6) neg = true;
+      if (side > 1e-2) pos = true;
+      if (side < -1e-2) neg = true;
     }
     if (pos && neg) throw new Error("The profile crosses the axis. Move it to one side of the axis.");
   }
-  const dr = regionsDrawing(node.regions, node.stretch);
+  // points a hair off the axis (typed lengths and angles round a little) go right onto it, so the
+  // solid closes cleanly instead of turning inside out by a few thousandths of a millimeter
+  let regions = node.regions;
+  {
+    const dn = dir.map((v) => v / dl), st = node.stretch || [1, 1];
+    const snap = (q0) => {
+      if (!q0) return q0;
+      const w = pl.toWorldCoords([q0[0] * st[0], q0[1] * st[1]]).toTuple();
+      const v = [w[0] - a[0], w[1] - a[1], w[2] - a[2]], t = v[0] * dn[0] + v[1] * dn[1] + v[2] * dn[2];
+      const off = Math.hypot(v[0] - t * dn[0], v[1] - t * dn[1], v[2] - t * dn[2]);
+      if (off < 1e-9 || off > 1e-2) return q0;
+      const lp = pl.toLocalCoords(new R.Vector([a[0] + t * dn[0], a[1] + t * dn[1], a[2] + t * dn[2]]));
+      const out = [lp.x / st[0], lp.y / st[1]];
+      lp.delete && lp.delete();
+      return out;
+    };
+    const fix = (s0) => ({ ...s0, a: snap(s0.a), b: snap(s0.b) });
+    regions = node.regions.map((r) => ({ ...r, outer: (r.outer || []).map(fix), holes: (r.holes || []).map((h) => h.map(fix)) }));
+  }
+  const dr = regionsDrawing(regions, node.stretch);
   return dr.sketchOnPlane(pl).revolve(dir, { origin: a, angle: node.angle ?? 360 });
 }
 
@@ -705,7 +724,34 @@ function swPipe(spine, wires) {
     ps2.delete();
   }
 }
+// A twist along one straight line (no taper): an exact helical sweep, the profile guided by a
+// helix around the line. Far lighter than lofting through many turned copies of the profile,
+// so patterns of these cuts (spiral fidget cones, twisted vases) build quickly.
+function swHelical(wire, seg, twist) {
+  const a = seg.a, b = seg.b, L = dist(a, b), tw = (twist * Math.PI) / 180;
+  if (L < 1e-6 || Math.abs(tw) < 1e-9) return null;
+  const dir = Vec.norm(Vec.sub(b, a));
+  const pitch = (L * 2 * Math.PI) / Math.abs(tw);
+  const helix = helixWire(pitch, L, 10, a, dir, tw < 0);
+  const spine = sweepPath([seg]);
+  const ps = new OC.BRepOffsetAPI_MakePipeShell(spine.wrapped);
+  try {
+    ps.SetMode(helix.wrapped, false, OC.BRepFill_TypeOfContact.BRepFill_NoContact);
+    ps.Add(wire.wrapped, false, false);
+    ps.Build();
+    if (!ps.IsDone()) return null;
+    ps.MakeSolid();
+    const out = R.cast(ps.Shape());
+    if (!(Math.abs(safeVolume(out)) > 1e-9)) { out.delete(); return null; }
+    return out;
+  } catch (e) { return null; }
+  finally { ps.delete(); spine.delete(); helix.delete(); }
+}
 function swTwistTaper(wire, segs, taper, twist, isHole) {
+  if (Math.abs(taper) < 1e-9 && segs.length === 1 && segs[0].t === "line" && !swTwistTaper.noHelix) {
+    const h = swHelical(wire, segs[0], twist);
+    if (h) return h;
+  }
   let V = swV, tan = Math.tan(taper * Math.PI / 180), tw = twist * Math.PI / 180, ps2 = segs.map(swSeg), total = ps2.reduce((a, q2) => a + q2.len, 0);
   let nTw = Math.ceil(Math.abs(twist) / 12), n = Math.max(2, nTw, Math.min(segs.length + 1, 12)), probe = swStations(segs, n);
   n = Math.max(n, Math.ceil(probe.turn * 180 / Math.PI / 20) + 1);
@@ -1154,7 +1200,18 @@ function applyMod(shape, mod, node) { // jumpstart-3d: STEP parts (#173). node: 
     case "bool": {
       const tool = transformShape(evalNode(mod.tool), mod.m);
       let out;
-      if (mod.op === "cut") out = shape.cut(tool);
+      // Clearance: the gap must take away at least what the part itself takes away; on very
+      // complex free-form parts the grown part can come out wrong and remove far too little
+      if (mod.op === "cut" && mod.src === "clearance") {
+        out = shape.cut(tool);
+        const plainTool = { ...mod.tool, children: (mod.tool.children || []).map((c) => ({ ...c, node: { ...c.node, mods: (c.node.mods || []).filter((q) => !(q.t === "offset" && q.all)) } })) };
+        let vPlain = NaN;
+        try { const pt = transformShape(evalNode(plainTool), mod.m); const pc = shape.cut(pt); vPlain = safeVolume(pc); pc.delete(); pt.delete(); } catch (e) {}
+        if (isFinite(vPlain) && safeVolume(out) > vPlain + Math.max(1e-3, vPlain * 1e-4)) {
+          out.delete(); tool.delete();
+          throw new Error(`Clearance: the geometry engine couldn't make the ${mod.gap || ""} mm gap around ${mod.other || "the other part"} (that part is too complex to grow). Delete this Clearance and offset the touching faces with Offset face instead.`);
+        }
+      } else if (mod.op === "cut") out = shape.cut(tool);
       else if (mod.op === "intersect") out = shape.intersect(tool);
       else {
         // join: a tool made of many solids (a pattern of ribs, say) is fused in one go, and the
@@ -1312,6 +1369,25 @@ function applyMod(shape, mod, node) { // jumpstart-3d: STEP parts (#173). node: 
       // and curved faces: the face is thickened into a slab that is added or removed.
       const dist0 = mod.d || 0;
       if (Math.abs(dist0) < 1e-6) return shape;
+      // every face (picked with a selection window): the whole body grows or shrinks, with
+      // round outside corners when it grows, like a solid offset in other CAD apps. Slabs face by
+      // face would leave notches at every edge and corner.
+      if (mod.all) {
+        const vIn = safeVolume(shape);
+        const out = offsetSolid(shape, dist0, vIn, dist0 > 0);
+        if (!out) throw new Error(dist0 > 0 ? "Offset face couldn't grow the whole body by this distance. Try a smaller distance." : "Offset face couldn't shrink the whole body by this distance: it may be thinner than twice the distance somewhere.");
+        // the engine can return a wrong shape for very complex free-form bodies: the volume must
+        // change by about the surface area × the distance (corners and narrow parts change it
+        // somewhat, so a wide margin)
+        let area = NaN;
+        try { area = R.measureArea(shape); } catch (e) {}
+        const change = safeVolume(out) - vIn, expect = area * dist0;
+        if (isFinite(expect) && Math.abs(expect) > 1e-6 && !(change / expect > 0.5 && change / expect < 1.6)) {
+          out.delete();
+          throw new Error("The geometry engine couldn't offset this whole body correctly (it is too complex). Offset some of its faces instead, or use a smaller distance.");
+        }
+        return out;
+      }
       let cur = shape;
       for (const q of mod.faces || []) {
         const faces = cur.faces;
@@ -2777,12 +2853,47 @@ function buildPipe(node) {
   if (segs.length === 1 && segs[0].t === "bsp" && !node.hollow && !node._try) {
     const size = clampPos(node.size ?? 5), P0 = segs[0].pts;
     // a bend much tighter than the tube can't sweep (and finding that out is slow): smooth first
-    if (minBend(P0) > size * 0.55) { try { return buildPipeShell(node); } catch (e1) {} }
+    // the engine's sweep can come out wrong without failing on a long hand-drawn line (flattened
+    // into a twisting band, or with fins and lumps where the line wiggles), so each try is checked
+    // against the line itself, and a tube built straight from the line is used when it's off
+    const good = (shape, P) => { if (tubeFits(shape, P, size / 2)) return shape; shape.delete(); return null; };
+    if (minBend(P0) > size * 0.55) { try { const s1 = good(buildPipeShell(node), P0); if (s1) return s1; } catch (e1) {} }
     const P = relaxPath(P0, size);
-    try { return buildPipeShell({ ...node, _tol: Math.max(0.05, size * 0.1), pathSegs: [{ t: "bsp", a: P[0], b: P[P.length - 1], pts: P }] }); } catch (e2) {}
+    try { const s2 = good(buildPipeShell({ ...node, _tol: Math.max(0.05, size * 0.1), pathSegs: [{ t: "bsp", a: P[0], b: P[P.length - 1], pts: P }] }), P); if (s2) return s2; } catch (e2) {}
     return solidFromMesh(...tubeMesh(P, size / 2));
   }
   return buildPipeShell(node);
+}
+// is this solid really a round tube of radius r along the points P? Every point of its surface
+// must lie about r from the line, and its volume must be about that of the tube.
+function tubeFits(shape, P, r) {
+  let L = 0;
+  for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1], P[i][2] - P[i - 1][2]);
+  const vol = safeVolume(shape), want = Math.PI * r * r * L;
+  if (!(vol > want * 0.85 && vol < want * 1.15)) return false;
+  let V;
+  try { V = shape.mesh({ tolerance: Math.max(0.02, r * 0.08), angularTolerance: 0.35 }).vertices; } catch (e) { return false; }
+  // the line's segments in a grid of cells, so each surface point checks only the nearby ones
+  const cell = Math.max(r * 4, L / 60), key = (x, y, z) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  const grid = new Map();
+  for (let i = 1; i < P.length; i++) {
+    const a = P[i - 1], b = P[i], lo = [0, 1, 2].map((k) => Math.floor((Math.min(a[k], b[k]) - 2 * r) / cell)), hi = [0, 1, 2].map((k) => Math.floor((Math.max(a[k], b[k]) + 2 * r) / cell));
+    for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) { const kk = `${x},${y},${z}`; if (!grid.has(kk)) grid.set(kk, []); grid.get(kk).push(i); }
+  }
+  const lim = r * 1.2 + 0.05;
+  for (let v = 0; v < V.length; v += 3) {
+    const x = V[v], y = V[v + 1], z = V[v + 2], segs = grid.get(key(x, y, z));
+    if (!segs) return false;
+    let best = Infinity;
+    for (const i of segs) {
+      const a = P[i - 1], b = P[i], ab0 = b[0] - a[0], ab1 = b[1] - a[1], ab2 = b[2] - a[2], L2 = ab0 * ab0 + ab1 * ab1 + ab2 * ab2 || 1;
+      let t = ((x - a[0]) * ab0 + (y - a[1]) * ab1 + (z - a[2]) * ab2) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const d = Math.hypot(a[0] + ab0 * t - x, a[1] + ab1 * t - y, a[2] + ab2 * t - z);
+      if (d < best) { best = d; if (best <= lim) break; }
+    }
+    if (best > lim) return false;
+  }
+  return true;
 }
 function minBend(pts) {
   const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -2811,17 +2922,26 @@ function relaxPath(pts, size) {
   const rad = (a, b, c) => { const ab = d(a, b), bc = d(b, c), ca = d(c, a); const s2 = (ab + bc + ca) / 2, A = Math.sqrt(Math.max(0, s2 * (s2 - ab) * (s2 - bc) * (s2 - ca))); return A < 1e-12 ? Infinity : (ab * bc * ca) / (4 * A); };
   let p = out;
   const n = p.length, m = closed ? n - 1 : n; // m distinct points (a closed path repeats its first)
-  for (let it = 0; it < 60 && m > 2; it++) {
+  // only around the tight bends, so the rest of the line stays exactly where it was drawn
+  const lo = closed ? 0 : 1, hi = closed ? m : m - 1, reach = 3;
+  for (let it = 0; it < 80 && m > 2; it++) {
+    const near = new Uint8Array(m);
     let tight = false;
+    for (let i = lo; i < hi; i++) {
+      if (rad(p[(i - 1 + m) % m], p[i], p[(i + 1) % m]) < size * 0.75) {
+        tight = true;
+        for (let j = -reach; j <= reach; j++) { const k = closed ? (i + j + m) % m : i + j; if (k >= lo && k < hi) near[k] = 1; }
+      }
+    }
+    if (!tight) break;
     const q = p.map((v) => v.slice());
-    for (let i = closed ? 0 : 1; i < (closed ? m : m - 1); i++) {
+    for (let i = lo; i < hi; i++) {
+      if (!near[i]) continue;
       const ia = p[(i - 1 + m) % m], b = p[i], ic = p[(i + 1) % m];
-      if (rad(ia, b, ic) < size * 0.75) tight = true;
       for (let k = 0; k < 3; k++) q[i][k] = b[k] * 0.5 + (ia[k] + ic[k]) * 0.25;
     }
     if (closed) q[n - 1] = q[0].slice();
     p = q;
-    if (!tight && it > 1) break;
   }
   return p;
 }
@@ -3510,19 +3630,66 @@ export function evalNode(node) {
     try { shape = evalNode(exact); }
     catch (e) { shape = scaleShape(evalNode({ ...node, mods: mods.slice(0, -1) }), last.k, last.o); }
   } else if (mods.length) {
-    // evaluate prefix (node without last mod) so editing the last feature is cheap
-    const prefix = { ...node, mods: mods.slice(0, -1) };
-    shape = evalNode(prefix);
-    shape = solidsOnly(applyMod(shape, mods[mods.length - 1], node)); // jumpstart-3d: STEP parts (#173). node
-    // jumpstart-3d: fill openings
-    if (last.t === "fillopen") {
-      rememberFillReport(key, lastFillReport); // key = fillKey(node)
+    // a run of plain cuts at the end (a pattern of cuts, say) with nothing of it built yet:
+    // one boolean with every tool (OpenCascade works out the intersections together), much
+    // quicker than one cut after another on a complicated body
+    let k = mods.length;
+    while (k > 0 && mods[k - 1].t === "bool" && mods[k - 1].op === "cut" && mods[k - 1].tool) k--;
+    const run = mods.length - k;
+    const prefixNode = { ...node, mods: mods.slice(0, -1) };
+    if (run >= 2 && !cache.has(stableKey(prefixNode) + qualityKey(prefixNode))) { // jumpstart-3d: our cache keys carry the mesh detail too
+      const before = evalNode({ ...node, mods: mods.slice(0, k) });
+      const out = cutMany(before, mods.slice(k));
+      if (out) { before.delete(); shape = solidsOnly(out); }
+      else shape = runMods(before, mods.slice(k));
+    } else {
+      // evaluate prefix (node without last mod) so editing the last feature is cheap
+      const prefix = { ...node, mods: mods.slice(0, -1) };
+      shape = evalNode(prefix);
+      shape = solidsOnly(applyMod(shape, mods[mods.length - 1], node)); // jumpstart-3d: STEP parts (#173). node
+      // jumpstart-3d: fill openings
+      if (last.t === "fillopen") rememberFillReport(key, lastFillReport); // key = fillKey(node)
     }
   } else {
     shape = solidsOnly(evalBase(node));
   }
   cachePut(key, shape);
   return shape;
+}
+
+// the cuts one after another (when they can't all be done in one go)
+function runMods(shape, list) {
+  for (const m of list) shape = solidsOnly(applyMod(shape, m));
+  return shape;
+}
+// cut several tools out of a shape in one boolean; null when that doesn't work
+function cutMany(shape, list) {
+  const tools = [];
+  try {
+    for (const m of list) tools.push(transformShape(evalNode(m.tool), m.m));
+    const v0 = safeVolume(shape);
+    const args = new OC.NCollection_List_TopoDS_Shape(), tl = new OC.NCollection_List_TopoDS_Shape();
+    args.Append(shape.wrapped);
+    for (const t of tools) tl.Append(t.wrapped);
+    const op = new OC.BRepAlgoAPI_Cut();
+    let out = null;
+    try {
+      op.SetArguments(args); op.SetTools(tl); op.SetRunParallel(false);
+      try { op.SetUseOBB(true); } catch (e) {}
+      const pr = new OC.Message_ProgressRange();
+      op.Build(pr); pr.delete();
+      if (op.IsDone() && !op.HasErrors()) {
+        out = R.cast(op.Shape());
+        const v = safeVolume(out);
+        if (!(v > 1e-9) || !(v <= v0 + 1e-6)) { out.delete(); out = null; }
+      }
+    } finally { op.delete(); args.delete(); tl.delete(); }
+    return out;
+  } catch (e) {
+    return null;
+  } finally {
+    for (const t of tools) try { t.delete(); } catch (e) {}
+  }
 }
 
 function buildGroup(node) {
@@ -3953,9 +4120,10 @@ export function buildBodies(bodies, quality = 1, options = {}) {
     // jumpstart-3d: synchronous context is always removed, even on engine failure.
     const endProgress = beginStepBuild(b, options.onProgress);
     try {
+      const t0 = Date.now();
       // jumpstart-3d: a join or cut with an imported mesh is done by Manifold and drawn from it, with no OpenCascade work; null means Manifold refused it and the code below runs as before
       const viaManifold = meshBody(b.node, quality);
-      if (viaManifold) { attachFillReports(b.node, viaManifold); out.push({ id: b.id, rev: b.rev, ok: true, mesh: viaManifold }); continue; } // jumpstart-3d: fill openings keep their reports on this route too
+      if (viaManifold) { attachFillReports(b.node, viaManifold); out.push({ id: b.id, rev: b.rev, ok: true, mesh: viaManifold, ms: Date.now() - t0 }); continue; } // jumpstart-3d: fill openings keep their reports on this route too
       const shape = evalNode(b.node);
       // jumpstart-3d: a boolean can leave nothing (two boxes that do not meet, a hole that cuts all of a shape); meshing it would throw a bare engine exception
       if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
@@ -3982,7 +4150,7 @@ export function buildBodies(bodies, quality = 1, options = {}) {
       try { mesh.hasNonSolidFaces = faces.More(); }
       finally { faces.delete(); }
       shape.delete();
-      out.push({ id: b.id, rev: b.rev, ok: true, mesh });
+      out.push({ id: b.id, rev: b.rev, ok: true, mesh, ms: Date.now() - t0 });
       // jumpstart-3d: result construction is complete.
       stepStage("sending");
     } catch (e) {
@@ -4009,6 +4177,87 @@ function isEmptyShape(shape) {
 // jumpstart-3d: STEP parts (#173). A file too big for the engine's memory (4 GB at most) ends in a wasm trap, a RangeError or an out-of-memory text.
 const OUT_OF_MEMORY = "This model needs more memory than the browser gives the geometry engine (at most 4 GB). Try a smaller file, or one with fewer or simpler parts.";
 function nearMemoryCeiling() { try { return OC.HEAPU8.length > 3.5 * 2 ** 30; } catch (x) { return false; } }
+// STL / 3MF export: the display mesh is kept light so the view stays quick (curves in steps of
+// about 11°, chords up to 0.06% of the part's size). Files for printing are meshed again here,
+// much finer, from the exact shape: chord error (how far a flat triangle may sit from the true
+// surface) and the angle between neighbouring triangles on a curve.
+export const EXPORT_LEVELS = {
+  standard: { rel: 2e-4, min: 0.01, max: 0.05, ang: 0.1 },   // ≤ 0.05 mm, ≤ 5.7°
+  fine: { rel: 1e-4, min: 0.005, max: 0.02, ang: 0.06 },     // ≤ 0.02 mm, ≤ 3.4°
+  extra: { rel: 5e-5, min: 0.002, max: 0.008, ang: 0.035 },  // ≤ 0.008 mm, ≤ 2°
+};
+export function exportTolerance(diag, level = "fine") {
+  const L = EXPORT_LEVELS[level] || EXPORT_LEVELS.fine;
+  return { tol: Math.min(L.max, Math.max(L.min, diag * L.rel)), ang: L.ang };
+}
+export function meshForExport(shape, level = "fine") {
+  const bb = bboxOf(shape);
+  const diag = Math.hypot(...bb.size) || 1;
+  const { tol, ang } = exportTolerance(diag, level);
+  const m = shape.mesh({ tolerance: tol, angularTolerance: ang });
+  try { repairFaceMeshes(shape, m, tol, ang); } catch (err) {}
+  return {
+    vertices: new Float32Array(m.vertices),
+    normals: new Float32Array(m.normals),
+    triangles: new Uint32Array(m.triangles),
+    faceGroups: m.faceGroups.map((g) => [g.start, g.count]),
+    tol, ang,
+  };
+}
+export function exportMeshes(bodies, level = "fine") {
+  const out = [];
+  for (const b of bodies) {
+    try {
+      const shape = evalNode(b.node);
+      const mesh = meshForExport(shape, level);
+      shape.delete();
+      out.push({ id: b.id, ok: true, mesh });
+    } catch (e) {
+      out.push({ id: b.id, ok: false, error: friendly(e) });
+    }
+  }
+  return out;
+}
+
+// Clearance: which bodies touch, overlap or sit closer than `gap` (parts that should move
+// against each other). bodies: [{ id, node, m }]. Returns [{ a, b, d }] (d: closest distance,
+// 0 when touching or overlapping) and each body's volume, so the tool can choose which to cut.
+export function contactPairs(bodies, gap = 0.3) {
+  const items = [];
+  for (const b of bodies) {
+    try {
+      const sh = transformShape(evalNode(b.node), b.m);
+      const bb = bboxOf(sh);
+      items.push({ id: b.id, sh, bb, vol: safeVolume(sh) });
+    } catch (e) {}
+  }
+  const near = gap + 0.01;
+  const boxesMeet = (A, B) => [0, 1, 2].every((k) => A.min[k] - near <= B.max[k] && B.min[k] - near <= A.max[k]);
+  // a part buried completely inside another: their surfaces are apart but they share volume
+  const overlap = (A, B) => { try { const c = A.sh.intersect(B.sh); const v = safeVolume(c); c.delete(); return v > 1e-6; } catch (e) { return false; } };
+  const pairs = [];
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const A = items[i], B = items[j];
+    if (!boxesMeet(A.bb, B.bb)) continue;
+    let d = Infinity;
+    try {
+      const ds = new OC.BRepExtrema_DistShapeShape();
+      ds.LoadS1(A.sh.wrapped); ds.LoadS2(B.sh.wrapped);
+      const pr = new OC.Message_ProgressRange();
+      if (ds.Perform(pr) && ds.IsDone()) d = ds.Value();
+      pr.delete(); ds.delete();
+    } catch (e) {}
+    if (d > near) {
+      // no surfaces close: one part may still be completely inside the other
+      if (overlap(A, B)) d = 0;
+    }
+    if (d <= near) pairs.push({ a: A.id, b: B.id, d: Math.max(0, d) });
+  }
+  const vols = {};
+  for (const it of items) { vols[it.id] = it.vol; try { it.sh.delete(); } catch (e) {} }
+  return { pairs, vols };
+}
+
 function friendly(e) {
   if (typeof e === "number") return "The geometry kernel couldn't build this shape";
   const msg = errorText(e);

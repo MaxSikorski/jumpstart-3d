@@ -14,6 +14,8 @@ export function planDrawing(A, lvl, o) {
   const line = (a, b, layer, dash) => items.push({ t: "line", a, b, layer, dash });
   const arc = (c, r, a0, a1, layer) => items.push({ t: "arc", c, r, a0, a1, layer });
   const text = (p, s, h, layer, anchor = "middle", ang = 0) => items.push({ t: "text", p, s, h, layer, anchor, ang });
+  // furniture first (seen from above, the lower parts first), so the walls are drawn over it
+  for (const pieces of o.furn || []) for (const pts of pieces) poly(pts, "FURN");
   let cx = 0, cy = 0; for (const w of ws) { cx += (w.a[0] + w.b[0]) / 2 / (ws.length || 1); cy += (w.a[1] + w.b[1]) / 2 / (ws.length || 1); }
   for (const w of ws) {
     const { L, ux, uy, nx, ny } = o.winfo(w), e = o.wallExt(A.walls, w), t = w.t, ops = (w.h > 0 ? o.goodOpenings(A, w).ok : []).slice().sort((p, q) => p.s - q.s);
@@ -97,7 +99,7 @@ function layout(sheets, paper, scale) {
     return { ...sh, P, m, strip, k, map: (p) => [ox + (p[0] - b.x0) * k, oy + (p[1] - b.y0) * k], fits: bw * k <= W + 0.01 && bh * k <= H + 0.01 };
   });
 }
-const STYLE = { WALLS: { fill: "#2b2f36", w: 0.25, c: "#2b2f36" }, DOORS: { w: 0.3, c: "#9b4a1f" }, WINDOWS: { w: 0.25, c: "#1f6fb0" }, DIMS: { w: 0.18, c: "#4a5565" }, TEXT: { c: "#1d2430" } };
+const STYLE = { WALLS: { fill: "#2b2f36", w: 0.25, c: "#2b2f36" }, DOORS: { w: 0.3, c: "#9b4a1f" }, WINDOWS: { w: 0.25, c: "#1f6fb0" }, DIMS: { w: 0.18, c: "#4a5565" }, FURN: { fill: "#ffffff", w: 0.15, c: "#6f6458" }, TEXT: { c: "#1d2430" } };
 const esc = (t) => String(t).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
 const r3 = (v) => +v.toFixed(3);
 
@@ -179,7 +181,7 @@ export function planDXF(sheets, inch) {
   const g = (code, val) => L.push(String(code), String(val));
   g(0, "SECTION"); g(2, "HEADER"); g(9, "$ACADVER"); g(1, "AC1009"); g(9, "$INSUNITS"); g(70, inch ? 1 : 4); g(9, "$MEASUREMENT"); g(70, inch ? 0 : 1); g(0, "ENDSEC");
   g(0, "SECTION"); g(2, "TABLES"); g(0, "TABLE"); g(2, "LAYER"); g(70, 6);
-  for (const [n, c] of [["0", 7], ["WALLS", 7], ["DOORS", 1], ["WINDOWS", 4], ["DIMS", 3], ["TEXT", 7]]) { g(0, "LAYER"); g(2, n); g(70, 0); g(62, c); g(6, "CONTINUOUS"); }
+  for (const [n, c] of [["0", 7], ["WALLS", 7], ["DOORS", 1], ["WINDOWS", 4], ["DIMS", 3], ["FURN", 8], ["TEXT", 7]]) { g(0, "LAYER"); g(2, n); g(70, 0); g(62, c); g(6, "CONTINUOUS"); }
   g(0, "ENDTAB"); g(0, "ENDSEC");
   g(0, "SECTION"); g(2, "ENTITIES");
   let ox = 0;
@@ -189,7 +191,7 @@ export function planDXF(sheets, inch) {
       if (it.t === "poly") {
         // walls: filled quads (SOLID corners go 1, 2, 4, 3) and their outline
         const q = it.pts.map(P);
-        if (q.length === 4) { g(0, "SOLID"); g(8, it.layer); [[q[0], 10], [q[1], 11], [q[3], 12], [q[2], 13]].forEach(([p, c]) => { g(c, v(p[0])); g(c + 10, v(p[1])); g(c + 20, 0); }); }
+        if (q.length === 4 && it.layer === "WALLS") { g(0, "SOLID"); g(8, it.layer); [[q[0], 10], [q[1], 11], [q[3], 12], [q[2], 13]].forEach(([p, c]) => { g(c, v(p[0])); g(c + 10, v(p[1])); g(c + 20, 0); }); }
         for (let i = 0; i < q.length; i++) { const a = q[i], c = q[(i + 1) % q.length]; g(0, "LINE"); g(8, it.layer); g(10, v(a[0])); g(20, v(a[1])); g(30, 0); g(11, v(c[0])); g(21, v(c[1])); g(31, 0); }
       } else if (it.t === "line") { const a = P(it.a), c = P(it.b); g(0, "LINE"); g(8, it.layer); g(10, v(a[0])); g(20, v(a[1])); g(30, 0); g(11, v(c[0])); g(21, v(c[1])); g(31, 0); }
       else if (it.t === "arc") { const c = P(it.c); g(0, "ARC"); g(8, it.layer); g(10, v(c[0])); g(20, v(c[1])); g(30, 0); g(40, v(it.r)); g(50, r3((it.a0 * 180) / Math.PI)); g(51, r3((it.a1 * 180) / Math.PI)); }

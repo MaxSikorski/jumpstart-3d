@@ -1412,9 +1412,9 @@ export const TUTORIALS = [
     steps: [
       nameStep("Turned Cup", "Lopez, Maria, Turned Cup"),
       {
-        title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#ad-lathe" }, anim: false,
+        title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#ad-lathe", via: "#ad-workshop" }, anim: false,
         how: [
-          "On the <b>Create</b> tab, click <b>Lathe</b>.",
+          "At the right end of the <b>Design</b> ribbon, click <b>Workshop</b>, then <b>Lathe</b>.",
           "The Lathe opens over the whole screen with a window asking <b>What do you want to turn?</b>",
         ],
         when: "A lathe makes round things: it spins the wood while you hold a chisel against it, so everything you cut comes out perfectly round. Bowls, cups, bats, pens, chess pieces and tops are all turned.",

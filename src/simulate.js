@@ -302,7 +302,9 @@ export function initSimulate(app, X) {
         const others = joints.filter((j) => j.id !== st.driver);
         if (others.length) {
           body.append(el("div", { class: "subhead" }, "Linked joints (ratio × driver)"));
-          for (const j of others) body.append(row(j.name, app.numField({ value: st.links[j.id] ?? 0, id: "ms-l-" + j.id, onCommit: (v) => { st.links[j.id] = v; } }), "ms-l-" + j.id));
+          const geared = linkedValues(st.driver, 1);
+          if (others.some((j) => geared.has(j.id))) body.append(el("div", { class: "hint", id: "ms-geared", style: { padding: "2px 0" } }, "Gears follow by their tooth ratio by themselves (0 below = automatic)."));
+          for (const j of others) body.append(row(j.name + (geared.has(j.id) ? ` (geared ×${fmt(geared.get(j.id), 3)})` : ""), app.numField({ value: st.links[j.id] ?? 0, id: "ms-l-" + j.id, onCommit: (v) => { st.links[j.id] = v; } }), "ms-l-" + j.id));
         }
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ms-check", checked: st.check, onchange: (e) => { st.check = e.target.checked; if (!st.check) { scene.state.collide = new Set(); scene.refresh(); } } }), "Check for collisions"));
         body.append(sliderRow("Time", "ms-t", Math.round(st.t * 1000) / 10, 0, 100, 0.5, "%", (v) => { stop(); st.t = v / 100; frame(true); }));
@@ -315,11 +317,23 @@ export function initSimulate(app, X) {
       cleanup() { stop(); resetPose(); },
     };
     function valueAt(t) { return st.from + (st.to - st.from) * t; }
+    function linkedValues(id, v) {
+      const out = new Map([[id, v]]), edges = (store.doc.joints || []).filter((j) => j.link && j.link.to && j.link.ratio).map((j) => [j.id, j.link.to, j.link.ratio]);
+      for (let grew = true; grew; ) { grew = false; for (const [a, b, r] of edges) { if (out.has(b) && !out.has(a)) { out.set(a, out.get(b) * r); grew = true; } else if (out.has(a) && !out.has(b)) { out.set(b, out.get(a) / r); grew = true; } } }
+      return out;
+    }
     function setAt(t) {
       const v = valueAt(t), d = drv();
       const vals = new Map(values);
       vals.set(d.id, d.type === "slider" ? { a: 0, s: v } : { a: v, s: 0 });
-      for (const j of joints) if (j.id !== d.id && st.links[j.id]) vals.set(j.id, j.type === "slider" ? { a: 0, s: v * st.links[j.id] } : { a: v * st.links[j.id], s: 0 });
+      // gears and racks made by Gears carry their link (this joint = ratio × that joint), followed
+      // both ways from whichever joint drives, so a whole gear train turns together
+      const geared = linkedValues(d.id, v);
+      for (const j of joints) {
+        if (j.id === d.id) continue;
+        const k = st.links[j.id] ? v * st.links[j.id] : geared.has(j.id) ? geared.get(j.id) : null;
+        if (k !== null) vals.set(j.id, j.type === "slider" ? { a: 0, s: k } : { a: k, s: 0 });
+      }
       return vals;
     }
     function frame(force) {

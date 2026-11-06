@@ -15,6 +15,14 @@ export function initFloorPlan(app) {
     if (!w) app.toast("Your browser blocked the new tab. The Floor Planner still works right here.", "err");
     else setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
+  // "Use this house in…": the plan goes to Architect, and from there to Beginner or Advanced
+  window.__JS3D_FP_SEND__ = (mode) => {
+    const a = api();
+    let plan = null;
+    try { plan = a && a.exportPlan(); } catch (e) { plan = null; }
+    if (!plan) { app.toast("Couldn't read the plan from the Floor Planner.", "err"); return; }
+    if (app.arch.importFloorPlan(plan, mode)) close();
+  };
   window.__JS3D_FP_READY__ = () => { ready = true; while (waiters.length) waiters.shift()(); };
   if (!window.__JS3D_SAVE__) window.__JS3D_SAVE__ = (filename, bytes) => app.projects.saveModel(filename, bytes);
 

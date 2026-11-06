@@ -409,6 +409,11 @@ button { cursor: pointer; }
 .tree .node { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: default; min-width: 0; }
 .tree .node:hover { background: var(--panel-2); }
 .tree .node.sel { background: var(--accent-soft); color: var(--accent); }
+.tree .node.infolder { padding-left: 26px; }
+.tree .node.fold .nm { font-weight: 600; }
+.tree .node .fold-tog { font-size: 12px; width: 18px; }
+.tree .node.drop { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+.tree .node.fold-out { color: var(--ink-3); font-size: 12px; padding: 2px 6px; }
 .tree .node .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree .node .err-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex: none; }
 .tree .folder { font: 600 12px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding: 10px 6px 4px; display: flex; align-items: center; justify-content: space-between; }
@@ -580,6 +585,44 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .timeline .tl-title { font: 600 11px/1 var(--f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding-right: 6px; flex: none; }
 .tl-item { flex: none; display: grid; place-items: center; width: 30px; height: 28px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--panel-2); color: var(--ink-2); padding: 0; position: relative; }
 .tl-item:hover { border-color: var(--hover-line); color: var(--accent); background: var(--accent-soft); }
+/* Tablet & Pencil mode: no text selection, call-outs or double-tap zoom while working; big targets */
+:root[data-device="tablet"] body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+:root[data-device="tablet"] input, :root[data-device="tablet"] textarea { -webkit-user-select: text; user-select: text; }
+:root[data-device="tablet"] button, :root[data-device="tablet"] .tile, :root[data-device="tablet"] .tl-item, :root[data-device="tablet"] select { touch-action: manipulation; }
+:root[data-device="tablet"] .menu button, :root[data-device="tablet"] .rmenu button { padding: 12px 12px; }
+:root[data-device="tablet"] .tl-item { width: 40px; height: 38px; }
+:root[data-device="tablet"] .tl-ctl { width: 38px; height: 34px; }
+:root[data-device="tablet"] .tb-btn { padding: 9px 11px; }
+:root[data-device="tablet"] .num, :root[data-device="tablet"] input, :root[data-device="tablet"] select { font-size: 16px; min-height: 36px; }
+:root[data-device="tablet"] .seg button { padding: 10px 4px; }
+:root[data-device="tablet"] .tree .node { padding: 9px 6px; }
+:root[data-device="tablet"] .eye, :root[data-device="tablet"] .xbtn { width: 36px; height: 36px; }
+:root[data-device="tablet"] .btn { padding: 10px 16px; }
+:root[data-device="tablet"] .navbtns button { width: 44px; height: 40px; }
+:root[data-device="tablet"] #btn-keys, :root[data-device="tablet"] #btn-undo, :root[data-device="tablet"] #btn-redo { display: none; }
+:root[data-device="tablet"] .topbar { gap: 6px; padding: 0 8px; }
+:root[data-device="tablet"] .docname { width: 150px; }
+@media (max-width: 1100px) { :root[data-device="tablet"] .modeswitch button { padding: 5px 9px; letter-spacing: .04em; } :root[data-device="tablet"] .docname { width: 110px; } }
+@media (max-width: 900px) { :root[data-device="tablet"] .tb-btn { padding: 8px 7px; } :root[data-device="tablet"] .modeswitch button { padding: 5px 6px; font-size: 12px; } :root[data-device="tablet"] .topbar { gap: 4px; } }
+.tabkeys { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); z-index: 6; display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--glass); box-shadow: 0 6px 20px var(--shadow); }
+.tabkeys button { width: 48px; height: 44px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); color: var(--ink-2); touch-action: manipulation; }
+.tabkeys button svg { width: 22px; height: 22px; }
+.tabkeys button b { font: 700 12px/1 var(--f-ui); }
+.tabkeys button:active { background: var(--accent-soft); color: var(--accent); }
+.tabkeys button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.tabkeys button.locked { background: var(--accent); color: var(--on-accent); }
+#tk-ok { color: var(--ok); }
+/* stepping through the timeline: first, back, play, forward, last */
+.tl-ctls { flex: none; display: inline-flex; gap: 2px; padding: 2px; margin-right: 6px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); }
+.tl-ctl { flex: none; width: 26px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--ink-2); }
+.tl-ctl svg { width: 15px; height: 15px; }
+.tl-ctl:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.tl-ctl:disabled { opacity: .35; cursor: default; }
+#tl-play { color: var(--accent); }
+.tl-step { flex: none; font: 600 11.5px/1 var(--f-mono); color: var(--accent); padding: 0 8px 0 2px; font-variant-numeric: tabular-nums; }
+.tl-item.tl-future { opacity: .35; }
+.tl-item.tl-now { border-color: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); color: var(--accent); background: var(--accent-soft); }
+@media (pointer: coarse) { .tl-ctl { width: 36px; height: 34px; } }
 .tl-item.err { border-color: var(--err-line); color: var(--danger); }
 .sh-more { border-top: 1px solid var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
 .sh-more > summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -594,6 +637,8 @@ input[type=range] { accent-color: var(--accent); width: 100%; min-width: 0; }
 .status .hintline { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .status select { border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font-size: 12px; background: var(--panel); }
 .status .busy { color: var(--accent); display: inline-flex; gap: 6px; align-items: center; }
+.status .busy-btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 4px; padding: 1px 8px; font-size: 11.5px; height: 21px; flex: none; }
+.status .busy-btn:hover { border-color: var(--accent); color: var(--accent); }
 .status .busy::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite ease-in-out; }
 @keyframes pulse { 50% { opacity: .25; } }
 .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
@@ -672,6 +717,7 @@ body.fp-on .tut-bubble { z-index: 170; }
 body.fp-on .modal-back { z-index: 165; }
 body.fp-on .toasts { position: fixed; z-index: 175 !important; }
 .flexigen iframe { width: 100%; height: 100%; border: 0; display: block; }
+.flexigen.neon { background: #07030f; }
 .snapctl .unit-toggle { margin-right: 6px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--accent, #1f4fa8); background: transparent; color: var(--accent, #1f4fa8); font: 700 12px/1.2 var(--f-ui, sans-serif); cursor: pointer; white-space: nowrap; }
 .section-chip { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 12.5px; font-weight: 600; }
 .section-chip[hidden] { display: none; }
@@ -698,6 +744,10 @@ body.fp-on .toasts { position: fixed; z-index: 175 !important; }
 .platenode .psfil { width: auto; min-width: 54px; padding: 1px 4px; height: 22px; font-size: 11.5px; font-weight: 700; margin-left: auto; }
 .psfils { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
 .psfrow { display: grid; grid-template-columns: 26px 26px 1fr auto; align-items: center; gap: 6px; font-size: 12px; }
+.pscmyk { display: grid; gap: 3px; margin: 4px 0; }
+.pscmyk-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.pscmyk-row .sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+.pscmyk-pct { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .psfrow input[type=color] { width: 24px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }
 .psfrow span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .psfrow i { font-style: normal; color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -1042,12 +1092,28 @@ body.s3d-on .tut-panel { z-index: 96; }
 /* Architect */
 #app[data-mode="arch"] #snap, #app[data-mode="arch"] #nav-sketches, #app[data-mode="arch"] #nav-appear { display: none; }
 .arch-panel { width: 292px; }
+.arch-panel > header { cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+.panel-grip { flex: none; border: 0; background: none; color: var(--ink-3); font-size: 15px; line-height: 1; padding: 2px 4px 2px 0; margin-right: 2px; cursor: move; touch-action: none; border-radius: 4px; }
+.panel-grip:hover, .panel-grip:focus-visible { color: var(--accent); }
+.float.moved { box-shadow: 0 12px 34px var(--shadow); }
 .arch-panel header .arch-sub, .arch-elev header .arch-sub { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .arch-hint { margin: 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
 .arch-warn { margin: 0; padding: 6px 9px; border-radius: 8px; background: var(--err-bg, #fde8e7); color: var(--danger, #b3261e); font-size: 12px; }
 .arch-inline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .arch-inline .num { width: 70px; flex: none; }
 .arch-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.ani-grid { display: grid; grid-template-columns: 1fr; gap: 2px; max-height: 260px; overflow: auto; border: 1px solid var(--line, #d7dbe2); border-radius: 6px; padding: 4px 6px; }
+.ani-regions { margin-bottom: 6px; }
+.ani-regions .btn[aria-pressed="true"] { background: var(--accent, #1f4fa8); color: #fff; border-color: transparent; }
+.ani-grp { font-size: 11px; font-weight: 600; opacity: .75; margin: 5px 0 1px; text-transform: uppercase; letter-spacing: .03em; }
+.ani-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.ani-row.on .ani-name { font-weight: 600; }
+.ani-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.25); }
+.ani-name { flex: 1; min-width: 0; }
+.ani-n { width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.ani-b { padding: 0 8px !important; min-width: 30px; min-height: 26px; font-size: 14px; line-height: 1; }
+.ani-log { font-size: 12px; line-height: 1.45; margin-top: 6px; padding: 5px 7px; border-radius: 6px; background: rgba(60,130,70,.09); min-height: 2em; }
+.ani-log:empty::before { content: "The animals will say what they're doing here."; opacity: .6; }
 .arch-chips .btn { padding: 3px 8px; font-size: 12px; }
 .arch-cat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
 .arch-cat.roofs { grid-template-columns: repeat(3, 1fr); }
@@ -1055,6 +1121,17 @@ body.s3d-on .tut-panel { z-index: 96; }
 .arch-cat.land .btn { padding: 5px 4px; font-size: 12px; }
 .arch-cat.land .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
 .arch-cat.ground, .arch-cat.plants { grid-template-columns: repeat(3, 1fr); }
+.arch-cat.furncats { grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 6px 0; }
+.arch-cat.furncats .btn { padding: 5px 3px; font-size: 11.5px; line-height: 1.15; }
+.arch-cat.furncats .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.arch-cat.furn { max-height: 46vh; overflow-y: auto; padding: 2px; }
+.arch-cat.furn .arch-tile svg { background: var(--panel-2); border-radius: 5px; }
+.arch-search { width: 100%; box-sizing: border-box; text-align: left; margin-top: 4px; }
+.arch-furnpic { display: flex; justify-content: center; padding: 6px; background: var(--panel-2); border-radius: 8px; }
+.arch-furnpic svg { width: 132px; height: 120px; }
+.arch-swatches { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 8px; }
+.arch-sw { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; font-size: 13px; color: #fff; text-shadow: 0 0 2px #000; }
+.arch-sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
 .arch-swatch { display: block; width: 34px; height: 20px; border-radius: 5px; border: 1px solid var(--line); }
 #ar-fin-color { width: 44px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .check.dis { opacity: .5; }
@@ -1169,6 +1246,8 @@ body.s3d-on .tut-panel { z-index: 96; }
 .flood-verdict.good { background: color-mix(in srgb, #2e7d32 12%, var(--panel)); color: #23692a; border: 1px solid #a8d3ab; }
 .arch-chips .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .arch-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.arch-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 4px 0 8px; }
+.arch-tiles .arch-tile span { font-size: 11px; line-height: 1.2; }
 .arch-tile b { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
 .arch-tile small { font-size: 10.5px; color: var(--ink-3); line-height: 1.2; }
 .arch-tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
@@ -1267,7 +1346,7 @@ body.s3d-on .tut-panel { z-index: 96; }
 .tb-btn.save-btn, .tb-btn.tut-btn { display: inline-flex; align-items: center; gap: 5px; }
 .tb-btn.save-btn .lbl, .tb-btn.tut-btn .lbl { font-size: 12.5px; font-weight: 600; }
 .tb-btn.tut-btn { color: #ffd66b; }
-#app[data-mode="chisel"] #btn-tutorials { display: none; }
+/* (Chisel has its own tutorials now) */
 @media (max-width: 1760px) { .savestate { display: none; } }
 @media (max-width: 1660px) { #btn-projects .lbl, #btn-export .lbl { display: none; } .docname { width: 170px; } }
 @media (max-width: 1340px) and (min-width: 1101px) { .topbar .tb-btn.save-btn .lbl { display: inline; } }
@@ -1405,6 +1484,88 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
 .chat-btns { display: flex; align-items: center; gap: 6px; }
 #chat-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--ink-3); }
 :root[data-ui="contrast"] #chat { border-width: 2px; }
+
+/* ---------------------------------------------------------------- layouts (theme menu → Layout) */
+#menu-theme { max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain; }
+:root[data-layout] .rbtn .dcaret svg { width: 9px; height: 9px; }
+/* Simplified: bigger, labelled buttons on top, no group titles */
+:root[data-layout="simple"] .ribbon { min-height: 72px; }
+:root[data-layout="simple"] .rgroup .rtitle { display: none; }
+:root[data-layout="simple"] .rgroup { padding: 6px 8px; justify-content: center; }
+:root[data-layout="simple"] .rbtn { min-width: 62px; padding: 6px 6px 5px; font-size: 12.5px; gap: 4px; }
+:root[data-layout="simple"] .rbtn svg { width: 30px; height: 30px; }
+:root[data-layout="simple"] .ribbon .note { display: none; }
+:root[data-layout="simple"] .bbar > .ibtn { height: 58px; flex-direction: column; gap: 3px; padding: 3px 8px; }
+:root[data-layout="simple"] .bbar > .ibtn svg { width: 26px; height: 26px; }
+:root[data-layout="simple"] .bbar > .ibtn .lbl { display: inline; font-size: 12.5px; }
+:root[data-layout="simple"] .wstabs button { font-size: 12.5px; padding: 6px 12px; }
+/* Clean and Classic CAD: the tools in a column at the side */
+:root[data-layout="clean"] #app, :root[data-layout="classic"] #app { grid-template-rows: auto minmax(0, 1fr) auto; }
+:root[data-layout="clean"] #app { grid-template-columns: auto minmax(0, 1fr); }
+:root[data-layout="classic"] #app { grid-template-columns: minmax(0, 1fr) auto; }
+:root[data-layout="clean"] .topbar, :root[data-layout="classic"] .topbar, :root[data-layout="clean"] .status, :root[data-layout="classic"] .status { grid-column: 1 / -1; }
+:root[data-layout="clean"] .ribbon { grid-column: 1; grid-row: 2; border-right: 1px solid var(--line); --rail: 92px; }
+:root[data-layout="clean"] .work { grid-column: 2; grid-row: 2; }
+:root[data-layout="classic"] .ribbon { grid-column: 2; grid-row: 2; border-left: 1px solid var(--line); --rail: 160px; }
+:root[data-layout="classic"] .work { grid-column: 1; grid-row: 2; }
+:root[data-layout="clean"] .ribbon, :root[data-layout="classic"] .ribbon { flex-direction: column; width: var(--rail); min-height: 0; border-bottom: 0; overflow-x: hidden; overflow-y: auto; }
+:root[data-layout="clean"] .ribbon > *, :root[data-layout="classic"] .ribbon > * { flex: none; }
+:root[data-layout="clean"] .rgroup, :root[data-layout="classic"] .rgroup { border-right: 0; border-bottom: 1px solid var(--line-2); padding: 5px 3px; }
+:root[data-layout="clean"] .rrow, :root[data-layout="classic"] .rrow { flex-wrap: wrap; justify-content: center; gap: 2px; }
+:root[data-layout="clean"] .wstabs, :root[data-layout="classic"] .wstabs { border-right: 0; border-bottom: 1px solid var(--line-2); padding: 5px; }
+:root[data-layout="clean"] .wstabs button, :root[data-layout="classic"] .wstabs button { white-space: normal; text-align: center; }
+:root[data-layout="clean"] .ribbon .note, :root[data-layout="classic"] .ribbon .note { white-space: normal; padding: 6px 8px; font-size: 11px; }
+:root[data-layout="clean"] .ribbon .panel-toggle, :root[data-layout="classic"] .ribbon .panel-toggle { margin: 6px auto; }
+:root[data-layout="clean"] .bbar, :root[data-layout="classic"] .bbar { flex-wrap: wrap; justify-content: center; overflow: visible; padding: 5px 3px; gap: 2px; }
+:root[data-layout="clean"] .bbar .sep, :root[data-layout="classic"] .bbar .sep { width: 100%; height: 1px; margin: 4px 0; }
+/* Clean: icons only (hover shows each name) and a quieter top bar */
+:root[data-layout="clean"] .rgroup .rtitle { display: none; }
+:root[data-layout="clean"] .rbtn { min-width: 38px; padding: 5px 4px; position: relative; }
+:root[data-layout="clean"] .rbtn > span { display: none; }
+:root[data-layout="clean"] .rbtn[aria-haspopup]::after { content: ""; position: absolute; right: 2px; bottom: 2px; border: 4px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor; opacity: .55; }
+:root[data-layout="clean"] .bbar > .ibtn { flex-direction: row; height: 38px; width: 40px; min-width: 0; padding: 0; }
+:root[data-layout="clean"] .bbar > .ibtn .lbl, :root[data-layout="clean"] .topbar .tb-btn .lbl { display: none; }
+:root[data-layout="clean"] .wstabs button { font-size: 10px; padding: 4px 3px; }
+:root[data-layout="clean"] .ribbon .note { display: none; }
+/* Classic CAD: a labelled palette, two tools a row, group names as headings */
+:root[data-layout="classic"] .rgroup .rtitle { order: 0; text-align: left; padding: 2px 4px 5px; }
+:root[data-layout="classic"] .rbtn { width: 74px; min-width: 0; }
+:root[data-layout="classic"] .rsplit .rbtn { width: 60px; }
+:root[data-layout="classic"] .bbar > .ibtn { flex-direction: column; height: 52px; width: 72px; min-width: 0; gap: 2px; padding: 2px; }
+:root[data-layout="classic"] .bbar > .ibtn .lbl { display: inline; font-size: 11px; white-space: normal; text-align: center; line-height: 1.1; }
+/* Tablet: big tools along the bottom */
+:root[data-layout="tablet"] #app { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+:root[data-layout="tablet"] .topbar { grid-row: 1; }
+:root[data-layout="tablet"] .work { grid-row: 2; }
+:root[data-layout="tablet"] .ribbon { grid-row: 3; border-bottom: 0; border-top: 1px solid var(--line); min-height: 76px; }
+:root[data-layout="tablet"] .status { grid-row: 4; }
+:root[data-layout="tablet"] .rgroup .rtitle { order: 0; padding: 2px 0 3px; }
+:root[data-layout="tablet"] .rbtn { min-width: 58px; padding: 7px 6px 5px; font-size: 12px; }
+:root[data-layout="tablet"] .rbtn svg { width: 30px; height: 30px; }
+:root[data-layout="tablet"] .rcaret { min-width: 22px; }
+:root[data-layout="tablet"] .bbar > .ibtn { height: 60px; min-width: 56px; flex-direction: column; gap: 3px; }
+:root[data-layout="tablet"] .bbar > .ibtn svg { width: 28px; height: 28px; }
+:root[data-layout="tablet"] .bbar > .ibtn .lbl { display: inline; font-size: 12px; }
+:root[data-layout="tablet"] .wstabs button { padding: 8px 12px; font-size: 12px; }
+@media (max-width: 860px) { :root[data-layout="classic"] .ribbon { --rail: 92px; } :root[data-layout="classic"] .rbtn { width: 40px; } :root[data-layout="classic"] .rbtn > span, :root[data-layout="classic"] .bbar > .ibtn .lbl { display: none; } :root[data-layout="classic"] .bbar > .ibtn { width: 40px; height: 38px; } }
+
+/* ---------------------------------------------------------------- pinned Constraints palette (sketching) */
+.cpal { position: absolute; z-index: 30; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 8px 26px rgba(0,0,0,.18); color: var(--ink); user-select: none; -webkit-user-select: none; touch-action: none; }
+.cpal header { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 9px; cursor: grab; border-bottom: 1px solid var(--line); font: 600 11px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.cpal header:active { cursor: grabbing; }
+.cpal header .grip { opacity: .5; letter-spacing: 0; }
+.cpal header .t { flex: 1; }
+.cpal header button { border: 0; background: none; color: var(--ink-2); border-radius: 5px; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.cpal header button:hover { background: var(--panel-2); color: var(--ink); }
+.cpal .cgrid { display: grid; grid-template-columns: repeat(var(--cols, 2), auto); gap: 2px; padding: 5px; }
+.cpal .cgrid button { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 4px 8px 4px 4px; font-size: 12px; color: var(--ink); text-align: left; white-space: nowrap; }
+.cpal .cgrid button svg { width: 22px; height: 22px; flex: none; }
+.cpal .cgrid button:hover { background: var(--panel-2); border-color: var(--line-2); }
+.cpal .cgrid button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--hover-line); color: var(--accent); }
+.cpal.icons .cgrid button span { display: none; }
+.cpal.icons .cgrid button { padding: 4px; }
+.cpal .chint { padding: 0 9px 7px; font-size: 11px; color: var(--ink-3); max-width: 260px; }
+.cpal.icons .chint { display: none; }
 </style>
 
 <div id="app" data-mode="beginner">
@@ -1415,7 +1576,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     </div>
     <input id="docname" class="docname" aria-label="Design name" value="Untitled design">
     <span id="docver" class="docver" hidden>v1</span>
-    <button class="tb-btn save-btn" id="btn-save" title="Save (Ctrl+S): each save is a new version, v1, v2, v3…"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><rect x="8" y="13" width="8" height="6" rx="1"/></svg><span class="lbl">Save</span></button>
+    <button class="tb-btn save-btn" id="btn-save" title="Save (Ctrl+S): each save is a new version, v1, v2, v3…, kept in this browser and downloaded as a project file (.json)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><rect x="8" y="13" width="8" height="6" rx="1"/></svg><span class="lbl">Save</span></button>
     <span id="savestate" class="savestate"></span>
     <button id="btn-autosave" class="autosave-btn" aria-pressed="false" title="Autosave backups: copies of your work every few moments, offered back if the app crashes or closes before saving">Autosave: Off</button>
     <div class="spacer"></div>
@@ -1435,6 +1596,18 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <button data-theme="light" role="menuitemradio">Light</button>
         <button data-theme="dark" role="menuitemradio">Dark</button>
         <button data-theme="contrast" role="menuitemradio">High contrast</button>
+        <hr>
+        <div class="menu-head">Layout</div>
+        <button data-layout="default" role="menuitemradio" title="Tools across the top, as JumpStart 3D has always been">Default <small>tools on top</small></button>
+        <button data-layout="simple" role="menuitemradio" title="Bigger buttons with names, no group titles: easy to read and tap">Simplified <small>big, labelled buttons</small></button>
+        <button data-layout="clean" role="menuitemradio" title="A slim column of icons on the left (hover for names), a quieter top bar and more room to work">Clean <small>icon rail on the left</small></button>
+        <button data-layout="classic" role="menuitemradio" title="A labelled tool palette down the right side, like many desktop CAD programs">Classic CAD <small>tool palette on the right</small></button>
+        <button data-layout="tablet" role="menuitemradio" title="Big, touch-sized tools along the bottom, near your thumbs">Tablet <small>tools at the bottom</small></button>
+        <div class="menu-note">Only where the tools sit changes; every tool is in every layout.</div>
+        <hr>
+        <div class="menu-head">Device</div>
+        <button data-device="tablet" role="menuitemcheckbox" aria-checked="false" title="For iPad and other tablets: big touch targets, the Apple Pencil draws and picks precisely, fingers move the view, and keys on screen">Tablet &amp; Pencil mode <small>iPad, Apple Pencil</small></button>
+        <div class="menu-note">Pencil: click, draw and drag precisely. One finger orbits, two pan and zoom. Two-finger tap undoes, three-finger tap redoes, a long press opens the menu.</div>
         <hr>
         <div class="menu-head">Performance</div>
         <button data-perf="auto" role="menuitemradio" title="Picks a mode for this computer, and switches to a faster one if things get slow">Auto <small id="perf-auto-note"></small></button>
@@ -1470,7 +1643,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     </div>
     <!-- jumpstart-3d: chat -->
     <button class="tb-btn save-btn" id="btn-chat" aria-pressed="false" title="Chat with an AI model that edits this design"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span class="lbl">AI</span></button>
-    <button class="tb-btn tut-btn" id="btn-tutorials" title="Tutorials: step-by-step projects for Beginner and Advanced"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/><path d="M22 9v6"/></svg><span class="lbl">Tutorials</span></button>
+    <button class="tb-btn tut-btn" id="btn-tutorials" title="Tutorials: step-by-step projects for Beginner, Advanced, Chisel and Architect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/><path d="M22 9v6"/></svg><span class="lbl">Tutorials</span></button>
     <button class="tb-btn about-btn" id="btn-about" title="About JumpStart 3D: features and help">About</button>
     <button class="tb-btn" id="btn-keys" title="Keyboard shortcuts (?)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
     <button class="tb-btn" id="btn-full" title="Full screen" aria-label="Full screen" aria-pressed="false"><svg class="fs-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fs-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg><span class="fs-lbl">Exit full screen</span></button>
@@ -1493,6 +1666,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <button data-act="dxf" title="Every sketch, flat, for laser or vinyl cutters and other CAD">Sketches as DXF <small>.dxf</small></button>
         <hr>
         <button data-act="json">Save Project File <small>.json</small></button>
+        <button data-act="savedl" id="save-dl-toggle" role="menuitemcheckbox" aria-checked="true" title="Every Save (Ctrl+S) also downloads the project file (.json) to your Downloads, so work isn't lost when the browser is cleared">Download a file on every Save <small>on</small></button><!-- jumpstart-3d: his Save download switch, beside Save Project File (Open a project file is at the top of this menu) -->
         <button id="btn-share-link" title="Make a link that holds a small design, or open one that was shared with you. Nothing is uploaded.">Share link… <small>copy a link</small></button><!-- jumpstart-3d: share link -->
         <button data-act="runscript" title="Run a JavaScript file that uses the JS3D scripting bridge (see BRIDGE.md)">Run script… <small>.js</small></button><!-- jumpstart-3d: run script -->
         <button id="btn-codecad" data-act="codecad" title="Write replicad code that builds one solid. The solid becomes an ordinary STEP body that keeps its code">Code CAD… <small>replicad</small></button><!-- jumpstart-3d: Code CAD -->
@@ -1523,6 +1697,8 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
   <footer class="status">
     <span class="hintline" id="hint"></span>
     <span id="busy" class="busy" hidden>Rebuilding</span>
+    <button id="busy-stop" class="busy-btn" hidden title="Stop building this slow body (opening the design again builds it)">Stop</button>
+    <button id="busy-help" class="busy-btn" hidden title="Why is this body slow, and how to make it quicker">Why so slow?</button>
     <span id="selinfo" class="mono"></span>
     <div class="snapctl">
     <button id="unit-toggle" class="unit-toggle" title="Units for every size you see and type: click to switch between millimetres and inches">mm · millimetres</button>
@@ -1549,7 +1725,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.8.1.3 · community build 28</p>
+    <p class="sp-ver" id="sp-ver">Version 2.9.3 · community build 28</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

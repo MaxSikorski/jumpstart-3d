@@ -55,8 +55,8 @@ function png(w = 32, h = 32) {
 }
 
 test("the splash and About show version 2.8.1.3 with his notes for 2.8.1.3 to 2.7.8", async () => {
-  expect(VERSION).toBe("2.8.1.3");
-  const label = `Version 2.8.1.3 · community build ${BUILD}`;
+  expect(VERSION).toMatch(/^2\.\d+\./); // 2.8.1.3 and later keep these notes (upstream293.spec.mjs checks the newest)
+  const label = `Version ${VERSION} · community build ${BUILD}`;
   expect(await page.locator("#sp-ver").textContent()).toBe(label);
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
