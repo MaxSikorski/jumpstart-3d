@@ -484,7 +484,7 @@ export function initTutorials(app) {
     if (show.ch) {
       // inside Chisel's frame: the first of the selectors that is showing there
       if (app.mode !== "chisel" || !app.chisel) return null;
-      for (const s of show.ch.split(",").map((x) => x.trim())) { const e = app.chisel.el(s); if (e && e.getClientRects().length) { const d = e.ownerDocument; if (!d.getElementById("tut-spot-css")) { const st = d.createElement("style"); st.id = "tut-spot-css"; st.textContent = ".tut-spot{outline:3px solid #f2a65a!important;outline-offset:2px;border-radius:8px;animation:tutpulse 1.2s ease-in-out infinite}@keyframes tutpulse{50%{outline-color:rgba(242,166,90,.35)}}"; d.head.append(st); } return e; } }
+      for (const s of show.ch.split(",").map((x) => x.trim())) { const e = app.chisel.el(s); if (e && e.getClientRects().length) { const d = e.ownerDocument; if (!d.getElementById("tut-spot-css")) { const st = d.createElement("style"); st.id = "tut-spot-css"; st.textContent = ".tut-spot{outline:3px solid #f2a65a!important;outline-offset:2px;border-radius:8px;animation:tutpulse 1.2s ease-in-out infinite}@keyframes tutpulse{50%{outline-color:rgba(242,166,90,.35)}}"; d.head.append(st); } try { const pn = e.closest("#panel"), dr = d.getElementById("panel"), tg = d.getElementById("panelToggle"); if (tg && tg.getClientRects().length) { if (dr && !!pn !== dr.classList.contains("open") && (pn || !e.closest("#top"))) { tg.click(); const tr = dr.style.transition; dr.style.transition = "none"; void dr.offsetWidth; dr.style.transition = tr; } e.scrollIntoView({ block: "nearest", inline: "center" }); } } catch (x) {} /* jumpstart-3d: on a phone Chisel's side panel is a drawer (the Panel button) with scrolling lists: open it (or close it when the target is not in it, as the animator's timeline) and bring the target into view before the pop-up points at it; the slide-in is skipped so the target is measured where it ends up */ return e; } }
       return null;
     }
     for (const s of (show.sel || "").split(",").map((x) => x.trim()).filter(Boolean)) {
@@ -510,17 +510,17 @@ export function initTutorials(app) {
     if (!t) { if (loud) app.toast(cur.tut.minWidth && innerWidth < cur.tut.minWidth && step.show.sel && step.show.sel.split(",").every((q) => { const e = document.querySelector(q.trim()); return e && !e.getClientRects().length; }) ? "This button is hidden on a screen this narrow. Turn your device sideways, or tick “I did this” and go on." /* jumpstart-3d: lessons that need a wider screen (phone tutorials): only when every button the step names exists but is hidden by the narrow layout */ : step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
     spot = t;
     t.classList.add("tut-spot");
-    if (t.ownerDocument === document) { // jumpstart-3d: our phone and scrolling help is for targets in the app's own page (not inside Chisel's frame)
+    { // jumpstart-3d: our phone and scrolling help (targets inside Chisel's frame are measured in page coordinates below)
       try { if (t.closest(".bbar, #ribbon, .menu")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now), or an item low in an open menu that scrolls on a phone (Code CAD in Open/Export), scrolls into view before the pop-up points at it
       // jumpstart-3d: phone and tablet lessons: a target inside a box that scrolls (the right panel's fields, the lesson's own name boxes) is scrolled into that box's view, and Show me never points at something the lesson panel covers
       const box = t.closest("#tut-panel, .float .body");
       if (box && (loud || box.id !== "tut-panel")) { const b = box.getBoundingClientRect(), q = t.getBoundingClientRect(); if (q.top < b.top || q.bottom > b.bottom) box.scrollTop += q.top - b.top - Math.max(0, (b.height - q.height) / 2); }
-      const covered = () => { const q = t.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return !!hit && !panel.contains(t) && panel.contains(hit); };
+      const covered = () => { const q = t.getBoundingClientRect(), f = t.ownerDocument !== document && app.chisel && app.chisel.frameRect && app.chisel.frameRect(), hit = document.elementFromPoint(q.left + (f ? f.left : 0) + q.width / 2, q.top + (f ? f.top : 0) + q.height / 2); return !!hit && !panel.contains(t) && panel.contains(hit); };
       if (covered()) {
         if (!loud) { hideSpot(); return; } // the automatic pointer at a new step has nothing to show under the open panel
         cur.mini = true; render(); // Show me makes the panel small; on a phone render() moves it to the top of the 3D view
         if (covered()) { // still covered (the small panel at the top left of a tablet): move it to the other half of the 3D view
-          const vp = document.getElementById("viewport").getBoundingClientRect(), q = t.getBoundingClientRect(), h = panel.getBoundingClientRect().height;
+          const vp = document.getElementById("viewport").getBoundingClientRect(), r = t.getBoundingClientRect(), fr = t.ownerDocument !== document && app.chisel && app.chisel.frameRect && app.chisel.frameRect(), q = { top: r.top + (fr ? fr.top : 0), height: r.height }, h = panel.getBoundingClientRect().height; // jumpstart-3d: a target inside Chisel's frame is measured in page coordinates
           const st = document.querySelector(".status"), dk = document.getElementById("shapes");
           let bottom = (st ? st.getBoundingClientRect().top : innerHeight) - 6;
           if (dk && !dk.hidden && dk.getClientRects().length && dk.getBoundingClientRect().height > 20) bottom = Math.min(bottom, dk.getBoundingClientRect().top - 6);
