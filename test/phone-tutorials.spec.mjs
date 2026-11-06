@@ -372,6 +372,12 @@ const KNOWN = [
 
 // Put the app back to a plain state between steps (page-side, as tutorials.spec.mjs does): out of a sketch and the Lathe, no menu or pop-up left open.
 async function normalize(p, { keepLathe = false } = {}) {
+  await p.evaluate(() => { // Chisel keeps its own state between lessons: leave the Puppet Animator and close an open figure builder, which a lesson's set-up may have opened
+    const d = document.querySelector("#chisel-host iframe")?.contentDocument;
+    if (!d) return;
+    const fc = d.getElementById("fig-cancel"); if (fc) fc.click();
+    const pb = d.getElementById("pupBack"); if (pb && pb.getClientRects().length) pb.click();
+  });
   const vis = (sel) => p.evaluate((sel) => { const e = document.querySelector(sel); return !!e && e.getClientRects().length > 0; }, sel);
   if (keepLathe && (await vis("#lathe-cancel, .lathe-done-back"))) return;
   const dirty = await p.evaluate(() => {
@@ -393,7 +399,7 @@ async function normalize(p, { keepLathe = false } = {}) {
 }
 
 // The set-up a step's target needs, the same as prepareFor in tutorials.spec.mjs but with page-side clicks.
-async function prepareFor(p, sel, mode) {
+async function prepareFor(p, sel, mode, ch = "") {
   const click = (s) => p.evaluate((s) => document.querySelector(s).click(), s);
   const addBox = async () => { // a selected box, put in through the store (a tile or menu item adds by pointer events; this is not what is judged)
     await p.evaluate(() => {
@@ -405,7 +411,8 @@ async function prepareFor(p, sel, mode) {
   if (/#sk-/.test(sel)) { await click("#ad-sketch"); await click("#plane-seg button"); await p.waitForSelector("#sk-line", { state: "attached" }); return "sketch open"; }
   if (/#lathe-/.test(sel)) {
     await normalize(p);
-    await click(mode === "beginner" ? "#bb-lathe" : "#ad-lathe");
+    if (mode === "beginner") await click("#bb-lathe");
+    else await p.evaluate(() => window.__app.lathe.open()); // 2.9.3 moved the Advanced Lathe button into the closed Workshop dropdown; opening it is set-up, not what is judged
     await p.waitForSelector("#lathe-start", { state: "attached" });
     if (/lathe-start/.test(sel)) return "lathe asks what to turn";
     await click("#lathe-start"); await p.waitForSelector("#lathe-done", { state: "attached" });
@@ -432,6 +439,13 @@ async function prepareFor(p, sel, mode) {
     return "ground made";
   }
   if (/param-expr/.test(sel)) { await click("#browser .param-add"); return "one parameter added"; }
+  if (ch) { // inside Chisel's frame, set-up by page-side clicks as well (the earlier steps' work is not what is judged)
+    const fr = await (await p.$("#chisel-host iframe")).contentFrame();
+    const fclick = (s) => fr.evaluate((s) => document.querySelector(s).click(), s);
+    if (/ptlKey|ptlTrack/.test(ch)) { await fclick("#pupBtn"); await fr.waitForSelector("#ptlKey", { state: "attached" }); await fr.waitForFunction(() => document.getElementById("toast").hidden, null, { timeout: 8000 }).catch(() => {}); return "the Puppet Animator is open"; }
+    if (/fig-H|fig-go/.test(ch)) { await fclick('#figTpls [data-fig="hero"]'); await fr.waitForSelector("#fig-go", { state: "attached" }); return "the figure builder is open"; }
+    if (/figLay/.test(ch)) { await fclick('#figTpls [data-fig="hero"]'); await fr.waitForSelector("#fig-go", { state: "attached" }); await fclick("#fig-go"); await fr.waitForSelector("#figLay", { state: "attached", timeout: 60_000 }); return "a figure is built"; }
+  }
   return null;
 }
 
@@ -447,15 +461,21 @@ async function settleLathe(p, sel) {
 // What Show me points at, read in the page: where it is, what is on top of its centre, whether the outline moved it, the pop-up, and
 // (phone) whether the small lesson panel sits on the view cube. `null` when nothing is outlined.
 const readSpot = ({ phone, sel, via }) => {
-  const e = document.querySelector(".tut-spot");
+  let e = document.querySelector(".tut-spot"), off = [0, 0];
+  if (!e) { // Show me inside Chisel's iframe (a same-origin srcdoc): the outline is in the frame's document; measure it in page coordinates
+    const ifr = document.querySelector("#chisel-host iframe"), fd = ifr && ifr.contentDocument;
+    e = fd && fd.querySelector(".tut-spot");
+    if (e) { const f = ifr.getBoundingClientRect(); off = [f.left, f.top]; }
+  }
   if (!e) return null;
-  const rect = () => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; };
+  const rect = () => { const r = e.getBoundingClientRect(); return [r.left + off[0], r.top + off[1], r.width, r.height]; };
   const a = rect(), cx = a[0] + a[2] / 2, cy = a[1] + a[3] / 2;
   const onScreen = a[2] >= 1 && a[3] >= 1 && cx >= 0 && cx <= innerWidth && cy >= 0 && cy <= innerHeight;
   const out = { id: e.id || e.className.toString().split(" ")[0] || e.tagName.toLowerCase(), onScreen, cx: Math.round(cx), cy: Math.round(cy), isCube: e.classList.contains("viewcube"), disabled: !!e.disabled };
   out.isVia = !!via && e.matches(via); out.isSel = !!sel && e.matches(sel);
   if (onScreen) {
-    const top = document.elementFromPoint(cx, cy);
+    let top = document.elementFromPoint(cx, cy);
+    if (e.ownerDocument !== document && top && top.tagName === "IFRAME") top = e.ownerDocument.elementFromPoint(cx - off[0], cy - off[1]); // nothing of the page on top of the frame there: look inside it
     out.covered = !(top === e || e.contains(top));
     if (out.covered) {
       out.byPanel = !!top && !!top.closest("#tut-panel");
@@ -493,7 +513,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
     test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
     test.skip(buildOf(info) !== "site", "the single file runs the same tutorial code, and the first test in this file already covers it there; this walk takes about 7 minutes per size");
     test.skip(process.env.GITHUB_JOB === "changed-specs", "the walks run nightly (about 7 minutes each); prove a branch with gh workflow run nightly.yml -f specs=test/phone-tutorials.spec.mjs -f projects=site");
-    test.setTimeout(600_000);
+    test.setTimeout(1_200_000); // 112 lessons now (90 before the Chisel lessons): measured 9.3-9.8 minutes per size on a quiet Mac (558 s and 535 s of walking), so the old 10 minute limit had no room; 20 minutes leaves margin
     const ctx = await browser.newContext({ ...opts(), serviceWorkers: "block", reducedMotion: "reduce" });
     ctx.setDefaultTimeout(8_000);
     const p = await ctx.newPage();
@@ -515,24 +535,26 @@ for (const { w: W2, h: H2, opts } of SIZES) {
 
       for (const L of lessons) {
         c.lessons++;
-        const tell = (n, show, what) => `${L.id} step ${n} (${show.sel || "tile:" + show.tile}): ${what} at ${size}`;
+        const tell = (n, show, what) => `${L.id} step ${n} (${show.sel || (show.ch ? "ch:" + show.ch : "tile:" + show.tile)}): ${what} at ${size}`;
         // 1. the chooser, the way a person can reach it at this width
         await normalize(p);
-        await p.evaluate(() => { window.__app.tutorials.close(); });
+        await p.evaluate(() => { window.__app.tutorials.close(); if (window.__app.mode === "chisel") window.__app.switchMode("beginner"); });
+        await p.waitForFunction(() => window.__app.mode !== "chisel", null, { timeout: 30_000 }).catch(() => {}); // a phone's menu has no Tutorials entry inside Chisel (index.html hides it there on purpose), so a person leaves Chisel by its mode switch first; the chooser is then reached by taps as usual
         try {
-          if (await p.locator("#btn-tutorials").isVisible()) await p.locator("#btn-tutorials").tap();
-          else { await p.locator("#btn-export").tap(); await p.locator("#btn-tutorials-menu").tap(); }
-          await p.locator("#tut-tab-" + L.mode).tap();
+          const T = { timeout: 20_000 }; // a loaded machine (or Chisel busy building a figure) can take longer than the 8 s default to settle
+          if (await p.locator("#btn-tutorials").isVisible()) await p.locator("#btn-tutorials").tap(T);
+          else { await p.locator("#btn-export").tap(T); await p.locator("#btn-tutorials-menu").tap(T); }
+          await p.locator("#tut-tab-" + L.mode).tap(T);
           const card = p.locator("#tut-" + L.id);
-          await card.waitFor();
+          await card.waitFor(T);
           // 2. the note for a lesson that needs a wider screen
           const noted = (await card.locator(".tut-narrow").count()) > 0, wants = L.minWidth > W2;
           if (noted !== wants) { problems.push(`${L.id}: ${wants ? "no .tut-narrow note on its card although it needs " + L.minWidth + " px" : ".tut-narrow note on its card although the lesson works at this width"} at ${size}`); if (wants) c.narrowMissing++; }
-          await card.tap();
+          await card.tap(T);
           // 3. step 1 is showing in the right mode
           await p.locator("#tut-panel").waitFor();
           await p.locator("#tut-panel .tut-stepno").waitFor();
-        } catch (e) { problems.push(`${L.id}: the lesson could not be started by taps at ${size} (${String(e.message).split("\n")[0]})`); await p.evaluate(() => { document.querySelectorAll(".modal-back").forEach((b) => b.remove()); }); continue; }
+        } catch (e) { problems.push(`${L.id}: the lesson could not be started by taps at ${size} (mode ${await p.evaluate(() => window.__app.mode + ", export menu hidden " + document.getElementById("menu-export").hidden).catch(() => "?")}; ${String(e.message).split("\n").slice(0, 4).join(" ").replace(/\s+/g, " ").slice(0, 400)})`); await p.evaluate(() => { document.querySelectorAll(".modal-back").forEach((b) => b.remove()); }); continue; }
         const mode = await p.evaluate(() => window.__app.mode);
         if (mode !== L.mode) problems.push(`${L.id}: the lesson opened in ${mode} mode, not ${L.mode} at ${size}`);
         c.started++;
@@ -551,9 +573,10 @@ for (const { w: W2, h: H2, opts } of SIZES) {
           await p.waitForFunction(() => window.__showDone, null, { timeout: 3000 });
         };
         // would a finger tap land on the outlined target? On failure the pointer is shown again and the check repeated once (the outline lasts 6 s, and a loaded machine can run past that while the Lathe draws)
-        const tapLands = async (synthetic) => {
+        const spotLoc = (show) => (show.ch && !show.sel ? p.frameLocator("#chisel-host iframe").locator(".tut-spot") : p.locator(".tut-spot"));
+        const tapLands = async (synthetic, show) => {
           for (let k = 0; k < 2; k++) {
-            try { await p.locator(".tut-spot").tap({ trial: true, timeout: 3000 }); return null; }
+            try { await spotLoc(show).first().tap({ trial: true, timeout: 8000 }); return null; }
             catch (e) { if (k === 1) return String(e.message).split("\n").slice(1, 5).join(" ").replace(/\s+/g, " ").slice(0, 220); await press(synthetic); }
           }
         };
@@ -579,7 +602,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
             await press();
             let m = await p.evaluate(readSpot, args);
             if (!m) { // the target only exists after earlier work: do that work, then press again for up to 6 s
-              const did = await prepareFor(p, show.sel || "", L.mode);
+              const did = await prepareFor(p, show.sel || "", L.mode, show.ch || "");
               if (did) for (let k = 0; k < 12 && !m; k++) { await press(); m = await p.evaluate(readSpot, args); if (!m) await p.waitForTimeout(500); }
             }
             if (m && m.bubble === "none") { await p.waitForTimeout(450); await press(); m = await p.evaluate(readSpot, args); } // the automatic pointer's own timer (120-350 ms after a step opens) can land just after a very quick tap and take the pop-up off; a person is slower than that
@@ -599,7 +622,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
             } else {
               judge(m, "");
               if (!issues.length && !m.disabled) { // would a tap land there? (a button that is disabled until a shape is selected is still where the step points)
-                const why = await tapLands(false);
+                const why = await tapLands(false, show);
                 if (why) add("other", "a tap would not land on the target (" + why + ")");
               }
               if (m.isVia && !m.isSel && show.via) { // the menu or panel is closed: Show me points at its button; open it, and Show me must now point at the item
@@ -610,7 +633,7 @@ for (const { w: W2, h: H2, opts } of SIZES) {
                 else if (!m2.isSel) add("other", `with ${show.via} open, Show me points at #${m2.id}, not at the item`);
                 else {
                   judge(m2, `with ${show.via} open: `);
-                  if (!issues.length) { const why = await tapLands(true); if (why) add("other", `with ${show.via} open: a tap would not land on the item (${why})`); }
+                  if (!issues.length) { const why = await tapLands(true, show); if (why) add("other", `with ${show.via} open: a tap would not land on the item (${why})`); }
                 }
               }
             }
