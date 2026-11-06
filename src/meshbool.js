@@ -86,6 +86,7 @@ function dependsOnQuality(node) {
 }
 export const qualityKey = (node) => (dependsOnQuality(node) ? "#q" + lastQuality : "");
 export function setMeshQuality(q) { lastQuality = q; }
+export const meshQuality = () => lastQuality; // the detail the last build used (kernel.js exportMeshes hands out the same Manifold mesh the view drew)
 const isBareMesh = (node) => node.t === "mesh" && !(node.mods || []).length;
 
 // ---------------------------------------------------------------- cache of Manifold results
