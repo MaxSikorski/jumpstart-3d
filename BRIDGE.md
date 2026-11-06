@@ -142,6 +142,8 @@ check them.
 | `await JS3D.load(json, { keepId })` | Opens a project (each `load` and `newDesign` adds an entry to "Your designs" in this browser, because the app saves the design it opens): `json` is the file's text, the parsed object, or a bare `doc`. It replaces the open design the way opening a project file does (new design id unless `keepId`, undo history cleared, saved in this browser), then waits for `ready`. A file that is not a project throws `not a JumpStart 3D project`. A body that would break the 3D view (no `id`, no `node`, no 16-number `m`) throws the same message with the reason. Nothing is changed when it throws. |
 | `await JS3D.newDesign(mode)` | Starts an empty design (and adds an entry to "Your designs"), `"beginner"` (default) or `"advanced"` (not `"arch"`: switch with `setMode` afterwards). |
 
+Bridge STL and 3MF exports follow the Export menu's quality setting, saved in localStorage as `jumpstart.exportQuality` and defaulting to Fine. They can therefore take longer: a very detailed design at Fine can take a couple of minutes. The app may show its "Making a smooth mesh…" toast, and falls back to the view mesh after 240 seconds. The MCP server's browser starts with a fresh profile, so it exports at Fine. OBJ, GLB and STEP exports are unchanged.
+
 Example, the whole loop:
 
 ```js

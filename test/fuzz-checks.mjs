@@ -34,11 +34,19 @@ export function readStl(bytes) {
 
 // Closed and consistently turned: every directed edge a->b has a matching b->a somewhere (several shells that
 // touch are fine). Vertices closer than `tol` count as one, so a shared corner written twice with a rounding
-// difference does not look like a hole. Returns { open, triangles, volume } where `open` counts unmatched edges
-// and `volume` is the signed volume (positive when the faces point outward).
+// difference does not look like a hole. The same corner always gets the same id (remembered by its exact position):
+// the nearest-first search depends on which corners came before, and a fine mesh with corners under `tol` apart got
+// different ids for one corner on different triangles (595 false open edges on a 0.005 mm mesh). Returns
+// { open, triangles, volume } where `open` counts unmatched edges and `volume` is the signed volume (positive
+// when the faces point outward).
 export function meshReport(tris, tol = 1e-4) {
-  const cell = 1e-3, grid = new Map(), reps = [];
+  const cell = 1e-3, grid = new Map(), reps = [], seen = new Map();
   const weld = (p) => {
+    const at = p.join(",");
+    if (!seen.has(at)) seen.set(at, near(p));
+    return seen.get(at);
+  };
+  const near = (p) => {
     const c = p.map((v) => Math.floor(v / cell));
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
       for (const id of grid.get(`${c[0] + dx},${c[1] + dy},${c[2] + dz}`) || []) {

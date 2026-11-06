@@ -27,7 +27,7 @@ test.beforeAll(async ({ browser }, info) => {
   senderErrors = watchErrors(sender);
   senderRequests = [];
   sender.on("request", (r) => senderRequests.push(r.url()));
-  await sender.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+  await sender.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
   await boot(sender, info);
 });
 test.afterAll(async () => { await sender?.close(); });
@@ -50,7 +50,7 @@ async function receiver(browser, { frag, init, query } = {}) {
   const errors = watchErrors(page);
   const requests = [];
   page.on("request", (r) => requests.push(r.url() + " " + (r.postData() || "")));
-  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
   if (init) await page.addInitScript(init);
   if (frag !== undefined) { await page.goto(receiverUrl(frag, query)); await ready(page); }
   return { context, page, errors, requests };

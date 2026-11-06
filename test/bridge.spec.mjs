@@ -390,9 +390,14 @@ test("save and load: the design comes back the same", async () => {
   const text = readFileSync(new URL("./projects/advanced-hole.json", import.meta.url), "utf8");
   await run((t) => JS3D.load(t, { keepId: true }), text);
   const g = golden["advanced-hole.json"];
-  const list = await run(() => JS3D.list());
-  expect(list.map((b) => b.volume)).toEqual(Object.values(g.volumes).map((v) => expect.closeTo(v, 0)));
-  expect(sha256(bytes(await run(() => JS3D.export("stl"))))).toBe(g.stl);
+  try {
+    await run(() => localStorage.setItem("jumpstart.exportQuality", "standard"));
+    const list = await run(() => JS3D.list());
+    expect(list.map((b) => b.volume)).toEqual(Object.values(g.volumes).map((v) => expect.closeTo(v, 0)));
+    expect(sha256(bytes(await run(() => JS3D.export("stl"))))).toBe(g.stl);
+  } finally {
+    await run(() => localStorage.removeItem("jumpstart.exportQuality"));
+  }
   expect(await run(() => __app.mode)).toBe("advanced");
 });
 
