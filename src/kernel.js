@@ -1461,11 +1461,13 @@ function applyMod(shape, mod, node) { // jumpstart-3d: STEP parts (#173). node: 
     }
     case "emboss": {
       const tool = embossTool(mod);
+      // jumpstart-3d: narrow cylinder letters are separate tools, including overlapping pairs.
+      const tools = Array.isArray(tool) ? tool : [tool];
       let out;
       try {
-        if (mod.mode === "deboss") out = cutAll(shape, [tool]);
-        else out = shape.fuse(tool);
-      } finally { tool.delete(); }
+        if (mod.mode === "deboss") out = cutAll(shape, tools);
+        else out = Array.isArray(tool) ? fuseAllTools(shape, tools) : shape.fuse(tool);
+      } finally { tools.forEach((t) => t.delete()); }
       if (!out) throw new Error("The text couldn't be cut into this face");
       shape.delete();
       return out;
@@ -2599,7 +2601,15 @@ function embossTool(m) {
     const prisms = [];
     let glyphs = m.along && m.kind === "cyl" ? [{ d: centered(textDrawing({ str: m.str, size, font: m.font })), u: 0, whole: true }] : glyphDrawings({ str: m.str, size, font: m.font });
     if (m.mirror) glyphs = glyphs.map((g) => ({ ...g, d: flipX(g.d), u: -g.u }));
-    for (const g of glyphs) {
+    // jumpstart-3d: choose tangent prisms separately for each nearly flat letter.
+    const sags = glyphs.map((g) => {
+      const b = g.d.boundingBox;
+      const w = Math.abs(Math.cos(tilt)) * b.width + Math.abs(Math.sin(tilt)) * b.height;
+      return w < 2 * r ? r - Math.sqrt(r * r - w * w / 4) : Infinity;
+    });
+    const around = m.kind === "cyl" && !m.along;
+    const fast = sags.map((sag) => around && (sag < depth * 0.1 || (emb && sag < 0.02)));
+    for (const [i, g] of glyphs.entries()) {
       // a tilted line of text: each letter moves along the rotated baseline, not just around
       const ua = g.whole ? 0 : g.u * Math.cos(tilt), va = g.whole ? 0 : g.u * Math.sin(tilt);
       const phi = (s * ua) / r;
@@ -2611,24 +2621,36 @@ function embossTool(m) {
       if (g.whole) { xd = up; yd = null; } // running along the axis
       if (tilt && !g.whole) { xd = rot(xd, nr, tilt); }
       // the letter's plane faces whoever looks at this surface (outside a peg, inside a hole)
-      const origin = add(add(base, nr, r - s * (depth + 1)), up, lift);
+      // jumpstart-3d: extend across the curved surface by the letter sag.
+      const start = fast[i] ? (emb ? r - s * (sags[i] + 0.02) : r - s * depth) : r - s * (depth + 1);
+      const length = fast[i] ? (emb ? depth + sags[i] + 0.02 : depth + 0.5 + sags[i]) : 2 * depth + 2;
+      const origin = add(add(base, nr, start), up, lift);
       const sk = g.d.sketchOnPlane(new R.Plane(origin, xd, nr.map((q) => q * s)));
-      prisms.push(sk.extrude(2 * depth + 2));
+      prisms.push(sk.extrude(length));
       void yd;
     }
-    const prism = fuseAll(prisms);
+    // jumpstart-3d: pass individual solids to the multi-tool boolean.
+    if (around && fast.every(Boolean)) return prisms;
+    const prism = around ? null : fuseAll(prisms);
     // the shell the letters live in: just outside the surface (emboss) or just inside (deboss)
     let r0, r1;
     if (emb) { r0 = s > 0 ? r - 0.02 : r - depth; r1 = s > 0 ? r + depth : r + 0.02; }
     else { r0 = s > 0 ? r - depth : r - 0.5; r1 = s > 0 ? r + 0.5 : r + depth; }
     let shell;
     if (m.kind === "cyl") {
-      const H = size * 4 + 2 * depth + Math.abs(glyphs.length * size), b0 = add(base, up, -H / 2);
+      // jumpstart-3d: Along uses one drawing for the whole line, not one glyph per letter.
+      const H = m.along ? glyphs[0].d.boundingBox.width + 2 * size + 2 * depth : size * 4 + 2 * depth + Math.abs(glyphs.length * size), b0 = add(base, up, -H / 2);
       const outer = R.makeCylinder(r1, H, b0, up);
       if (r0 > 1e-3) { const inner = R.makeCylinder(r0, H, b0, up); shell = outer.cut(inner); outer.delete(); inner.delete(); } else shell = outer;
     } else {
       const outer = R.makeSphere(r1).translate(...center);
       if (r0 > 1e-3) { const inner = R.makeSphere(r0).translate(...center); shell = outer.cut(inner); outer.delete(); inner.delete(); } else shell = outer;
+    }
+    // jumpstart-3d: trim only wide Around letters, keeping all tools separate.
+    if (around) {
+      const tools = prisms.map((p, i) => { if (fast[i]) return p; const clipped = p.intersect(shell); p.delete(); return clipped; });
+      shell.delete();
+      return tools;
     }
     const tool = prism.intersect(shell);
     prism.delete(); shell.delete();
