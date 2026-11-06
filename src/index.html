@@ -176,6 +176,9 @@ button { cursor: pointer; }
 .menu .menu-head { padding: 6px 10px 2px; font: 600 11px/1.2 var(--f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
 .menu .menu-note { padding: 4px 10px 6px; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); max-width: 250px; }
 #menu-theme { min-width: 270px; }
+/* jumpstart-3d: keep the longer settings menu compact while retaining tablet-sized targets */
+:root:not([data-device="tablet"]) #menu-theme > button { padding-block: 6px; }
+/* jumpstart-3d: end compact settings menu */
 /* jumpstart-3d: a menu taller than the space under the toolbar scrolls inside itself (46px toolbar + notch inset + 20px gap) instead of running off the window */
 .menu { max-height: calc(100vh - 46px - env(safe-area-inset-top, 0px) - 20px); max-height: calc(100dvh - 46px - env(safe-area-inset-top, 0px) - 20px); overflow-y: auto; overscroll-behavior: contain; }
 .sk-widths { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px 10px 6px; }
