@@ -115,6 +115,7 @@ export class KernelClient {
     L.worker = null; L.ready = false; L.inflight = null; L.queue.clear();
     this.oneEngine = true;
     for (const it of items) { it.verySlow = true; this.queue.set(it.key, it); }
+    this.perf && this.perf.drop("slow"); // jumpstart-3d: perf panel
     this.onSlowFallback && this.onSlowFallback(why);
     this.pump();
   }
@@ -133,6 +134,7 @@ export class KernelClient {
         if (r.ok && this.disk && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
         this.meshes.set(r.key, r);
       }
+      this.perf && this.perf.done(res, "slow"); // jumpstart-3d: perf panel
       this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       this.settleProbes(res); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(res);
@@ -149,7 +151,8 @@ export class KernelClient {
     const [k, it] = L.queue.entries().next().value;
     L.queue.delete(k);
     L.inflight = [it]; L.at = Date.now();
-    L.worker.postMessage({ type: "build", req: ++this.req, quality: this.quality || 1, bodies: [{ id: it.id, rev: it.key, node: it.node }] }); // jumpstart-3d: mesh detail
+    L.worker.postMessage({ type: "build", req: ++this.req, quality: this.quality || 1, perf: !!this.perf, bodies: [{ id: it.id, rev: it.key, node: it.node }] }); // jumpstart-3d: perf panel; mesh detail
+    this.perf && this.perf.start("slow"); // jumpstart-3d: perf panel
     // known to be slow, and it doesn't hold anything else up: no time limit (a slower computer
     // just takes longer), only a 2-hour safety net; Stop in the status bar ends it sooner
     L.watchdog = setTimeout(() => {
@@ -158,6 +161,7 @@ export class KernelClient {
       const r = { id: it.id, key: it.key, ok: false, error: "This shape took too long and was stopped. Undo the last change, or make it lighter: fewer offset curved faces, or Clearance instead of Offset face (About → Slow bodies has tips)." };
       this.bad.set(it.key, r); // jumpstart-3d: bad is a Map of the stalled results
       this.meshes.set(it.key, r);
+      this.perf && this.perf.done([r], "slow"); // jumpstart-3d: perf panel
       this.settleProbes([r]); // jumpstart-3d: Code CAD
       this.onResults && this.onResults([r]);
       this.pumpSlow();
@@ -177,6 +181,7 @@ export class KernelClient {
       this.inflight = null;
       const res = items.map((it) => ({ id: it.id, key: it.key, ok: false, stopped: true, error: "Stopped before it finished building. Open the design again to build it. About → Slow bodies has tips for making it quicker." }));
       for (const r of res) this.meshes.set(r.key, r);
+      this.perf && this.perf.done(res); // jumpstart-3d: perf panel
       this.onResults && this.onResults(res);
       this.start();
       return;
@@ -189,6 +194,7 @@ export class KernelClient {
     const res = items.map((it) => ({ id: it.id, key: it.key, ok: false, stopped: true, error: "Stopped before it finished building. Open the design again to build it. About → Slow bodies has tips for making it quicker." }));
     // shown as stopped, but the next request builds it again (has() is false for these)
     for (const r of res) this.meshes.set(r.key, r);
+    this.perf && this.perf.done(res, "slow"); // jumpstart-3d: perf panel
     this.onResults && this.onResults(res);
     this.onBusy && this.onBusy(true);
   }
@@ -317,7 +323,8 @@ export class KernelClient {
         this.onResults && this.onResults([r]);
       } else if (!this.meshes.has(it.key)) this.queue.set(it.key, it);
       this.pump();
-    }, () => { this.looking.delete(it.key); this.queue.set(it.key, it); this.pump(); });
+      this.perf && this.perf.finish(); // jumpstart-3d: perf panel
+    }, () => { this.looking.delete(it.key); this.queue.set(it.key, it); this.pump(); this.perf && this.perf.finish(); }); // jumpstart-3d: perf panel
   }
   // the built meshes of bodies that took at least minMs to build (to go in a project file)
   slowMeshes(keys, minMs = 10000) {
@@ -391,7 +398,7 @@ export class KernelClient {
     // jumpstart-3d: identify the active batch separately from export requests.
     const req = this.inflightReq = ++this.req;
     this.lastBuildStage = "waiting";
-    this.worker.postMessage({ type: "build", req, quality: this.quality || 1, bodies: batch.map((b) => ({ id: b.id, rev: b.key, node: b.node })) });
+    this.worker.postMessage({ type: "build", req, quality: this.quality || 1, perf: !!this.perf, bodies: batch.map((b) => ({ id: b.id, rev: b.key, node: b.node })) }); // jumpstart-3d: perf panel
     // map results back by rev = key
     clearTimeout(this.watchdog);
     // imported meshes take longer to turn into solids: give them more time

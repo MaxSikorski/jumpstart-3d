@@ -12,6 +12,7 @@ import { shellField, isoSurface } from "./sdfshell.js";
 import { initMeshBool, meshBody, meshBrep, engineOf, qualityKey, setMeshQuality, meshQuality, clearMeshCache, setMeshBoolEnabled, meshBoolReason } from "./meshbool.js"; // jumpstart-3d: joins and cuts with an imported mesh run on Manifold
 
 let OC = null;
+let featClock = null; // jumpstart-3d: perf panel feature timings for the current body
 // a face normal as a unit vector (replicad's isn't normalized on curved faces)
 const unitT = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 export async function initKernel(opencascade, wasmBinary) {
@@ -3668,19 +3669,25 @@ export function evalNode(node) {
     const prefixNode = { ...node, mods: mods.slice(0, -1) };
     if (run >= 2 && !cache.has(stableKey(prefixNode) + qualityKey(prefixNode))) { // jumpstart-3d: our cache keys carry the mesh detail too
       const before = evalNode({ ...node, mods: mods.slice(0, k) });
+      const featRun = featClock && mods.slice(k).every((m) => featClock.mods.has(m)), featStart = featRun && performance.now(); // jumpstart-3d: perf panel
       const out = cutMany(before, mods.slice(k));
       if (out) { before.delete(); shape = solidsOnly(out); }
       else shape = runMods(before, mods.slice(k));
+      if (featRun) { const ms = (performance.now() - featStart) / run; for (const m of mods.slice(k)) featClock.out.push({ id: m.id, t: m.t, ms, shared: true }); } // jumpstart-3d: perf panel
     } else {
       // evaluate prefix (node without last mod) so editing the last feature is cheap
       const prefix = { ...node, mods: mods.slice(0, -1) };
       shape = evalNode(prefix);
+      const featStart = featClock && featClock.mods.has(last) && performance.now(); // jumpstart-3d: perf panel
       shape = solidsOnly(applyMod(shape, mods[mods.length - 1], node)); // jumpstart-3d: STEP parts (#173). node
+      if (featStart) featClock.out.push({ id: last.id, t: last.t, ms: performance.now() - featStart }); // jumpstart-3d: perf panel
       // jumpstart-3d: fill openings
       if (last.t === "fillopen") rememberFillReport(key, lastFillReport); // key = fillKey(node)
     }
   } else {
+    const featBase = featClock && Object.keys(node).every((k) => k === "mods" || node[k] === featClock.base[k]), featStart = featBase && performance.now(); // jumpstart-3d: perf panel
     shape = solidsOnly(evalBase(node));
+    if (featBase) featClock.out.push({ t: "base", ms: performance.now() - featStart }); // jumpstart-3d: perf panel
   }
   cachePut(key, shape);
   return shape;
@@ -4167,12 +4174,15 @@ export function buildBodies(bodies, quality = 1, options = {}) {
       // jumpstart-3d: a join or cut with an imported mesh is done by Manifold and drawn from it, with no OpenCascade work; null means Manifold refused it and the code below runs as before
       const viaManifold = meshBody(b.node, quality);
       if (viaManifold) { attachFillReports(b.node, viaManifold); out.push({ id: b.id, rev: b.rev, ok: true, mesh: viaManifold, ms: Date.now() - t0 }); continue; } // jumpstart-3d: fill openings keep their reports on this route too
+      featClock = options.perf ? { base: b.node, mods: new Set(b.node.mods || []), out: [] } : null; // jumpstart-3d: perf panel
       const shape = evalNode(b.node);
       // jumpstart-3d: a boolean can leave nothing (two boxes that do not meet, a hole that cuts all of a shape); meshing it would throw a bare engine exception
       if (isEmptyShape(shape)) { shape.delete(); throw new Error(NOTHING_LEFT); }
       // jumpstart-3d: cached STEP evaluations still have a real meshing boundary.
       stepStage("meshing");
+      const meshStart = featClock && performance.now(); // jumpstart-3d: perf panel
       const mesh = meshShape(shape, quality, { node: b.node });
+      if (featClock) featClock.out.push({ t: "mesh", ms: performance.now() - meshStart }); // jumpstart-3d: perf panel
       { const engine = engineOf(b.node); if (engine) mesh.meshEngine = engine; } // jumpstart-3d: which engine built it (tests read this)
       if (b.node.t === "step" && !b.node.parts && stepSolids.has(b.node.asset)) mesh.stepParts = stepSolids.get(b.node.asset); // jumpstart-3d: STEP parts (#173). how many parts the file holds
       // jumpstart-3d: fill openings
@@ -4193,12 +4203,12 @@ export function buildBodies(bodies, quality = 1, options = {}) {
       try { mesh.hasNonSolidFaces = faces.More(); }
       finally { faces.delete(); }
       shape.delete();
-      out.push({ id: b.id, rev: b.rev, ok: true, mesh, ms: Date.now() - t0 });
+      out.push({ id: b.id, rev: b.rev, ok: true, mesh, ms: Date.now() - t0, feats: featClock ? featClock.out : [] }); // jumpstart-3d: perf panel
       // jumpstart-3d: result construction is complete.
       stepStage("sending");
     } catch (e) {
       out.push({ id: b.id, rev: b.rev, ok: false, error: friendly(e) });
-    } finally { endProgress(); }
+    } finally { endProgress(); featClock = null; } // jumpstart-3d: perf panel
   }
   return out;
 }
