@@ -19,6 +19,7 @@ test.beforeAll(async ({ browser }, info) => {
       postMessage(m, t) {
         const s = window.__slow;
         if (s && s.hang && m && m.type === "build" && m.bodies.some((b) => JSON.stringify(b.node).includes(s.hang))) return; // never answered
+        if (s && s.delay && m && m.type === "build" && m.bodies.some((b) => JSON.stringify(b.node).includes(s.delay.match))) { setTimeout(() => super.postMessage(m, t), s.delay.ms); return; } // only the matching body is held back
         if (s && m && m.type === "build") setTimeout(() => super.postMessage(m, t), s.perBody * m.bodies.length);
         else super.postMessage(m, t);
       }
@@ -149,6 +150,32 @@ test("a body built in the second engine is recorded too, and the record waits fo
   expect(last.rows.every((x) => x.engine === "slow" && x.tris > 0)).toBe(true);
   expect(last.features.some((f) => f.label === "Fillet" && f.body === "Rounded")).toBe(true);
   await expect(page.locator("#perfpanel .pp-bodies tbody tr td").nth(1)).toHaveText("2nd engine");
+});
+
+test("edits while the second engine is busy are each their own record; the slow body lands on its own when it ends", async () => {
+  await page.evaluate(() => JS3D.newDesign("beginner"));
+  await page.evaluate(() => {
+    window.__slow = { delay: { match: "41.7", ms: 8000 } }; // the second engine takes 8 s over this body
+    const k = window.__app.kernel, request = k.request;
+    k.request = function (items) { k.request = request; for (const it of items) k.slow.queue.set(it.key, it); k.pumpSlow(); };
+    JS3D.add("box", { size: [41.7, 10, 10] });
+  });
+  const nextRecord = async (edit) => {
+    await page.evaluate(() => { window.__previousPerf = window.__app.perf.last; });
+    await edit();
+    await page.waitForFunction(() => window.__app.perf.last && window.__app.perf.last !== window.__previousPerf, null, { timeout: 30_000 });
+    return page.evaluate(() => window.__app.perf.last);
+  };
+  let id;
+  for (const step of [async () => { id = await page.evaluate(() => JS3D.add("box", { size: [12.1, 12, 12] })); }, () => page.evaluate((id) => JS3D.resize(id, { w: 12.2 }), id), () => page.evaluate((id) => JS3D.resize(id, { w: 12.3 }), id)]) {
+    const last = await nextRecord(step);
+    expect(last.rows.map((x) => x.engine), "one row: the edited body, built once in the main engine").toEqual(["main"]);
+    expect(last.features.filter((f) => f.label === "Meshing")).toHaveLength(1);
+    expect(await page.evaluate(() => window.__app.kernel.slowBusy()), "the slow body is still building").toBe(true);
+  }
+  await page.waitForFunction(() => { const l = window.__app.perf.last; return l.rows.length === 1 && l.rows[0].engine === "slow"; }, null, { timeout: 30_000 });
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(1);
+  await page.evaluate(() => { window.__slow = null; });
 });
 
 test("Close removes the panel and its style", async () => {

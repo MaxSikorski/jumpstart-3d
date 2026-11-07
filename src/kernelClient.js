@@ -312,7 +312,7 @@ export class KernelClient {
   lookUp(it) {
     this.looking.set(it.key, it);
     diskGet(VERSION, it.key).then((hit) => {
-      if (this.looking.get(it.key) !== it) return;
+      if (this.looking.get(it.key) !== it) { this.perf && this.perf.finish(); return; } // jumpstart-3d: perf panel
       this.looking.delete(it.key);
       const mesh = hit && meshOk(hit.mesh) ? hit.mesh : null; // jumpstart-3d: meshOk
       if (hit && hit.ms) this.buildMs.set(it.key, hit.ms);
@@ -343,6 +343,7 @@ export class KernelClient {
     // (a stand-in stays while the body it stands in for is still wanted)
     for (const k of [...this.queue.keys()]) if (!neededKeys.has(k) && !(k.startsWith("pre:") && neededKeys.has(k.slice(4))) && !this.queue.get(k).pinned) { this.queue.delete(k); this.solo.delete(k); } // jumpstart-3d: pinned (Code CAD) and solo
     for (const k of [...this.looking.keys()]) if (!neededKeys.has(k) && !this.looking.get(k).pinned) this.looking.delete(k); // jumpstart-3d: pinned
+    this.perf && this.perf.finish(); // jumpstart-3d: perf panel (a dropped lookup may have been the last thing the record waited for)
     for (const k of [...this.slow.queue.keys()]) if (!neededKeys.has(k) && !this.slow.queue.get(k).pinned) this.slow.queue.delete(k); // jumpstart-3d: pinned
     this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
   }

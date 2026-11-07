@@ -3685,7 +3685,7 @@ export function evalNode(node) {
       if (last.t === "fillopen") rememberFillReport(key, lastFillReport); // key = fillKey(node)
     }
   } else {
-    const featBase = featClock && Object.keys(node).every((k) => k === "mods" || node[k] === featClock.base[k]), featStart = featBase && performance.now(); // jumpstart-3d: perf panel
+    const featBase = featClock && Object.keys(node).length === Object.keys(featClock.base).length && Object.keys(node).every((k) => k === "mods" || node[k] === featClock.base[k]), featStart = featBase && performance.now(); // jumpstart-3d: perf panel
     shape = solidsOnly(evalBase(node));
     if (featBase) featClock.out.push({ t: "base", ms: performance.now() - featStart }); // jumpstart-3d: perf panel
   }

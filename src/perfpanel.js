@@ -34,7 +34,10 @@ export function initPerfPanel(app) {
       done: safe((results, engine = "main") => {
         const batch = cur[engine];
         if (!batch) return;
+        if (!open) open = { t0: batch.t, batches: 1, rows: [] }; // a second-engine body that ends after the main record closed is a record of its own
         const per = (performance.now() - batch.t) / (results.length || 1);
+        const keys = new Set(results.map((x) => x.key));
+        open.rows = open.rows.filter((x) => !keys.has(x.key)); // a body built again in the same record keeps only its latest time
         for (const x of results) open.rows.push({ id: x.id, key: x.key, engine, batch: batch.n, ms: typeof x.ms === "number" ? x.ms : per, approx: typeof x.ms !== "number", feats: x.feats || [], tris: x.ok !== false && x.mesh ? x.mesh.triangles.length / 3 : 0, error: x.ok === false ? x.error : null });
         cur[engine] = null;
         r.finish();
@@ -47,7 +50,9 @@ export function initPerfPanel(app) {
         setTimeout(r.finish, 0); // the client has settled its queue by the next turn
       }),
       finish: safe(() => {
-        if (!open || cur.main || cur.slow || k.inflight || k.queue.size || k.looking.size || k.slowBusy()) return;
+        // the second engine can hold one body for up to 2 hours: only Rebuild all waits for it; otherwise main-engine edits close their own records
+        if (!open || cur.main || k.inflight || k.queue.size || k.looking.size || (r.waitSlow && (cur.slow || k.slowBusy()))) return;
+        r.waitSlow = false;
         if (open.rows.length) {
           const feats = new Map();
           const items = timeline(store.view);
@@ -140,9 +145,10 @@ export function initPerfPanel(app) {
     k.slow.worker && k.slow.ready && k.slow.worker.postMessage({ type: "clear" });
     k.meshes.clear();
     k.seeded.clear();
+    rec.waitSlow = true; // this record lists every body, very slow ones included
     const disk = k.disk; k.disk = false;
     try { app.scene.sync(app.scene.doc); } finally { k.disk = disk; }
-    if (!k.inflight && !k.queue.size && !k.looking.size && !k.slowBusy()) render("Nothing to rebuild: no shape needs building."); // an empty design, or every shape already marked as stalled
+    if (!k.inflight && !k.queue.size && !k.looking.size && !k.slowBusy()) { rec.waitSlow = false; render("Nothing to rebuild: no shape needs building."); } // an empty design, or every shape already marked as stalled
   }
 
   function open() {
