@@ -49,6 +49,7 @@
       "export-scope-all",
       "export-scope-sel",
       "export:3mf",
+      "export:bodydxf",
       "export:dxf",
       "export:glb",
       "export:import",
