@@ -36,7 +36,7 @@ test("view placement, scale and units", () => {
 test("dimensions retain view geometry and show model sizes", () => {
   for (const units of ["mm", "in"]) {
     const plain = drawingDXF(views, { units, scale: 0.5 }), text = drawingDXF(views, { units, scale: 0.5, dims: true });
-    for (const n of ["TOP", "FRONT", "RIGHT"]) assert.deepEqual(box(text, n), box(plain, n));
+    for (const n of ["TOP", "FRONT", "RIGHT"]) { const p = box(plain, n), d = box(text, n); near(d[2] - d[0], p[2] - p[0]); near(d[3] - d[1], p[3] - p[1]); }
     const e = entities(text); assert.ok(e.some((v) => v[8] === "DIMENSIONS"));
     for (const value of units === "mm" ? ["40", "30", "20"] : ['1.575"', '1.181"', '0.787"']) assert.ok(e.some((v) => v.type === "TEXT" && v[1] === value), value);
     assert.ok(parseDXF(text).curves.length >= parseDXF(plain).curves.length);
@@ -47,4 +47,23 @@ test("single views and fractional inch labels", () => {
   assert.deepEqual(box(text, "FRONT"), [0, 0, 1.5, 1]);
   assert.ok(entities(text).some((e) => e.type === "TEXT" && e[1] === '1 1/2"'));
   assert.ok(entities(text).some((e) => e.type === "TEXT" && e[1] === '1"'));
+});
+test("size labels clear the outlines, their size lines and each other", () => {
+  for (const [units, scale] of [["mm", 1], ["in", 1], ["mm", 0.5], ["mm", 2]]) {
+    const text = drawingDXF(views, { units, scale, dims: true }), e = entities(text);
+    const outlines = ["TOP", "FRONT", "RIGHT"].map((n) => box(text, n));
+    const labels = e.filter((v) => v.type === "TEXT").map((v) => {
+      const x = +v[10], y = +v[20], h = +v[40], w = 0.7 * h * v[1].length; // a generous width for the letters
+      return +v[50] === 90 ? [x - h, y - w / 2, x, y + w / 2] : [x - w / 2, y, x + w / 2, y + h];
+    });
+    assert.equal(labels.length, 6);
+    assert.equal(e.filter((v) => v.type === "TEXT" && +v[50] === 90).length, 3); // heights read upwards
+    const inside = (r, b, eps) => r[0] < b[2] - eps && r[2] > b[0] + eps && r[1] < b[3] - eps && r[3] > b[1] + eps;
+    const segs = e.filter((v) => v.type === "LINE" && v[8] === "DIMENSIONS").map((v) => [+v[10], +v[20], +v[11], +v[21]]);
+    for (const r of labels) {
+      for (const b of outlines) assert.ok(!inside(r, b, 0), `label ${r} overlaps a view ${b} (${units} ${scale})`);
+      for (const q of labels) if (q !== r) assert.ok(!inside(r, q, 0), "labels overlap");
+      for (const [x0, y0, x1, y1] of segs) assert.ok(!inside(r, [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)], -1e-9) || false, `label ${r} crosses a size line`);
+    }
+  }
 });

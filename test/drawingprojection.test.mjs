@@ -13,7 +13,8 @@ const k = await import("data:text/javascript;base64," + Buffer.from(bundle.outpu
 const { default: oc } = await import(tp + "replicad-opencascadejs/dist/replicad_single.js");
 await k.initKernel(oc, gunzipSync(readFileSync(root + "src/occt-gz.wasm")));
 const prim = (kind, w, d, h) => ({ t: "prim", kind, p: { w, d, h }, mods: [] });
-const draw = (node, m = null) => k.drawingViews([{ id: "one", node, m }], ["top", "front", "right"]);
+const cleaned = (r) => { for (const v in r.views) r.views[v] = cleanCurves(r.views[v]); return r; }; // the page cleans, as bodydrawing.js does
+const draw = (node, m = null) => cleaned(k.drawingViews([{ id: "one", node, m }], ["top", "front", "right"]));
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-5, `${a} != ${b}`);
 function check(curves, lines, circles, bounds) {
   assert.equal(curves.filter(c => c.t === "line").length, lines, JSON.stringify(curves));
@@ -43,7 +44,7 @@ test("blind hole from the top shows only in Top (the views look from the right s
   const box = prim("box", 20, 10, 5), m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 2, 1];
   box.mods.push({ id: "hole", seq: 0, t: "bool", op: "cut", tool: prim("cylinder", 4, 4, 3), m });
   const { views } = draw(box); check(views.top, 4, 1); check(views.front, 4, 0);
-  const bottom = k.drawingViews([{ id: "b", node: box, m: [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 5, 1] }], ["top"]).views.top;
+  const bottom = cleaned(k.drawingViews([{ id: "b", node: box, m: [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 5, 1] }], ["top"])).views.top;
   check(bottom, 4, 0); // turned upside down, the hole faces the plate and Top no longer sees it
 });
 test("a rounded end gives a true counter-clockwise arc", () => {
@@ -71,4 +72,11 @@ test("overall sizes measure an arc by its own extent, not its whole circle", () 
   const text = k.drawingDXF({ top: draw(box).views.top }, { dims: true });
   const labels = [...text.matchAll(/\r?\nTEXT\r?\n[\s\S]*?\r?\n1\r?\n([^\r\n]+)/g)].map((x) => x[1]).sort();
   assert.deepEqual(labels, ["10", "25"]);
+});
+test("too many faces is refused before any projection, with the count", () => {
+  const seen = [];
+  assert.throws(() => k.drawingViews([{ id: "one", node: prim("box", 40, 30, 20), m: null }], ["top"], (v) => seen.push(v), 5), /Too detailed for a drawing \(6 faces\)/);
+  assert.deepEqual(seen, []);
+  const ok = k.drawingViews([{ id: "one", node: prim("box", 40, 30, 20), m: null }], ["top", "front"], (v, i, n) => seen.push(`${v} ${i + 1}/${n}`));
+  assert.equal(ok.faces, 6); assert.deepEqual(seen, ["top 1/2", "front 2/2"]);
 });

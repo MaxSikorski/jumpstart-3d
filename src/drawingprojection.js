@@ -1,4 +1,12 @@
 export const DRAWING_VIEWS = ["top", "front", "right"];
+// Exact hidden-line removal grows fast with the face count; above this a drawing is refused before it starts.
+export const FACE_LIMIT = 1500;
+export function countFaces(OC, shape) {
+  const ex = new OC.TopExp_Explorer(shape.wrapped, OC.TopAbs_ShapeEnum.TopAbs_FACE, OC.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  let n = 0;
+  try { for (; ex.More(); ex.Next()) n++; } finally { ex.delete(); }
+  return n;
+}
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const angleDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
@@ -80,10 +88,12 @@ function readEdge(OC, edge) {
   } finally { curve.delete(); }
 }
 
-export function projectViews(OC, R, shape, views) {
+// Raw curves per view; the page runs cleanCurves (it is quadratic and need not hold up the engine).
+export function projectViews(OC, R, shape, views, onView) {
   const axes = { top: [[0, 0, 1], [1, 0, 0]], front: [[0, -1, 0], [1, 0, 0]], right: [[1, 0, 0], [0, 1, 0]] };
   const result = {};
-  for (const view of views) {
+  for (const [i, view] of views.entries()) {
+    if (onView) onView(view, i, views.length);
     if (!axes[view]) throw new Error(`Unknown drawing view: ${view}`);
     const [normal, right] = axes[view], owned = [];
     const own = x => (owned.push(x), x);
@@ -99,7 +109,7 @@ export function projectViews(OC, R, shape, views) {
         const wrapped = R.cast(compound);
         try { const edges = wrapped.edges; try { for (const edge of edges) curves.push(readEdge(OC, edge)); } finally { edges.forEach(e => e.delete()); } } finally { wrapped.delete(); compound.delete(); }
       }
-      result[view] = cleanCurves(curves);
+      result[view] = curves;
     } finally { owned.reverse().forEach(o => o.delete()); }
   }
   return result;

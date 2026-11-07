@@ -71,7 +71,7 @@ self.onmessage = async (ev) => {
     // jumpstart-3d: body drawing
     } else if (msg.type === "drawing") {
       await ready; await manifoldReady(); await fontsReady();
-      const data = drawingViews(msg.bodies, msg.views);
+      const data = drawingViews(msg.bodies, msg.views, (view, i, n) => self.postMessage({ type: "drawingView", req: msg.req, view, i, n }));
       self.postMessage({ type: "drawing", req: msg.req, data });
     // jumpstart-3d: body drawing
     } else if (msg.type === "step") {

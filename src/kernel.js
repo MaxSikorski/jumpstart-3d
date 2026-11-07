@@ -10,7 +10,7 @@ import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
 import { fillOpenings, analyseOpenings, chooseOpenings } from "./fillopen.js"; // jumpstart-3d: fill openings
 import { shellField, isoSurface } from "./sdfshell.js";
 import { initMeshBool, meshBody, meshBrep, engineOf, qualityKey, setMeshQuality, meshQuality, clearMeshCache, setMeshBoolEnabled, meshBoolReason } from "./meshbool.js"; // jumpstart-3d: joins and cuts with an imported mesh run on Manifold
-import { projectViews } from "./drawingprojection.js"; // jumpstart-3d: body drawing
+import { projectViews, countFaces, FACE_LIMIT } from "./drawingprojection.js"; // jumpstart-3d: body drawing
 
 let OC = null;
 // a face normal as a unit vector (replicad's isn't normalized on curved faces)
@@ -4322,18 +4322,19 @@ function friendly(e) {
 }
 
 // jumpstart-3d: body drawing
-export function drawingViews(bodies, views) {
+export function drawingViews(bodies, views, onView, limit = FACE_LIMIT) {
   const shapes = [], skipped = [];
   try {
     for (const b of bodies) {
       try { const shape = transformShape(evalNode(b.node), b.m); if (isEmptyShape(shape)) shape.delete(); else shapes.push(shape); } catch (e) { skipped.push(b.id); }
     }
     if (!shapes.length) return { views: Object.fromEntries(views.map(v => [v, []])), skipped };
+    const faces = shapes.reduce((n, s) => n + countFaces(OC, s), 0);
+    if (faces > limit) throw new Error(`Too detailed for a drawing (${faces} faces). Draw fewer bodies or views.`);
     const compound = shapes.length === 1 ? shapes[0] : R.makeCompound(shapes);
-    try { return { views: projectViews(OC, R, compound, views), skipped }; } finally { if (compound !== shapes[0]) compound.delete(); }
+    try { return { views: projectViews(OC, R, compound, views, onView), skipped, faces }; } finally { if (compound !== shapes[0]) compound.delete(); }
   } finally { shapes.forEach(s => s.delete()); }
 }
-// jumpstart-3d: body drawing
 export function exportStep(bodies) {
   const shapes = [];
   for (const b of bodies) {

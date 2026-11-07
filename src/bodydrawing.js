@@ -1,6 +1,8 @@
 // Arrange projected body views and offer them as a DXF drawing.
 import { writeDXF } from "./dxf.js";
 import { el } from "./util.js";
+import { cleanCurves } from "./drawingprojection.js";
+import { runDrawingJob } from "./drawingclient.js";
 
 const names = ["top", "front", "right"];
 const scaled = (c, k) => {
@@ -45,7 +47,8 @@ export function drawingDXF(viewCurves, { scale = 1, dims = false, units = "mm" }
     if (box) boxes[n] = { curves, box };
   }
   const all = Object.values(boxes), factor = units === "in" ? 1 / 25.4 : 1;
-  const gap = Math.max(10 * factor, ...all.map(({ box: b }) => 0.15 * Math.max(b.x1 - b.x0, b.y1 - b.y0)));
+  const h = 2.5 * factor, base = Math.max(10 * factor, ...all.map(({ box: b }) => 0.15 * Math.max(b.x1 - b.x0, b.y1 - b.y0)));
+  const off = Math.max(base / 3, 2 * h), gap = dims ? base + 4 * h : base; // room for a size line and its label between views
   const front = boxes.front?.box, top = boxes.top?.box, right = boxes.right?.box;
   const dx = -(front || top || right || { x0: 0 }).x0;
   const dy = -(front || right || top || { y0: 0 }).y0;
@@ -58,22 +61,25 @@ export function drawingDXF(viewCurves, { scale = 1, dims = false, units = "mm" }
     sheets.push({ name: n.toUpperCase(), curves: item.curves, dx: x, dy: y });
   }
   if (dims) {
-    const curves = [], h = 2.5 * factor, off = gap / 3, arrow = Math.min(gap / 8, 1.5 * factor);
+    const curves = [], arrow = 1.5 * factor;
     const line = (a, b) => curves.push({ t: "line", a, b });
+    // an open arrowhead of two strokes, tip at p, pointing along (ux, uy)
+    const head = (p, ux, uy) => { for (const s of [1, -1]) line(p, [p[0] - arrow * ux + s * arrow * 0.35 * uy, p[1] - arrow * uy - s * arrow * 0.35 * ux]); };
     for (const n of names) {
       const item = boxes[n]; if (!item) continue;
       const b = item.box, x0 = b.x0 + item.dx, x1 = b.x1 + item.dx, y0 = b.y0 + item.dy, y1 = b.y1 + item.dy;
       const width = () => {
         const y = y0 - off;
         line([x0, y0], [x0, y - arrow]); line([x1, y0], [x1, y - arrow]); line([x0, y], [x1, y]);
-        line([x0, y], [x0 + arrow, y + arrow / 2]); line([x1, y], [x1 - arrow, y + arrow / 2]);
-        curves.push({ t: "text", p: [(x0 + x1) / 2, y - h], h, s: label((b.x1 - b.x0) / k, units), center: true });
+        head([x0, y], -1, 0); head([x1, y], 1, 0);
+        curves.push({ t: "text", p: [(x0 + x1) / 2, y - 1.5 * h], h, s: label((b.x1 - b.x0) / k, units), center: true });
       };
       const height = () => {
         const x = x0 - off;
         line([x0, y0], [x - arrow, y0]); line([x0, y1], [x - arrow, y1]); line([x, y0], [x, y1]);
-        line([x, y0], [x + arrow / 2, y0 + arrow]); line([x, y1], [x + arrow / 2, y1 - arrow]);
-        curves.push({ t: "text", p: [x - h, (y0 + y1) / 2], h, s: label((b.y1 - b.y0) / k, units), center: true });
+        head([x, y0], 0, -1); head([x, y1], 0, 1);
+        // turned 90 degrees, reading upwards, just left of its size line
+        curves.push({ t: "text", p: [x - 0.5 * h, (y0 + y1) / 2], h, rot: 90, s: label((b.y1 - b.y0) / k, units), center: true });
       };
       // Dimension each available view so incomplete view selections remain useful.
       width(); height();
@@ -98,8 +104,8 @@ export function openBodyDrawing(app, { bodies, name }) {
   let saved = {}; try { saved = JSON.parse(localStorage.getItem("jumpstart.bodyDrawing") || "{}") || {}; } catch (e) {}
   const opener = document.activeElement;
   const back = el("div", { class: "modal-back" });
-  let closed = false;
-  const close = () => { closed = true; back.remove(); opener?.focus(); };
+  let closed = false, job = null;
+  const close = () => { closed = true; if (job) job.cancel(); back.remove(); opener?.focus(); };
   const check = (id, value) => el("input", { id: "bd-" + id, type: "checkbox", checked: value });
   const checks = Object.fromEntries(names.map((n) => [n, check(n, saved[n] !== false)]));
   const dims = check("dims", saved.dims === true);
@@ -122,7 +128,13 @@ export function openBodyDrawing(app, { bodies, name }) {
       el("p", { class: "hint", style: { padding: 0 } }, "Visible edges only, flat at full size. Laser and CNC tools: use one view at 1:1 without sizes."),
       el("div", { style: { display: "flex", gap: "8px" } }, submit, cancel), state));
   back.append(modal); document.body.append(back);
-  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+  back.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+    if (e.key !== "Tab") return;
+    const all = [...modal.querySelectorAll("input, select, button")].filter((x) => !x.disabled);
+    const i = all.indexOf(document.activeElement), next = all[(i + (e.shiftKey ? all.length - 1 : 1)) % all.length];
+    if (next) { e.preventDefault(); next.focus(); }
+  });
   let busy = false;
   submit.addEventListener("click", async () => {
     if (busy) return;
@@ -140,8 +152,16 @@ export function openBodyDrawing(app, { bodies, name }) {
     try { localStorage.setItem("jumpstart.bodyDrawing", JSON.stringify({ ...Object.fromEntries(names.map((n) => [n, checks[n].checked])), ...options, scale: scale.value })); } catch (e) {}
     submit.disabled = true; state.textContent = "Preparing the views…";
     try {
-      const data = await app.kernel.drawing(list, views);
-      if (closed) return; // cancelled while the views were being made
+      const fonts = app.kernel.waitFor && list.map((b) => app.kernel.waitFor(b)).find(Boolean); // text in an extra font: its font file first
+      if (fonts) { state.textContent = "Loading fonts…"; await Promise.resolve(fonts).catch(() => {}); }
+      if (closed) return;
+      state.textContent = "Starting the geometry engine…";
+      const title = (n) => n[0].toUpperCase() + n.slice(1);
+      job = runDrawingJob(app.kernel, { bodies: list, views }, (v, i, n) => { state.textContent = `Preparing ${title(v)}, ${i + 1} of ${n}…`; });
+      let data;
+      try { data = await job.done; } catch (e) { if (closed) return; throw e; } finally { job = null; }
+      if (closed) return;
+      for (const v of views) data.views[v] = cleanCurves(data.views[v] || []);
       if (data.skipped?.length) app.toast("Left out bodies: " + data.skipped.map((id) => bodies.find((b) => b.id === id)?.name || id).join(", ") + ".", "err");
       if (!Object.values(data.views || {}).some((v) => v.length)) { app.toast("Nothing to draw.", "err"); return; }
       const text = drawingDXF(data.views, options);

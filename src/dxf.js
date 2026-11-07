@@ -81,7 +81,7 @@ export function writeDXF(sheets, opts = {}) { // jumpstart-3d: body drawing
         g(0, "ARC"); g(8, ly); g(10, X(c.c[0])); g(20, Y(c.c[1])); g(30, 0); g(40, num(c.r)); g(50, deg(c.a0)); g(51, deg(c.a1));
       // jumpstart-3d: body drawing
       } else if (c.t === "text") {
-        g(0, "TEXT"); g(8, ly); g(10, X(c.p[0])); g(20, Y(c.p[1])); g(30, 0); g(40, num(c.h)); g(1, c.s);
+        g(0, "TEXT"); g(8, ly); g(10, X(c.p[0])); g(20, Y(c.p[1])); g(30, 0); g(40, num(c.h)); g(1, c.s); if (c.rot) g(50, num(c.rot));
         if (c.center) { g(72, 1); g(11, X(c.p[0])); g(21, Y(c.p[1])); g(31, 0); }
       } else if (c.t === "poly") {
         const pts = c.closed && c.pts.length > 2 && Math.hypot(c.pts[0][0] - c.pts[c.pts.length - 1][0], c.pts[0][1] - c.pts[c.pts.length - 1][1]) < 1e-9 ? c.pts.slice(0, -1) : c.pts;
