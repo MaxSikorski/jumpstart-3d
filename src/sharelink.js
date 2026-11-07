@@ -181,7 +181,7 @@ const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; /
 const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint"]);
 // the part kinds of the Fasteners dialog (FASTENER_KINDS in fasteners.js, which this module does not import; test/sharelink.test.mjs compares)
 export const FASTENER_KINDS = new Set(["hexbolt", "shcs", "button", "flat", "set", "wood", "rod", "nut", "nyloc", "sqnut", "washer", "lockw", "insert", "dowel", "cutter"]);
-const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "hinge", "hingePart"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
+const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "binPart", "hinge", "hingePart"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
 const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "railEdgeSegs", "railScale", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
@@ -210,6 +210,32 @@ function allow(o, keys, what) { for (const k of Object.keys(o)) if (!keys.has(k)
 function positive(v, what) { if (!(num(v, what) > 0 && v <= LIMITS.MEASURE)) throw damaged(what); }
 function nonnegative(v, what) { if (!(num(v, what) >= 0 && v <= LIMITS.MEASURE)) throw damaged(what); }
 function count(v, max, what) { if (!Number.isInteger(v) || v < 1 || v > max) throw damaged(what); }
+
+// jumpstart-3d: an extrude that carries its outline: { regions: [{ outer: [segment], holes?: [[segment]] }], plane: { o, x, n }, dist, mode }.
+// Segments are lines { t, a, b } and three-point arcs { t, a, b, m } in the plane (what bins.js writes); nothing else reaches the kernel.
+function inlineExtrude(n) {
+  const pt = (v) => { vec(v, 2, "an outline point"); if (Math.abs(v[0]) > LIMITS.MEASURE || Math.abs(v[1]) > LIMITS.MEASURE) throw damaged("an outline point"); };
+  let segs = 0;
+  const loop = (l) => {
+    if (arr(l, "an outline", LIMITS.SKETCH_ITEMS).length < 2) throw damaged("an outline");
+    for (const g of l) {
+      obj(g, "an outline piece");
+      if (g.t === "line") allow(g, new Set(["t", "a", "b"]), "an outline line");
+      else if (g.t === "arc") { allow(g, new Set(["t", "a", "b", "m"]), "an outline arc"); pt(g.m); }
+      else throw unsupported("an outline piece");
+      pt(g.a); pt(g.b);
+      if (++segs > LIMITS.SKETCH_ITEMS) throw tooBig("This design has too many outline pieces for a link.");
+    }
+  };
+  const regions = arr(n.regions, "outlines", LIMITS.SKETCH_ITEMS);
+  if (!regions.length) throw damaged("an empty outline");
+  for (const r of regions) { obj(r, "an outline"); allow(r, new Set(["outer", "holes"]), "an outline"); loop(r.outer); if (r.holes !== undefined) arr(r.holes, "outline holes", LIMITS.SKETCH_ITEMS).forEach(loop); }
+  const pl = obj(n.plane, "an outline plane"); allow(pl, new Set(["o", "x", "n"]), "an outline plane");
+  vec(pl.o, 3, "plane"); if (pl.o.some((x) => Math.abs(x) > LIMITS.MEASURE)) throw damaged("plane"); normal(pl.x, "plane direction"); normal(pl.n, "plane normal");
+  if (!(Math.abs(num(n.dist, "a distance")) <= LIMITS.MEASURE)) throw damaged("a distance");
+  if (n.mode !== undefined && !["one", "sym", "two"].includes(n.mode)) throw damaged("an extrude mode");
+  if (n.dist2 !== undefined && !(Math.abs(num(n.dist2, "a distance")) <= LIMITS.MEASURE)) throw damaged("a distance");
+}
 
 // Saved edge paths are fixed world-space segments, not references to the source body.
 function segments(v) {
@@ -434,18 +460,25 @@ export function validateEnvelope(env) {
       if (has("clear") && !(num(fa.clear, "a print offset") >= -1 && fa.clear <= 1)) throw damaged("a print offset");
       for (const k of ["threads", "left"]) if (fa[k] !== undefined) bool(fa[k], k);
     }
-    if (b.bin !== undefined && b.binLid !== undefined || b.hinge !== undefined && b.hingePart !== undefined) throw damaged("conflicting part roles");
+    if (b.bin !== undefined && (b.binLid !== undefined || b.binPart !== undefined) || b.binLid !== undefined && b.binPart !== undefined || b.hinge !== undefined && b.hingePart !== undefined) throw damaged("conflicting part roles");
     const ref = (v) => { id(v, "a part body id"); };
-    for (const k of ["binLid", "hingePart"]) if (b[k] !== undefined) ref(b[k]);
+    for (const k of ["binLid", "binPart", "hingePart"]) if (b[k] !== undefined) ref(b[k]);
     if (b.bin !== undefined) {
       const o = obj(b.bin, "a bin");
-      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId"]), "a bin");
-      for (const k of ["w", "d", "h", "wall", "divider", "floor", "scoopR", "labelW", "foot", "lidT"]) if (o[k] !== undefined) positive(o[k], k);
+      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies
+      for (const k of ["w", "d", "h", "wall", "divider", "floor", "scoopR", "labelW", "foot", "lidT", "caseT"]) if (o[k] !== undefined) positive(o[k], k);
       for (const k of ["radius", "inner", "clear"]) if (o[k] !== undefined) nonnegative(o[k], k);
       for (const k of ["cols", "rows"]) if (o[k] !== undefined) count(o[k], 20, k);
       for (const k of ["scoop", "label", "stack", "lid"]) if (o[k] !== undefined) bool(o[k], k);
       if (o.shape !== undefined && !["square", "round", "hex"].includes(o.shape)) throw damaged("a bin shape");
       if (o.lidId != null) ref(o.lidId);
+      if (o.units !== undefined) count(o.units, 8, "units");
+      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["layout", ["", "stack", "print"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
+      if (o.ids !== undefined) {
+        const e = Object.entries(obj(o.ids, "a bin set"));
+        if (e.length > 24) throw damaged("a bin set");
+        for (const [k, v] of e) { if (!/^(?:lid|(?:bin|case|front)\d{0,2})$/.test(k)) throw unsupported("a bin set has " + k.slice(0, 16).replace(/[^\w.-]/g, "?")); ref(v); }
+      }
     }
     if (b.hinge !== undefined) {
       const o = obj(b.hinge, "a hinge");
@@ -471,9 +504,11 @@ export function validateEnvelope(env) {
       if (!target) { delete o[key]; return; }
       if (!matches(target)) throw damaged("part references do not agree");
     };
-    if (b.bin) check(b.bin, "lidId", (target) => target.binLid === b.id);
+    if (b.bin) check(b.bin, "lidId", (target) => target.binLid === b.id || target.binPart === b.id);
+    if (b.bin && b.bin.ids) for (const k of Object.keys(b.bin.ids)) check(b.bin.ids, k, (target) => target.binPart === b.id || target.binLid === b.id); // jumpstart-3d: 2.9.5 sets: every part points back at the first body
     if (b.hinge) for (const key of ["bId", "pinId"]) check(b.hinge, key, (target) => target.hingePart === b.id);
     check(b, "binLid", (target) => target.bin?.lidId === b.id);
+    check(b, "binPart", (target) => !!target.bin && (target.bin.lidId === b.id || Object.values(target.bin.ids || {}).includes(b.id)));
     check(b, "hingePart", (target) => target.hinge && (target.hinge.bId === b.id || target.hinge.pinId === b.id));
     if (b.hinge?.bId != null && b.hinge.bId === b.hinge.pinId) throw damaged("part references do not agree");
   }
@@ -514,6 +549,8 @@ function node(n, ctx, what) {
     if (n.p.rv !== undefined) { if (n.kind !== "box") throw damaged("corner radius"); nonnegative(n.p.rv, "corner radius"); }
     bounds({ ...n.p, exprs: n.exprs, exprUnits: n.exprUnits }, ctx, [["turns", LIMITS.TURNS, "turns"], ["sides", n.kind === "pyramid" ? LIMITS.PYRAMID_SIDES : LIMITS.SIDES, "sides"], ["points", LIMITS.POINTS, "points"]]);
     for (const [k, v] of Object.entries(n.p)) { if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) throw damaged("a size name"); if (typeof v !== "number" && typeof v !== "string" && typeof v !== "boolean") throw damaged("a size"); }
+  } else if (t === "extrude" && n.sketch === undefined && n.profiles === undefined) {
+    inlineExtrude(n); // jumpstart-3d: J.Siwek 2.9.5 Box Maker parts carry their own outline (regions on a plane), no sketch
   } else if (t === "extrude" || t === "revolve" || t === "sweep") {
     sk(n.sketch);
     arr(n.profiles, "profiles", LIMITS.SKETCH_ITEMS);

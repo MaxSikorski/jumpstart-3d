@@ -11,7 +11,6 @@
 // His own tests (JumpStart-3D-v2.9.3-full-source/tests/*.cjs) are screenshot scripts; the checks below assert real state.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc, body, prim, buildOf } from "./helpers.mjs";
-import { BUILD, VERSION } from "../src/version.js";
 
 let page, errors;
 const requests = [];
@@ -29,13 +28,10 @@ const okAll = async () => { const list = await bodies(page); for (const b of lis
 const T = (x, y, z) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];
 const steady = () => expect.poll(() => run(() => window.__app.vp.isMoving()), { timeout: 10_000 }).toBe(false);
 
-test("the splash and About show version 2.9.3 with his notes for 2.9.3 back to 2.8.1.4", async () => {
-  expect(VERSION).toBe("2.9.3");
-  const label = `Version 2.9.3 · community build ${BUILD}`;
-  expect(await page.locator("#sp-ver").textContent()).toBe(label);
+test("About still lists his notes for 2.9.3 back to 2.8.1.4", async () => {
+  // the version and splash label are checked by the newest upstream spec (upstream2971.spec.mjs)
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText(label);
   for (const t of ["New in version 2.9.3", "Neon Sign Builder projects", "New in version 2.9.2", "New in version 2.9.1", "New in version 2.9.0", "New in version 2.8.2.4", "New in version 2.8.2.0", "New in version 2.8.1.4"]) await expect(about).toContainText(t);
   await expect(about.locator("#ab-site")).toHaveText("J.Siwek's site"); // his "Visit classyapps.org" button is ours as a second link
   await page.keyboard.press("Escape");

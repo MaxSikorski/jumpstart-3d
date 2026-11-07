@@ -45,7 +45,7 @@ import { initKnurl } from "./knurl.js"; // jumpstart-3d: knurl
 import { initSpring } from "./spring.js"; // jumpstart-3d: spring
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
-import { binParts, BIN_DEFAULTS } from "./bins.js";
+import { binParts, binSet, BIN_DEFAULTS, BIN_STYLES, BIN_LOCKS } from "./bins.js";
 import { hingeParts, HINGE_DEFAULTS, HINGE_TYPES, PIN_KINDS } from "./hinges.js";
 import { gearSet, GEAR_DEFAULTS, GEAR_TYPES, BORES } from "./gearlib.js"; // jumpstart-3d: his gears.js is gearlib.js here (our gears.js is the Gear dialog)
 import { FASTENER_KINDS, kindOf as fastKind, sizesFor, LENGTHS, defaultLength, fastenerPart, holeSizes } from "./fasteners.js";
@@ -6447,63 +6447,119 @@ export function initAdvanced(app) {
   function binCmd(editingId = null) {
     const existing = editingId ? findBody(store.doc, editingId) : null;
     let pref = {}; try { pref = JSON.parse(localStorage.getItem("jumpstart3d.bins") || "{}") || {}; } catch (e) {}
-    const st = { o: { ...BIN_DEFAULTS, ...(existing ? existing.bin : pref) }, id: existing ? existing.id : uid("b"), lidId: existing && existing.bin.lidId || uid("b"), m: existing ? existing.m.slice() : null, placed: !!existing };
+    const b0 = existing ? existing.bin : null;
+    // every part of the set (bins, cases, drawers, tilt bins, doors, the lid) is its own body;
+    // the first holds the settings and the ids of the others
+    const ids = { ...(b0 && b0.ids || {}) };
+    if (b0 && b0.lidId && !ids.lid) ids.lid = b0.lidId;
+    const st = { o: { ...BIN_DEFAULTS, ...(b0 || pref) }, id: existing ? existing.id : uid("b"), m: existing ? existing.m.slice() : null, placed: !!existing };
+    delete st.o.ids; delete st.o.lidId;
     if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 1), round(t.y, 1), 0)); }
     let info = null;
+    const infoText = () => { try { const r = binSet(st.o), c = r.cell; return (r.info ? r.info + " " : "") + (c ? `Each compartment: ${withUnit(c.w, 1)} x ${withUnit(c.d, 1)}, ${withUnit(c.h, 1)} deep.` : ""); } catch (err) { return err.message; } };
+    // all the bodies of this set: placing it must not land on its own drawers or upper cases
+    const mine = (id) => id === st.id || Object.values(ids).includes(id);
     const def = {
       title: existing ? "Edit bin" : "Bin & Box Maker",
       apply(doc) {
-        const parts = binParts(st.o);
-        info = parts.cell;
-        let b = findBody(doc, st.id);
-        if (!b) { b = { id: st.id, name: nextName(doc, "Bin"), seq: nextSeq(doc), color: "#5b8fd6", hole: false, hidden: false, m: st.m.slice(), node: parts.bin }; doc.bodies.push(b); }
-        b.node = parts.bin; b.m = st.m.slice();
-        b.bin = { ...st.o, lidId: parts.lid ? st.lidId : null };
-        let lid = findBody(doc, st.lidId);
-        if (parts.lid) {
-          // the lid sits beside the bin, the way it goes on (its rim down)
-          const M = M4(st.m).multiply(new THREE.Matrix4().makeTranslation(st.o.w + 12, 0, 0));
-          if (!lid) { lid = { id: st.lidId, name: b.name + " lid", seq: nextSeq(doc), color: "#e0a43a", hole: false, hidden: false, m: arr(M), node: parts.lid }; doc.bodies.push(lid); }
-          else { lid.node = parts.lid; if (!existing) lid.m = arr(M); }
-          lid.binLid = st.id;
-        } else if (lid) doc.bodies = doc.bodies.filter((x) => x.id !== st.lidId);
+        const set = binSet(st.o);
+        info = set;
+        const keep = new Set();
+        // the parts this doc has now (the preview works on a copy: never change the real list here)
+        const prev = findBody(doc, st.id), old = { ...(prev && prev.bin && prev.bin.ids || {}) };
+        if (prev && prev.bin && prev.bin.lidId && !old.lid) old.lid = prev.bin.lidId;
+        const now = {};
+        for (const q of set.parts) {
+          const id = q.key === "main" ? st.id : (now[q.key] = ids[q.key] = ids[q.key] || old[q.key] || uid("b"));
+          keep.add(id);
+          const M = arr(M4(st.m).multiply(new THREE.Matrix4().makeTranslation(q.dx || 0, q.dy || 0, q.z || 0)));
+          let b = findBody(doc, id);
+          if (!b) { b = { id, name: q.key === "main" ? nextName(doc, st.o.style === "bin" || !st.o.style ? "Bin" : "Case") : "", seq: nextSeq(doc), color: q.color, hole: false, hidden: false, m: M, node: q.node }; doc.bodies.push(b); }
+          b.node = q.node; b.m = M;
+          if (q.key !== "main") { b.binPart = st.id; delete b.bin; }
+        }
+        const main = findBody(doc, st.id);
+        for (const q of set.parts) if (q.key !== "main") { const b = findBody(doc, ids[q.key]); if (b) b.name = main.name + " · " + q.name.toLowerCase(); }
+        // parts no longer in the set (fewer units, no lid, another style)
+        const gone = new Set(Object.values(old).filter((id) => !keep.has(id)));
+        if (gone.size) doc.bodies = doc.bodies.filter((b) => !gone.has(b.id));
+        main.bin = { ...st.o, ids: now };
       },
       ok() {
-        try { const { lidId, ...keep } = st.o; void lidId; localStorage.setItem("jumpstart3d.bins", JSON.stringify(keep)); } catch (e) {}
+        try { const keep = { ...st.o }; delete keep.ids; localStorage.setItem("jumpstart3d.bins", JSON.stringify(keep)); } catch (e) {}
         commit(def, existing ? "Edit bin" : "Bin");
       },
-      onDelete: existing ? () => { closeCmd(false); deleteBodies([existing.id, ...(existing.bin.lidId ? [existing.bin.lidId] : [])].filter((id) => findBody(store.doc, id))); } : null,
-      hint: () => existing ? "Change the bin, then OK." : "Set the size and compartments. Click the ground or a flat face to place it, then OK.",
+      onDelete: existing ? () => { closeCmd(false); deleteBodies([existing.id, ...Object.values(ids)].filter((id) => findBody(store.doc, id))); } : null,
+      hint: () => existing ? "Change the bin, then OK." : "Pick a style and size. Click the ground or a flat face to place it, then OK.",
       build(body) {
-        const o = st.o;
-        const num = (label, k, opt = {}) => el("label", {}, label, app.numField({ value: o[k], id: "bn-" + k, len: opt.len !== false, min: opt.min ?? 0.4, max: opt.max ?? 1e5, step: opt.step ?? 1, live: true, onCommit: (v) => { o[k] = opt.int ? Math.max(1, Math.round(v)) : v; schedulePreview(def); if (opt.rerender) def.render(); } }));
+        const o = st.o, cab = o.style && o.style !== "bin";
+        // typing a number rebuilds every part of the set: wait until the typing pauses
+        const upd = (rerender, now) => {
+          clearTimeout(st.typing);
+          const go = () => {
+            schedulePreview(def);
+            if (!rerender) { infoNow(); return; }
+            // redrawing the panel: keep the keyboard on the same box or button (Tab already moved on)
+            const F = () => [...panel.querySelectorAll("input, button, select")].filter((x) => !x.disabled && x.offsetParent);
+            const was = F().indexOf(document.activeElement);
+            def.render();
+            if (was >= 0) { const n = F()[was]; if (n) n.focus({ preventScroll: true }); }
+          };
+          if (rerender) st.typing = setTimeout(go, 0); else if (now) go(); else st.typing = setTimeout(go, 350);
+        };
+        const infoNow = () => { const n = panel.querySelector("#bn-info"); if (n) n.textContent = infoText(); };
+        const num = (label, k, opt = {}) => el("label", {}, label, app.numField({ value: o[k], id: "bn-" + k, len: opt.len !== false, min: opt.min ?? 0.4, max: opt.max ?? 1e5, step: opt.step ?? 1, live: !opt.rerender, onCommit: (v) => { o[k] = opt.int ? Math.max(1, Math.round(v)) : v; upd(opt.rerender); } }));
         const r3 = (...kids) => el("div", { class: "row3" }, ...kids);
-        body.append(el("div", { class: "subhead" }, "Outside size"), r3(num("Width", "w", { min: 10 }), num("Depth", "d", { min: 10 }), num("Height", "h", { min: 5 })));
-        body.append(el("div", { class: "subhead" }, "Compartments"), r3(num("Columns", "cols", { len: false, int: true, min: 1, max: 20 }), num("Rows", "rows", { len: false, int: true, min: 1, max: 20 }), num("Divider", "divider")));
-        body.append(row("Shape", seg([["square", "Square"], ["round", "Round"], ["hex", "Hex"]], o.shape, (v) => { o.shape = v; def.render(); schedulePreview(def); }, "bn-shape")));
-        body.append(el("div", { class: "subhead" }, "Walls"), r3(num("Wall", "wall"), num("Floor", "floor"), num("Corner radius", "radius", { min: 0 })));
-        if (o.shape === "square") {
-          body.append(row("Inside corners", app.numField({ value: o.inner, id: "bn-inner", len: true, min: 0, step: 0.5, live: true, onCommit: (v) => { o.inner = v; schedulePreview(def); } }), "bn-inner"));
-          body.append(el("label", { class: "check", title: "A curved ramp at the front of each compartment, so small parts slide out under a finger" }, el("input", { type: "checkbox", id: "bn-scoop", checked: o.scoop, onchange: (e) => { o.scoop = e.target.checked; def.render(); schedulePreview(def); } }), "Finger scoops"));
-          if (o.scoop) body.append(row("Scoop radius", app.numField({ value: o.scoopR, id: "bn-scoopR", len: true, min: 1, step: 1, live: true, onCommit: (v) => { o.scoopR = v; schedulePreview(def); } }), "bn-scoopR"));
-          body.append(el("label", { class: "check", title: "A sloped shelf at the back of each compartment for a label" }, el("input", { type: "checkbox", id: "bn-label", checked: o.label, onchange: (e) => { o.label = e.target.checked; def.render(); schedulePreview(def); } }), "Label lips"));
-          if (o.label) body.append(row("Lip width", app.numField({ value: o.labelW, id: "bn-labelW", len: true, min: 2, step: 1, live: true, onCommit: (v) => { o.labelW = v; schedulePreview(def); } }), "bn-labelW"));
+        const check = (id, k, label, title, rr = true) => el("label", { class: "check", title }, el("input", { type: "checkbox", id, checked: !!o[k], onchange: (e) => { o[k] = e.target.checked; upd(rr); } }), label);
+        body.append(row("Style", seg(BIN_STYLES, o.style || "bin", (v) => { o.style = v; upd(true); }, "bn-style")));
+        body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { bin: "An open bin with compartments.", drawer: "A case with a drawer that slides out.", tilt: "A case with a bin that tips forward on two pins: tilt it out to reach in.", door: "A case with a door that swings open on pins top and bottom." }[o.style || "bin"]));
+        body.append(el("div", { class: "subhead" }, cab ? "Outside size of one case" : "Outside size"), r3(num("Width", "w", { min: 10 }), num("Depth", "d", { min: 10 }), num("Height", "h", { min: 5 })));
+        // stacking: how many, one on another, and how they lock together
+        body.append(el("div", { class: "subhead" }, "Stacking"), r3(num(cab ? "Cases stacked" : "Bins stacked", "units", { len: false, int: true, min: 1, max: 8, rerender: true })));
+        if (cab) {
+          body.append(row("Interlock", seg(BIN_LOCKS, o.lock || "none", (v) => { o.lock = v; upd(true); }, "bn-lock")));
+          body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { dovetail: "Dovetail rails on top slide into grooves under the case above, from the front, and stop flush.", pegs: "Four pegs on top fit holes under the case above.", none: "Flat tops and bottoms: the cases just sit on each other." }[o.lock || "none"]));
+        } else body.append(check("bn-stack", "stack", "Interlocking rim and foot", "A foot under each bin fits into the rim of the bin below, so a stack can't slide apart"));
+        if (!cab && o.stack) body.append(row("Foot height", app.numField({ value: o.foot, id: "bn-foot", len: true, min: 1, step: 0.5, live: true, onCommit: (v) => { o.foot = v; upd(); } }), "bn-foot"));
+        if (o.units > 1 || cab) body.append(row("Show", seg([["stack", "Assembled"], ["print", "Laid out to print"]], o.layout === "print" ? "print" : "stack", (v) => { o.layout = v === "print" ? "print" : ""; upd(true); }, "bn-layout")));
+        if (cab) {
+          body.append(el("div", { class: "subhead" }, "Case"), r3(num("Case wall", "caseT", { min: 1.2 }), num("Corner radius", "radius", { min: 0 }), num("Fit clearance", "clear", { min: 0, step: 0.05 })));
+          if (o.style === "drawer") {
+            body.append(el("div", { class: "subhead" }, "Drawer"), r3(num("Columns", "cols", { len: false, int: true, min: 1, max: 12 }), num("Rows", "rows", { len: false, int: true, min: 1, max: 12 }), num("Divider", "divider")));
+            body.append(r3(num("Wall", "wall"), num("Floor", "floor")));
+            body.append(row("Pull", seg([["bar", "Bar"], ["knob", "Knob"], ["notch", "Finger notch"]], o.pull || "bar", (v) => { o.pull = v; upd(true); }, "bn-pull")));
+          } else if (o.style === "tilt") {
+            body.append(el("div", { class: "subhead" }, "Tilt-out bin"), r3(num("Sections", "cols", { len: false, int: true, min: 1, max: 8 }), num("Divider", "divider"), num("Wall", "wall")));
+          } else {
+            body.append(row("Hinge side", seg([["left", "Left"], ["right", "Right"]], o.hinge || "left", (v) => { o.hinge = v; upd(true); }, "bn-hinge")));
+            body.append(row("Pull", seg([["knob", "Knob"], ["hole", "Finger hole"], ["bar", "Bar"]], o.doorPull || "knob", (v) => { o.doorPull = v; upd(true); }, "bn-doorpull")));
+            body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, "The back of the door is flat, so it prints lying on it (Laid out to print turns it that way)."));
+          }
+        } else {
+          body.append(el("div", { class: "subhead" }, "Compartments"), r3(num("Columns", "cols", { len: false, int: true, min: 1, max: 20 }), num("Rows", "rows", { len: false, int: true, min: 1, max: 20 }), num("Divider", "divider")));
+          body.append(row("Shape", seg([["square", "Square"], ["round", "Round"], ["hex", "Hex"]], o.shape, (v) => { o.shape = v; upd(true); }, "bn-shape")));
+          body.append(el("div", { class: "subhead" }, "Walls"), r3(num("Wall", "wall"), num("Floor", "floor"), num("Corner radius", "radius", { min: 0 })));
+          if (o.shape === "square") {
+            body.append(row("Inside corners", app.numField({ value: o.inner, id: "bn-inner", len: true, min: 0, step: 0.5, live: true, onCommit: (v) => { o.inner = v; upd(); } }), "bn-inner"));
+            body.append(check("bn-scoop", "scoop", "Finger scoops", "A curved ramp at the front of each compartment, so small parts slide out under a finger"));
+            if (o.scoop) body.append(row("Scoop radius", app.numField({ value: o.scoopR, id: "bn-scoopR", len: true, min: 1, step: 1, live: true, onCommit: (v) => { o.scoopR = v; upd(); } }), "bn-scoopR"));
+            body.append(check("bn-label", "label", "Label lips", "A sloped shelf at the back of each compartment for a label"));
+            if (o.label) body.append(row("Lip width", app.numField({ value: o.labelW, id: "bn-labelW", len: true, min: 2, step: 1, live: true, onCommit: (v) => { o.labelW = v; upd(); } }), "bn-labelW"));
+          }
+          body.append(check("bn-lid", "lid", "Lid (made next to the bin)", ""));
+          if (o.lid || o.stack) body.append(row("Fit clearance", app.numField({ value: o.clear, id: "bn-clear", len: true, min: 0, step: 0.05, live: true, onCommit: (v) => { o.clear = v; upd(); } }), "bn-clear"));
         }
-        body.append(el("label", { class: "check", title: "A foot under the bin fits into the rim of the bin below, so bins stack" }, el("input", { type: "checkbox", id: "bn-stack", checked: o.stack, onchange: (e) => { o.stack = e.target.checked; def.render(); schedulePreview(def); } }), "Stackable"));
-        if (o.stack) body.append(row("Foot height", app.numField({ value: o.foot, id: "bn-foot", len: true, min: 1, step: 0.5, live: true, onCommit: (v) => { o.foot = v; schedulePreview(def); } }), "bn-foot"));
-        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "bn-lid", checked: o.lid, onchange: (e) => { o.lid = e.target.checked; def.render(); schedulePreview(def); } }), "Lid (made next to the bin)"));
-        if (o.lid || o.stack) body.append(row("Fit clearance", app.numField({ value: o.clear, id: "bn-clear", len: true, min: 0, step: 0.05, live: true, onCommit: (v) => { o.clear = v; schedulePreview(def); } }), "bn-clear"));
-        let msg = "";
-        try { const c = binParts(o).cell; msg = `Each compartment: ${withUnit(c.w, 1)} x ${withUnit(c.d, 1)}, ${withUnit(c.h, 1)} deep.`; } catch (err) { msg = err.message; }
-        body.append(el("div", { class: "hint", id: "bn-info", style: { padding: "2px 0" } }, msg));
+        body.append(el("div", { class: "hint", id: "bn-info", style: { padding: "2px 0" } }, infoText()));
         void info;
       },
       start() { schedulePreview(def); },
       handler: {
-        hover(e) { if (st.placed) return; const mat = placeOn(e, st.id); if (mat) { st.m = arr(mat); schedulePreview(def); } },
-        down(e) { const mat = placeOn(e, st.id); if (mat) { st.m = arr(mat); st.placed = true; schedulePreview(def); } return true; },
+        hover(e) { if (st.placed) return; const mat = placeOn(e, mine); if (mat && !sameM(mat)) { st.m = arr(mat); schedulePreview(def); } },
+        down(e) { const mat = placeOn(e, mine); if (mat) { st.m = arr(mat); st.placed = true; schedulePreview(def); } return true; },
       },
     };
+    // the preview is only rebuilt when the spot under the pointer really changes
+    const sameM = (mat) => arr(mat).every((v, i) => Math.abs(v - st.m[i]) < 1e-6);
     openCmd(def);
   }
 
@@ -6828,7 +6884,9 @@ export function initAdvanced(app) {
   }
   function placeOn(e, ignore) {
     const g = app.gridStep();
-    const hit = scene.pickFace(e, (b) => b.id !== ignore && !b.hole);
+    // ignore: a body id, or a test of ids (a set of bodies being placed must not land on itself)
+    const skip = typeof ignore === "function" ? ignore : (id) => id === ignore;
+    const hit = scene.pickFace(e, (b) => !skip(b.id) && !b.hole);
     if (hit) {
       if (hit.normal.z > 0.999) return new THREE.Matrix4().makeTranslation(round(hit.point.x, g), round(hit.point.y, g), hit.point.z);
       return frameOnFace(hit.point, hit.normal);
@@ -6850,6 +6908,7 @@ export function initAdvanced(app) {
     else if (b.node.t === "mirror") app.toast("A mirror follows its original body. Edit the original, or delete the mirror and make a new one.");
     else if (b.fastener) fastenerCmd(b.id);
     else if (b.bin) binCmd(b.id);
+    else if (b.binPart || b.binLid) binCmd(b.binPart || b.binLid);
     else if (b.hinge || b.hingePart) hingeCmd(b.hinge ? b.id : b.hingePart);
     else if (b.node.t === "group") combineInfo(b);
     else if (b.sculpt) app.toast("This is a sculpt: switch to Chisel to keep sculpting it. Here you can move it, scale it or cut holes in it.");
@@ -7052,7 +7111,7 @@ export function initAdvanced(app) {
         { id: "sim-voxel", label: "Voxel Studio", title: "Turn the selected objects (or all) into cubes you can paint face by face, then export STL or 3MF or add them to the design (your design is not changed until you add it)", icon: "voxel", fn: () => app.voxel.open() },
       ]);
       group("Makers", "", [
-        { id: "sim-bins", label: "Bin & Box Maker", title: "Make small part bins and organiser boxes: a grid of compartments (square, round or hex), finger scoops, label lips, stackable feet and a lid", icon: "box", fn: () => binCmd() },
+        { id: "sim-bins", label: "Bin & Box Maker", title: "Make part bins and organiser boxes: open bins, drawers, tilt-out bins and door cabinets, stacked and interlocking, with compartments, scoops, label lips and lids", icon: "box", fn: () => binCmd() },
         { id: "sim-fasteners", label: "Fasteners", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch)", icon: "thread", fn: () => fastenerCmd() },
         { id: "sim-hinge", label: "Quick Hinge", title: "Ready-made hinges: print-in-place, pin or living hinges, without FlexiGen", icon: "hinge", fn: () => hingeCmd() },
         { id: "sim-gears", label: "Gears", title: "Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study", icon: "gear", fn: () => gearCmd() },
@@ -7923,6 +7982,8 @@ export function initAdvanced(app) {
     sim,
     printSim: psim,
     openPrintSim,
+    // the Bin & Box Maker, for Beginner's ribbon too
+    openBins: (id) => { if (app.command) closeCmd(false); binCmd(id || null); },
     setWorkspace,
     handler: defaultHandler,
     get workspace() { return workspace; }, // jumpstart-3d: direct edit

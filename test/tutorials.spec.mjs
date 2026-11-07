@@ -150,8 +150,7 @@ async function prepareFor(sel, mode) {
   if (/#sk-/.test(sel)) { await page.click("#ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line"); return "sketch open"; }
   if (/#lathe-/.test(sel)) {
     await normalize(); // whatever stage the Lathe is at, start from the closed Lathe
-    if (mode === "beginner") await page.click("#bb-lathe");
-    else { await page.click("#ad-workshop"); await page.click("#ad-lathe"); } // 2.8.1.9: the Lathe is in Advanced's Workshop menu
+    await page.click("#ad-workshop"); await page.click("#ad-lathe"); // 2.8.1.9: the Lathe is in Advanced's Workshop menu; 2.9.6 took it off the Beginner ribbon, so every Lathe lesson is in Advanced
     await page.waitForSelector("#lathe-start");
     if (/lathe-start/.test(sel)) return "lathe asks what to turn";
     await page.click("#lathe-start"); await page.waitForSelector("#lathe-done");
