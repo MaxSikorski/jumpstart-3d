@@ -844,6 +844,9 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.9.8.2", [
+        ["Seasonal & holiday textures", "The Texture tool has four new groups with 50 picture textures: Seasons (snowflakes, fall leaves, acorns, suns, spring flowers, rain, beach), Holidays (snowmen, Christmas trees, nutcrackers, candy canes, ornaments, gingerbread people, holly, reindeer, jack-o'-lanterns, ghosts, bats, spider webs, turkeys, Valentine hearts, Easter eggs and bunnies, shamrocks, fireworks, dreidels), Celebrations (birthday cakes, balloons, gifts, confetti, anniversary rings and hearts, graduation caps, baby) and Animals (squirrels, chipmunks, rabbits, birds, owls, deer, butterflies, fish, cats, paw prints, woodland mix). The pictures stand up from the surface and repeat seamlessly; use Tile size to make them bigger or smaller, Depth to set how far they stand up, and Engrave to cut them in instead."],
+      ]),
       sec("New in version 2.9.8.1", [
         ["Box Maker door catch:", "small round bumps on the case beside the door's free edge hold the door shut, so it doesn't swing open by itself: it clicks closed and needs a little pull to open. Pick None, Light or Firm."],
         ["Fixed:", "the door stop strips added in 2.9.8 were being cut away with the inside of the case, so they weren't really there; they are now."],

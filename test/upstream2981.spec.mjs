@@ -1,5 +1,5 @@
 // Upstream 2.9.8.1 (J.Siwek), shared by the site and single-file projects. One outcome test per headline change:
-//  - the splash and About show 2.9.8.1 with his "New in version 2.9.8.1" note
+//  - About still lists his "New in version 2.9.8.1" note (the version itself: the newest upstream spec)
 //  - Box Maker door catch (doorCatch none / light / firm): two small round bumps on the case's far wall, just in front of the
 //    shut door's free edge, reaching past the edge by 0.35 (light) or 0.7 (firm) beyond the clearance
 //  - his fix: the case's hollow is cut first and the inside things (stop strips, catch bumps) go on after, so both are really there
@@ -7,7 +7,6 @@
 // His own tests (JumpStart-3D-v2.9.8.1-full-source/tests/tdoorcatch.cjs, tsa2981.cjs) are screenshot scripts; the checks below assert real state.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc } from "./helpers.mjs";
-import { BUILD, VERSION } from "../src/version.js";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -51,13 +50,9 @@ const bumps = (s) => run(({ id, o }) => {
   return { n, reach, low, high };
 }, { id: s.id, o: s.bin });
 
-test("the splash and About show version 2.9.8.1 with his notes for 2.9.8.1", async () => {
-  expect(VERSION).toBe("2.9.8.1");
-  const label = `Version 2.9.8.1 · community build ${BUILD}`;
-  expect(await page.locator("#sp-ver").textContent()).toBe(label);
+test("About still lists his notes for 2.9.8.1", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText(label);
   for (const t of ["New in version 2.9.8.1", "Box Maker door catch:", "New in version 2.9.8"]) await expect(about).toContainText(t);
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();

@@ -1,6 +1,10 @@
-# JumpStart 3D v2.9.8.1: complete source code
+# JumpStart 3D v2.9.8.2: complete source code
 
-Everything needed to rebuild JumpStart 3D v2.9.8.1 (with the Mac / iPad / iPhone work, the open-source credits, and 60 step-by-step tutorials (Beginner, Advanced, Expert and Architect; two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
+Everything needed to rebuild JumpStart 3D v2.9.8.2 (with the Mac / iPad / iPhone work, the open-source credits, and 60 step-by-step tutorials (Beginner, Advanced, Expert and Architect; two of them for the Lathe) with built-in animations) is here: the app's own code, every third-party library and font that goes into it, the geometry engine, the build scripts and the test scripts.
+
+New in v2.9.8.2: the Texture tool gets four new groups (`THEME_CATS` in `app/src/texture_themes.js`) with 50 picture textures: Seasons, Holidays (Christmas, Halloween, Thanksgiving, Valentine's, Easter, St Patrick's, July 4th, Hanukkah), Celebrations (birthday, anniversary, graduation, baby) and Animals (squirrels, chipmunks, rabbits, birds, owls, deer and more). Each is a tile of little pictures drawn with the canvas the first time it is used, repeated seamlessly across the tile edges and softened a little; `pic: true` makes the texture step subdivide finely enough to show them, and their thumbnails show one tile. Tests: `tests/tthemetex.cjs`, `tests/tsa2982.cjs`.
+
+From v2.9.8.1:
 
 New in v2.9.8.1: Box Maker doors get a catch (`doorCatch`: none, light or firm in `app/src/bins.js`): two small round bumps on the case's far wall, just in front of the shut door's free edge, reaching past it by 0.35 or 0.7 so the door clicks shut and needs a small pull to open. Fixed: `caseParts` now cuts the case's hollow and holes first and adds the things inside it (door stop strips, catch bumps) after, so the hollow no longer cuts them away. Tests: `tests/tdoorcatch.cjs`, `tests/tsa2981.cjs`.
 
