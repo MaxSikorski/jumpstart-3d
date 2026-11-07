@@ -16,6 +16,8 @@ export const BIN_DEFAULTS = {
   style: "bin", units: 1, lock: "dovetail", caseT: 2.4, pull: "bar", hinge: "left", doorPull: "knob",
   // side by side: how many across, and how they join (rails on the right side into grooves in the left)
   across: 1, sideLock: "dovetail",
+  // a door catch: bumps the door's free edge has to push past, so it stays shut until pulled
+  doorCatch: "light",
 };
 export const BIN_STYLES = [["bin", "Open bin"], ["drawer", "Drawer"], ["tilt", "Tilt-out bin"], ["door", "Door"]];
 export const BIN_LOCKS = [["dovetail", "Dovetail rails"], ["pegs", "Pegs"], ["none", "None"]];
@@ -189,7 +191,7 @@ export function caseParts(o) {
   const iw = W - 2 * ts, ih = H - tb - tt, idp = D - tback;
   if (iw < 15 || ih < 10 || idp < 15) throw new Error("The case is too small inside: make it bigger, or the walls thinner");
   // ---- the case
-  const ck = [kid(prim("box", { w: W, d: D, h: H, rv: R }))], stops = []; // jumpstart-3d: stops, the door stop strips (added after the cuts)
+  const ck = [kid(prim("box", { w: W, d: D, h: H, rv: R }))];
   ck.push(kid(prim("box", { w: iw, d: idp + 1, h: ih }), T(0, -D / 2 + (idp + 1) / 2 - 1, tb), true));
   if (sd) ck.push(...sideJoints(W, D, H, o.side, cl, 0));
   const xs = [-W / 4, W / 4], pegXY = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => [i * (W / 2 - PEG.inset), j * (D / 2 - PEG.inset)]);
@@ -273,17 +275,28 @@ export function caseParts(o) {
     // the door opens outwards only (it rests against the strip when shut). Near the hinge the strip
     // stops short, out of the way of the door's rounded edge.
     const sy = y0 + td / 2 + 0.3 + 0.8, lip = cl + 1.4, x0 = xh - hs * (td + 1.5), x1 = -hs * (iw / 2 - 0.01), sw = Math.abs(x1 - x0);
-    // jumpstart-3d: the strips go on after the inside is cut out (stops), not into ck: a group cuts its holes after joining
-    // all its solids, so in ck the inside cut removed them again and the case had no door stop
-    stops.push(kid(prim("box", { w: 1.6, d: 1.6, h: ih + 0.02 }), T(-hs * (iw / 2 - 0.79), sy, tb - 0.01)));
-    stops.push(kid(prim("box", { w: sw, d: 1.6, h: lip + 0.01 }), T((x0 + x1) / 2, sy, tb - 0.01)));
-    stops.push(kid(prim("box", { w: sw, d: 1.6, h: lip + 0.01 }), T((x0 + x1) / 2, sy, H - tt - lip)));
+    ck.push(kid(prim("box", { w: 1.6, d: 1.6, h: ih + 0.02 }), T(-hs * (iw / 2 - 0.79), sy, tb - 0.01)));
+    ck.push(kid(prim("box", { w: sw, d: 1.6, h: lip + 0.01 }), T((x0 + x1) / 2, sy, tb - 0.01)));
+    ck.push(kid(prim("box", { w: sw, d: 1.6, h: lip + 0.01 }), T((x0 + x1) / 2, sy, H - tt - lip)));
+    // the catch: two small round bumps on the far wall, just in front of the shut door's free edge. They
+    // reach past the edge by a little (light 0.35, firm 0.7), so the door clicks past them shut and needs a
+    // small pull to open. Half of each bump is in the wall; the round face lets the door ride over it.
+    const grip = o.doorCatch === "firm" ? 0.7 : o.doorCatch === "none" ? 0 : 0.35;
+    if (grip) {
+      const r = 0.95, wallX = -hs * (iw / 2), cx = wallX + hs * (cl + grip - r), cy = y0 - td / 2 - r - 0.05;
+      for (const fz of [0.25, 0.75]) ck.push(kid(prim("sphere", { w: 2 * r, d: 2 * r, h: 2 * r }), T(cx, cy, z0 + fh * fz - r)));
+    }
     cell = null;
-    info = `Door ${r6(fw).toFixed(1)} × ${r6(fh).toFixed(1)}, hinged on the ${hs < 0 ? "left" : "right"}; it opens outwards only (a stop strip behind it). Bend the door slightly to push its pins into the holes in the case top and bottom.`;
+    info = `Door ${r6(fw).toFixed(1)} × ${r6(fh).toFixed(1)}, hinged on the ${hs < 0 ? "left" : "right"}; it opens outwards only (a stop strip behind it)${grip ? `, and ${o.doorCatch === "firm" ? "firm" : "light"} catch bumps hold it shut until you pull it` : ""}. Bend the door slightly to push its pins into the holes in the case top and bottom.`;
   }
   // a door to print lies on its flat back: turned so the back is down at z = 0
   const flat = o.style === "door" ? FLAT : null;
-  return { shell: stops.length ? group([kid(group(ck)), ...stops]) : group(ck), front, cell, info, flat }; // jumpstart-3d: door stops after the cuts
+  // the case is the block with its holes cut (the hollow, grooves, pin holes); then the things added
+  // inside the hollow (the door stop, catch bumps) and outside (rails, pegs) go on after, so the
+  // hollow can't cut them away
+  const solids = ck.filter((k) => !k.hole), holes = ck.filter((k) => k.hole);
+  const shell = group([kid(group([solids[0], ...holes])), ...solids.slice(1)]);
+  return { shell, front, cell, info, flat };
 }
 let FLAT = null;
 // a round rod along Y, from y = 0 to y = len, centred on X and Z
