@@ -19,6 +19,7 @@ test.beforeAll(async ({ browser }, info) => {
       postMessage(m, t) {
         const s = window.__slow;
         if (s && s.hang && m && m.type === "build" && m.bodies.some((b) => JSON.stringify(b.node).includes(s.hang))) return; // never answered
+        if (s && s.delay && m && m.type === "build" && m.bodies.some((b) => JSON.stringify(b.node).includes(s.delay.match))) { setTimeout(() => super.postMessage(m, t), s.delay.ms); return; } // only the matching body is held back
         if (s && m && m.type === "build") setTimeout(() => super.postMessage(m, t), s.perBody * m.bodies.length);
         else super.postMessage(m, t);
       }
@@ -45,7 +46,7 @@ const doc = () => newDoc("perf five", "beginner", {
 });
 
 const parse = () => page.evaluate(() => {
-  const rows = [...document.querySelectorAll("#perfpanel tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent));
+  const rows = [...document.querySelectorAll("#perfpanel .pp-bodies tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent));
   return { rows, sum: document.querySelector("#perfpanel .pp-sum").textContent };
 });
 async function populatePanel() {
@@ -54,7 +55,7 @@ async function populatePanel() {
   await page.evaluate(() => { window.__previousPerf = window.__app.perf.last; });
   await page.click("#perfpanel [data-pp=rebuild]");
   await page.waitForFunction(() => window.__app.perf.last !== window.__previousPerf && window.__app.perf.last?.rows.length === 5, null, { timeout: 60_000 });
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(5, { timeout: 60_000 });
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(5, { timeout: 60_000 });
 }
 
 test("closed: no DOM, no style, no recorder", async () => {
@@ -67,10 +68,10 @@ test("Ctrl+Alt+P opens it; Rebuild all lists one row per body, slowest first, wi
   await expect(page.locator("#perfpanel")).toBeVisible();
   await expect(page.locator("#perfpanel .pp-sum")).toContainText("No rebuild recorded yet");
   await page.click("#perfpanel [data-pp=rebuild]");
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(5, { timeout: 60_000 });
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(5, { timeout: 60_000 });
   const { rows, sum } = await parse();
   const ms = rows.map((r) => parseFloat(r[0].replace("~", "")));
-  expect(ms.every((n) => n > 0)).toBe(true);
+  expect(ms.every((n) => n >= 0) && ms.some((n) => n > 0)).toBe(true); // the worker times in whole ms: a tiny body can take 0
   expect([...ms].sort((a, b) => b - a)).toEqual(ms);
   expect(rows.map((r) => r[3]).sort()).toEqual(["Ball", "Block", "Post", "Rounded", "Tall box"]);
   expect(rows.every((r) => +r[2] > 0)).toBe(true);
@@ -84,11 +85,97 @@ test("Ctrl+Alt+P opens it; Rebuild all lists one row per body, slowest first, wi
 test("Copy writes the same plain text the table shows", async () => {
   await populatePanel();
   await page.click("#perfpanel [data-pp=copy]");
-  const { text, copiedText, rows } = await page.evaluate(() => ({ text: window.__app.perf.text(), copiedText: window.__copied, rows: [...document.querySelectorAll("#perfpanel tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent)) }));
+  const { text, copiedText, rows } = await page.evaluate(() => ({ text: window.__app.perf.text(), copiedText: window.__copied, rows: [...document.querySelectorAll("#perfpanel .pp-bodies tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent)) }));
   expect(copiedText).toBe(text);
+  const feats = await page.evaluate(() => [...document.querySelectorAll("#perfpanel .pp-feats tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent)));
   const lines = text.split("\n");
-  expect(lines.length).toBe(3 + rows.length);
+  expect(lines.length).toBe(3 + rows.length + 3 + feats.length);
   rows.forEach((r, i) => expect(lines[3 + i]).toBe(`${r[0]} | ${r[1]} | ${r[2]} | ${r[3]} | ${r[4]}`));
+  expect(lines.slice(3 + rows.length, 6 + rows.length)).toEqual(["", "Features, slowest first", "ms | feature | body"]);
+  feats.forEach((f, i) => expect(lines[6 + rows.length + i]).toBe(`${f[0]} | ${f[1]} | ${f[2]}`));
+});
+
+test("each rebuilt feature is listed with its own time, slowest first: a slow fillet ranks above the quick box it rounds", async () => {
+  await populatePanel();
+  const feats = await page.evaluate(() => [...document.querySelectorAll("#perfpanel .pp-feats tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent)));
+  const ms = feats.map((f) => parseFloat(f[0].replace("~", "")));
+  expect(ms.every((n) => n >= 0)).toBe(true);
+  expect([...ms].sort((a, b) => b - a)).toEqual(ms);
+  const of = (label, bodyName) => feats.findIndex((f) => f[1] === label && f[2] === bodyName);
+  for (const [label, name] of [["Box", "Block"], ["Cylinder", "Post"], ["Sphere", "Ball"], ["Box", "Tall box"], ["Box", "Rounded"], ["Fillet", "Rounded"]]) expect(of(label, name), `${label} on ${name}`).toBeGreaterThanOrEqual(0);
+  expect(feats.filter((f) => f[1] === "Meshing")).toHaveLength(5);
+  expect(of("Fillet", "Rounded"), "the fillet took longer than the plain box under it").toBeLessThan(of("Box", "Rounded"));
+  const rows = (await parse()).rows;
+  expect(rows.every((r) => !r[0].startsWith("~")), "body times come from the worker: exact, no ~").toBe(true);
+});
+
+test("Rebuild all builds every body again: it skips the browser's saved meshes and the meshes that came in a project file", async () => {
+  await populatePanel();
+  await page.evaluate(() => {
+    const k = window.__app.kernel;
+    const b = window.__app.scene.doc.bodies.find((x) => x.name === "Ball");
+    k.seed([{ key: b._key, mesh: k.get(b._key).mesh, ms: 30000 }]); // as if the design was opened from a file that carried this body's built shape
+    window.__lookups = 0;
+    k.__lookUp = k.lookUp; k.lookUp = function (it) { window.__lookups++; return this.__lookUp(it); };
+    k.disk = true; // the browser's saved meshes on, as in the app
+    window.__previousPerf = window.__app.perf.last;
+  });
+  await page.click("#perfpanel [data-pp=rebuild]");
+  await page.waitForFunction(() => window.__app.perf.last !== window.__previousPerf, null, { timeout: 60_000 });
+  const r = await page.evaluate(() => {
+    const k = window.__app.kernel;
+    const out = { rows: window.__app.perf.last.rows.map((x) => x.name).sort(), lookups: window.__lookups, seeded: k.seeded.size, disk: k.disk };
+    k.lookUp = k.__lookUp; delete k.__lookUp; k.disk = false;
+    return out;
+  });
+  expect(r).toEqual({ rows: ["Ball", "Block", "Post", "Rounded", "Tall box"], lookups: 0, seeded: 0, disk: true });
+});
+
+test("a body built in the second engine is recorded too, and the record waits for it", async () => {
+  await populatePanel();
+  await page.evaluate(() => {
+    const k = window.__app.kernel;
+    const request = k.request;
+    k.request = function (items) { // this one rebuild goes to the second engine, as a very slow body would
+      k.request = request;
+      for (const it of items) k.slow.queue.set(it.key, it);
+      k.pumpSlow();
+    };
+    window.__previousPerf = window.__app.perf.last;
+  });
+  await page.click("#perfpanel [data-pp=rebuild]");
+  await page.waitForFunction(() => window.__app.perf.last !== window.__previousPerf, null, { timeout: 90_000 });
+  const last = await page.evaluate(() => window.__app.perf.last);
+  expect(last.rows.map((x) => x.name).sort()).toEqual(["Ball", "Block", "Post", "Rounded", "Tall box"]);
+  expect(last.rows.every((x) => x.engine === "slow" && x.tris > 0)).toBe(true);
+  expect(last.features.some((f) => f.label === "Fillet" && f.body === "Rounded")).toBe(true);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr td").nth(1)).toHaveText("2nd engine");
+});
+
+test("edits while the second engine is busy are each their own record; the slow body lands on its own when it ends", async () => {
+  await page.evaluate(() => JS3D.newDesign("beginner"));
+  await page.evaluate(() => {
+    window.__slow = { delay: { match: "41.7", ms: 8000 } }; // the second engine takes 8 s over this body
+    const k = window.__app.kernel, request = k.request;
+    k.request = function (items) { k.request = request; for (const it of items) k.slow.queue.set(it.key, it); k.pumpSlow(); };
+    JS3D.add("box", { size: [41.7, 10, 10] });
+  });
+  const nextRecord = async (edit) => {
+    await page.evaluate(() => { window.__previousPerf = window.__app.perf.last; });
+    await edit();
+    await page.waitForFunction(() => window.__app.perf.last && window.__app.perf.last !== window.__previousPerf, null, { timeout: 30_000 });
+    return page.evaluate(() => window.__app.perf.last);
+  };
+  let id;
+  for (const step of [async () => { id = await page.evaluate(() => JS3D.add("box", { size: [12.1, 12, 12] })); }, () => page.evaluate((id) => JS3D.resize(id, { w: 12.2 }), id), () => page.evaluate((id) => JS3D.resize(id, { w: 12.3 }), id)]) {
+    const last = await nextRecord(step);
+    expect(last.rows.map((x) => x.engine), "one row: the edited body, built once in the main engine").toEqual(["main"]);
+    expect(last.features.filter((f) => f.label === "Meshing")).toHaveLength(1);
+    expect(await page.evaluate(() => window.__app.kernel.slowBusy()), "the slow body is still building").toBe(true);
+  }
+  await page.waitForFunction(() => { const l = window.__app.perf.last; return l.rows.length === 1 && l.rows[0].engine === "slow"; }, null, { timeout: 30_000 });
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(1);
+  await page.evaluate(() => { window.__slow = null; });
 });
 
 test("Close removes the panel and its style", async () => {
@@ -96,7 +183,7 @@ test("Close removes the panel and its style", async () => {
   await page.click("#perfpanel [data-pp=close]");
   expect(await page.evaluate(() => ({ panel: !!document.getElementById("perfpanel"), style: [...document.head.querySelectorAll("style")].some((s) => s.textContent.includes("#perfpanel")) }))).toEqual({ panel: false, style: false });
   await page.keyboard.press("Control+Alt+KeyP");
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(5); // the last rebuild is kept while the page lives
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(5); // the last rebuild is kept while the page lives
   await page.keyboard.press("Control+Alt+KeyP");
   await expect(page.locator("#perfpanel")).toHaveCount(0);
 });
@@ -110,7 +197,7 @@ test("?perf opens it on load and a design edit lands as the new last rebuild", a
   await page.evaluate(() => JS3D.add("box", { size: [13.3, 14.4, 15.5] }));
   await page.evaluate(() => JS3D.ready());
   await expect.poll(() => page.evaluate(() => window.__app.perf.last && window.__app.perf.last.rows.length)).toBe(1);
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(1);
 });
 
 test("a stalled batch is dropped from the record, its bodies are retried alone and listed, and the app keeps building", async () => {
@@ -122,13 +209,13 @@ test("a stalled batch is dropped from the record, its bodies are retried alone a
   expect(r.restarts).toBe(1);
   expect(r.list.map((b) => b.error)).toEqual([null, null, null, null]);
   expect(r.last.rows).toHaveLength(4); // only the retried builds: the stalled batch left no rows
-  expect(r.last.rows.every((x) => !x.error && x.ms > 0 && x.tris > 0)).toBe(true);
+  expect(r.last.rows.every((x) => !x.error && x.ms >= 0 && x.tris > 0)).toBe(true);
   expect(r.last.rows.map((x) => x.batch).sort(), "batch 1 is the first box, sent alone; batch 2 stalled and left no row; 3 to 5 are the retries").toEqual([1, 3, 4, 5]);
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(4);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(4);
   await page.evaluate(() => { window.__slow = null; delete window.__app.kernel.watchdogMs; });
   await page.evaluate(() => JS3D.add("box", { size: [23.5, 24.5, 25.5] }));
   await page.evaluate(() => JS3D.ready());
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(1);
 });
 
 test("a body that stalls alone gets an error row, and the next build still works", async () => {
@@ -136,16 +223,16 @@ test("a body that stalls alone gets an error row, and the next build still works
   await page.evaluate(() => { window.__slow = { perBody: 100, hang: "13.31" }; window.__app.kernel.watchdogMs = 1200; });
   await page.evaluate(() => JS3D.add("box", { size: [51.1, 12, 13.31] }));
   await page.evaluate(async () => { await JS3D.ready(); });
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
-  await expect(page.locator("#perfpanel tbody tr td").nth(2)).toContainText(/error: stalled after \d+ ms/);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(1);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr td").nth(2)).toContainText(/error: stalled after \d+ ms/);
   await expect(page.locator("#perfpanel .pp-sum")).not.toContainText("Rebuilding");
   expect(await page.evaluate(() => window.__app.perf.text())).toMatch(/error: stalled after \d+ ms/);
   await page.evaluate(() => { window.__slow = null; delete window.__app.kernel.watchdogMs; });
   await page.evaluate(() => JS3D.add("box", { size: [27.5, 28.5, 29.5] }));
   const list = await page.evaluate(async () => { await JS3D.ready(); return JS3D.list(); });
   expect(list.map((b) => !!b.error)).toEqual([true, false]);
-  await expect(page.locator("#perfpanel tbody tr")).toHaveCount(1);
-  await expect(page.locator("#perfpanel tbody tr td").nth(2)).not.toContainText("error");
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr")).toHaveCount(1);
+  await expect(page.locator("#perfpanel .pp-bodies tbody tr td").nth(2)).not.toContainText("error");
 });
 
 test("Rebuild all on an empty design says there is nothing to build", async () => {

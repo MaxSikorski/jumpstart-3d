@@ -28,13 +28,15 @@ export function curvesBox(curves) {
   for (const c of curves) {
     if (c.t === "line") { add(c.a); add(c.b); }
     else if (c.t === "circle" || c.t === "arc") { add([c.c[0] - c.r, c.c[1] - c.r]); add([c.c[0] + c.r, c.c[1] + c.r]); }
+    // jumpstart-3d: body drawing
+    else if (c.t === "text") add(c.p);
     else for (const p of c.pts) add(p);
   }
   return isFinite(x0) ? { x0, y0, x1, y1 } : null;
 }
 
 // sheets: [{ name, curves, dx, dy }] -> DXF text (AutoCAD R12 style, read by nearly everything)
-export function writeDXF(sheets) {
+export function writeDXF(sheets, opts = {}) { // jumpstart-3d: body drawing
   const L = [];
   const g = (code, v) => L.push(String(code), String(v));
   const layers = sheets.map((s) => layerName(s.name));
@@ -49,8 +51,9 @@ export function writeDXF(sheets) {
   // header: millimetres, drawing extents
   g(0, "SECTION"); g(2, "HEADER");
   g(9, "$ACADVER"); g(1, "AC1009");
-  g(9, "$INSUNITS"); g(70, 4);
-  g(9, "$MEASUREMENT"); g(70, 1);
+  // jumpstart-3d: body drawing
+  g(9, "$INSUNITS"); g(70, opts.units === "in" ? 1 : 4);
+  g(9, "$MEASUREMENT"); g(70, opts.units === "in" ? 0 : 1);
   g(9, "$EXTMIN"); g(10, num(all.x0)); g(20, num(all.y0)); g(30, 0);
   g(9, "$EXTMAX"); g(10, num(all.x1)); g(20, num(all.y1)); g(30, 0);
   g(0, "ENDSEC");
@@ -76,6 +79,10 @@ export function writeDXF(sheets) {
         // counter-clockwise from start to end, in degrees
         const deg = (a) => num((((a * 180) / Math.PI) % 360 + 360) % 360);
         g(0, "ARC"); g(8, ly); g(10, X(c.c[0])); g(20, Y(c.c[1])); g(30, 0); g(40, num(c.r)); g(50, deg(c.a0)); g(51, deg(c.a1));
+      // jumpstart-3d: body drawing
+      } else if (c.t === "text") {
+        g(0, "TEXT"); g(8, ly); g(10, X(c.p[0])); g(20, Y(c.p[1])); g(30, 0); g(40, num(c.h)); g(1, c.s); if (c.rot) g(50, num(c.rot));
+        if (c.center) { g(72, 1); g(11, X(c.p[0])); g(21, Y(c.p[1])); g(31, 0); }
       } else if (c.t === "poly") {
         const pts = c.closed && c.pts.length > 2 && Math.hypot(c.pts[0][0] - c.pts[c.pts.length - 1][0], c.pts[0][1] - c.pts[c.pts.length - 1][1]) < 1e-9 ? c.pts.slice(0, -1) : c.pts;
         g(0, "POLYLINE"); g(8, ly); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, c.closed ? 1 : 0);
