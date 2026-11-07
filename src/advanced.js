@@ -6537,6 +6537,8 @@ export function initAdvanced(app) {
           } else {
             body.append(row("Hinge side", seg([["left", "Left"], ["right", "Right"]], o.hinge || "left", (v) => { o.hinge = v; upd(true); }, "bn-hinge")));
             body.append(row("Pull", seg([["knob", "Knob"], ["hole", "Finger hole"], ["bar", "Bar"]], o.doorPull || "knob", (v) => { o.doorPull = v; upd(true); }, "bn-doorpull")));
+            body.append(row("Door catch", seg([["none", "None"], ["light", "Light"], ["firm", "Firm"]], o.doorCatch || "light", (v) => { o.doorCatch = v; upd(true); }, "bn-catch")));
+            body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, "Small bumps by the door's free edge hold it shut: it clicks closed and needs a little pull to open. Firm holds tighter; if your printer runs tight, try Light."));
             body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, "The back of the door is flat, so it prints lying on it (Laid out to print turns it that way)."));
           }
         } else {

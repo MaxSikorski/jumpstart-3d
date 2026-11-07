@@ -668,7 +668,7 @@ scenario("the autosave copy is offered back after a kill, while the designs data
   }), { db: RECOVERY_DB, key: A + "|latest", name: edit.doc.name }, { timeout: 15_000, polling: 100 });
   await page.waitForFunction(() => /^Couldn't save/.test(document.getElementById("savestate").textContent), null, { timeout: 15_000 }); // the 1.2 s save was refused
   await page.close({ runBeforeUnload: false }); // killed: no unload handlers
-  w.tokens = [];
+  w.tokens = [w.prevToken, w.token].filter(Boolean); // killed at an unknown point: keep the markers, so a file:// storage loss on reopen is caught and retried instead of hiding the recovery prompt
   page = await openPage(w);
   await page.waitForSelector(".modal.recover", { timeout: 15_000 });
   await page.click("#rec-open-" + A);
