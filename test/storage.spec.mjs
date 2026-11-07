@@ -330,15 +330,17 @@ async function newerInIdbOlderInLocal(context, info, id, { same = false, hook = 
     const s = window.__app.projects._store, cur = JSON.parse(await s.get(id)), ent = await s.entry(id), t = cur._updated + 3_600_000;
     await s.put(id, JSON.stringify({ ...cur, name: "Fast future", _updated: t }), { ...ent, name: "Fast future", updated: t });
   }, id);
-  // file:// on the Linux runner sometimes opens the next page with empty localStorage (see test/helpers.mjs); the keys written above are put back if they are missing, so the app is judged on what it was given
-  const keptLs = await p1.evaluate(() => Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])));
+  // file:// on the Linux runner sometimes opens the next page with empty localStorage (see test/helpers.mjs). A marker is written now; if the next page does not find it, the runner lost the storage (not the app), and only then are the keys above put back. If the marker is there, nothing is touched, so an app that deletes or rewrites these keys is still caught.
+  const LOST_MARKER = "__js3d.test.storage-spec.marker";
+  const keptLs = await p1.evaluate((m) => { localStorage.setItem(m, "1"); return Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])); }, LOST_MARKER);
   await p1.close();
   const p2 = await context.newPage();
   errs.push(...await prepare(p2));
-  await p2.addInitScript((kept) => { try { for (const [k, v] of Object.entries(kept)) if (localStorage.getItem(k) === null) localStorage.setItem(k, v); } catch (e) {} }, keptLs);
+  await p2.addInitScript(([m, kept]) => { try { if (localStorage.getItem(m) === null) { for (const [k, v] of Object.entries(kept)) localStorage.setItem(k, v); window.__lsRestored = true; } localStorage.removeItem(m); } catch (e) {} }, [LOST_MARKER, keptLs]);
   await slowOpen(p2);
   if (hook) await duringSwitch(p2);
   await boot(p2, info);
+  if (await p2.evaluate(() => window.__lsRestored === true)) { console.log("storage-lost: newerInIdbOlderInLocal, old keys put back"); info.annotations.push({ type: "storage-lost", description: "newerInIdbOlderInLocal: the runner dropped localStorage on reopen; the test's keys were put back" }); }
   expect(await kind(p2)).toBe("local");
   expect(await p2.evaluate(() => window.__store.doc.name)).toBe(same ? "Stale new" : "Stale old"); // the app opened the old copy
   return [p2, errs];

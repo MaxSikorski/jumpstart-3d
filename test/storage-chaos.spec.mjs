@@ -298,7 +298,7 @@ function scenario(title, fn, { onlySite = false } = {}) {
         const note = `${title} [${info.project.name}] attempt ${attempt}/3: ${e.message}`;
         console.log("storage-lost: " + note);
         info.annotations.push({ type: "storage-lost", description: note });
-        if (attempt === 3) test.skip(true, "the browser lost its storage three times in a row");
+        if (attempt === 3) { if (buildOf(info) === "site") throw new Error("storage lost three times in a row on the site build (http), which must never happen: " + e.message); test.skip(true, "the browser lost its storage three times in a row (the Linux runner file:// bug)"); }
       } finally {
         await w.context.close().catch(() => {});
         for (const d of w.dirs) rmSync(d, { recursive: true, force: true });
@@ -715,7 +715,7 @@ scenario("site data cleared with a folder copy: every design comes back from the
   await page.evaluate(drive, { plan: [a3] });
   await page.close({ runBeforeUnload: false });
   await clearSiteData(w);
-  keepMarkers(w);
+  w.tokens = []; // the wipe above is deliberate: the marker is gone on purpose
   page = await openPage(w, { folder: true });
   expect((await readAll(page)).items.filter((i) => w.known.has(i.entry.id)), "site data really is gone").toEqual([]);
   // the folder's files, handed to Restore from a folder… as a user's picker would
@@ -793,7 +793,7 @@ scenario("site data cleared between two backups: every design in either backup c
   const second = await backup();
   await page.close();
   await clearSiteData(w);
-  keepMarkers(w);
+  w.tokens = []; // the wipe above is deliberate: the marker is gone on purpose
   page = await openPage(w);
   expect((await readAll(page)).items.filter((i) => w.known.has(i.entry.id))).toEqual([]);
   for (const f of [first, second]) {
