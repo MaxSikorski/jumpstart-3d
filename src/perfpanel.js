@@ -1,6 +1,6 @@
 // jumpstart-3d: perf panel. A hidden panel for debugging a slow design: how long the last rebuild took, body by body, slowest first.
 // Open it with Ctrl+Alt+P, the address ?perf, or app.perf.open() in the console. Nothing is measured and nothing is drawn until the panel has been opened once.
-// Time is measured on the main thread around each batch the kernel client sends to the geometry worker and shared evenly among the bodies of that batch (marked ~). Per-feature times need a worker change: wrap each applyMod() in evalNode() (src/kernel.js) with performance.now().
+// Body times come from the worker; feature times come from evalNode in kernel.js. Only features actually rebuilt are listed; cached ones cost nothing.
 import { store, timeline } from "./store.js";
 
 const CSS = `
@@ -22,37 +22,56 @@ export function initPerfPanel(app) {
 
   function makeRecorder() {
     const k = app.kernel;
-    let open = null, cur = null; // the rebuild being timed, and the batch in flight
+    let open = null, cur = { main: null, slow: null };
     // This runs inside the kernel client's message handler: a mistake here must never stop the build queue.
     const safe = (f) => (...a) => { try { f(...a); } catch (e) { console.warn("perf panel:", e); } };
     const r = {
       last: null,
-      start: safe(() => {
+      start: safe((engine = "main") => {
         if (!open) open = { t0: performance.now(), batches: 0, rows: [] };
-        cur = { n: ++open.batches, t: performance.now() };
+        cur[engine] = { n: ++open.batches, t: performance.now() };
       }),
-      done: safe((results) => {
-        if (!cur) return;
-        const per = (performance.now() - cur.t) / (results.length || 1);
-        for (const x of results) open.rows.push({ id: x.id, batch: cur.n, ms: per, tris: x.ok !== false && x.mesh ? x.mesh.triangles.length / 3 : 0, error: x.ok === false ? x.error : null });
-        cur = null;
+      done: safe((results, engine = "main") => {
+        const batch = cur[engine];
+        if (!batch) return;
+        if (!open) open = { t0: batch.t, batches: 1, rows: [] }; // a second-engine body that ends after the main record closed is a record of its own
+        const per = (performance.now() - batch.t) / (results.length || 1);
+        const keys = new Set(results.map((x) => x.key));
+        open.rows = open.rows.filter((x) => !keys.has(x.key)); // a body built again in the same record keeps only its latest time
+        for (const x of results) open.rows.push({ id: x.id, key: x.key, engine, batch: batch.n, ms: typeof x.ms === "number" ? x.ms : per, approx: typeof x.ms !== "number", feats: x.feats || [], tris: x.ok !== false && x.mesh ? x.mesh.triangles.length / 3 : 0, error: x.ok === false ? x.error : null });
+        cur[engine] = null;
         r.finish();
       }),
+      drop: safe((engine) => { cur[engine] = null; setTimeout(r.finish, 0); }),
       // A stalled batch of several bodies is retried one by one, so its time is dropped; a body that stalls alone is final and gets an error row.
       abort: safe((batch) => {
-        if (cur && batch.length === 1) open.rows.push({ id: batch[0].id, batch: cur.n, ms: performance.now() - cur.t, tris: 0, error: `stalled after ${Math.round(performance.now() - cur.t)} ms` });
-        cur = null;
+        if (cur.main && batch.length === 1) open.rows.push({ id: batch[0].id, key: batch[0].key, engine: "main", batch: cur.main.n, ms: performance.now() - cur.main.t, approx: true, feats: [], tris: 0, error: `stalled after ${Math.round(performance.now() - cur.main.t)} ms` });
+        cur.main = null;
         setTimeout(r.finish, 0); // the client has settled its queue by the next turn
       }),
       finish: safe(() => {
-        if (!open || cur || k.inflight || k.queue.size) return;
+        // the second engine can hold one body for up to 2 hours: only Rebuild all waits for it; otherwise main-engine edits close their own records
+        if (!open || cur.main || k.inflight || k.queue.size || k.looking.size || (r.waitSlow && (cur.slow || k.slowBusy()))) return;
+        r.waitSlow = false;
         if (open.rows.length) {
           const feats = new Map();
-          for (const t of timeline(store.view)) if (t.body) feats.set(t.body, [...(feats.get(t.body) || []), t.label]);
+          const items = timeline(store.view);
+          for (const t of items) if (t.body) feats.set(t.body, [...(feats.get(t.body) || []), t.label]);
           const names = new Map(store.view.bodies.map((b) => [b.id, b.name]));
-          for (const row of open.rows) { row.name = names.get(row.id) || "(removed body)"; row.features = (feats.get(row.id) || []).join(", "); }
+          const features = new Map();
+          for (const row of open.rows) {
+            row.name = (names.get(row.id) || "(removed body)") + (String(row.key).startsWith("pre:") ? " (stand-in)" : "");
+            row.features = (feats.get(row.id) || []).join(", ");
+            for (const feat of row.feats) {
+              const item = items.find((t) => t.body === row.id && (feat.t === "base" ? !t.mod : t.mod === feat.id));
+              const label = feat.t === "mesh" ? "Meshing" : (item && item.label) || feat.t;
+              const key = JSON.stringify([row.id, row.name, label]);
+              const f = features.get(key) || { ms: 0, body: row.name, label, shared: false };
+              f.ms += feat.ms; f.shared ||= !!feat.shared; features.set(key, f);
+            }
+          }
           open.rows.sort((a, b) => b.ms - a.ms || a.name.localeCompare(b.name));
-          r.last = { rows: open.rows, batches: open.batches, wall: performance.now() - open.t0 };
+          r.last = { rows: open.rows, features: [...features.values()].sort((a, b) => b.ms - a.ms || a.label.localeCompare(b.label)), batches: open.batches, wall: performance.now() - open.t0 };
         }
         open = null;
         render();
@@ -67,7 +86,9 @@ export function initPerfPanel(app) {
     if (!l) return "JumpStart 3D rebuild times: no rebuild recorded yet.";
     const total = l.rows.reduce((s, x) => s + x.ms, 0);
     const out = [`JumpStart 3D rebuild times (slowest first)`, `Total ${fmt(total)} ms in ${l.batches} batch${l.batches === 1 ? "" : "es"} for ${l.rows.length} bod${l.rows.length === 1 ? "y" : "ies"} (${fmt(l.wall)} ms on the clock)`, `ms | batch | triangles | body | features`];
-    for (const x of l.rows) out.push(`~${fmt(x.ms)} | ${x.batch} | ${x.error ? "error: " + x.error : x.tris} | ${x.name} | ${x.features}`);
+    for (const x of l.rows) out.push(`${x.approx ? "~" : ""}${fmt(x.ms)} | ${x.engine === "slow" ? "2nd engine" : x.batch} | ${x.error ? "error: " + x.error : x.tris} | ${x.name} | ${x.features}`);
+    out.push("", "Features, slowest first", "ms | feature | body");
+    for (const x of l.features) out.push(`${x.shared ? "~" : ""}${fmt(x.ms)} | ${x.label} | ${x.body}`);
     return out.join("\n");
   }
 
@@ -78,12 +99,13 @@ export function initPerfPanel(app) {
     panel.body.replaceChildren();
     if (!l) return;
     const t = document.createElement("table");
+    t.className = "pp-bodies";
     t.innerHTML = "<thead><tr><th class='n'>ms</th><th class='n'>Batch</th><th class='n'>Triangles</th><th>Body</th><th>Features</th></tr></thead>";
     const tb = document.createElement("tbody");
     for (const x of l.rows) {
       const tr = document.createElement("tr");
       if (x.error) tr.className = "err";
-      for (const [v, cls] of [["~" + fmt(x.ms), "n"], [x.batch, "n"], [x.error ? "error: " + x.error : x.tris, x.error ? "" : "n"], [x.name, ""], [x.features, ""]]) {
+      for (const [v, cls] of [[(x.approx ? "~" : "") + fmt(x.ms), "n"], [x.engine === "slow" ? "2nd engine" : x.batch, "n"], [x.error ? "error: " + x.error : x.tris, x.error ? "" : "n"], [x.name, ""], [x.features, ""]]) {
         const td = document.createElement("td");
         td.textContent = v; td.className = cls;
         tr.append(td);
@@ -92,6 +114,20 @@ export function initPerfPanel(app) {
     }
     t.append(tb);
     panel.body.append(t);
+    const h = document.createElement("h3");
+    h.textContent = "Features, slowest first";
+    const ft = document.createElement("table");
+    ft.className = "pp-feats";
+    ft.innerHTML = "<thead><tr><th class='n'>ms</th><th>Feature</th><th>Body</th></tr></thead>";
+    const fb = document.createElement("tbody");
+    for (const x of l.features) {
+      const tr = document.createElement("tr");
+      for (const [v, cls] of [[(x.shared ? "~" : "") + fmt(x.ms), "n"], [x.label, ""], [x.body, ""]]) {
+        const td = document.createElement("td"); td.textContent = v; td.className = cls; tr.append(td);
+      }
+      fb.append(tr);
+    }
+    ft.append(fb); panel.body.append(h, ft);
   }
 
   function copy() {
@@ -106,9 +142,13 @@ export function initPerfPanel(app) {
     if (!k.ready || !app.scene.doc) { render("The geometry engine is not ready yet."); return; }
     panel.sum.textContent = "Rebuilding…";
     k.worker.postMessage({ type: "clear" }); // the worker keeps finished shapes; without this a repeat build would take no time
+    k.slow.worker && k.slow.ready && k.slow.worker.postMessage({ type: "clear" });
     k.meshes.clear();
-    app.scene.sync(app.scene.doc);
-    if (!k.inflight && !k.queue.size) render("Nothing to rebuild: no shape needs building."); // an empty design, or every shape already marked as stalled
+    k.seeded.clear();
+    rec.waitSlow = true; // this record lists every body, very slow ones included
+    const disk = k.disk; k.disk = false;
+    try { app.scene.sync(app.scene.doc); } finally { k.disk = disk; }
+    if (!k.inflight && !k.queue.size && !k.looking.size && !k.slowBusy()) { rec.waitSlow = false; render("Nothing to rebuild: no shape needs building."); } // an empty design, or every shape already marked as stalled
   }
 
   function open() {
