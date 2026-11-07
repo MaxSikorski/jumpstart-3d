@@ -576,6 +576,57 @@ test("J.Siwek 2.9.5 Box Maker sets (a stacked door case) survive sharing; their 
   }
 });
 
+test("J.Siwek 2.9.8 Box Maker grids and side joints survive sharing; only his new fields, in his ranges", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const base = fixture('beginner-box'), body = base.bodies[0];
+  const make = (o) => {
+    const set = binSet(o), ids = {};
+    for (const q of set.parts) if (q.key !== 'main') ids[q.key] = 'p_' + q.key;
+    const bodies = set.parts.map((q) => ({ ...structuredClone(body), id: q.key === 'main' ? 'main' : ids[q.key], node: q.node, ...(q.key === 'main' ? { bin: { ...o, ids } } : { binPart: 'main' }) }));
+    return { ...structuredClone(base), bodies, sketches: [] };
+  };
+  // a 2 x 2 grid of bins joined with dovetails, and a row of door cases joined with pegs
+  for (const o of [{ ...BIN_DEFAULTS, cols: 1, rows: 1, scoop: false, across: 2, units: 2, sideLock: 'dovetail' }, { ...BIN_DEFAULTS, style: 'door', across: 2, units: 1, sideLock: 'pegs' }]) {
+    const d = make(o);
+    const link = await makeLink(d, BASE);
+    assert.equal(link.ok, true, link.message);
+    assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  }
+  const d = make({ ...BIN_DEFAULTS, cols: 1, rows: 1, scoop: false, across: 2, units: 2, sideLock: 'dovetail' });
+  assert.deepEqual(Object.keys(d.bodies[0].bin.ids).sort(), ['bin1', 'bin2', 'bin3']);
+  // the largest grid's keys pass the key check (8 x 8 cases: case63 and front63)
+  const big = structuredClone(d); big.bodies[0].bin.ids = { case63: 'p_bin1', front63: 'p_bin2', front0: 'p_bin3' };
+  for (const q of big.bodies.slice(1)) q.binPart = 'main';
+  assert.doesNotThrow(() => validateEnvelope(env(big)));
+  const bad = (change) => { const x = structuredClone(d); Object.assign(x.bodies[0].bin, change); throwsShare(() => validateEnvelope(env(x))); };
+  for (const change of [{ across: 0 }, { across: 9 }, { across: 2.5 }, { across: '2' }, { sideLock: 'glue' }, { sideLock: 1 }, { sideJoints: true }, { down: 2 }]) bad(change);
+  for (const key of ['bin64', 'case64', 'front64', 'bin0', 'bin', 'front', 'bin01', 'A1', 'lid1']) bad({ ids: { ...d.bodies[0].bin.ids, [key]: 'p_x' } });
+  // build 30 review: one body under two keys, and a lid that differs from lidId
+  bad({ ids: { bin1: 'p_bin1', bin2: 'p_bin1', bin3: 'p_bin3' } });
+  const lids = make({ ...BIN_DEFAULTS, cols: 1, rows: 1, scoop: false, lid: true });
+  assert.ok(lids.bodies[0].bin.ids.lid);
+  const okLid = structuredClone(lids); okLid.bodies[0].bin.lidId = okLid.bodies[0].bin.ids.lid; assert.doesNotThrow(() => validateEnvelope(env(okLid)));
+  const twoLids = structuredClone(okLid); twoLids.bodies.push({ ...structuredClone(body), id: 'other', binPart: 'main' }); twoLids.bodies[0].bin.lidId = 'other';
+  throwsShare(() => validateEnvelope(env(twoLids)), 'damaged', /two lids/);
+});
+
+test("outline extrudes: stretch is two sizes in (0, 1000], and the plane's x is not along its normal (build 30 review)", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const base = fixture('beginner-box'), body = base.bodies[0];
+  const o = { ...BIN_DEFAULTS, style: 'door' }, set = binSet(o);
+  const d = { ...structuredClone(base), bodies: [{ ...structuredClone(body), id: 'main', node: set.parts[0].node, bin: { ...o } }], sketches: [] };
+  const outline = (x) => { const st = [x.bodies[0].node]; while (st.length) { const n = st.pop(); if (n.t === 'extrude' && n.regions) return n; if (n.children) st.push(...n.children.map((c) => c.node)); } };
+  assert.ok(outline(d));
+  for (const s of [[1, 1], [0.5, 2], [1e3, 1e-3]]) { const x = structuredClone(d); outline(x).stretch = s; assert.doesNotThrow(() => validateEnvelope(env(x)), String(s)); }
+  for (const s of [[1], [1, 1, 1], [0, 1], [-1, 1], [1, 1e3 + 1], [1, NaN], [1, Infinity], ['1', 1], 2, { 0: 1, 1: 1 }, null]) {
+    const x = structuredClone(d); outline(x).stretch = s; throwsShare(() => validateEnvelope(env(x)), 'damaged', undefined);
+  }
+  for (const [px, pn] of [[[0, 1, 0], [0, 1, 0]], [[0, 0, -2], [0, 0, 1]], [[1, 0, 0.01], [-1, 0, 0]]]) {
+    const x = structuredClone(d); Object.assign(outline(x).plane, { x: px, n: pn }); throwsShare(() => validateEnvelope(env(x)), 'damaged', /plane direction/);
+  }
+  const x = structuredClone(d); Object.assign(outline(x).plane, { x: [1, 0, 0.2], n: [0, 0, 1] }); assert.doesNotThrow(() => validateEnvelope(env(x)));
+});
+
 test("hinge companions and sketch guide rails check their references and settings", async () => {
   const { HINGE_DEFAULTS, hingeParts } = await import('../src/hinges.js');
   const d = fixture('advanced-sketch-extrude'), base = d.bodies[0], sk = d.sketches[0];

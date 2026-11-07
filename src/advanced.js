@@ -6479,7 +6479,7 @@ export function initAdvanced(app) {
           if (q.key !== "main") { b.binPart = st.id; delete b.bin; }
         }
         const main = findBody(doc, st.id);
-        for (const q of set.parts) if (q.key !== "main") { const b = findBody(doc, ids[q.key]); if (b) b.name = main.name + " · " + q.name.toLowerCase(); }
+        for (const q of set.parts) if (q.key !== "main") { const b = findBody(doc, ids[q.key]); if (b) b.name = main.name + " · " + q.name.charAt(0).toLowerCase() + q.name.slice(1); }
         // parts no longer in the set (fewer units, no lid, another style)
         const gone = new Set(Object.values(old).filter((id) => !keep.has(id)));
         if (gone.size) doc.bodies = doc.bodies.filter((b) => !gone.has(b.id));
@@ -6515,13 +6515,17 @@ export function initAdvanced(app) {
         body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { bin: "An open bin with compartments.", drawer: "A case with a drawer that slides out.", tilt: "A case with a bin that tips forward on two pins: tilt it out to reach in.", door: "A case with a door that swings open on pins top and bottom." }[o.style || "bin"]));
         body.append(el("div", { class: "subhead" }, cab ? "Outside size of one case" : "Outside size"), r3(num("Width", "w", { min: 10 }), num("Depth", "d", { min: 10 }), num("Height", "h", { min: 5 })));
         // stacking: how many, one on another, and how they lock together
-        body.append(el("div", { class: "subhead" }, "Stacking"), r3(num(cab ? "Cases stacked" : "Bins stacked", "units", { len: false, int: true, min: 1, max: 8, rerender: true })));
+        body.append(el("div", { class: "subhead" }, "Stacking and side by side"), r3(num(cab ? "Cases high" : "Bins high", "units", { len: false, int: true, min: 1, max: 8, rerender: true }), num(cab ? "Cases across" : "Bins across", "across", { len: false, int: true, min: 1, max: 8, rerender: true })));
+        if ((o.across || 1) > 1) {
+          body.append(row("Side join", seg(BIN_LOCKS, o.sideLock || "none", (v) => { o.sideLock = v; upd(true); }, "bn-sidelock")));
+          body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { dovetail: "Rails on the right side slide into grooves in the left side of the next one, from the front, and stop flush. Build a grid of any size.", pegs: "Pegs on the right side fit holes in the left side of the next one.", none: "Flat sides: they just stand next to each other." }[o.sideLock || "none"]));
+        }
         if (cab) {
-          body.append(row("Interlock", seg(BIN_LOCKS, o.lock || "none", (v) => { o.lock = v; upd(true); }, "bn-lock")));
+          body.append(row(o.units > 1 ? "Stack join" : "Interlock", seg(BIN_LOCKS, o.lock || "none", (v) => { o.lock = v; upd(true); }, "bn-lock")));
           body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { dovetail: "Dovetail rails on top slide into grooves under the case above, from the front, and stop flush.", pegs: "Four pegs on top fit holes under the case above.", none: "Flat tops and bottoms: the cases just sit on each other." }[o.lock || "none"]));
         } else body.append(check("bn-stack", "stack", "Interlocking rim and foot", "A foot under each bin fits into the rim of the bin below, so a stack can't slide apart"));
         if (!cab && o.stack) body.append(row("Foot height", app.numField({ value: o.foot, id: "bn-foot", len: true, min: 1, step: 0.5, live: true, onCommit: (v) => { o.foot = v; upd(); } }), "bn-foot"));
-        if (o.units > 1 || cab) body.append(row("Show", seg([["stack", "Assembled"], ["print", "Laid out to print"]], o.layout === "print" ? "print" : "stack", (v) => { o.layout = v === "print" ? "print" : ""; upd(true); }, "bn-layout")));
+        if (o.units > 1 || (o.across || 1) > 1 || cab) body.append(row("Show", seg([["stack", "Assembled"], ["print", "Laid out to print"]], o.layout === "print" ? "print" : "stack", (v) => { o.layout = v === "print" ? "print" : ""; upd(true); }, "bn-layout")));
         if (cab) {
           body.append(el("div", { class: "subhead" }, "Case"), r3(num("Case wall", "caseT", { min: 1.2 }), num("Corner radius", "radius", { min: 0 }), num("Fit clearance", "clear", { min: 0, step: 0.05 })));
           if (o.style === "drawer") {

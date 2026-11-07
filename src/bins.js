@@ -14,6 +14,8 @@ export const BIN_DEFAULTS = {
   shape: "square", inner: 2, scoop: true, scoopR: 10, label: false, labelW: 10, stack: false, foot: 3, lid: false, lidT: 2, clear: 0.25,
   // a case with a drawer, a tilt-out bin or a door; several stacked, interlocking
   style: "bin", units: 1, lock: "dovetail", caseT: 2.4, pull: "bar", hinge: "left", doorPull: "knob",
+  // side by side: how many across, and how they join (rails on the right side into grooves in the left)
+  across: 1, sideLock: "dovetail",
 };
 export const BIN_STYLES = [["bin", "Open bin"], ["drawer", "Drawer"], ["tilt", "Tilt-out bin"], ["door", "Door"]];
 export const BIN_LOCKS = [["dovetail", "Dovetail rails"], ["pegs", "Pegs"], ["none", "None"]];
@@ -118,22 +120,51 @@ function path(items) {
   return out;
 }
 
+// joining side by side: on the right side (+X) dovetail rails or pegs; on the left side (-X) the
+// matching grooves or holes. Rails run front to back and stop 3 short of the front; grooves are closed
+// at the front, so the box on the right slides on from the front and stops flush.
+const PLANE_SIDE = { o: [0, 0, 0], x: [0, 0, 1], n: [0, 1, 0] }; // a profile in Z (across) and +X (out), extruded along +Y
+const SDV = { neck: 7, head: 10, h: 3 }, SPEG = { d: 6, h: 3 };
+export const sideDepth = (lock, cl) => (lock === "dovetail" ? SDV.h + cl + 0.2 : lock === "pegs" ? SPEG.h + 0.6 : 0);
+function sideJoints(W, D, H, lock, cl, z0 = 0) {
+  const out = [], h = H - z0, zs = h >= 45 ? [z0 + h * 0.3, z0 + h * 0.72] : [z0 + h * 0.5];
+  if (lock === "dovetail") for (const z of zs) {
+    out.push(kid(extr(dovetailXZ(SDV.neck, SDV.head, SDV.h), PLANE_SIDE, D - 3), T(W / 2 - 0.01, -D / 2 + 3, z)));
+    out.push(kid(extr(dovetailXZ(SDV.neck, SDV.head, SDV.h + 0.01, cl), PLANE_SIDE, D - 2 + cl), T(-W / 2 - 0.01, -D / 2 + 3 - cl, z), true));
+  }
+  if (lock === "pegs") for (const y of [-D / 2 + 12, D / 2 - 12]) for (const z of zs) {
+    out.push(kid(rodX(SPEG.h + 0.01, SPEG.d), T(W / 2 + SPEG.h / 2 - 0.01, y, z)));
+    out.push(kid(rodX(SPEG.h + 0.6, SPEG.d + 2 * cl), T(-W / 2 + (SPEG.h + 0.6) / 2 - 0.01, y, z), true));
+  }
+  return out;
+}
+const COLS = "ABCDEFGH";
+
 // all the parts of a bin set: [{ key, name, node, z, color, kind }] with z the height of its unit
 export function binSet(o0) {
   const o = { ...BIN_DEFAULTS, ...o0 };
-  const units = Math.max(1, Math.min(8, Math.round(o.units || 1)));
+  const units = Math.max(1, Math.min(8, Math.round(o.units || 1))), across = Math.max(1, Math.min(8, Math.round(o.across || 1)));
+  const side = across > 1 ? o.sideLock || "none" : "none";
+  // which unit: k counts up a column, then the next column (so a set made before stays the same)
+  const cells = []; for (let c = 0; c < across; c++) for (let r = 0; r < units; r++) cells.push({ c, r, k: c * units + r });
+  const grid = across > 1, label = (q) => (grid ? COLS[q.c] + (q.r + 1) : String(q.r + 1));
+  const many = cells.length > 1;
   if (o.style === "bin" || !o.style) {
-    const one = binParts(o), parts = [];
-    const pitch = Math.max(5, o.h) - (o.stack ? Math.max(1, Math.min(o.foot, o.h / 3)) : 0);
-    for (let i = 0; i < units; i++) parts.push({ key: i ? "bin" + i : "main", name: units > 1 ? "Bin " + (i + 1) : "Bin", node: one.bin, z: i * pitch, color: "#5b8fd6", kind: "bin" });
-    if (one.lid) parts.push({ key: "lid", name: "Lid", node: one.lid, z: 0, dx: o.w + 12, color: "#e0a43a", kind: "lid" });
-    if (o.layout === "print") parts.forEach((q, i) => { if (q.kind === "bin") { q.dx = i * (o.w + 10); q.z = 0; } else q.dx = units * (o.w + 10); });
-    return { parts, cell: one.cell, info: "" };
+    const sd = sideDepth(side, Math.max(0, o.clear));
+    // joined side by side, the walls are thick enough for the grooves
+    const one = binParts(sd ? { ...o, wall: Math.max(o.wall, sd + 1.2) } : o), parts = [];
+    const foot = o.stack ? Math.max(1, Math.min(o.foot, o.h / 3)) : 0, pitch = Math.max(5, o.h) - foot;
+    const node = sd ? group([kid(one.bin), ...sideJoints(o.w, o.d, o.h, side, Math.max(0, o.clear), foot + 1)]) : one.bin;
+    for (const q of cells) parts.push({ key: q.k ? "bin" + q.k : "main", name: many ? "Bin " + label(q) : "Bin", node, z: q.r * pitch, dx: q.c * o.w, color: "#5b8fd6", kind: "bin" });
+    if (one.lid) parts.push({ key: "lid", name: "Lid", node: one.lid, z: 0, dx: across * o.w + 12, color: "#e0a43a", kind: "lid" });
+    if (o.layout === "print") parts.forEach((q, i) => { if (q.kind === "bin") { q.dx = i * (o.w + 10); q.z = 0; } else q.dx = cells.length * (o.w + 10); });
+    return { parts, cell: one.cell, info: sd ? `Side by side they join with ${side === "dovetail" ? "dovetail rails (slide the one on the right on from the front)" : "pegs"}; the walls are ${(Math.max(o.wall, sd + 1.2)).toFixed(1)} thick for it.` : "" };
   }
-  const c = caseParts(o), parts = [];
-  for (let i = 0; i < units; i++) {
-    parts.push({ key: i ? "case" + i : "main", name: units > 1 ? `Case ${i + 1}` : "Case", node: c.shell, z: i * o.h, color: "#5b8fd6", kind: "case" });
-    parts.push({ key: "front" + i, name: (o.style === "drawer" ? "Drawer" : o.style === "tilt" ? "Tilt bin" : "Door") + (units > 1 ? " " + (i + 1) : ""), node: c.front, z: i * o.h, color: "#e0a43a", kind: o.style });
+  const c = caseParts({ ...o, side }), parts = [];
+  for (const q of cells) {
+    const nm = many ? " " + label(q) : "";
+    parts.push({ key: q.k ? "case" + q.k : "main", name: "Case" + nm, node: c.shell, z: q.r * o.h, dx: q.c * o.w, color: "#5b8fd6", kind: "case" });
+    parts.push({ key: "front" + q.k, name: (o.style === "drawer" ? "Drawer" : o.style === "tilt" ? "Tilt bin" : "Door") + nm, node: c.front, z: q.r * o.h, dx: q.c * o.w, color: "#e0a43a", kind: o.style });
   }
   // laid out for printing: each case in a row, its drawer, bin or door in a row in front
   if (o.layout === "print") parts.forEach((q, i) => {
@@ -153,11 +184,14 @@ export function caseParts(o) {
   const DV = { neck: 7, head: 10, h: 3 }, PEG = { d: 6, h: 3, inset: 10 };
   const lockDepth = lock === "dovetail" ? DV.h + cl + 0.2 : lock === "pegs" ? PEG.h + 0.6 : 0;
   const tb = Math.max(t, lockDepth ? lockDepth + 1.2 : 0), tt = t, tback = t;
-  const iw = W - 2 * t, ih = H - tb - tt, idp = D - tback;
+  // side walls: thicker when cases join side by side (the grooves are cut into the left one)
+  const sd = sideDepth(o.side || "none", cl), ts = Math.max(t, sd ? sd + 1.2 : 0);
+  const iw = W - 2 * ts, ih = H - tb - tt, idp = D - tback;
   if (iw < 15 || ih < 10 || idp < 15) throw new Error("The case is too small inside: make it bigger, or the walls thinner");
   // ---- the case
-  const ck = [kid(prim("box", { w: W, d: D, h: H, rv: R }))];
+  const ck = [kid(prim("box", { w: W, d: D, h: H, rv: R }))], stops = []; // jumpstart-3d: stops, the door stop strips (added after the cuts)
   ck.push(kid(prim("box", { w: iw, d: idp + 1, h: ih }), T(0, -D / 2 + (idp + 1) / 2 - 1, tb), true));
+  if (sd) ck.push(...sideJoints(W, D, H, o.side, cl, 0));
   const xs = [-W / 4, W / 4], pegXY = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => [i * (W / 2 - PEG.inset), j * (D / 2 - PEG.inset)]);
   if (lock === "dovetail") for (const x of xs) {
     // rails stop 3 short of the front, so the case above slides on from the front and stops flush
@@ -202,7 +236,7 @@ export function caseParts(o) {
     // the inside: the same shape a wall thinner, open on top (its front bottom corner cut off at the curve)
     for (let i = 0; i < cols; i++) tk.push(kid(extr(path([[wl, p], [wl, top], [yC, top], { arc: [p, p], to: [yD, fl] }, [p, fl]]), PLANE_YZ, cw), T(-bw / 2 + wl + i * (cw + div), 0, 0), true));
     // pins (through the whole width, showing at each side), a pull tab, and a stop rib
-    tk.push(kid(rodX(bw + 2 * (cl + 0.6) + 2 * (t - 0.7), 4), T(0, p, p)));
+    tk.push(kid(rodX(bw + 2 * (cl + 0.6) + 2 * (Math.min(ts, t + 1.5) - 0.7), 4), T(0, p, p)));
     tk.push(kid(prim("box", { w: Math.min(bw * 0.4, 40), d: 5, h: 3, rv: 1.5 }), T(0, -2.5 + 0.5, hf - 3)));
     const phiC = Math.asin(Math.min(0.99, (yT - p) / Rc)), e = 0.6 + Rc * (1 / Math.cos((12 * Math.PI) / 180) - 1);
     tk.push(kid(prim("box", { w: bw, d: 2.5, h: e + 1 }), Rx(-phiC, 0, p + (Rc - 1) * Math.sin(phiC), p + (Rc - 1) * Math.cos(phiC))));
@@ -219,7 +253,7 @@ export function caseParts(o) {
     // the door's back is flat (it prints lying on it): the pins and the rounded hinge edge are no
     // thicker than the door, and the pull is only on the front
     const td = 3.2, setback = 2, hs = o.hinge === "right" ? 1 : -1, pin = 3;
-    const xh = hs * (W / 2 - t - cl - td / 2), y0 = -D / 2 + setback + td / 2, z0 = tb + cl;
+    const xh = hs * (W / 2 - ts - cl - td / 2), y0 = -D / 2 + setback + td / 2, z0 = tb + cl;
     const dw = fw - td / 2;
     const dk = [
       kid(prim("box", { w: dw, d: td, h: fh }), T(xh - hs * (dw / 2), 0, 0)),
@@ -235,16 +269,21 @@ export function caseParts(o) {
     front = group([kid(group(dk), T(0, y0, z0))]);
     FLAT = { y0, z0, fh, td };
     for (const [z, h] of [[-0.01, tb + 0.02], [H - tt - 0.01, tt + 0.02]]) ck.push(kid(prim("cylinder", { w: pin + 2 * cl, d: pin + 2 * cl, h }), T(xh, y0, z), true));
-    // a little catch: a bump on the case floor the door's free corner clicks over
-    ck.push(kid(prim("cylinder", { w: 2, d: 2, h: 0.55 }), T(-hs * (iw / 2 - 6), y0 + td / 2 + 1.4, tb - 0.01)));
-    // a strip up the inside of the far wall, just behind the door, so it can't swing in
-    ck.push(kid(prim("box", { w: 1.6, d: 1.6, h: ih + 0.02 }), T(-hs * (iw / 2 - 0.79), y0 + td / 2 + 0.3 + 0.8, tb - 0.01)));
+    // the door stop: a strip just behind the door along the floor, the ceiling and the far side, so
+    // the door opens outwards only (it rests against the strip when shut). Near the hinge the strip
+    // stops short, out of the way of the door's rounded edge.
+    const sy = y0 + td / 2 + 0.3 + 0.8, lip = cl + 1.4, x0 = xh - hs * (td + 1.5), x1 = -hs * (iw / 2 - 0.01), sw = Math.abs(x1 - x0);
+    // jumpstart-3d: the strips go on after the inside is cut out (stops), not into ck: a group cuts its holes after joining
+    // all its solids, so in ck the inside cut removed them again and the case had no door stop
+    stops.push(kid(prim("box", { w: 1.6, d: 1.6, h: ih + 0.02 }), T(-hs * (iw / 2 - 0.79), sy, tb - 0.01)));
+    stops.push(kid(prim("box", { w: sw, d: 1.6, h: lip + 0.01 }), T((x0 + x1) / 2, sy, tb - 0.01)));
+    stops.push(kid(prim("box", { w: sw, d: 1.6, h: lip + 0.01 }), T((x0 + x1) / 2, sy, H - tt - lip)));
     cell = null;
-    info = `Door ${r6(fw).toFixed(1)} × ${r6(fh).toFixed(1)}, hinged on the ${hs < 0 ? "left" : "right"}. Bend the door slightly to push its pins into the holes in the case top and bottom.`;
+    info = `Door ${r6(fw).toFixed(1)} × ${r6(fh).toFixed(1)}, hinged on the ${hs < 0 ? "left" : "right"}; it opens outwards only (a stop strip behind it). Bend the door slightly to push its pins into the holes in the case top and bottom.`;
   }
   // a door to print lies on its flat back: turned so the back is down at z = 0
   const flat = o.style === "door" ? FLAT : null;
-  return { shell: group(ck), front, cell, info, flat };
+  return { shell: stops.length ? group([kid(group(ck)), ...stops]) : group(ck), front, cell, info, flat }; // jumpstart-3d: door stops after the cuts
 }
 let FLAT = null;
 // a round rod along Y, from y = 0 to y = len, centred on X and Z
