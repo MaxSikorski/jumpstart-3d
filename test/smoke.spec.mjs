@@ -1401,7 +1401,7 @@ test("About keeps the author's tutorial count (fifty-one); the app lists 112; Ab
   expect(await page.evaluate(() => {
     const list = window.__app.tutorials.list;
     return [list.length, ...["beginner", "advanced", "arch", "chisel"].map((mode) => list.filter((t) => t.mode === mode).length)];
-  })).toEqual([112, 34, 53, 13, 12]);
+  })).toEqual([112, 32, 55, 13, 12]); // 2.9.6 moved the Lathe off the Beginner ribbon: our Turned bead lesson went to Advanced;
   await expect(about).toContainText("Community build adds: named parameters across sketches, features and Beginner shapes, an editable Pattern, CSV parameters, OBJ export, Mesh detail.");
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
