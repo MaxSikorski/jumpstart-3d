@@ -130,12 +130,13 @@ class BodyView {
     const color = style.mono ? "#b4bcc5" : body.color || "#a7b0ba";
     const cut = !!body.cutPreview; // the volume an extrude is about to cut away
     base.color.set(cut ? "#e5484d" : hole ? "#8f99a3" : style.collide ? "#e5484d" : color);
-    const ghost = hole || style.ghost || cut;
+    // style.standIn: an earlier step of a slow body, shown while it builds
+    const ghost = hole || style.ghost || cut || !!style.standIn;
     // (for the Projector: the color without any highlight, and whether this is a see-through preview)
     this.plainColor = base.color.clone(); this.ghost = ghost || !!style.collide;
     for (const m of [base, hover, sel]) {
       m.transparent = ghost;
-      m.opacity = cut ? 0.5 : hole ? 0.32 : style.ghost ? 0.25 : 1;
+      m.opacity = cut ? 0.5 : hole ? 0.32 : style.ghost ? 0.25 : style.standIn ? 0.45 : 1;
       m.depthWrite = !ghost;
       m.needsUpdate = true;
     }
@@ -271,6 +272,15 @@ export class SceneSync {
             v.key = b._key; v.tsig = tsig; v.shownNode = JSON.parse(JSON.stringify(b.node));
           }
         } else this.errors.set(b.id, res.error);
+        v.standIn = false;
+      } else {
+        // a very slow body still building: show it as it was a step or two earlier (see-through)
+        const pre = this.kernel.standIn && this.kernel.standIn(b._key);
+        if (pre && v.key !== "pre:" + b._key) {
+          v.setData(pre.mesh, b, this.styleFor(b));
+          v.key = "pre:" + b._key; v.tsig = null; v.shownNode = null;
+        }
+        v.standIn = !!pre;
       }
       v.body = b;
       v.pending = !res;
@@ -301,7 +311,7 @@ export class SceneSync {
         v.mesh.position.set(...off);
         v.edges.position.set(...off);
       }
-      v.applyStyle(b, this.styleFor(b));
+      v.applyStyle(b, v.standIn ? { ...this.styleFor(b), standIn: true } : this.styleFor(b));
       v.setFaceStates(this.state.faces.get(b.id) || new Map());
       // projection media (pictures / videos on the object)
       if (this.onView) this.onView(v, b, doc);

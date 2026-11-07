@@ -40,9 +40,13 @@ async function readTriangles(page, bytes) {
     return {
       errors: xml.querySelectorAll("parsererror").length,
       ns: xml.documentElement.getAttribute("xmlns:slic3rpe"),
-      objects: [...xml.querySelectorAll("object")].map((o) => [...o.querySelectorAll("triangle")].map((t) => ({
-        seg: t.getAttribute("slic3rpe:mmu_segmentation"), paint: t.getAttribute("paint_color"),
-      }))),
+      objects: [...xml.querySelectorAll("object")].map((o) => {
+        const vertices = [...o.querySelectorAll("vertex")].map((v) => +v.getAttribute("z"));
+        return [...o.querySelectorAll("triangle")].map((t) => ({
+          seg: t.getAttribute("slic3rpe:mmu_segmentation"), paint: t.getAttribute("paint_color"),
+          z: ["v1", "v2", "v3"].map((a) => vertices[+t.getAttribute(a)]),
+        }));
+      }),
     };
   }, model);
   expect(r.errors).toBe(0);
@@ -187,15 +191,15 @@ test("a body edited into another number of faces loses its face paint in the sim
   await page.click("#ps-frow-1");
   await clickSide(page, "top");
   await page.click("#cmd-ok");
-  const info = await page.evaluate(() => {
-    const m = window.__app.advanced.printSim.st.paint.get("b1"), fg = window.__app.scene.views.get("b1").data.faceGroups;
-    return { size: m.size, tris: [...m.keys()].reduce((n, f) => n + fg[f][1] / 3, 0) };
-  });
-  expect(info.size).toBe(1);
+  expect(await page.evaluate(() => window.__app.advanced.printSim.st.paint.get("b1").size)).toBe(1);
   const { objects } = await readTriangles(page, (await exportBytes(page, "3mf")).bytes);
-  const coded = objects[0].filter((t) => t.seg);
-  expect(coded.length).toBe(info.tris);
-  expect(coded.every((t) => t.seg === "8" && t.paint === "8")).toBe(true);
+  const top = objects[0].filter((t) => t.z.every((z) => Math.abs(z - 20) < 1e-5));
+  expect(top.length).toBeGreaterThan(0);
+  for (const t of objects[0]) {
+    const code = t.z.every((z) => Math.abs(z - 20) < 1e-5) ? "8" : null;
+    expect(t.seg).toBe(code);
+    expect(t.paint).toBe(code);
+  }
 });
 
 test("a damaged printPaint in a design file is ignored, not fatal", async () => {

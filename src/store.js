@@ -34,21 +34,35 @@ const listeners = new Set();
 export const store = {
   doc: newDoc(),
   preview: null, // a proposed doc while a command dialog is open
+  // Timeline rollback: the design shown as it was after the step with this sequence number
+  // (null: the whole design). Only the view changes; the design itself is never touched.
+  rollTo: null,
+  rolled: null,
   undoStack: [],
   redoStack: [],
-  get view() { return this.preview || this.doc; },
+  get view() { return this.preview || (this.rollTo != null && this.rolled) || this.doc; },
+  // show the design as it was after step `seq` (null: back to the latest step)
+  setRoll(seq) {
+    this.rollTo = seq == null ? null : seq;
+    this.rolled = this.rollTo == null ? null : rolledBack(this.doc, this.rollTo);
+    this.emit("roll");
+  },
+  // any edit goes on the whole design: leave the rolled-back view first
+  endRoll() { if (this.rollTo == null) return false; this.rollTo = null; this.rolled = null; return true; },
   on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   emit(kind) { for (const f of listeners) f(kind); },
   load(doc) {
     this.doc = migrate(doc);
     applyParams(this.doc); // jumpstart-3d: parameters
     this.preview = null;
+    this.endRoll();
     this.undoStack = [];
     this.redoStack = [];
     this.emit("load");
   },
   // mutate a copy of the doc; push the old one on the undo stack
   update(fn, label = "Edit") {
+    this.endRoll();
     const next = clone(this.doc);
     const r = fn(next);
     if (r === false) return;
@@ -62,9 +76,10 @@ export const store = {
     return next;
   },
   // replace doc without history (live drags); call update() at the end
-  setTransient(doc) { this.preview = doc; this.emit("preview"); },
+  setTransient(doc) { this.endRoll(); this.preview = doc; this.emit("preview"); },
   setPreview(fn) {
     if (!fn) { if (this.preview) { this.preview = null; this.emit("preview"); } return; }
+    this.endRoll();
     const next = clone(this.doc);
     fn(next);
     this.preview = next;
@@ -81,6 +96,7 @@ export const store = {
   },
   undo() {
     if (!this.undoStack.length) return null;
+    this.endRoll();
     const { doc, label } = this.undoStack.pop();
     this.redoStack.push({ doc: this.doc, label });
     this.doc = doc;
@@ -90,6 +106,7 @@ export const store = {
   },
   redo() {
     if (!this.redoStack.length) return null;
+    this.endRoll();
     const { doc, label } = this.redoStack.pop();
     this.undoStack.push({ doc: this.doc, label });
     this.doc = doc;
@@ -344,8 +361,8 @@ export function resolveNode(node, doc) {
           n.axis = c && c.t === "line" ? { a: c.a, b: c.b } : null;
         }
       }
-    } else {
-      n.regions = [];
+    } else if (!(node.regions && node.regions.length)) {
+      n.regions = []; // (gears carry their own profile, with no sketch)
     }
     delete n.sketch;
     delete n.profiles;
@@ -412,6 +429,53 @@ export function primName(kind) { return PRIM_NAMES[kind] || kind; }
 
 // jumpstart-3d: parameters. " (dist = t)" after the label of a feature with bound values
 const exprTag = (o) => { const e = Object.entries(o.exprs || {}); return e.length ? ` (${e.map(([k, v]) => `${k} = ${v}`).join(", ")})` : ""; };
+// The design as it was after the step with sequence number K: later sketches, planes, joints,
+// bodies, features and textures left out, and bodies that a later Combine or Group used up
+// brought back as they were. Used to step through the timeline; the design itself isn't changed.
+export function rolledBack(doc, K) {
+  const d = clone(doc);
+  const keepMods = (node, seq0) => {
+    if (!node || !Array.isArray(node.mods)) return node;
+    const out = [];
+    for (const m of node.mods) { if ((m.seq || seq0) > K) break; out.push(m); }
+    node.mods = out;
+    return node;
+  };
+  const bodies = [];
+  const ids = new Set();
+  const addBody = (b) => {
+    if (!b || ids.has(b.id)) return;
+    ids.add(b.id);
+    keepMods(b.node, b.seq);
+    if (b.textures) b.textures = b.textures.filter((t) => (t.seq || b.seq) <= K);
+    bodies.push(b);
+  };
+  for (const b of d.bodies) {
+    if (b.seq <= K) addBody(b);
+    else if (b.node && b.node.t === "group" && Array.isArray(b.node.children)) {
+      // a Group made after this step: its bodies were separate then
+      b.node.children.forEach((c, i) => {
+        if (c.hole && b.node.op !== "cut") return;
+        const m = new Array(16).fill(0); // group matrix × child matrix (column-major)
+        const A = b.m || IDENTITY, B = c.m || IDENTITY;
+        for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) { let v = 0; for (let j = 0; j < 4; j++) v += A[j * 4 + r] * B[k * 4 + j]; m[k * 4 + r] = v; }
+        addBody({ id: b.id + "~" + i, name: c.name || "Body", seq: b.seq - 0.5, color: c.color || b.color, hole: !!c.hole, hidden: false, m, node: clone(c.node) });
+      });
+    }
+  }
+  // bodies a Combine after this step took in (kept with the feature to bring back on delete)
+  for (const b of d.bodies) for (const m of (b.node && b.node.mods) || []) {
+    if ((m.seq || b.seq) > K && m.src === "combine" && Array.isArray(m.tools)) for (const t of m.tools) if (t && t.seq <= K) addBody(clone(t));
+  }
+  d.bodies = bodies;
+  d.sketches = (d.sketches || []).filter((s) => s.seq <= K);
+  // a sketch that is the step itself is shown, even if a later feature tucked it away
+  for (const sk of d.sketches) if (sk.seq === K) sk.hidden = false;
+  d.planes = (d.planes || []).filter((p) => p.seq <= K);
+  d.joints = (d.joints || []).filter((j) => j.seq <= K);
+  return d;
+}
+
 export function timeline(doc) {
   const items = [];
   for (const s of doc.sketches) items.push({ seq: s.seq, kind: "sketch", label: s.name, sketch: s.id });
@@ -426,6 +490,7 @@ export function timeline(doc) {
     for (const m of n.mods || []) {
       // jumpstart-3d: fill openings. STEP parts (#173): a keeppiece of an imported file reads "Part N of the file"
       const lab = { fillopen: "Fill openings", keeppiece: m.src === "import" ? `Part ${m.piece + 1} of the file` : `Keep piece ${m.piece + 1}`, halfspace: "Split body", sketchsplit: "Split body", splitface: "Split face", fillet: "Fillet", chamfer: "Chamfer", hole: "Hole", shell: "Shell", offset: "Offset face", thread: "Thread", scale: "Scale", emboss: m.mode === "deboss" ? "Deboss text" : "Emboss text", facepat: "Pattern on face", pattern: "Pattern", bool: ({ sweep: "Sweep ", revolve: "Revolve ", pipe: "Pipe ", coil: "Coil ", loft: "Loft ", mirror: "Mirror " }[m.tool && m.tool.t] || "Extrude ") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join") }[m.t]; // jumpstart-3d: pattern (label)
+      if (m.src === "clearance") { items.push({ seq: m.seq || b.seq, kind: "offset", label: "Clearance " + (m.gap || 0) + " mm", body: b.id, mod: m.id }); continue; }
       if (m.src === "combine") { items.push({ seq: m.seq || b.seq, kind: "combine", label: "Combine" + (m.op === "cut" ? " (cut)" : m.op === "intersect" ? " (intersect)" : ""), body: b.id, mod: m.id }); continue; }
       items.push({ seq: m.seq || b.seq, kind: m.t === "bool" ? (m.tool && ["sweep", "pipe", "coil", "loft", "mirror"].includes(m.tool.t) ? m.tool.t : "extrude") : m.t, label: lab && lab + exprTag(m.t === "bool" ? m.tool : m), body: b.id, mod: m.id }); // jumpstart-3d: parameters
     }

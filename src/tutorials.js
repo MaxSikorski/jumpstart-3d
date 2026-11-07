@@ -5,11 +5,13 @@
 import * as THREE from "three";
 import { TUTORIALS as BASE_TUTORIALS } from "./tutorial_data.js";
 import { MORE } from "./tutorial_data_more.js";
+import { PRO_TUTORIALS } from "./tutorial_pro.js";
 import { ARCH_TUTORIALS } from "./tutorial_arch.js";
+import { CHISEL_TUTORIALS } from "./tutorial_chisel.js";
 import { landArrays, GROUND, PLANTS } from "./archland.js";
 // jumpstart-3d: register community lessons without changing the author's data.
 import { COMMUNITY_TUTORIALS } from "./tutorial_data_community.js";
-const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...ARCH_TUTORIALS, ...COMMUNITY_TUTORIALS];
+const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...PRO_TUTORIALS, ...ARCH_TUTORIALS, ...CHISEL_TUTORIALS, ...COMMUNITY_TUTORIALS];
 import { store, resolveNode, bodyKey } from "./store.js"; // jumpstart-3d: read already-built volumes without asking the kernel to build
 import { el } from "./util.js";
 import { ICON } from "./icons.js";
@@ -207,8 +209,27 @@ export function initTutorials(app) {
     archFloorRaised: () => T.arch().levels.some((l) => l.elev > 100),
     archFinished: (k) => (k === "wall" ? T.archWalls() : k === "roof" ? T.arch().roofs : T.arch().slabs).filter((q) => q.fin && q.fin.tex).length,
     archUnitsPicked: () => !!(app.arch && app.arch.state.unitsPicked),
+    // Chisel (see chisel.js tut()): strokes per tool, objects, saving and exporting
+    ch: () => (app.chisel && app.chisel.tut ? app.chisel.tut() : null),
+    chCount: (re, n = 1) => { const c = T.ch(); return !!c && c.objs.filter((o) => o.visible && re.test(o.name)).length >= n; },
+    chUsed: (key, n = 1) => { const c = T.ch(); return !!c && (c.by[key] || 0) >= n; },
+    chTool: (tool) => { const c = T.ch(); return !!c && c.tool === tool; },
+    chHist: (n) => { const c = T.ch(); return !!c && c.hist >= n; },
+    chSym: () => { const c = T.ch(); return !!c && c.symX; },
+    chPup: () => { const c = T.ch(); return !!c && c.pup; },
+    chKeys: (n) => { const c = T.ch(); return !!c && c.objs.some((o) => o.keys >= n); },
+    chFig: (re) => { const c = T.ch(); return !!c && c.figSets.some((s) => re.test(s)); },
+    chLaid: () => { const c = T.ch(); return !!c && c.figLaid; },
+    chSaved: () => { const c = T.ch(); return !!c && c.objs.length > 0 && c.objs.every((o) => o.jsId) && (store.doc.bodies || []).some((b) => b.sculpt); },
+    chExported: () => { const c = T.ch(); return !!c && c.exported > 0; },
+    chEl: (s) => !!(app.chisel && app.chisel.el && app.chisel.el(s)),
     archPlanSeen: () => !!(app.arch && app.arch.state.planSeen),
     archSelWall: () => !!(app.arch && app.arch.state.sel && app.arch.state.sel.k === "wall"),
+    // the 3D Print Sim: its state (open or not), and whether an object was turned or copied there
+    psim: () => (app.advanced && app.advanced.printSim ? app.advanced.printSim.st : null),
+    psimArranged: () => { const s = T.psim(); return !!s && (s.inst || []).some((q) => q.key !== q.id || !q.X.elements.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-9)); },
+    planes: () => store.doc.planes || [],
+    sectionOn: () => !!(app.section && app.section.info),
     exported: (ext) => !!cur && cur.exported.has(ext),
     // the Floor Planner (Architect → Floor Planner): its rooms, items, mode… (sizes in feet)
     fpOpen: () => !!(app.floorplan && app.floorplan.isOpen),
@@ -225,7 +246,7 @@ export function initTutorials(app) {
 
   // ---------------------------------------------------------------- the chooser
   function openChooser(mode) {
-    const want = mode || (app.mode === "advanced" ? "advanced" : app.mode === "arch" ? "arch" : "beginner");
+    const want = mode || (app.mode === "advanced" ? "advanced" : app.mode === "arch" ? "arch" : app.mode === "chisel" ? "chisel" : "beginner");
     const back = el("div", { class: "modal-back", onclick: (e) => { if (e.target === back) back.remove(); } });
     const list = el("div", { class: "tut-cards", id: "tut-cards" });
     const tabs = el("div", { class: "seg tut-tabs", role: "tablist" });
@@ -248,11 +269,11 @@ export function initTutorials(app) {
           t.minWidth && innerWidth < t.minWidth ? el("div", { class: "tut-narrow" }, "Some buttons in this lesson are hidden on a screen this narrow: turn your device sideways or use a computer.") : null)); // jumpstart-3d: phone tutorials
       }
     };
-    for (const [m, label] of [["beginner", "Beginner"], ["advanced", "Advanced"], ["arch", "Architect"]]) tabs.append(el("button", { "data-m": m, id: "tut-tab-" + m, onclick: () => show(m) }, label));
+    for (const [m, label] of [["beginner", "Beginner"], ["advanced", "Advanced"], ["chisel", "Chisel"], ["arch", "Architect"]]) tabs.append(el("button", { "data-m": m, id: "tut-tab-" + m, onclick: () => show(m) }, label));
     const modal = el("div", { class: "modal tut-modal", role: "dialog", "aria-label": "Tutorials" },
       el("header", {}, el("h2", {}, "Tutorials"), el("button", { class: "xbtn", "aria-label": "Close", html: ICON.close, onclick: () => back.remove() })),
       el("div", { class: "mbody" },
-        el("p", { class: "tut-intro" }, "Pick a project. Each one walks you through real tools to make a real, printable item. The short ones take 5-10 minutes; the bigger projects take 10-15, and Expert projects about 20."),
+        el("p", { class: "tut-intro" }, "Pick a project. Each one walks you through real tools to make a real, printable item. The short ones take 5-10 minutes and the bigger projects 10-15. The largest Advanced and Expert projects make several parts with many tools and take 18-28 minutes."),
         el("div", { class: "tut-remind" }, el("b", {}, "Always start by naming your design: "), "Last name, First name, Item name ", el("span", { class: "tut-eg" }, "(Lopez, Maria, Keychain)"),
           el("br"), el("b", {}, "Always finish by saving "), "(Save or Ctrl+S: v1, v2…) ", el("b", {}, "and exporting an STL "), "(Export → STL)."),
         el("div", { class: "tut-remind tut-remind-fp", hidden: true }, el("b", {}, "Floor Planner projects "), "happen in Architect → Floor Planner, on graph paper where 1 block = 1 foot. ",
@@ -281,6 +302,8 @@ export function initTutorials(app) {
       app.projects.newDesign(tut.mode);
       lsSet("p." + id, null);
     }
+    // Chisel tutorials use the Easy tools
+    if (tut.mode === "chisel" && app.chisel && app.chisel.setLevel) setTimeout(() => { try { app.chisel.setLevel("easy"); } catch (e) {} }, 600);
     cur = { tut, i: prog ? Math.min(prog.i || 0, tut.steps.length - 1) : 0, done: new Set(prog ? prog.done || [] : []), startVer: app.projects.version(), exported: new Set() };
     lsSet("active", { id, doc: store.doc.id });
     buildPanel();
@@ -329,6 +352,8 @@ export function initTutorials(app) {
     // Floor Planner projects: over the right side of its drawing area, clear of its toolbar,
     // its left menus and its Blueprint List
     if (cur && cur.tut.mode === "plan" && !small) { panel.style.left = Math.max(8, innerWidth - 430 - Math.min(340, innerWidth - 16)) + "px"; panel.style.top = "170px"; }
+    // Chisel: over the left of the view, clear of its tools rail and its panel on the right
+    if (cur && cur.tut.mode === "chisel" && !small) { panel.style.left = "104px"; panel.style.right = "auto"; panel.style.top = "205px"; }
     // drag by the header
     panel.addEventListener("pointerdown", (e) => {
       const h = e.target.closest(".tut-head");
@@ -456,7 +481,13 @@ export function initTutorials(app) {
     // jumpstart-3d: below 801 px the top bar hides the name box, so the name step points at the lesson's own quick name boxes
     if (show.name && panel) { const d = document.querySelector(show.sel); if (!d || !d.getClientRects().length) return panel.querySelector("#tut-last"); }
     if (show.tile) return app.beginner && app.beginner.showTile ? app.beginner.showTile(show.tile, !!show.hole) : null;
-    for (const s of show.sel.split(",").map((x) => x.trim())) {
+    if (show.ch) {
+      // inside Chisel's frame: the first of the selectors that is showing there
+      if (app.mode !== "chisel" || !app.chisel) return null;
+      for (const s of show.ch.split(",").map((x) => x.trim())) { const e = app.chisel.el(s); if (e && e.getClientRects().length) { const d = e.ownerDocument; if (!d.getElementById("tut-spot-css")) { const st = d.createElement("style"); st.id = "tut-spot-css"; st.textContent = ".tut-spot{outline:3px solid #f2a65a!important;outline-offset:2px;border-radius:8px;animation:tutpulse 1.2s ease-in-out infinite}@keyframes tutpulse{50%{outline-color:rgba(242,166,90,.35)}}"; d.head.append(st); } try { const pn = e.closest("#panel"), dr = d.getElementById("panel"), tg = d.getElementById("panelToggle"); if (tg && tg.getClientRects().length) { if (dr && !!pn !== dr.classList.contains("open") && (pn || !e.closest("#top"))) { tg.click(); const tr = dr.style.transition; dr.style.transition = "none"; void dr.offsetWidth; dr.style.transition = tr; } e.scrollIntoView({ block: "nearest", inline: "center" }); } } catch (x) {} /* jumpstart-3d: on a phone Chisel's side panel is a drawer (the Panel button) with scrolling lists: open it (or close it when the target is not in it, as the animator's timeline) and bring the target into view before the pop-up points at it; the slide-in is skipped so the target is measured where it ends up */ return e; } }
+      return null;
+    }
+    for (const s of (show.sel || "").split(",").map((x) => x.trim()).filter(Boolean)) {
       const e = document.querySelector(s);
       if (e && e.getClientRects().length) return e;
     }
@@ -479,25 +510,28 @@ export function initTutorials(app) {
     if (!t) { if (loud) app.toast(cur.tut.minWidth && innerWidth < cur.tut.minWidth && step.show.sel && step.show.sel.split(",").every((q) => { const e = document.querySelector(q.trim()); return e && !e.getClientRects().length; }) ? "This button is hidden on a screen this narrow. Turn your device sideways, or tick “I did this” and go on." /* jumpstart-3d: lessons that need a wider screen (phone tutorials): only when every button the step names exists but is hidden by the narrow layout */ : step.show.via ? "Find it in the toolbar menus." : cur.tut.mode === "beginner" && app.mode !== "beginner" ? "Switch to Beginner mode to see this." : "It appears when the step before is done."); return; }
     spot = t;
     t.classList.add("tut-spot");
-    try { if (t.closest(".bbar, #ribbon, .menu")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now), or an item low in an open menu that scrolls on a phone (Code CAD in Open/Export), scrolls into view before the pop-up points at it
-    // jumpstart-3d: phone and tablet lessons: a target inside a box that scrolls (the right panel's fields, the lesson's own name boxes) is scrolled into that box's view, and Show me never points at something the lesson panel covers
-    const box = t.closest("#tut-panel, .float .body");
-    if (box && (loud || box.id !== "tut-panel")) { const b = box.getBoundingClientRect(), q = t.getBoundingClientRect(); if (q.top < b.top || q.bottom > b.bottom) box.scrollTop += q.top - b.top - Math.max(0, (b.height - q.height) / 2); }
-    const covered = () => { const q = t.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return !!hit && !panel.contains(t) && panel.contains(hit); };
-    if (covered()) {
-      if (!loud) { hideSpot(); return; } // the automatic pointer at a new step has nothing to show under the open panel
-      cur.mini = true; render(); // Show me makes the panel small; on a phone render() moves it to the top of the 3D view
-      if (covered()) { // still covered (the small panel at the top left of a tablet): move it to the other half of the 3D view
-        const vp = document.getElementById("viewport").getBoundingClientRect(), q = t.getBoundingClientRect(), h = panel.getBoundingClientRect().height;
-        const st = document.querySelector(".status"), dk = document.getElementById("shapes");
-        let bottom = (st ? st.getBoundingClientRect().top : innerHeight) - 6;
-        if (dk && !dk.hidden && dk.getClientRects().length && dk.getBoundingClientRect().height > 20) bottom = Math.min(bottom, dk.getBoundingClientRect().top - 6);
-        cur.dodgeTop = q.top + q.height / 2 < (vp.top + vp.bottom) / 2 ? Math.max(vp.top + 6, bottom - h) : vp.top + 6;
-        render();
+    { // jumpstart-3d: our phone and scrolling help (targets inside Chisel's frame are measured in page coordinates below)
+      try { if (t.closest(".bbar, #ribbon, .menu")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now), or an item low in an open menu that scrolls on a phone (Code CAD in Open/Export), scrolls into view before the pop-up points at it
+      // jumpstart-3d: phone and tablet lessons: a target inside a box that scrolls (the right panel's fields, the lesson's own name boxes) is scrolled into that box's view, and Show me never points at something the lesson panel covers
+      const box = t.closest("#tut-panel, .float .body");
+      if (box && (loud || box.id !== "tut-panel")) { const b = box.getBoundingClientRect(), q = t.getBoundingClientRect(); if (q.top < b.top || q.bottom > b.bottom) box.scrollTop += q.top - b.top - Math.max(0, (b.height - q.height) / 2); }
+      const covered = () => { const q = t.getBoundingClientRect(), f = t.ownerDocument !== document && app.chisel && app.chisel.frameRect && app.chisel.frameRect(), hit = document.elementFromPoint(q.left + (f ? f.left : 0) + q.width / 2, q.top + (f ? f.top : 0) + q.height / 2); return !!hit && !panel.contains(t) && panel.contains(hit); };
+      if (covered()) {
+        if (!loud) { hideSpot(); return; } // the automatic pointer at a new step has nothing to show under the open panel
+        cur.mini = true; render(); // Show me makes the panel small; on a phone render() moves it to the top of the 3D view
+        if (covered()) { // still covered (the small panel at the top left of a tablet): move it to the other half of the 3D view
+          const vp = document.getElementById("viewport").getBoundingClientRect(), r = t.getBoundingClientRect(), fr = t.ownerDocument !== document && app.chisel && app.chisel.frameRect && app.chisel.frameRect(), q = { top: r.top + (fr ? fr.top : 0), height: r.height }, h = panel.getBoundingClientRect().height; // jumpstart-3d: a target inside Chisel's frame is measured in page coordinates
+          const st = document.querySelector(".status"), dk = document.getElementById("shapes");
+          let bottom = (st ? st.getBoundingClientRect().top : innerHeight) - 6;
+          if (dk && !dk.hidden && dk.getClientRects().length && dk.getBoundingClientRect().height > 20) bottom = Math.min(bottom, dk.getBoundingClientRect().top - 6);
+          cur.dodgeTop = q.top + q.height / 2 < (vp.top + vp.bottom) / 2 ? Math.max(vp.top + 6, bottom - h) : vp.top + 6;
+          render();
+        }
       }
     }
     // end jumpstart-3d
-    const r = t.getBoundingClientRect();
+    let r = t.getBoundingClientRect();
+    if (t.ownerDocument !== document && app.chisel && app.chisel.frameRect) { const f = app.chisel.frameRect(); if (f) r = { left: r.left + f.left, right: r.right + f.left, top: r.top + f.top, bottom: r.bottom + f.top, width: r.width, height: r.height, x: r.x + f.left, y: r.y + f.top }; }
     const via = step.show.via && t.matches(step.show.via);
     bubble = el("div", { class: "tut-bubble", id: "tut-bubble", role: "status" },
       el("b", {}, step.tool), el("span", {}, via ? (t.matches(".panel-toggle") ? "Open this panel, then tap Show me again." : "Open this menu, then pick it from the list.") : step.show.name ? (t.id === "tut-last" ? "Type your name in these boxes, then tap Use this name." : "Click here and type your name.") : bubbleText(step))); // jumpstart-3d: the Browser panel and the quick name boxes (phone tutorials)

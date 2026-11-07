@@ -150,6 +150,7 @@ test("Offset face: head grab corridor and a 60 px drag change the offset", async
   await loadDoc(page, newDoc("Offset arrow", "advanced", { bodies: [box()] }));
   await page.evaluate(() => { const a = window.__app; a.vp.fit(a.scene.allBox()); });
   await settle();
+  await page.locator("#ad-advmod").click(); // 2.9.3: Offset face moved into the Advanced Modify menu
   await page.locator("#ad-offset").click();
   const p = await page.evaluate(() => {
     const { vp } = window.__app, r = vp.canvas.getBoundingClientRect();

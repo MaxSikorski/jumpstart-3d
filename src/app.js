@@ -41,6 +41,7 @@ import { initProjects } from "./projects.js";
 import { initFlexiGen } from "./flexigen.js";
 import { initFloorPlan } from "./floorplan.js";
 import { initMeshStep } from "./meshstep.js";
+import { initNeon } from "./neon.js";
 import { initCosForge } from "./cosforge.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
@@ -159,6 +160,7 @@ function boot() {
     onFail: (msg) => { app.stepProgress.clear(); load.fail(msg); }, // jumpstart-3d: load
   }));
   kernel.onBusy = () => app.status();
+  kernel.onSlowFallback = () => app.toast("This device ran short of memory for a second geometry engine, so slow bodies now build one after another in the main engine. Other changes wait until they finish.");
   for (const [k, b] of extraFonts()) kernel.addAsset("font:" + k, "font", b);
   app.moreFonts = initMoreFonts(app, { helperAsset, helperFailText }); // jumpstart-3d: extra fonts on first use
   kernel.start();
@@ -207,6 +209,7 @@ app.voxel = initVoxel(app);
   app.flexigen = initFlexiGen(app);
   app.floorplan = initFloorPlan(app);
   app.meshstep = initMeshStep(app);
+  app.neon = initNeon(app);
   app.cosforge = initCosForge(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
@@ -299,8 +302,8 @@ app.voxel = initVoxel(app);
   Object.defineProperty(app.sketcher, "snapOn", { get: () => app.snapOn, set: (v) => app.setSnap(v) });
   // theme menu
   const tmenu = $("menu-theme");
-  $("btn-theme").onclick = () => { tmenu.hidden = !tmenu.hidden; if (!tmenu.hidden) app.syncMeshDetailUI(); };
-  tmenu.addEventListener("click", (e) => { const b = e.target.closest("button"); const t = b?.dataset.theme, pf = b?.dataset.perf, md = b?.dataset.detail; if (t) { app.setTheme(t); tmenu.hidden = true; } else if (md) { app.setMeshDetail(md); tmenu.hidden = true; } else if (pf) { app.setPerf(pf); tmenu.hidden = true; } });
+  $("btn-theme").onclick = () => { tmenu.hidden = !tmenu.hidden; if (!tmenu.hidden) app.syncMeshDetailUI(); }; // jumpstart-3d: mesh detail
+  tmenu.addEventListener("click", (e) => { const b = e.target.closest("button"); const t = b?.dataset.theme, pf = b?.dataset.perf, md = b?.dataset.detail, ly = b?.dataset.layout, dv = b?.dataset.device; if (t) { app.setTheme(t); tmenu.hidden = true; } else if (md) { app.setMeshDetail(md); tmenu.hidden = true; } else if (pf) { app.setPerf(pf); tmenu.hidden = true; } else if (ly) { app.setLayout(ly); tmenu.hidden = true; } else if (dv) { app.setTabletMode(!app.tabletOn); tmenu.hidden = true; } }); // jumpstart-3d: mesh detail (md)
   window.addEventListener("pointerdown", (e) => { if (!tmenu.hidden && !tmenu.contains(e.target) && !e.target.closest("#btn-theme")) tmenu.hidden = true; });
   // sketch line width and colour (the menu stays open so choices can be compared)
   const hex = (n) => "#" + n.toString(16).padStart(6, "0");
@@ -351,6 +354,8 @@ app.voxel = initVoxel(app);
   $("btn-about").onclick = () => app.showAbout();
   loadPrefs();
   vp.onContext = (e) => app.contextMenu && app.contextMenu(e);
+  // Tablet & Pencil mode: a two-finger tap undoes, a three-finger tap redoes
+  vp.onFingerTap = (n) => { if (n === 2) app.undo(); else if (n >= 3) app.redo(); };
 
   document.addEventListener("keydown", onKey);
   window.addEventListener("pointerdown", (e) => {
@@ -505,7 +510,7 @@ function gridFromSnap() {
 }
 function readPrefs() { try { return JSON.parse(localStorage.getItem("workplane.ui.v1") || "{}"); } catch (e) { return {}; } }
 function savePrefs() {
-  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ skw: sketchStyle.width, skc: sketchStyle.color, theme: app.themePref, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
+  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ skw: sketchStyle.width, skc: sketchStyle.color, theme: app.themePref, layout: app.layoutPref, tablet: !!app.tabletOn, tabletPrevLayout: app.tabletPrevLayout || null, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
 }
 function loadPrefs() {
   const p = readPrefs();
@@ -518,6 +523,11 @@ function loadPrefs() {
   app.setSnap(p.snap !== false, true);
   app.setSketchStyle({ width: p.skw || "thin", color: p.skc || "theme" }, true);
   app.setTheme(p.theme || "system", true);
+  app.setLayout(p.layout || "default", true);
+  app.tabletPrevLayout = p.tabletPrevLayout || null;
+  app.setTabletMode(!!p.tablet, true);
+  // an iPad (or other tablet) that hasn't chosen yet: suggest Tablet & Pencil mode once
+  if (p.tablet === undefined && isTablet()) setTimeout(() => app.toast("On an iPad or tablet? Turn on Tablet & Pencil mode in the theme menu (◐): fingers move the view, the Apple Pencil draws and picks precisely."), 4000);
   // realistic lighting starts off (faster); it stays on only for someone who turned it on themselves
   app.setLighting(p.lightOn === true, true);
   app.setAppearances(p.appear !== false, true);
@@ -611,6 +621,90 @@ app.setSketchStyle = function (patch, quiet) {
   try { app.chiselTheme && app.chiselTheme(); } catch (e) {}
   if (!quiet) savePrefs();
 };
+
+// Layouts: where the tool bars sit. Default (top), Simplified (big labelled buttons on top), Clean
+// (an icon rail on the left), Classic CAD (a labelled palette on the right) and Tablet (big tools at
+// the bottom). Only CSS changes (html[data-layout]); every tool is the same in each.
+const LAYOUTS = { default: "Default", simple: "Simplified", clean: "Clean", classic: "Classic CAD", tablet: "Tablet" };
+app.layoutPref = "default";
+app.setLayout = function (name, quiet) {
+  if (!LAYOUTS[name]) name = "default";
+  app.layoutPref = name;
+  if (name === "default") delete document.documentElement.dataset.layout;
+  else document.documentElement.dataset.layout = name;
+  document.querySelectorAll("#menu-theme button[data-layout]").forEach((b) => b.setAttribute("aria-checked", b.dataset.layout === name));
+  document.getElementById("ribbon-menu")?.remove();
+  // the view and the panels size themselves to the new space
+  requestAnimationFrame(() => { window.dispatchEvent(new Event("resize")); app.vp && app.vp.request(); });
+  if (!quiet) {
+    savePrefs();
+    app.toast(LAYOUTS[name] + " layout: " + ({ default: "tools across the top.", simple: "bigger buttons with names.", clean: "icons down the left side (hover for names).", classic: "a tool palette down the right side.", tablet: "big tools along the bottom." })[name] + " Change it any time in the theme menu (◐).");
+  }
+};
+
+// Tablet & Pencil mode, for iPad and other tablets (html[data-device="tablet"]): the Tablet layout
+// with big touch targets, the pencil as a precise pointer and fingers for the view (viewport.js
+// penMode), keys on screen (Undo, Redo, Shift, Delete, Esc, Enter, Fit), finger taps for undo and
+// redo, a long press for the right-click menu, and no page zoom or text pop-ups when tapping.
+function isTablet() {
+  const ua = navigator.userAgent || "";
+  return /iPad|Android(?!.*Mobile)|Tablet/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+app.tabletOn = false;
+app.setTabletMode = function (on, quiet) {
+  on = !!on;
+  const was = app.tabletOn;
+  app.tabletOn = on;
+  if (on) document.documentElement.dataset.device = "tablet";
+  else delete document.documentElement.dataset.device;
+  if (app.vp) { app.vp.penMode = on; if (!on) { app.vp.shiftDown = false; } }
+  // the Tablet layout goes with it; turning the mode off brings back the layout from before
+  if (on && !was && app.layoutPref !== "tablet") { app.tabletPrevLayout = app.layoutPref; app.setLayout("tablet", true); }
+  if (!on && was && app.layoutPref === "tablet" && app.tabletPrevLayout && app.tabletPrevLayout !== "tablet") { app.setLayout(app.tabletPrevLayout, true); app.tabletPrevLayout = null; }
+  const b = document.querySelector('#menu-theme button[data-device="tablet"]');
+  if (b) b.setAttribute("aria-checked", on);
+  tabletKeys(on);
+  requestAnimationFrame(() => { window.dispatchEvent(new Event("resize")); app.vp && app.vp.request(); });
+  if (!quiet) {
+    savePrefs();
+    app.toast(on ? "Tablet & Pencil mode: draw and pick with the Apple Pencil, move the view with your fingers (one to orbit, two to pan and zoom). Two-finger tap: undo, three-finger tap: redo, long press: menu. The keys on the left of the view stand in for a keyboard." : "Tablet & Pencil mode is off.");
+  }
+};
+// the on-screen keys, down the left edge of the view
+function tabletKeys(on) {
+  let bar = document.getElementById("tabkeys");
+  if (!on) { if (bar) bar.remove(); return; }
+  if (bar) return;
+  const vpEl = document.getElementById("viewport");
+  if (!vpEl) return;
+  const key = (k) => document.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const keys = [
+    ["tk-undo", "Undo", svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'), () => app.undo()],
+    ["tk-redo", "Redo", svg('<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>'), () => app.redo()],
+    ["tk-shift", "Shift: the next tap adds to the selection (tap twice to keep it on)", svg('<path d="M12 4 4 12h4v7h8v-7h4z"/>'), null],
+    ["tk-del", "Delete the selection", svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'), () => key("Delete")],
+    ["tk-esc", "Esc: cancel or step out", '<b>Esc</b>', () => key("Escape")],
+    ["tk-ok", "Enter: OK or finish", svg('<path d="M5 12l5 5L20 7"/>'), () => { if (app.command && document.getElementById("cmd-ok")) app.submitCommand ? app.submitCommand() : document.getElementById("cmd-ok").click(); else key("Enter"); }],
+    ["tk-fit", "Fit everything in the view", svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'), () => app.fit()],
+  ];
+  bar = document.createElement("div");
+  bar.id = "tabkeys"; bar.className = "tabkeys"; bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Keys for tablets");
+  for (const [id, title, icon, fn] of keys) {
+    const b = document.createElement("button");
+    b.id = id; b.title = title; b.setAttribute("aria-label", title); b.innerHTML = icon;
+    if (fn) b.onclick = (e) => { e.preventDefault(); fn(); };
+    bar.append(b);
+  }
+  // Shift: one tap = for the next pick, a second tap = stays on (locked), a third = off
+  const sh = bar.querySelector("#tk-shift");
+  let state = 0;
+  const show = () => { sh.setAttribute("aria-pressed", state > 0); sh.classList.toggle("locked", state === 2); if (app.vp) app.vp.shiftDown = state > 0; };
+  sh.onclick = (e) => { e.preventDefault(); state = (state + 1) % 3; show(); };
+  if (app.vp) app.vp.endShift = () => { if (state === 1) { state = 0; show(); } };
+  show();
+  vpEl.append(bar);
+}
 
 // Light, dark and high-contrast interface. "system" follows the device setting.
 app.setTheme = function (pref, quiet) {
@@ -742,12 +836,113 @@ app.showAbout = function () {
       el("div", { class: "ab-update ab-top" },
         el("button", { class: "btn", id: "ab-check", onclick: (e) => checkForUpdates(e.currentTarget) }, "Check for updates"),
         el("button", { class: "btn", id: "ab-report", onclick: () => { back.remove(); app.showReport(); } }, "Report a problem"), // jumpstart-3d: report
+        el("button", { class: "btn", id: "ab-slow", onclick: () => app.showSlowHelp() }, "Slow bodies"),
+        el("button", { class: "btn", id: "ab-tablet", title: "For iPad and other tablets: the Apple Pencil draws and picks, fingers move the view. Also in the theme menu (◐) under Device.", onclick: (e) => { app.setTabletMode(!app.tabletOn); e.currentTarget.textContent = app.tabletOn ? "Tablet & Pencil mode: on" : "Tablet & Pencil mode: off"; } }, app.tabletOn ? "Tablet & Pencil mode: on" : "Tablet & Pencil mode: off"),
         // jumpstart-3d: the main button goes to the community build; the author's site stays as a second link
         el("a", { class: "btn primary", id: "ab-community", href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "Visit the community build"),
         // jumpstart-3d: support link (community build), at the top of About
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.9.3", [
+        ["Neon Sign Builder projects:", "Save project keeps the whole sign (words, shapes, traced pictures, tubes, backing, printer and light show) in a file you can Open again; New starts fresh. Your last sign also comes back by itself the next time you open the builder in the same browser."],
+        ["Undo, redo, cut, copy, paste and delete:", "buttons at the top and the usual shortcuts: Ctrl/⌘ Z, Ctrl/⌘ Shift Z or Ctrl Y, Ctrl/⌘ X, C, V, D (duplicate), S (save), O (open), Delete, and the arrow keys to nudge a part (Shift for 10 mm)."],
+        ["Light show fix:", "the builder no longer freezes with Strobe (or other patterns) running: the glow is drawn in a few pieces instead of three per tube, at about 30 frames a second, and a steady sign isn't redrawn at all. Strobe now flashes at most 3 times a second, a safer rate for people sensitive to flashing light."],
+      ]),
+      sec("New in version 2.9.2", [
+        ["Greenhouses (Architect → Furniture → Greenhouses):", "glass greenhouses 8' × 10' and 12' × 16', a hoop house, a Victorian conservatory, a lean-to that backs up to a wall and a cold frame, each with benches and plants inside, plus potting benches, seedling shelves, raised beds, a lemon tree, orchids, hanging baskets, a rain barrel, a wheelbarrow and a compost bin."],
+        ["Luxury:", "a four-poster canopy bed, Chesterfield sofas, a chaise, crystal chandeliers, a white concert grand, a marble fireplace, a stone tub, a gold rain shower, a waterfall marble island, a pro range, a wine wall and wine fridge, a library wall with a ladder, home theater seats, a sauna, a pool, a fountain, a statue and gold mirrors. Finishes adds luxury picks (marble, black marble, chevron parquet, travertine, cut stone, mosaic, fluted, coffered, wainscot, walnut, copper and gold) and an All floors button."],
+        ["Food & table:", "26 small things (place settings, pizza, a birthday cake, a turkey, sushi, a cheese board, wine and more) that sit on top of whatever table, counter or shelf you put them on, and move with the table when it moves."],
+        ["People:", "men, women, children and a toddler standing, walking, waving and sitting, an older man with a cane and a person in a wheelchair, with a range of skin tones."],
+      ]),
+      sec("New in version 2.9.1", [
+        ["Neon Sign Builder:", "Advanced → Simulate → Neon Sign Builder opens in its own window with a neon theme. Type words (the Neon '80s script and 11 more fonts, centre-line tubes or outlines, several lines), add shapes (hearts, stars, lightning, palm trees, cocktails and more) or trace an image."],
+        ["Shells for LED strips:", "each line becomes a rounded, glass-tube-like shell sized for the LED strip you pick (neon flex 6 × 12 or 8 × 16, COB 5 or 8 mm, RGB 10 mm or RGBW 12 mm, or your own), with a snap-fit ridge and a warning where a bend is too tight for the strip."],
+        ["Backing that the shells snap into:", "follows the design like acrylic, or a rounded rectangle, circle, oval, pill, arch, hexagon, cloud, speech bubble or a shape from your design, with grooves for the shells, wire holes and hanging holes."],
+        ["Bigger than the bed:", "pick your printer: a big sign is cut into pieces that each fit, with dovetail joints in the backing. Export the shells and backing as STL or 3MF, all at once or piece by piece."],
+        ["Light show:", "turn the sign on in a dark room: any colour or RGB, steady, breathe, blink, old neon flicker, chase, one at a time, writes itself on, strobe, rainbow and colour wave."],
+      ]),
+      sec("New in version 2.9.0", [
+        ["Stairs and steps:", "Architect → Stairs (K): straight, L-shaped with a landing, U-shaped (switchback), spiral, grand and outdoor steps, with or without a railing. They climb to the level above and cut its floor for you; Q turns them."],
+        ["Floor openings:", "Architect → Floor hole (H): drag across the floor of the 2nd or 3rd floor (or any level) to cut an opening: a stairwell or a two-storey hall. Floors with openings go to Beginner and Advanced with the holes cut."],
+        ["Railings:", "Architect → Railing (J): wood or black metal balusters, glass panels, cable rail, modern bars, colonial spindles, wrought iron or a pipe handrail, at 36\" or 42\". Stairs and porches use the same styles."],
+        ["Porches:", "Architect → Porch (Y): drag a porch beside the house. It gets a deck, posts (square, round columns, craftsman, slim metal or log), beams, a railing, steps down at the front and its own roof (shed, gable, hip or flat) that is separate from the house's roof."],
+        ["Arched doors:", "arched interior, front and double doors and arched openings (4' and 8') with round-topped frames and leaves, in Architect and in the Floor Planner."],
+        ["Floor Planner:", "a third floor; floor openings; L-shaped, U-shaped and spiral stairs and outdoor steps; a Railings and a Porches catalog; arched doors and round archways; all of these go across to Architect, Beginner and Advanced. Its side panels can be dragged anywhere (Move …) and docked again."],
+        ["Movable panels:", "drag the Architect panel by its title bar (or its ⠿ grip, or the arrow keys on the grip) to anywhere over the view; double-click the title bar (or Home) puts it back."],
+      ]),
+      sec("New in version 2.8.2.9", [
+        ["Floor Planner houses everywhere:", "in the Floor Planner, 🏠 Use this house in ▾ (top right, and under the 3D view) takes the house into Architect, Beginner or Advanced. Every floor becomes a level, the room outlines become walls (shared walls become one), doors, windows and openings are cut into their walls, furniture becomes the matching piece from Architect's catalog, and the roof goes over the top floor, with roofs of their own on rooms that stick out below it."],
+        ["Architect, Beginner or Advanced:", "in Architect the house is ready to edit, furnish, landscape or flood-test. Beginner and Advanced get it as shapes (walls, doors, window frames, floors and roofs on each level), scaled to fit the build plate, and it stays in Architect with its furniture. Sending again replaces the house in Architect (after asking); Undo brings the old one back."],
+      ]),
+      sec("New in version 2.8.2.8", [
+        ["No more jumping:", "adding or removing an animal (or picking a region) no longer sends the Architect panel back to the top. The panel, and the animal list in it, stay where you scrolled to, and the button you pressed keeps the focus. The same goes for every other Architect panel that redraws itself."],
+      ]),
+      sec("New in version 2.8.2.7", [
+        ["Animals from around the world:", "Landscape → Animals now has 94 animals in eight regions: Pets & farm, North America, Tropical rainforest, African savanna, Asia, Europe, Australia, and Arctic & Antarctic. Each region lists its animals, birds, water animals and fish, and the region tabs show how many are in the yard."],
+        ["New animals:", "horses, cows, sheep, goats, pigs and chickens; black bears, moose, coyotes, skunks, bald eagles and hummingbirds; toucans, macaws, parrots, spider monkeys, jaguars, sloths, capybaras, tapirs, dart frogs, iguanas and piranhas; lions, cheetahs, elephants, giraffes, zebras, wildebeest, hippos, warthogs, meerkats, ostriches, flamingos, crocodiles and tilapia; giant and red pandas, tigers, snow monkeys, peacocks, cranes, mandarin ducks and koi; red deer, hedgehogs, badgers, wild boar, wolves, European robins, storks and trout; kangaroos, koalas, wombats, platypuses, dingoes, kookaburras, cockatoos, emus and barramundi; polar bears, arctic foxes, reindeer, emperor penguins, snowy owls, seals and arctic char."],
+        ["How they live:", "elephants and giraffes eat leaves from the trees, pandas eat bamboo, koalas and sloths stay up in the trees, monkeys and red pandas climb onto the roof, flamingos, storks and cranes wade in the shallows, hummingbirds drink from flowers, eagles catch fish, and the hunters (lions, tigers, wolves, dingoes…) stalk the animals that run from them. The Ohio backyard mix button is gone: add the animals you want from each region."],
+      ]),
+      sec("New in version 2.8.2.6", [
+        ["Full color (CMYK) printing:", "in the 3D Print Sim, Full color (CMYK) mixes any color from cyan, magenta, yellow, black and white filament (4, 6 or 8 layers to a mix): the walls change ink layer by layer and the skins line by line, so each body comes out as its own color. It shows each body's mix, the filament changes and the grams purged, and the G-code changes tools to match."],
+        ["Animals in Architect:", "Landscape → Animals: pets (a cat and a dog) and Ohio wildlife (white-tailed deer, cottontails, chipmunks, gray and fox squirrels, red fox, raccoon, groundhog, opossum, cardinals, blue jays, robins, goldfinches, mourning doves, a woodpecker and a red-tailed hawk), plus mallards, Canada geese, bullfrogs, box turtles and fish (largemouth bass, bluegill, catfish and yellow perch) in the ponds. They walk over the hills, stop to eat grass and plants, climb trees and the house, fly from perch to perch and run from the dog and the fox. Real size, or ×2 and ×3 to spot them."],
+        ["Roofs keep the rain out:", "the flood test now checks the roof. Rain falls straight into a house with no roof, or where the roof doesn't reach over the walls or a level has none of its own, and a pitched roof flatter than 2 in 12 leaks; the water shows on the floor. Fix it puts a roof over the whole house."],
+      ]),
+      sec("New in version 2.8.2.5", [
+        ["Action figures in Chisel:", "under Action figures, pick Hero, Heroine, Kid, Chibi, Robot, Alien or Mannequin, set the height, build, head size, shoulders and arm and leg length, and get a figure of 15 parts joined by 14 snap-fit ball joints (neck, shoulders, elbows, wrists, waist, hips, knees and ankles). Each part is its own sculpt to shape and paint."],
+        ["Joints that print:", "every ball sits in a socket a little bigger than it (Tight 0.1, Standard 0.15 or Loose 0.25 mm), behind a mouth narrower than the ball so it snaps in and holds a pose, and the parts never touch at rest. Lay out to print puts the parts side by side on the floor; figure parts keep their full detail in the design and in exported files."],
+        ["Ball joint kit:", "a ball on a peg, a housing and a socket cutter, to join parts you sculpt yourself (with Combine → Join and Subtract)."],
+        ["12 Chisel tutorials:", "Tutorials now has a Chisel tab: pebble pet, monster head, snowman, mountain, cat, alien, an animated dog, a bird, a planet, and three for action figures (a first figure, a custom one, and one jointed from scratch). Show me points at the tools inside Chisel."],
+      ]),
+      sec("New in version 2.8.2.4", [
+        ["Gears:", "Advanced → Insert → Gears (also in Workshop and Simulate): accurate involute spur gears, gear pairs, ring gears with a pinion, rack and pinion, and planetary sets (sun, planets and ring), in module sizes 0.8-3 with any number of teeth, 14.5°, 20° or 25° pressure angle, round, D-shaft, hex or keyway bores, hubs and lightening holes. Backlash for printing is built in."],
+        ["Gears move:", "each gear gets a joint linked to its neighbour by the tooth ratio, so Simulate → Motion study turns the whole train (and slides the rack) from any one gear, and checks the teeth for collisions."],
+        ["Folders in the Browser:", "+ Folder puts the selected bodies in a folder. Drag bodies onto a folder (or out of it), open and close it, double-click to rename, hide or show it all at once, and click it to select everything in it."],
+        ["Copy and place sketches:", "select a sketch in the Browser, Ctrl+C then Ctrl+V (or Copy & place…), and click any flat face, plane or the ground to put a copy there, turned by Spin. Place as many as you like."],
+      ]),
+      sec("New in version 2.8.2.3", [
+        ["Furniture in Architect:", "a new Furniture tool (U) with over 200 things to place in the rooms: sofas, beds, dressers and desks, kitchen cabinets, sinks, ranges and fridges, toilets, vanities, tubs and showers, washers and dryers, lamps, rugs, plants, outdoor and garage things, stairs and more, in 15 groups with a search box. Everything in the Floor Planner's catalog is there at the same sizes."],
+        ["It finds the wall:", "beds, sofas, cabinets, toilets, tubs and other things that stand against a wall turn and back up to the nearest wall by themselves (hold Shift to put one anywhere). Q turns a piece, arrow keys nudge it, and each piece can be recoloured, duplicated or deleted."],
+        ["Furniture on the plan and in the print:", "the Floor plan drawing (PDF, SVG, DXF) draws the furniture from above, and Export puts it in the 3MF, OBJ or STL with the house and landscape."],
+      ]),
+      sec("New in version 2.8.2.2", [
+        ["Clearance picks bodies:", "click or tap bodies while Clearance is open to choose which ones to check (again to drop one), drag a box around several, or click them in the Browser. The chosen bodies stay highlighted."],
+        ["Safari:", "the downloaded app also opens in older Safari on iPad and Mac (before 16.4). Built shapes saved in a project file or remembered by the browser are found again in any browser, Safari and Chrome alike."],
+        ["Tablet & Pencil mode:", "turn it on from the theme menu (◐) under Device, or the Tablet & Pencil mode button in About."],
+        ["Slow bodies show sooner:", "while a very slow body builds (many curved cuts or offset curved faces), it is shown see-through as it was a step or two earlier, usually within seconds, and the finished shape takes its place when it is ready. Save once it has built: the saved file carries the built shape, so it opens in seconds on any computer or iPad."],
+      ]),
+      sec("New in version 2.8.2.1", [
+        ["Tablet & Pencil mode:", "for iPad and other tablets, in the theme menu (◐) under Device. The Apple Pencil works like a precise mouse: tap to pick, draw sketch lines, drag handles and selection boxes, and on iPads with pencil hover, shapes light up as the pencil comes near. Fingers move the view: one finger orbits, two pan and pinch to zoom, and a tap still picks; a hand resting on the screen while you draw is ignored. A two-finger tap undoes, a three-finger tap redoes and a long press opens the right-click menu. Keys on the left of the view stand in for a keyboard: Undo, Redo, Shift (the next pick adds to the selection; tap twice to keep it on), Delete, Esc, OK and Fit. It uses the Tablet layout with bigger buttons, and turning it off brings back your layout. Tablets suggest it the first time."],
+      ]),
+      sec("New in version 2.8.2.0", [
+        ["Step through the timeline:", "the Advanced timeline has ⏮ ◀ ▶ ▶ ⏭ buttons. Step back and forward to see the design as it was after any step (later steps are dimmed and the current one is outlined), click a step to jump to it, or press Play to watch the design being built step by step. Only the view changes: your design isn't touched, and opening a tool or exporting goes back to the finished design."],
+        ["Slow bodies no longer stop:", "a body with many curved cuts or offset curved faces builds in the background with no time limit (a slower computer just takes longer), and you can keep working meanwhile. Stop and Why so slow? appear in the status bar while it builds, and About → Slow bodies has tips for making such bodies quicker."],
+      ]),
+      sec("New in version 2.8.1.9", [
+        ["Designs open faster:", "a body with several cuts in a row has them all cut in one step instead of one after another (the spiral fidget cone's five spiral cuts: 30 s down to 15 s). A body that took a while to build is remembered in this browser, so the design opens in about a second the next time, and a saved project file carries the built shape of slow bodies (10 s or more), so it opens quickly on any computer. While a slow body builds, the bottom bar shows its name and how long it has taken. Bodies with many offset curved faces get enough time to finish instead of stopping with \"stalled the geometry engine\"."],
+        ["Ribbon:", "Offset face and Clearance are in Advanced Modify (Q still opens Offset face). Chip Carving and the Lathe are in the Workshop menu at the right end of the Design ribbon."],
+      ]),
+      sec("New in version 2.8.1.8", [
+        ["Clearance:", "a quick tool for parts that move (Advanced Modify → Clearance). It finds every pair of bodies that touch or overlap (a wheel on its axle, a pin in a hinge, a ball in its socket, a lid in its box) and cuts a small gap into one of each pair, so they print loose instead of fused. Choose Snug (0.2 mm), Normal (0.3 mm) or Loose (0.5 mm), or type your own; untick pairs that should stay joined, and pick which part gets the gap (the bigger one by default). Each gap is a feature in the timeline that you can edit or delete."],
+        ["Offset face on a whole body:", "drag a box around a body to pick every face at once. The whole body then grows or shrinks by the distance, with rounded outside corners when it grows, and holes shrink or grow to match. Click faces as before to offset only some of them."],
+      ]),
+      sec("New in version 2.8.1.7", [
+        ["Smoother, more accurate STL and 3MF files:", "exports used to reuse the light mesh drawn on screen, so curves came out as visible flat facets in the slicer. Each body is now meshed again from its exact shape just for the file. Choose the quality in Open/Export: Standard (within 0.05 mm, smaller files), Fine (within 0.02 mm, the default) or Extra fine (within 0.008 mm, largest files). Curves follow the true shape about three times more closely, the files stay closed (watertight) for slicers, and textures are still applied. STEP files are exact, as before."],
+      ]),
+      sec("New in version 2.8.1.6", [
+        ["10 bigger tutorials:", "for Advanced mode, each making two or more parts with many tools, about 18-28 minutes. Advanced: Birdhouse with a lift-off roof, Round keepsake box (split into box and lid), Headphone stand with a cable clip, Fidget cone with spinning rings, Robot with plug-in arms. Expert: Link bracelet that prints already linked, Toy car with spinning wheels, Electronics case with a screw-on lid, Chess king and queen, Spiral fidget cone that spins on a base."],
+        ["Pattern → Features:", "any face made by a revolve or a sweep (twisted ones too) can now be clicked to pick that feature, like in Fusion 360, and the feature's real outline is highlighted. Twisted sweeps along a straight line are built as exact helical sweeps: much faster, so a circular pattern of spiral cuts (a spiral cone) builds in seconds instead of minutes, and bodies with several curved cuts get more time before the engine gives up."],
+        ["Revolve:", "points typed a hair off the axis (from rounded lengths and angles) are put onto the axis, so the outline revolves instead of failing."],
+      ]),
+      sec("New in version 2.8.1.5", [
+        ["3D Sketch lines:", "a long hand-drawn line now always becomes a round tube that follows what you drew. Before, the geometry engine could turn some lines into a flat, twisting band with fins or lumps; each tube is now checked against the line, tight hooks are smoothed only where they are, and a tube built straight from the line is used if the engine's is off."],
+        ["Pattern on a path:", "Put the object on the path (on when the object is away from the path) moves it to the nearer end of the path, and the copies run along the whole line, like beads on a string. Go the other way starts from the far end. Turn it off to keep the object where it is, with every copy the same distance from the path."],
+      ]),
+      sec("New in version 2.8.1.4", [
+        ["Layouts:", "five ways to arrange the tools, in the theme menu (◐) under Layout: Default (tools across the top), Simplified (bigger buttons with names), Clean (a slim column of icons on the left; hover for names), Classic CAD (a labelled tool palette down the right side) and Tablet (big tools along the bottom, near your thumbs). Every tool is in every layout, and the choice is remembered on this computer."],
+        ["Save downloads a file:", "Save (or Ctrl+S) now also downloads the project file (.json) to your Downloads, so work isn't lost when a Chromebook clears the browser at sign-out. Open it again with Open/Export → Open a project file. Turn it off in Open/Export → Download a file on every Save. The Floor Planner's 💾 Save also downloads its plan file (turn it off in 📂 My plans)."],
+        ["Pinned Constraints:", "while sketching in Advanced, Pin (next to Constraints on the toolbar) puts every constraint button on the workspace as a small palette. Drag it by its title bar to wherever you like, switch between names and icons only (⤡), and ✕ to put it away. It stays pinned, where you left it, for your next sketches."],
+      ]),
       sec("New in version 2.8.1.3", [
         ["Floor Planner tutorials:", "ten step-by-step projects built into the Floor Planner itself (🎓 Tutorials in its top bar, so they also work when it's opened in its own tab), in the same style as the JumpStart 3D tutorials: your first room, a small apartment, L-shapes and curved walls, a furnished bedroom, kitchen and dining, outside the house, a 3D walk-through, a two-story house, a small shop and the classroom Be an Architect job. Show me points at the button to use, steps tick themselves off, and the checklist shows your progress. Its animated tour is still there as Quick tour."],
         ["Saving in the Floor Planner:", "💾 Save (or Ctrl+S) saves the whole plan (every floor, room, item, finish and the roof) in one click: the first time you name it Last name, First name, Plan name. 📂 My plans opens, copies and deletes saved plans, saves a plan to a file to take to another computer, and opens one again. The planner also keeps your last plan by itself and offers to continue it next time."],
@@ -1055,13 +1250,63 @@ app.refreshUI = function (kind) {
   app.status();
 };
 
+// "Rebuilding": after a few seconds it names the body being built and how long it has taken,
+// so a slow body (spiral cuts, many offset faces) shows it is still working
+function busyText() {
+  const k = app.kernel, b = $("busy");
+  if (!b) return;
+  const nameOf = (list) => list.map((it) => (store.doc.bodies.find((x) => x.id === it.id) || {}).name).filter(Boolean);
+  const tm = (at) => { const s = Math.round((Date.now() - at) / 1000); return s >= 60 ? Math.floor(s / 60) + " min " + String(s % 60).padStart(2, "0") + " s" : s + " s"; };
+  const parts = [];
+  if (k && k.inflight && k.inflightAt && Date.now() - k.inflightAt > 4000) {
+    const names = nameOf(k.inflight);
+    parts.push("Building " + (names.length ? names.slice(0, 2).join(", ") + (names.length > 2 ? "…" : "") + " · " : "") + tm(k.inflightAt) + (k.queue.size ? ` · ${k.queue.size} more` : ""));
+  }
+  // a very slow body building in the background engine (the rest of the design is usable)
+  if (k && k.slow && k.slow.inflight) {
+    const names = nameOf(k.slow.inflight);
+    parts.push((names.length ? names[0] : "A slow body") + " is building in the background · " + tm(k.slow.at) + (k.slow.queue.size ? ` · ${k.slow.queue.size} more` : ""));
+  }
+  // jumpstart-3d: a hollow on a curved shape can take a minute; say so after 3 s instead of only "Rebuilding"
+  if (k && k.inflight && Date.now() - (k.inflightAt || 0) >= 2900 && k.inflight.some((it) => JSON.stringify(it.node).includes('"t":"shell"'))) parts.unshift("Hollowing: on a curved shape this can take a minute");
+  b.textContent = parts.length ? parts.join(" | ") : "Rebuilding";
+  const slowNow = !!(k && k.slowNow && k.slowNow()) && !b.hidden;
+  const st = $("busy-stop"), hp = $("busy-help");
+  if (st) st.hidden = !slowNow;
+  if (hp) hp.hidden = !slowNow;
+  b.title = k && k.slow && k.slow.inflight ? "This body has many curved cuts or offset curved faces, so it takes several minutes the first time. It is remembered afterwards, and saved project files carry it, so it opens quickly next time." : "";
+}
+setInterval(() => { if (app.kernel && (app.kernel.inflight || (app.kernel.slow && app.kernel.slow.inflight))) busyText(); }, 1000);
+// a very slow body: Stop, and tips for making it quicker
+setTimeout(() => {
+  const st = $("busy-stop"), hp = $("busy-help");
+  if (st) st.onclick = () => { app.kernel.stopSlow(); app.toast("Stopped. That body isn't shown until it is built: open the design again (or change the body) to build it."); };
+  if (hp) hp.onclick = () => app.showSlowHelp();
+}, 0);
+app.showSlowHelp = () => {
+  const tips = [
+    ["Why it's slow:", "every curved cut (sweep, twisted sweep, loft, revolve) and every curved face you Offset is one heavy calculation for the geometry engine, and they are done one after another. A body with 5 spiral cuts plus 24 offset spiral faces is about 30 of them."],
+    ["It only happens once:", "the built body is remembered in this browser, and a project file saved after it has built carries it, so the design then opens in a few seconds, on any computer. Let it finish once, then Save."],
+    ["Making clearance between moving parts:", "try Advanced Modify → Clearance before offsetting many curved faces: it cuts the other part, grown by the gap, out in one step. On very complex free-form parts (like spiral cuts) the engine may not be able to grow the part; Clearance then says so, and offsetting the faces is the way."],
+    ["Fewer, simpler features:", "offset a few big faces rather than many small ones; pattern a cut rather than making each copy by hand; fillet or shell before adding spiral cuts, not after; and keep twisted sweeps to the turns you need."],
+    ["Keep working meanwhile:", "a very slow body builds in a second engine, so the rest of the design can be changed while it builds. Stop ends it; opening the design again starts it again."],
+  ];
+  const box = document.createElement("div");
+  box.className = "modal-back"; box.id = "slow-help";
+  box.innerHTML = '<div class="modal" role="dialog" aria-label="Slow bodies" style="max-width:560px"><header style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line-2)"><h3 style="margin:0;flex:1;font:600 16px/1 var(--f-label);letter-spacing:.08em;text-transform:uppercase">Slow bodies</h3><button class="xbtn" aria-label="Close">✕</button></header><div style="padding:12px 16px 16px;display:flex;flex-direction:column;gap:9px;font-size:13px;line-height:1.45"></div></div>';
+  const body = box.querySelector(".modal > div");
+  for (const [h, t] of tips) { const p = document.createElement("p"); p.style.margin = "0"; const bb = document.createElement("b"); bb.textContent = h + " "; p.append(bb, t); body.append(p); }
+  const close = () => box.remove();
+  box.querySelector(".xbtn").onclick = close;
+  box.addEventListener("click", (e) => { if (e.target === box) close(); });
+  document.body.append(box);
+};
+
 app.status = function () {
-  const busy = app.scene && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size);
+  const busy = app.scene && (app.scene.busy() || app.kernel.inflight || app.kernel.queue.size || (app.kernel.slowBusy && app.kernel.slowBusy()));
   // jumpstart-3d: a STEP row already describes this active build.
   $("busy").hidden = !busy || !app.kernel.ready || app.stepProgress.represented();
-  // jumpstart-3d: a hollow on a curved shape can take a minute; say so after 3 s instead of only "Rebuilding"
-  { const k = app.kernel, long = busy && k.inflight && Date.now() - (k.inflightAt || 0) >= 2900 && k.inflight.some((b) => JSON.stringify(b.node).includes('"t":"shell"'));
-    $("busy").textContent = long ? "Hollowing: on a curved shape this can take a minute" : "Rebuilding"; }
+  busyText();
   let hint = "";
   if (app.mode === "arch") hint = app.arch.hint();
   else if (app.sketcher.active) hint = app.sketchHint();

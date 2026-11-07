@@ -47,11 +47,14 @@ const visible = (sel) => page.evaluate((sel) => { const e = document.querySelect
 test("tutorial data: counts, ids, levels, icons and well-formed steps", async () => {
   // the number of tutorials is smoke.spec.mjs's job (it checks the About text); here: every one is in a mode the chooser has tabs for, and the walk below declares a test for each
   expect(tutorials.length).toBeGreaterThan(0);
-  expect(tutorials.filter((t) => ["beginner", "advanced", "arch"].includes(t.mode)).length).toBe(tutorials.length);
+  expect(tutorials.filter((t) => ["beginner", "advanced", "arch", "chisel"].includes(t.mode)).length).toBe(tutorials.length);
   expect(new Set(tutorials.map((t) => t.id)).size).toBe(tutorials.length);
-  expect(tutorials.map((t) => t.id).sort(), "the ids the walk declares tests for (read from src/tutorial_data*.js) and the ids the app lists").toEqual([...BEGINNER_IDS(), ...ADVANCED_IDS(), ...ARCH_IDS()].sort());
+  expect(tutorials.map((t) => t.id).sort(), "the ids the walk declares tests for (read from src/tutorial_data*.js) and the ids the app lists").toEqual([...BEGINNER_IDS(), ...ADVANCED_IDS(), ...ARCH_IDS(), ...CHISEL_IDS()].sort());
   const problems = [];
-  for (const t of tutorials) {
+  // J.Siwek's twelve Chisel tutorials (2.8.2.5) run inside Chisel's own window: they point into its frame and read its state
+  // (__chisel.tut()), so they are not walked or checked here; his own tests (tchtut.cjs) drive them. Here: only that they are well formed.
+  for (const t of tutorials.filter((t) => t.mode === "chisel")) if (!t.title || !t.item || t.steps.length < 5 || t.steps.some((st) => !st.title || !st.how || !st.how.length)) problems.push(`${t.id}: a Chisel tutorial without a title, item or full steps`);
+  for (const t of tutorials.filter((t) => t.mode !== "chisel")) {
     if (!["Easy", "Proficient", "Advanced", "Expert"].includes(t.level)) problems.push(`${t.id}: level ${t.level}`);
     if (!t.title || !t.item || !t.learn.length || !t.minutes) problems.push(`${t.id}: title, item, learn or minutes missing`);
     if (t.steps.length < 5) problems.push(`${t.id}: only ${t.steps.length} steps`);
@@ -78,7 +81,7 @@ test("tutorial data: counts, ids, levels, icons and well-formed steps", async ()
 const CHECK_DESIGNS = ["beginner-peg-block", "beginner-box", "advanced-sketch-extrude", "advanced-bool-cut", "advanced-hole", "advanced-revolve", "advanced-pattern-feature", "advanced-fillet-chamfer", "advanced-emboss", "advanced-thread", "advanced-shell", "parametric-features"];
 const runChecks = () => page.evaluate(() => {
   const t = window.__app.tutorials, T = t.T, out = { thrown: [], ticked: [], evaluated: 0 };
-  for (const tut of t.list) tut.steps.forEach((s, i) => {
+  for (const tut of t.list.filter((x) => x.mode !== "chisel")) tut.steps.forEach((s, i) => { // Chisel tutorials read Chisel's own state (see above)
     if (!s.check) return;
     out.evaluated++;
     try { if (s.check(T)) out.ticked.push(`${tut.id} step ${i + 1}: ${s.title}`); } catch (e) { out.thrown.push(`${tut.id} step ${i + 1}: ${s.title}: ${e.message}`); }
@@ -147,7 +150,8 @@ async function prepareFor(sel, mode) {
   if (/#sk-/.test(sel)) { await page.click("#ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line"); return "sketch open"; }
   if (/#lathe-/.test(sel)) {
     await normalize(); // whatever stage the Lathe is at, start from the closed Lathe
-    await page.click(mode === "beginner" ? "#bb-lathe" : "#ad-lathe");
+    if (mode === "beginner") await page.click("#bb-lathe");
+    else { await page.click("#ad-workshop"); await page.click("#ad-lathe"); } // 2.8.1.9: the Lathe is in Advanced's Workshop menu
     await page.waitForSelector("#lathe-start");
     if (/lathe-start/.test(sel)) return "lathe asks what to turn";
     await page.click("#lathe-start"); await page.waitForSelector("#lathe-done");
@@ -310,15 +314,16 @@ test.describe("walk every tutorial", () => {
 
 // ids from the data files, read as text so the tests can be declared before the browser is up
 function idsOf(mode) {
-  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_arch.js", "tutorial_data_community.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
+  const src = ["tutorial_data.js", "tutorial_data_more.js", "tutorial_pro.js", "tutorial_arch.js", "tutorial_data_community.js"].map((f) => readFileSync(new URL("../src/" + f, import.meta.url), "utf8")).join("\n");
   return [...src.matchAll(/^\s*id: "([\w-]+)", mode: "(\w+)"/gm)].filter((m) => m[2] === mode).map((m) => m[1]);
 }
 function BEGINNER_IDS() { return idsOf("beginner"); }
 function ADVANCED_IDS() { return idsOf("advanced"); }
 function ARCH_IDS() { return idsOf("arch"); }
+function CHISEL_IDS() { return [...readFileSync(new URL("../src/tutorial_chisel.js", import.meta.url), "utf8").matchAll(/^\s*easy\(\{ id: "([\w-]+)"/gm)].map((m) => m[1]); }
 
 test("the walk reached every tutorial the app lists", () => {
-  expect([...startedIds].sort()).toEqual(tutorials.map((t) => t.id).filter((id) => !quarantined.has(id)).sort());
+  expect([...startedIds].sort()).toEqual(tutorials.filter((t) => t.mode !== "chisel").map((t) => t.id).filter((id) => !quarantined.has(id)).sort());
 });
 
 // ---------------------------------------------------------------- 3. coverage

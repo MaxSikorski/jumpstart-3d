@@ -46,3 +46,14 @@ The Python scripts use only the standard library and expect to sit in `tools/` n
 - `src/fonts_more.js` is made by `tools/make_fonts.py` from `tools/fontlist.txt` and a checkout of the Google Fonts repository
   (not in this repository); the TTFs it used are in `src/fontsub/more/`, their credits in `src/fontsub/more/credits.json` and
   `LICENSES/fonts-more.txt`. We take his `fonts_more.js` as it is.
+
+## The Neon Sign Builder (J.Siwek 2.9.1 to 2.9.3)
+
+- `src/neon.html` is made by `tools/make_neon.py` from `tools/neon-source.html` and `tools/neon_geo.js`. His script inlined three.js;
+  ours writes the `<script>/*js3d:three*/</script>` placeholder instead (the same orbit build, `src/helper-three.html`, goes in when the
+  page opens, as for Chisel), and `neon-source.html` takes pictures only from inside a project file (a marked line). Regenerate from the
+  repository root:
+
+  ```bash
+  uv run --no-project python -I tools/make_neon.py
+  ```

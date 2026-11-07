@@ -8,10 +8,11 @@ import MESHSTEP from "./meshstep.html";
 import THREE from "./helper-three.html";
 import FONTS_MORE from "./fonts_more.js"; // text, not a module: tools/helper-files.mjs lists it, so both builds import it as text
 import FLOORPLAN from "./floorplan.html";
+import NEON from "./neon.html";
 import { withFonts } from "./helperfonts.js";
 
 // "" in the site build (build.mjs empties these imports), the whole text in the single file
-const INLINE = { "chisel.html": CHISEL, "flexigen.html": FLEXIGEN, "meshstep.html": MESHSTEP, "helper-three.html": THREE, "fonts_more.js": FONTS_MORE, "floorplan.html": FLOORPLAN };
+const INLINE = { "chisel.html": CHISEL, "flexigen.html": FLEXIGEN, "meshstep.html": MESHSTEP, "helper-three.html": THREE, "fonts_more.js": FONTS_MORE, "floorplan.html": FLOORPLAN, "neon.html": NEON };
 const STAMP = /^js3d-build:([0-9a-f]+)\n/; // the first line of every file in helpers/ (build.mjs): which build wrote it
 const loaded = new Map();
 
@@ -71,7 +72,7 @@ export function helperAsset(file) {
   return loaded.get(file);
 }
 
-// A helper page ready for an iframe's srcdoc or a Blob: the page, the shared three.js and the fonts. name: "chisel", "flexigen" or "meshstep".
+// A helper page ready for an iframe's srcdoc or a Blob: the page, the shared three.js and the fonts. name: "chisel", "flexigen", "meshstep" or "neon".
 export async function helperPage(name) {
   const [page, three] = await Promise.all([helperAsset(name + ".html"), helperAsset("helper-three.html")]);
   return withFonts(page, three);
