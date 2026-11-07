@@ -95,7 +95,7 @@ test("Not now dismisses the first-run card permanently", async ({ page }, info) 
   await boot(page, info, { face: false });
   await expect(page.locator("#try-simple")).toBeVisible();
   expect(await page.evaluate(() => window.__app.trySimpleShown)).toBe(true);
-  await page.click("#try-simple-no");
+  await page.click(mobile(info) ? "#try-simple-close" : "#try-simple-no"); // a phone shows only × (same as Not now)
   await expect(page.locator("#try-simple")).toHaveCount(0);
   expect(await storedFace(page)).toBe("original");
   await reload(page);
