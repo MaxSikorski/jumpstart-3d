@@ -1,5 +1,5 @@
 // Upstream 2.9.7.1 (J.Siwek 2.9.4 to 2.9.7.1), shared by the site and single-file projects. One outcome test per headline feature:
-//  - the splash and About show 2.9.7.1 with his notes for 2.9.7.1 back to 2.9.4
+//  - About still lists his notes for 2.9.7.1 back to 2.9.4 (the version itself: the newest upstream spec)
 //  - 2.9.6 Beginner ribbon: Neon Sign and Box Maker in place of Chip Carve, Lathe and Stained Glass (all three still in Advanced);
 //    Neon Sign opens the builder and nothing leaves the machine
 //  - 2.9.5 / 2.9.7 Box Maker in Beginner: a stacked drawer case is one set; a click picks the whole set, the side panel edits it in
@@ -10,7 +10,6 @@
 // His own tests (JumpStart-3D-v2.9.7.1-full-source/tests/*.cjs) are screenshot scripts; the checks below assert real state.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc } from "./helpers.mjs";
-import { BUILD, VERSION } from "../src/version.js";
 
 let page, errors;
 const requests = [];
@@ -27,13 +26,10 @@ const run = (fn, arg) => page.evaluate(fn, arg);
 const okAll = async () => { const list = await bodies(page); for (const b of list) expect(b.error, b.name).toBeNull(); return list; };
 const steady = () => expect.poll(() => run(() => window.__app.vp.isMoving()), { timeout: 10_000 }).toBe(false);
 
-test("the splash and About show version 2.9.7.1 with his notes for 2.9.7.1 back to 2.9.4", async () => {
-  expect(VERSION).toBe("2.9.7.1");
-  const label = `Version 2.9.7.1 · community build ${BUILD}`;
-  expect(await page.locator("#sp-ver").textContent()).toBe(label);
+test("About still lists his notes for 2.9.7.1 back to 2.9.4", async () => {
+  // the version and splash label are checked by the newest upstream spec (upstream298.spec.mjs)
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText(label);
   for (const t of ["New in version 2.9.7.1", "Box Maker doors:", "New in version 2.9.7", "New in version 2.9.6", "New in version 2.9.5", "New in version 2.9.4", "Staging camera (C):", "New in version 2.9.3"]) await expect(about).toContainText(t);
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();

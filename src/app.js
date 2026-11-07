@@ -844,6 +844,10 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.9.8", [
+        ["Box Maker grids:", "set how many across as well as how many high, to build a grid of bins or cases (up to 8 × 8). Side by side they join with dovetail rails on the right side that slide into grooves in the next one's left side from the front and stop flush, or with pegs, or not at all. Each one is named by its place in the grid (A1, B2…)."],
+        ["Doors open outwards only:", "a stop strip runs just behind the door along the case floor, ceiling and far side, so the door can't swing back into the box."],
+      ]),
       sec("New in version 2.9.7.1", [
         ["Box Maker doors:", "pick the door's pull: a knob, a finger hole through the door, or a bar. The back of the door is now completely flat (the knob no longer pokes out the back, and the hinge pins are no thicker than the door), so it prints lying on its back; Laid out to print lays it that way."],
       ]),

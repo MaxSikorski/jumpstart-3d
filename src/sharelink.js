@@ -232,6 +232,8 @@ function inlineExtrude(n) {
   for (const r of regions) { obj(r, "an outline"); allow(r, new Set(["outer", "holes"]), "an outline"); loop(r.outer); if (r.holes !== undefined) arr(r.holes, "outline holes", LIMITS.SKETCH_ITEMS).forEach(loop); }
   const pl = obj(n.plane, "an outline plane"); allow(pl, new Set(["o", "x", "n"]), "an outline plane");
   vec(pl.o, 3, "plane"); if (pl.o.some((x) => Math.abs(x) > LIMITS.MEASURE)) throw damaged("plane"); normal(pl.x, "plane direction"); normal(pl.n, "plane normal");
+  // jumpstart-3d: the plane's x must lie across n, not along it (no plane can be built from two parallel directions)
+  if (Math.abs(pl.x[0] * pl.n[0] + pl.x[1] * pl.n[1] + pl.x[2] * pl.n[2]) / (Math.hypot(...pl.x) * Math.hypot(...pl.n)) > 0.999) throw damaged("plane direction");
   if (!(Math.abs(num(n.dist, "a distance")) <= LIMITS.MEASURE)) throw damaged("a distance");
   if (n.mode !== undefined && !["one", "sym", "two"].includes(n.mode)) throw damaged("an extrude mode");
   if (n.dist2 !== undefined && !(Math.abs(num(n.dist2, "a distance")) <= LIMITS.MEASURE)) throw damaged("a distance");
@@ -465,7 +467,7 @@ export function validateEnvelope(env) {
     for (const k of ["binLid", "binPart", "hingePart"]) if (b[k] !== undefined) ref(b[k]);
     if (b.bin !== undefined) {
       const o = obj(b.bin, "a bin");
-      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies
+      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids", "across", "sideLock"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies; 2.9.8 grids (across) and side joints (sideLock)
       for (const k of ["w", "d", "h", "wall", "divider", "floor", "scoopR", "labelW", "foot", "lidT", "caseT"]) if (o[k] !== undefined) positive(o[k], k);
       for (const k of ["radius", "inner", "clear"]) if (o[k] !== undefined) nonnegative(o[k], k);
       for (const k of ["cols", "rows"]) if (o[k] !== undefined) count(o[k], 20, k);
@@ -473,11 +475,16 @@ export function validateEnvelope(env) {
       if (o.shape !== undefined && !["square", "round", "hex"].includes(o.shape)) throw damaged("a bin shape");
       if (o.lidId != null) ref(o.lidId);
       if (o.units !== undefined) count(o.units, 8, "units");
-      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["layout", ["", "stack", "print"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
+      if (o.across !== undefined) count(o.across, 8, "across"); // jumpstart-3d: 2.9.8 grids, 1 to 8 across like bins.js
+      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["sideLock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["layout", ["", "stack", "print"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
       if (o.ids !== undefined) {
         const e = Object.entries(obj(o.ids, "a bin set"));
-        if (e.length > 24) throw damaged("a bin set");
-        for (const [k, v] of e) { if (!/^(?:lid|(?:bin|case|front)\d{0,2})$/.test(k)) throw unsupported("a bin set has " + k.slice(0, 16).replace(/[^\w.-]/g, "?")); ref(v); }
+        // jumpstart-3d: up to 8 x 8 units (2.9.8 grids): bin1-bin63 or case1-case63, front0-front63, and a lid
+        if (e.length > 128) throw damaged("a bin set");
+        for (const [k, v] of e) { if (!/^(?:lid|(?:bin|case)(?:[1-9]|[1-5]\d|6[0-3])|front(?:\d|[1-5]\d|6[0-3]))$/.test(k)) throw unsupported("a bin set has " + k.slice(0, 16).replace(/[^\w.-]/g, "?")); ref(v); }
+        // one body per part: the same body under two keys, or a lid other than lidId, is not a set the app makes
+        if (new Set(e.map(([, v]) => v)).size !== e.length) throw damaged("a bin set lists a body twice");
+        if (o.ids.lid !== undefined && o.lidId != null && o.ids.lid !== o.lidId) throw damaged("a bin set has two lids");
       }
     }
     if (b.hinge !== undefined) {
@@ -581,6 +588,7 @@ function node(n, ctx, what) {
   } else if (t === "mesh" || t === "step") {
     if (typeof n.asset !== "string" || !Object.hasOwn(ctx.assets, n.asset) || ctx.assets[n.asset] !== (t === "mesh" ? "mesh" : "step")) throw damaged("a model asset is missing");
   }
+  if (n.stretch !== undefined && (!Array.isArray(n.stretch) || n.stretch.length !== 2 || !n.stretch.every((v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1e3))) throw damaged("a stretch"); // jumpstart-3d: kernel.js scales the outline by it
   if (n.edgeSegs !== undefined) { if (t !== "sweep" && t !== "pipe") throw damaged("a sweep or pipe path"); segments(n.edgeSegs); }
   if ((n.railEdgeSegs !== undefined || n.railScale !== undefined) && t !== "sweep") throw damaged("a sweep rail");
   if (n.parts !== undefined && (t !== "step" || !bool(n.parts, "the parts flag"))) throw damaged("the parts flag"); // STEP parts (#173): one body per part of an imported file
