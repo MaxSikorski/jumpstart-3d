@@ -11,7 +11,7 @@ On the single file, Chromium on the Linux CI runner now and then starts a reload
 npm test              both builds
 npm run test:site     docs/ only (fastest while working)
 npm run test:single   dist/ only
-npm run test:mobile   the phone budget only
+npm run test:mobile   the phone budget and Simple switch
 ```
 
 First time: `npm install`, then `npx playwright install chromium`. Set `JS3D_PORT` (default 8765) to serve the site build on another port, so two checkouts can run the tests at the same time. The same
@@ -198,6 +198,7 @@ The config sets `serviceWorkers: "block"` for every spec, because a service work
 - `spring.spec.mjs`: the Spring dialog and `JS3D.spring`, on both builds. The pitch is solved in the spec by Newton's method as an independent check on volume, bounds and turns for open and flat-cut ends; hand (right or left) and the flat end planes are checked too.
 - `menuscroll.spec.mjs`: the long theme menu (theme, performance, mesh detail, printer, AI agent) stays inside a short window and scrolls to its last row; in a tall window it needs no scrollbar.
 - `perfpanel.spec.mjs`: the hidden rebuild-times panel (Ctrl+Alt+P or `?perf`), on both builds. Closed, it adds no DOM, style or recorder; open, it lists the last rebuild body by body and feature by feature (worker-timed), slowest first, with Copy and Close; Rebuild all skips saved and file meshes; second-engine builds are recorded; a stalled batch is retried and shown.
+- `simple-switch.spec.mjs`: the Simple | Original switch (`src/simplemode.js`), on both builds and the `mobile` project (375 px): Original by default; switching keeps the design and survives a reload; `?face=simple|original` picks and stores the look and leaves the address bar; the one-time Try Simple card (Not now, Try Simple, or the switch ends it for good; a returning visitor never sees it); the ⋯ More menu by mouse and keyboard; Settings › Look; his "Simplified" layout reads "Big buttons"; no sideways scroll; Original shows the Simple half from 1440 px and never gets a second row (1024-2200 px); on a phone Original keeps its whole view and offers Open/Export › Try Simple; closing the card leaves focus on a control; every lesson in Simple can reach its top-bar buttons (the few that point at buttons Simple moved into More run in Original, not stored, and Simple comes back after); Architect keeps the full top bar.
 - `printerpreview.spec.mjs`: Settings › Printer plate… and overhang shading, on both builds, through the real dialog: every named printer sets the plate's X × Y, the choice survives a reload, parts outside the area are named and not moved, and shading changes nothing in the design (same STL, transforms and undo history).
 - `printerpreview.test.mjs` (node test, real three.js, no browser; in `pretest`): the overhang overlay's life cycle in `printerpreview.js`: it only reads the body's mesh, shades only steep undersides, drops a stale result, cleans up after itself, and a large mesh waits for "Analyse this mesh".
 - `overhang.test.mjs` (node test, no browser; in `pretest`): the overhang rule in `overhang.js` on known triangles: the 30, 45 and 60 degree limits, turned, scaled and mirrored bodies, degenerate triangles, and long meshes worked in chunks.

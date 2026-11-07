@@ -43,6 +43,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
+| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar's ⋯ More menu and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
@@ -59,7 +60,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sw.js` | Service worker, site only (see section 4) |
 
 ## 2. J.Siwek's, with our marked blocks
-Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 153, `projects.js` 60, `app.js` 63, `beginner.js` 43, `index.html` 35, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 14.
+Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 153, `projects.js` 60, `app.js` 94, `beginner.js` 43, `index.html` 49, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 14.
 `fasteners.js` (since 2.8.1.3 his Fasteners parts library, `fastenerCmd` in `advanced.js`): our marked blocks add UNF sizes, the tap cutter, left-hand threads and the ISO minor-diameter nut bore, and at the bottom our `JS3D.fastener` builder (bolt, nut, threaded rod, tap cutter: its own tested shapes); the dialog's print offset per part, hand, turns guard and F8 spacing are marked blocks in `fastenerCmd`.
 Few markers (1 to 5): `dxf.js` (body drawing: inch units and TEXT in `writeDXF`), `inflate.js`, `icons.js`, `tutorials.js`, `tutorial_data.js`, `dims.js`, `facepat.js`, `meshimport.js`, `ops.js`, `voxel.js`, `constraints.js`, `lathe.js`, `recovery.js`, `scene.js`, `worker.js`, `version.js`.
 `kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`); `version.js` holds the community build number that `/ship` bumps.

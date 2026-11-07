@@ -93,9 +93,11 @@ export async function navigateKeepingStorage(page, go) {
 export async function reload(page) { await navigateKeepingStorage(page, () => page.reload()); }
 
 // Open the build under test (the project's baseURL) and wait for the geometry kernel.
-export async function boot(page, info) {
+export async function boot(page, info, opts = {}) {
   const url = info.project.use.baseURL;
   if (page.url() === "about:blank") {
+    // Existing tests start in Original without the first-visit card.
+    if (opts.face !== false) await page.addInitScript(() => { try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {} });
     await recordStorageAtStart(page);
     await page.goto(url);
   } else await navigateKeepingStorage(page, () => page.goto(url));
