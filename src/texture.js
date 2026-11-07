@@ -2,6 +2,7 @@
 // height maps, and a mesh post-process that subdivides the chosen faces and
 // moves their vertices along the surface normal. Textures change the mesh used
 // for display and STL export; the exact (STEP) solid is not changed.
+import { themeDefs, THEME_CATS } from "./texture_themes.js";
 const TAU = Math.PI * 2;
 function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
@@ -57,7 +58,7 @@ function normalizeHM(hm){
 const tri = t => 1 - 2 * Math.abs(fract(t) - .5);
 const SQ3 = Math.sqrt(3);
 
-export const TEX_CATS = [['all', 'All'], ['geo', 'Geometric'], ['nature', 'Nature'], ['wood', 'Wood'], ['build', 'Building'], ['fabric', 'Fabric'], ['skin', 'Skin & fur'], ['mat', 'Materials'], ['mine', 'My images']];
+export const TEX_CATS = [['all', 'All'], ['geo', 'Geometric'], ['nature', 'Nature'], ['wood', 'Wood'], ['build', 'Building'], ['fabric', 'Fabric'], ['skin', 'Skin & fur'], ['mat', 'Materials'], ...THEME_CATS, ['mine', 'My images']];
 function buildLibrary(){
   const n4 = periodicNoise(4, 7), n8 = periodicNoise(8, 11), n16 = periodicNoise(16, 3), n32 = periodicNoise(32, 5), n64 = periodicNoise(64, 9);
   const hexPts = [[0, 0], [.5, SQ3 / 2]];
@@ -258,11 +259,12 @@ function buildLibrary(){
     { key: 'coffered', name: 'Coffered ceiling', cat: 'build', size: 80, fn: (x, y) => { const u = fract(2 * x), v = fract(2 * y), e = Math.min(u, 1 - u, v, 1 - v); return e < .08 ? 1 : e < .16 ? 1 - (e - .08) / .08 * .5 : e < .2 ? .5 : e < .23 ? .62 : .45; } },
     { key: 'wainscot', name: 'Raised panels (wainscot)', cat: 'build', size: 80, fn: (x, y) => { const u = fract(2 * x), v = fract(y), e = Math.min(u, 1 - u, v, 1 - v); return e < .07 ? .75 : e < .1 ? .55 : e < .18 ? .55 + (e - .1) / .08 * .45 : 1; } },
     { key: 'stucco', name: 'Stucco', cat: 'mat', fn: (x, y) => .8 * smooth(.42, .72, .6 * n16(x, y) + .4 * n32(x, y)) + .2 * n64(x, y) },
+    ...themeDefs(),
   ];
   // Height maps are generated the first time they are needed.
   return defs.map(d => {
     const w = d.w || 256, h = d.h || 256; let src = null;
-    return { key: d.key, name: d.name, cat: d.cat, size: d.size || 0, get src(){
+    return { key: d.key, name: d.name, cat: d.cat, size: d.size || 0, pic: !!d.pic, get src(){
       if (!src) src = d.gen ? normalizeHM({ w, h, data: d.gen(w, h) }) : makeHM(w, h, d.fn);
       return src; } };
   });
@@ -420,7 +422,8 @@ export function textureThumb(key, size = 64) {
   if (thumbs.has(k)) return thumbs.get(k);
   const cv = document.createElement("canvas");
   cv.width = cv.height = size;
-  drawHM(cv, texByKey(key).src, 2);
+  const t = texByKey(key); // picture textures read better shown once
+  drawHM(cv, t.src, THEME_CATS.some((c) => c[0] === t.cat) ? 1 : 2);
   const url = cv.toDataURL();
   thumbs.set(k, url);
   return url;
@@ -753,7 +756,7 @@ export function applyTextures(data, layers0, budget = 1.2e6) {
   for (let t = 0; t < B.nT; t++) po[t] = patchOfFace[faceOfBase[t]];
   computeFrames(B, po, P, layers);
   let target = Infinity;
-  for (const L of layers) target = Math.min(target, Math.max(0.06, (L.size || 4) / (String(L.tex).startsWith("img:") ? 80 : 9))); // pictures need finer detail
+  for (const L of layers) target = Math.min(target, Math.max(0.06, (L.size || 4) / (String(L.tex).startsWith("img:") || (LIB.find((t) => t.key === L.tex) || {}).pic ? 80 : 9))); // pictures need finer detail
   const res = subdivide(B, po, target, budget);
   target = res.target;
   const { pos, idx, tb, nV, nT } = res;

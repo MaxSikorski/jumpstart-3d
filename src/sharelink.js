@@ -560,7 +560,7 @@ export function validateEnvelope(env) {
     for (const k of ["binLid", "binPart", "hingePart", "gearPart"]) if (b[k] !== undefined) ref(b[k]);
     if (b.bin !== undefined) {
       const o = obj(b.bin, "a bin");
-      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids", "across", "sideLock"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies; 2.9.8 grids (across) and side joints (sideLock)
+      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids", "across", "sideLock", "doorCatch"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies; 2.9.8 grids (across) and side joints (sideLock); 2.9.8.1 door catch (doorCatch)
       for (const k of ["w", "d", "h", "wall", "divider", "floor", "scoopR", "labelW", "foot", "lidT", "caseT"]) if (o[k] !== undefined) positive(o[k], k);
       for (const k of ["radius", "inner", "clear"]) if (o[k] !== undefined) nonnegative(o[k], k);
       for (const k of ["cols", "rows"]) if (o[k] !== undefined) count(o[k], 20, k);
@@ -569,7 +569,7 @@ export function validateEnvelope(env) {
       if (o.lidId != null) ref(o.lidId);
       if (o.units !== undefined) count(o.units, 8, "units");
       if (o.across !== undefined) count(o.across, 8, "across"); // jumpstart-3d: 2.9.8 grids, 1 to 8 across like bins.js
-      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["sideLock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["layout", ["", "stack", "print"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
+      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["sideLock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["doorCatch", ["none", "light", "firm"]], ["layout", ["", "stack", "print"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
       if (o.ids !== undefined) {
         const e = Object.entries(obj(o.ids, "a bin set"));
         // jumpstart-3d: up to 8 x 8 units (2.9.8 grids): bin1-bin63 or case1-case63, front0-front63, and a lid

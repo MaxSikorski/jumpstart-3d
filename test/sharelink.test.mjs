@@ -610,6 +610,29 @@ test("J.Siwek 2.9.8 Box Maker grids and side joints survive sharing; only his ne
   throwsShare(() => validateEnvelope(env(twoLids)), 'damaged', /two lids/);
 });
 
+test("J.Siwek 2.9.8.1 door catch survives sharing; only none, light or firm", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const base = fixture('beginner-box'), body = base.bodies[0];
+  const make = (o) => {
+    const set = binSet(o), ids = {};
+    for (const q of set.parts) if (q.key !== 'main') ids[q.key] = 'p_' + q.key;
+    const bodies = set.parts.map((q) => ({ ...structuredClone(body), id: q.key === 'main' ? 'main' : ids[q.key], node: q.node, ...(q.key === 'main' ? { bin: { ...o, ids } } : { binPart: 'main' }) }));
+    return { ...structuredClone(base), bodies, sketches: [] };
+  };
+  assert.equal(BIN_DEFAULTS.doorCatch, 'light');
+  for (const doorCatch of ['none', 'light', 'firm']) {
+    const d = make({ ...BIN_DEFAULTS, style: 'door', doorCatch });
+    const link = await makeLink(d, BASE);
+    assert.equal(link.ok, true, link.message);
+    assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  }
+  const d = make({ ...BIN_DEFAULTS, style: 'door', doorCatch: 'firm' });
+  for (const doorCatch of ['tight', 'Light', '', 1, true, null, ['firm']]) {
+    const x = structuredClone(d); x.bodies[0].bin.doorCatch = doorCatch; throwsShare(() => validateEnvelope(env(x)));
+  }
+  const old = structuredClone(d); delete old.bodies[0].bin.doorCatch; assert.doesNotThrow(() => validateEnvelope(env(old))); // a 2.9.8 door set without the field
+});
+
 test("outline extrudes: stretch is two sizes in (0, 1000], and the plane's x is not along its normal (build 30 review)", async () => {
   const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
   const base = fixture('beginner-box'), body = base.bodies[0];
