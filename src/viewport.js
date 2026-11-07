@@ -143,7 +143,7 @@ export class Viewport {
     requestAnimationFrame(loop);
   }
 
-  get camera() { return this.useOrtho ? this.ortho : this.persp; }
+  get camera() { return this.useOrtho && !this.fpv ? this.ortho : this.persp; }
 
   makeGrid() {
     const mat = new THREE.ShaderMaterial({
@@ -266,6 +266,15 @@ export class Viewport {
   moving(ms = 220) { this.movingUntil = Math.max(this.movingUntil, performance.now() + ms); }
 
   updateCamera() {
+    // first person (Architect's staging camera): standing at fpv.eye, looking by yaw and pitch
+    if (this.fpv) {
+      const f = this.fpv, cam = this.persp, cp = Math.cos(f.pitch), look = new THREE.Vector3(cp * Math.cos(f.yaw), cp * Math.sin(f.yaw), Math.sin(f.pitch));
+      cam.up.set(0, 0, 1); cam.position.copy(f.eye); cam.lookAt(f.eye.clone().add(look));
+      cam.fov = f.fov || 60; cam.aspect = this.w / this.h; cam.near = f.near || 20; cam.far = f.far || 500000; cam.updateProjectionMatrix();
+      this.headlight.position.copy(f.eye); this.headlight.target.position.copy(f.eye.clone().add(look));
+      if (this.onViewChange) { const sig = "fpv" + [f.eye.x, f.eye.y, f.eye.z, f.yaw, f.pitch, f.fov, this.w, this.h].map((q) => q.toFixed(3)).join(); if (sig !== this._viewSig) { this._viewSig = sig; this.onViewChange(); } }
+      return;
+    }
     const v = this.view;
     const el = Math.max(-Math.PI / 2 + 1e-4, Math.min(Math.PI / 2 - 1e-4, v.el));
     const dir = new THREE.Vector3(Math.cos(el) * Math.cos(v.az), Math.cos(el) * Math.sin(v.az), Math.sin(el));
@@ -662,6 +671,7 @@ export class Viewport {
     this.request();
   }
   stepAnim(t) {
+    if (this.fpv) { this.anim = null; return; }
     const a = this.anim;
     // jumpstart-3d: a frame's timestamp is its start, which can be earlier than a move begun later in that frame; a negative k overshot (a 10 ms move: dist far past zero) and the grid loop in updateCamera never ended
     let k = Math.max(0, Math.min(1, (t - a.t0) / a.ms));

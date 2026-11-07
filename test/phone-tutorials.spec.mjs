@@ -411,8 +411,7 @@ async function prepareFor(p, sel, mode, ch = "") {
   if (/#sk-/.test(sel)) { await click("#ad-sketch"); await click("#plane-seg button"); await p.waitForSelector("#sk-line", { state: "attached" }); return "sketch open"; }
   if (/#lathe-/.test(sel)) {
     await normalize(p);
-    if (mode === "beginner") await click("#bb-lathe");
-    else await p.evaluate(() => window.__app.lathe.open()); // 2.9.3 moved the Advanced Lathe button into the closed Workshop dropdown; opening it is set-up, not what is judged
+    await p.evaluate(() => window.__app.lathe.open()); // 2.9.6: no Lathe on the Beginner ribbon, every Lathe lesson is in Advanced. 2.9.3 moved the Advanced Lathe button into the closed Workshop dropdown; opening it is set-up, not what is judged
     await p.waitForSelector("#lathe-start", { state: "attached" });
     if (/lathe-start/.test(sel)) return "lathe asks what to turn";
     await click("#lathe-start"); await p.waitForSelector("#lathe-done", { state: "attached" });

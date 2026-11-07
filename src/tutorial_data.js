@@ -60,16 +60,16 @@ const TABS = "In the tool's panel, press <b>Tab</b> to go to the next box. (<b>E
 export const TUTORIALS = [
   // ============================================================== BEGINNER
   {
-    id: "b-top", mode: "beginner", level: "Proficient", minutes: "8-10", item: "Spinning Top",
+    id: "b-top", mode: "advanced", level: "Proficient", minutes: "8-10", item: "Spinning Top",
     title: "Spinning top (Lathe)",
     blurb: "Turn a square block of wood into a spinning top on the virtual lathe: round it, shape a point and a handle.",
     learn: ["Lathe", "Foot pedal", "Roughing gouge", "Spindle gouge", "Parting tool"],
     steps: [
       nameStep("Spinning Top", "Lopez, Maria, Spinning Top"),
       {
-        title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#bb-lathe" }, anim: false,
+        title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#ad-lathe", via: "#ad-workshop" }, anim: false,
         how: [
-          "In the toolbar, click <b>Lathe</b> (next to 3D Sketch).",
+          "At the right end of the <b>Design</b> ribbon, click <b>Workshop</b>, then <b>Lathe</b>.",
           "The Lathe opens over the whole screen with a window asking <b>What do you want to turn?</b>",
         ],
         when: "A lathe makes round things: it spins the wood while you hold a chisel against it, so everything you cut comes out perfectly round. Bowls, cups, bats, pens, chess pieces and tops are all turned.",
