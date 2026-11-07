@@ -61,6 +61,7 @@ import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
 // jumpstart-3d: insert supplier parts
 import { initInsertPart } from "./insertpart.js";
 import { initDropImport } from "./dropimport.js"; // jumpstart-3d: drop import
+import { initSimpleMode } from "./simplemode.js"; // jumpstart-3d: Simple | Original switch
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -353,6 +354,7 @@ app.voxel = initVoxel(app);
   $("btn-full").onclick = () => app.toggleFullscreen();
   $("btn-about").onclick = () => app.showAbout();
   loadPrefs();
+  app.simple = initSimpleMode(app); // jumpstart-3d: Simple | Original switch (after the prefs, before the design opens)
   vp.onContext = (e) => app.contextMenu && app.contextMenu(e);
   // Tablet & Pencil mode: a two-finger tap undoes, a three-finger tap redoes
   vp.onFingerTap = (n) => { if (n === 2) app.undo(); else if (n >= 3) app.redo(); };
@@ -625,7 +627,7 @@ app.setSketchStyle = function (patch, quiet) {
 // Layouts: where the tool bars sit. Default (top), Simplified (big labelled buttons on top), Clean
 // (an icon rail on the left), Classic CAD (a labelled palette on the right) and Tablet (big tools at
 // the bottom). Only CSS changes (html[data-layout]); every tool is the same in each.
-const LAYOUTS = { default: "Default", simple: "Simplified", clean: "Clean", classic: "Classic CAD", tablet: "Tablet" };
+const LAYOUTS = { default: "Default", simple: "Big buttons", clean: "Clean", classic: "Classic CAD", tablet: "Tablet" }; // jumpstart-3d: his "Simplified" layout reads "Big buttons" beside our Simple | Original switch
 app.layoutPref = "default";
 app.setLayout = function (name, quiet) {
   if (!LAYOUTS[name]) name = "default";
