@@ -230,10 +230,10 @@ export class KernelClient {
       this.settleProbes(msg.results); // jumpstart-3d: Code CAD
       this.onResults && this.onResults(msg.results);
       this.pump();
-    } else if (msg.type === "step" || msg.type === "exportMesh" || msg.type === "contacts") {
+    } else if (msg.type === "step" || msg.type === "drawing" || msg.type === "exportMesh" || msg.type === "contacts") {
       const w = this.stepWaiters.get(msg.req);
       this.stepWaiters.delete(msg.req);
-      w && w.resolve(msg.type === "step" ? msg.data : msg.results);
+      w && w.resolve((msg.type === "step" || msg.type === "drawing") ? msg.data : msg.results);
     } else if (msg.type === "error") {
       const w = this.stepWaiters.get(msg.req);
       if (w) { this.stepWaiters.delete(msg.req); w.reject(new Error(msg.error)); return; }
@@ -453,6 +453,17 @@ export class KernelClient {
       this.worker.postMessage({ type: "contacts", req, gap, bodies });
     });
   }
+  // jumpstart-3d: body drawing
+  drawing(bodies, views) {
+    const w = this.waitFor && bodies.map((b) => this.waitFor(b)).find(Boolean);
+    if (w) return Promise.resolve(w).catch(() => {}).then(() => this.drawing(bodies, views));
+    const req = ++this.req;
+    return new Promise((resolve, reject) => {
+      this.stepWaiters.set(req, { resolve, reject });
+      this.worker.postMessage({ type: "drawing", req, bodies, views });
+    });
+  }
+  // jumpstart-3d: body drawing
   step(bodies) {
     const w = this.waitFor && bodies.map((b) => this.waitFor(b)).find(Boolean); // jumpstart-3d: extra fonts (a STEP export of text in one)
     if (w) return Promise.resolve(w).catch(() => {}).then(() => this.step(bodies));
