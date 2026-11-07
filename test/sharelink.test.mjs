@@ -252,7 +252,7 @@ test("unknown fields, types and kinds are refused with the project-file message,
   bad((d) => { d.mode = "chisel"; }, "unsupported", /chisel/);
   bad((d) => { d.mode = "arch"; }, "unsupported");
   bad((d) => { d.mode = "nonsense"; }, "unsupported");
-  bad((d) => { d.joints = [{ id: "j1" }]; }, "unsupported", /joints/);
+  bad((d) => { d.joints = [{ id: "j1", name: "Hinge joint", seq: 1, type: "revolute", body: d.bodies[0].id, parent: null, o: [0, 0, 0], d: [0, 0, 1], limited: false, min: -180, max: 180 }]; }, "unsupported", /not part of a gear set/); // a joint the person made: only gear joints travel in a link
   bad((d) => { d.arch = {}; }, "unsupported");
   bad((d) => { d.texImages = {}; }, "unsupported");
   bad((d) => { d.bodies[0].textures = []; }, "unsupported");
@@ -595,7 +595,7 @@ test("J.Siwek 2.9.8 Box Maker grids and side joints survive sharing; only his ne
   const d = make({ ...BIN_DEFAULTS, cols: 1, rows: 1, scoop: false, across: 2, units: 2, sideLock: 'dovetail' });
   assert.deepEqual(Object.keys(d.bodies[0].bin.ids).sort(), ['bin1', 'bin2', 'bin3']);
   // the largest grid's keys pass the key check (8 x 8 cases: case63 and front63)
-  const big = structuredClone(d); big.bodies[0].bin.ids = { case63: 'p_bin1', front63: 'p_bin2', front0: 'p_bin3' };
+  const big = structuredClone(d); Object.assign(big.bodies[0].bin, { units: 8, across: 8 }); big.bodies[0].bin.ids = { case63: 'p_bin1', front63: 'p_bin2', front0: 'p_bin3' };
   for (const q of big.bodies.slice(1)) q.binPart = 'main';
   assert.doesNotThrow(() => validateEnvelope(env(big)));
   const bad = (change) => { const x = structuredClone(d); Object.assign(x.bodies[0].bin, change); throwsShare(() => validateEnvelope(env(x))); };
@@ -608,6 +608,29 @@ test("J.Siwek 2.9.8 Box Maker grids and side joints survive sharing; only his ne
   const okLid = structuredClone(lids); okLid.bodies[0].bin.lidId = okLid.bodies[0].bin.ids.lid; assert.doesNotThrow(() => validateEnvelope(env(okLid)));
   const twoLids = structuredClone(okLid); twoLids.bodies.push({ ...structuredClone(body), id: 'other', binPart: 'main' }); twoLids.bodies[0].bin.lidId = 'other';
   throwsShare(() => validateEnvelope(env(twoLids)), 'damaged', /two lids/);
+});
+
+test("J.Siwek 2.9.8.1 door catch survives sharing; only none, light or firm", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const base = fixture('beginner-box'), body = base.bodies[0];
+  const make = (o) => {
+    const set = binSet(o), ids = {};
+    for (const q of set.parts) if (q.key !== 'main') ids[q.key] = 'p_' + q.key;
+    const bodies = set.parts.map((q) => ({ ...structuredClone(body), id: q.key === 'main' ? 'main' : ids[q.key], node: q.node, ...(q.key === 'main' ? { bin: { ...o, ids } } : { binPart: 'main' }) }));
+    return { ...structuredClone(base), bodies, sketches: [] };
+  };
+  assert.equal(BIN_DEFAULTS.doorCatch, 'light');
+  for (const doorCatch of ['none', 'light', 'firm']) {
+    const d = make({ ...BIN_DEFAULTS, style: 'door', doorCatch });
+    const link = await makeLink(d, BASE);
+    assert.equal(link.ok, true, link.message);
+    assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  }
+  const d = make({ ...BIN_DEFAULTS, style: 'door', doorCatch: 'firm' });
+  for (const doorCatch of ['tight', 'Light', '', 1, true, null, ['firm']]) {
+    const x = structuredClone(d); x.bodies[0].bin.doorCatch = doorCatch; throwsShare(() => validateEnvelope(env(x)));
+  }
+  const old = structuredClone(d); delete old.bodies[0].bin.doorCatch; assert.doesNotThrow(() => validateEnvelope(env(old))); // a 2.9.8 door set without the field
 });
 
 test("outline extrudes: stretch is two sizes in (0, 1000], and the plane's x is not along its normal (build 30 review)", async () => {
@@ -766,5 +789,257 @@ test('tiny normals and conflicting part roles are refused', () => {
   }
   for (const roles of [{ bin: {}, binLid: 'missing' }, { hinge: {}, hingePart: 'missing' }]) {
     const x = structuredClone(d); Object.assign(x.bodies[0], roles); throwsShare(() => validateEnvelope(env(x)), 'damaged');
+  }
+});
+
+// ---------------------------------------------------------------- J.Siwek 2.9.3 parts (#293): gear sets, their joints, Browser folders
+// A gear set as the Gears dialog's apply() in advanced.js writes it: placed at (10, 20), each gear its own body; the first holds the set.
+// fullIds: false is what the dialog really saves on a new set (only the first gear in ids; the others point back with gearPart).
+async function gearDoc(o0 = {}, { fullIds = false } = {}) {
+  const { GEAR_DEFAULTS, gearSet } = await import('../src/gearlib.js');
+  const o = { ...GEAR_DEFAULTS, ...o0 }, set = gearSet(o), body = fixture('beginner-box').bodies[0];
+  const at = [10, 20], ids = {}, jids = {};
+  const bid = (p, i) => (i === 0 ? 'g_main' : 'g_' + p.key);
+  set.parts.forEach((p, i) => { if (i === 0 || fullIds) ids[p.key] = bid(p, i); jids[p.key] = 'j_' + p.key; });
+  const bodies = set.parts.map((p, i) => {
+    const c = Math.cos(p.rot), s = Math.sin(p.rot);
+    const b = { ...structuredClone(body), id: bid(p, i), name: p.name, seq: i + 1, color: p.color, m: [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, at[0] + p.x, at[1] + p.y, 0, 1], node: p.node };
+    if (i === 0) b.gear = { o: { ...o }, ids, jids: o.joints ? jids : {}, base: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...at, 0, 1], base0: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...at, 0, 1], spin: 0 };
+    else b.gearPart = 'g_main';
+    return b;
+  });
+  const joints = o.joints ? set.parts.map((p, i) => ({ id: jids[p.key], name: p.name + ' joint', seq: 10 + i, type: p.joint.type, body: bid(p, i), parent: null, o: [at[0] + p.x, at[1] + p.y, 0], d: p.joint.d || [0, 0, 1], limited: false, min: -180, max: 180, ...(p.joint.link ? { link: { to: jids[p.joint.link.to], ratio: +p.joint.link.ratio.toFixed(8) } } : {}) })) : [];
+  return { ...structuredClone(fixture('beginner-box')), mode: 'advanced', seq: 40, bodies, sketches: [], joints };
+}
+const jsonTrip = (d) => validateEnvelope(JSON.parse(JSON.stringify(env(d))));
+
+test("2.9.3 gear sets of every kind pass, read back unchanged, and make a link or are refused only as too large", async () => {
+  const kinds = [
+    { type: 'spur' }, { type: 'pair' }, { type: 'pair', z: 6, z2: 6, bore: 'none' }, { type: 'ring', z: 12, z2: 40 }, { type: 'ring', z: 20, z2: 24 },
+    { type: 'rack', z: 12 }, { type: 'rack', rackLen: 120 }, { type: 'planet', nPlanets: 3 }, { type: 'planet', nPlanets: 6, zs: 24, zp: 12 },
+    { type: 'pair', hub: true, hubD: 14, hubH: 6, bore: 'd' }, { type: 'spur', z: 60, m: 2, spokes: true, bore: 'hex' }, { type: 'spur', bore: 'key', pa: 14.5 },
+    { type: 'pair', joints: false }, { type: 'planet', pa: 25, backlash: 0 }, { type: 'spur', z: 120, m: 3, spokes: true },
+  ];
+  for (const o of kinds) for (const fullIds of [false, true]) {
+    const d = await gearDoc(o, { fullIds });
+    assert.deepEqual(jsonTrip(d), snapshot(d), JSON.stringify(o));
+    const link = await makeLink(d, BASE);
+    assert.ok(link.ok || link.reason === 'large', `${JSON.stringify(o)}: ${link.message}`);
+    if (link.ok) assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  }
+  const small = await makeLink(await gearDoc({ type: 'spur', z: 6, bore: 'none', joints: false }), BASE); // the smallest gear the dialog makes
+  assert.ok(small.ok || small.reason === 'large', small.message);
+});
+
+test("2.9.3 gear settings: the dialog's ranges at their edges, nothing past them, no unknown or computed fields", async () => {
+  const d = await gearDoc({ type: 'spur' });
+  const ok = (change) => { const x = structuredClone(d); Object.assign(x.bodies[0].gear.o, change); assert.doesNotThrow(() => validateEnvelope(env(x)), JSON.stringify(change)); };
+  const bad = (change, kind) => { const x = structuredClone(d); Object.assign(x.bodies[0].gear.o, change); throwsShare(() => validateEnvelope(env(x)), kind, undefined); };
+  for (const c of [{ z: 6 }, { z: 300 }, { z2: 6 }, { z2: 400 }, { zs: 8 }, { zs: 200 }, { zp: 200 }, { nPlanets: 2 }, { nPlanets: 6 }, { m: 0.3 }, { thick: 0.5 }, { boreD: 0.5 }, { hubH: 0.5 }, { backlash: 0 }, { rackLen: 0 }, { hubD: 0 }, { hubD: 1 }, { pa: 14.5 }, { pa: 25 }, { bore: 'none' }, { m: 320 }]) ok(c);
+  for (const c of [{ z: 5 }, { z: 301 }, { z: 6.5 }, { z2: 5 }, { z2: 401 }, { zs: 7 }, { zs: 201 }, { zp: 7 }, { zp: 201 }, { nPlanets: 1 }, { nPlanets: 7 }, { m: 0.29 }, { m: '2' }, { thick: 0.49 }, { boreD: 0.4 }, { hubH: 0 }, { backlash: -0.01 }, { rackLen: -1 }, { hubD: 0.5 }, { pa: 21 }, { pa: '20' },
+    { type: 'worm' }, { type: 'toString' }, { bore: 'star' }, { hub: 'yes' }, { joints: 1 }, { spokes: null }, { m: Infinity }]) bad(c, 'damaged');
+  bad({ rackH: 9 }, 'unsupported'); bad({ evil: 1 }, 'unsupported'); bad({ exprs: { m: 'p' } }, 'unsupported');
+  bad({ m: 330, z: 300 }, 'toolarge'); bad({ hubD: 100001 }, 'toolarge'); // a 300-tooth gear of module 330 is over 100 m across
+  // a rack: at most 400 teeth, however its length is typed
+  const r = await gearDoc({ type: 'rack', m: 1 });
+  const rack = (len) => { const x = structuredClone(r); x.bodies[0].gear.o.rackLen = len; return () => validateEnvelope(env(x)); };
+  assert.doesNotThrow(rack(400 * Math.PI)); throwsShare(rack(401 * Math.PI), 'toolarge', /400/);
+  for (const [k, v] of [['base', [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2]], ['base0', Array(16).fill(0)], ['spin', 361], ['spin', '90'], ['evil', 1]]) {
+    const x = structuredClone(d); x.bodies[0].gear[k] = v; throwsShare(() => validateEnvelope(env(x)));
+  }
+  for (const k of ['ids', 'jids', 'o']) { const x = structuredClone(d); delete x.bodies[0].gear[k]; throwsShare(() => validateEnvelope(env(x)), 'damaged'); }
+});
+
+test("2.9.3 gear parts point both ways, never at themselves, one role each; deleted parts and joints drop out", async () => {
+  const d = await gearDoc({ type: 'pair' }, { fullIds: true });
+  const bad = (harm, kind) => { const x = structuredClone(d); harm(x); throwsShare(() => validateEnvelope(env(x)), kind, undefined); };
+  const [main, g2] = [0, 1];
+  bad((x) => { x.bodies[main].gear.ids = { g1: 'g_main', g2: 'g_main' }; }, 'damaged'); // one body under two roles
+  bad((x) => { x.bodies[main].gear.ids = { g2: 'g_main', g1: 'g_g2' }; }, 'damaged'); // the first body under another role
+  bad((x) => { x.bodies[main].gear.ids = { g2: 'g_g2' }; }, 'damaged'); // the set does not list its own body
+  bad((x) => { delete x.bodies[g2].gearPart; }, 'damaged'); // listed, but not pointing back
+  bad((x) => { x.bodies[g2].gearPart = 'g_g2'; }, 'damaged'); // pointing at itself
+  bad((x) => { x.bodies[main].gear.ids.rk = 'g_g2'; delete x.bodies[main].gear.ids.g2; }, 'damaged'); // a role this kind of set does not have
+  bad((x) => { x.bodies[main].gear.ids.g9 = 'g_g2'; }, 'unsupported');
+  bad((x) => { x.bodies[g2].gearPart = 'g_g2b'; x.bodies.push({ ...structuredClone(x.bodies[g2]), id: 'g_g2b', gearPart: 'g_main' }); x.joints = []; x.bodies[main].gear.jids = {}; }, 'damaged'); // a part pointing at a body with no set
+  bad((x) => { x.bodies[g2].bin = {}; }, 'damaged'); // two roles
+  bad((x) => { x.bodies[main].hingePart = 'g_g2'; }, 'damaged');
+  bad((x) => { x.bodies[main].gearPart = 'g_g2'; }, 'damaged');
+  // the second set of two cannot claim the first set's gear
+  bad((x) => { const y = structuredClone(x.bodies[main]); y.id = 'g_other'; y.gear.ids = { g1: 'g_other', g2: 'g_g2' }; y.gear.jids = {}; x.bodies.push(y); }, 'damaged');
+  // the person deleted the second gear (and its joint): the set and the remaining joint still open, without the gone part
+  const x = structuredClone(d); x.bodies.splice(g2, 1); x.joints = x.joints.filter((j) => j.body !== 'g_g2');
+  const back = jsonTrip(x);
+  assert.deepEqual(back.bodies[0].gear.ids, { g1: 'g_main' }); assert.deepEqual(back.bodies[0].gear.jids, { g1: 'j_g1' });
+  // a part whose set was deleted keeps its shape and loses the pointer
+  const y = structuredClone(d); y.bodies.splice(main, 1); y.joints = [];
+  assert.equal(jsonTrip(y).bodies[0].gearPart, undefined);
+  // the person deleted the driving gear's joint in the Browser: the joints that followed it keep turning on their own
+  for (const [o, gone] of [[{ type: 'pair' }, 'j_g1'], [{ type: 'planet', nPlanets: 3 }, 'j_sun']]) {
+    const w = await gearDoc(o); w.joints = w.joints.filter((j) => j.id !== gone);
+    const r = jsonTrip(w);
+    assert.ok(r.joints.length && r.joints.every((j) => j.link === undefined), JSON.stringify(o));
+    assert.equal(Object.values(r.bodies[0].gear.jids).includes(gone), false);
+    if (w.joints.length > 1) { const v = structuredClone(w); v.joints[0].link.to = v.joints[1].id; throwsShare(() => validateEnvelope(env(v)), 'damaged', /joint link/); } // a link to another existing joint is still refused
+  }
+  // and the joints switched off later leave old joint ids behind in the set: dropped too
+  const z = await gearDoc({ type: 'pair', joints: false }); z.bodies[0].gear.jids = { g1: 'j_old1', g2: 'j_old2' };
+  assert.deepEqual(jsonTrip(z).bodies[0].gear.jids, {});
+});
+
+test("2.9.3 gear joints: only the set's own, on its bodies, linked to the right gear by the tooth ratio, never in a loop", async () => {
+  for (const o of [{ type: 'pair' }, { type: 'rack' }, { type: 'ring', z: 12, z2: 40 }, { type: 'planet', nPlanets: 4 }]) {
+    const d = await gearDoc(o);
+    const linked = d.joints.findIndex((j) => j.link), driver = d.joints.findIndex((j) => !j.link);
+    const bad = (harm, kind) => { const x = structuredClone(d); harm(x.joints, x); throwsShare(() => validateEnvelope(env(x)), kind, undefined); };
+    bad((js) => { js[linked].link.ratio *= 1.001; }, 'damaged');
+    bad((js) => { js[linked].link.ratio = -js[linked].link.ratio; }, 'damaged');
+    bad((js) => { js[linked].link.ratio = null; }, 'damaged');
+    bad((js) => { js[linked].link.to = js[linked].id; }, 'damaged'); // linked to itself
+    bad((js) => { js[linked].link.to = 'j_missing'; }, 'damaged');
+    bad((js) => { js[driver].link = { to: js[linked].id, ratio: 1 }; }, 'damaged'); // a loop: the driver may not follow anything
+    bad((js) => { delete js[linked].link; }, 'damaged');
+    bad((js) => { js[linked].link.evil = 1; }, 'unsupported');
+    bad((js) => { js[linked].type = js[linked].type === 'slider' ? 'revolute' : 'slider'; }, 'damaged');
+    bad((js) => { js[linked].type = 'ball'; }, 'unsupported');
+    bad((js) => { js[driver].limited = true; }, 'unsupported');
+    bad((js) => { js[driver].parent = 'g_main'; }, 'unsupported');
+    bad((js) => { js[driver].min = -90; }, 'unsupported');
+    bad((js) => { js[driver].d = [0, 0, 0]; }, 'damaged');
+    bad((js) => { js[driver].d = [0, 0, 2]; }, 'damaged');
+    bad((js) => { js[driver].o = [0, 0, Infinity]; }, 'damaged');
+    bad((js) => { js[driver].seq = -1; }, 'damaged');
+    bad((js) => { js[driver].body = 'g_missing'; }, 'damaged');
+    bad((js) => { js[linked].body = js[driver].body; }, 'damaged'); // two joints on one body
+    bad((js) => { js.push({ ...structuredClone(js[driver]), id: 'j_extra', body: 'g_extra' }); }, 'damaged'); // a joint the set does not list
+    bad((js, x) => { const t = x.bodies[0].gear.jids; const [a, b] = Object.keys(t); [t[a], t[b]] = [t[b], t[a]]; }, 'damaged'); // roles swapped
+    bad((js) => { js.push({ ...structuredClone(js[driver]), id: js[driver].id }); }, 'damaged'); // duplicate id
+  }
+  const d = await gearDoc({ type: 'pair' }), x = structuredClone(d);
+  x.bodies.push({ ...structuredClone(d.bodies[0]), id: 'plain', gear: undefined }); delete x.bodies.at(-1).gear;
+  x.joints.push({ ...structuredClone(d.joints[0]), id: 'j_plain', body: 'plain' });
+  throwsShare(() => validateEnvelope(env(x)), 'unsupported', /not part of a gear set/);
+  const y = structuredClone(d); y.joints = [{ id: 'j1' }]; throwsShare(() => validateEnvelope(env(y)), 'damaged');
+  const z = structuredClone(d); z.joints = Array(LIMITS.BODIES + 1).fill(d.joints[0]); throwsShare(() => validateEnvelope(env(z)), 'damaged');
+});
+
+test("2.9.3 gear outlines: whole circles, closed loops that never cross themselves, holes left to the kernel's cut; the outline caps hold", async () => {
+  const d = await gearDoc({ type: 'pair', joints: false, spokes: true, z: 60, z2: 60 });
+  const outer = d.bodies[0].node.regions[0];
+  assert.ok(outer.holes.some((h) => h.length === 1 && h[0].t === 'circle'), 'a round bore is a circle loop');
+  const box = (s, x = 0, y = 0) => [[x - s, y - s], [x + s, y - s], [x + s, y + s], [x - s, y + s]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] }));
+  const one = (region) => ({ ...structuredClone(d), bodies: [{ ...structuredClone(fixture('beginner-box').bodies[0]), node: { t: 'extrude', regions: [region], plane: { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1] }, dist: 5, mode: 'one', mods: [] } }], joints: [] });
+  const circle = (r, c = [0, 0]) => [{ t: 'circle', c, r }];
+  assert.doesNotThrow(() => validateEnvelope(env(one({ outer: circle(10), holes: [box(2), circle(1, [6, 0])] }))));
+  assert.doesNotThrow(() => validateEnvelope(env(one({ outer: box(10), holes: [] }))));
+  const bad = (region, kind, re) => throwsShare(() => validateEnvelope(env(one(region))), kind, re);
+  bad({ outer: [...box(10), { t: 'circle', c: [0, 0], r: 1 }] }, 'unsupported'); // a circle inside a loop of other pieces
+  bad({ outer: circle(0) }, 'damaged'); bad({ outer: circle(-1) }, 'damaged'); bad({ outer: [{ t: 'circle', c: [0, 0], r: 1, n: [0, 0, 1] }] }, 'unsupported');
+  bad({ outer: circle(1, [99999.5, 0]) }, 'damaged'); // reaches past the largest measurement
+  bad({ outer: [{ t: 'circle', c: [0], r: 1 }] }, 'damaged');
+  bad({ outer: box(10).map((s, i) => (i === 2 ? { ...s, a: [10, 11] } : s)) }, 'damaged', /not closed/);
+  bad({ outer: [box(10)[0], { t: 'line', a: [10, -10], b: [10, -10] }, ...box(10).slice(1)] }, 'damaged', /no length/); // a piece with no length
+  bad({ outer: [{ t: 'line', a: [0, 0], b: [0, 0] }, ...box(10)] }, 'damaged'); // nor at the start
+  bad({ outer: [{ t: 'line', a: [0, 0], b: [10, 0] }, { t: 'line', a: [10, 0], b: [0, 0] }] }, 'damaged'); // there and back: no area
+  bad({ outer: [{ t: 'arc', a: [0, 0], m: [5, 0], b: [10, 0] }, { t: 'line', a: [10, 0], b: [10, 10] }, { t: 'line', a: [10, 10], b: [0, 0] }] }, 'damaged', /degenerate/); // an arc through three points on a line
+  assert.doesNotThrow(() => validateEnvelope(env(one({ outer: [{ t: 'arc', a: [0, 0], m: [5, -2], b: [10, 0] }, { t: 'line', a: [10, 0], b: [10, 10] }, { t: 'line', a: [10, 10], b: [0, 0] }] }))));
+  bad({ outer: [[0, 0], [10, 0], [5, 0], [5, 5]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] })) }, 'damaged', /doubles back/);
+  bad({ outer: [[0, 0], [10, 10], [10, 0], [0, 4]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] })) }, 'unsupported', /crosses/); // a bow tie
+  bad({ outer: box(10), holes: [[[0, 0], [5, 5], [5, 0], [0, 4]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] }))] }, 'unsupported', /crosses/); // a hole that crosses itself
+  // how holes lie against the outline and each other is the kernel's flat boolean cut: the app makes overlapping holes (a big gear's
+  // lightening holes) and holes into the edge (a big keyway on a small gear) itself
+  for (const holes of [[box(5), box(1)], [box(3, -2, 0), box(3, 2, 0)], [box(2, 9, 0)], [box(10)], [box(2, 30, 0)]]) assert.doesNotThrow(() => validateEnvelope(env(one({ outer: box(10), holes }))));
+  const { GEAR_DEFAULTS, gearSet } = await import('../src/gearlib.js');
+  const part = (o, key) => () => validateEnvelope(env({ ...one({ outer: box(1) }), bodies: [{ ...structuredClone(fixture('beginner-box').bodies[0]), node: gearSet({ ...GEAR_DEFAULTS, ...o }).parts.find((p) => p.key === key).node }] }));
+  for (const o of [{ type: 'spur', z: 200, m: 3, spokes: true }, { type: 'planet', m: 0.5, zs: 19, zp: 44, bore: 'key', boreD: 20 }]) for (const p of gearSet({ ...GEAR_DEFAULTS, ...o }).parts) assert.doesNotThrow(part(o, p.key), JSON.stringify(o) + p.key);
+  // a ring gear with more backlash than about three quarters of its module: gearlib.js's tooth spaces run into each other, which is no face
+  throwsShare(part({ type: 'ring', m: 0.5, z: 12, z2: 40, backlash: 0.6 }, 'ring'), 'unsupported', /crosses/);
+  // one outline per extrude, at most 16 holes (the app writes 1 and at most 9): each hole costs the engine a cut
+  const h16 = Array.from({ length: 16 }, (_, i) => circle(0.2, [i - 8, 0]));
+  assert.doesNotThrow(() => validateEnvelope(env(one({ outer: box(10), holes: h16 }))));
+  bad({ outer: box(10), holes: [...h16, circle(0.2, [0, 5])] }, 'damaged', /holes/);
+  throwsShare(() => { const x = one({ outer: box(10) }); x.bodies[0].node.regions.push({ outer: box(2, 30, 0) }); validateEnvelope(env(x)); }, 'damaged', /outlines/);
+  assert.doesNotThrow(part({ type: 'ring', m: 0.5, z: 12, z2: 40, backlash: 0.15 }, 'ring'));
+  // the outline pieces of the whole design together
+  const ring = (n, r) => Array.from({ length: n }, (_, i) => [r * Math.cos((2 * Math.PI * i) / n), r * Math.sin((2 * Math.PI * i) / n)]).map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % n] }));
+  // (today the entry and JSON caps stop a design long before 20,000 pieces; the outline cap stays as a second wall, so it is tested with the entry cap raised)
+  const saved = { ...LIMITS }; LIMITS.ENTRIES = 1e6; LIMITS.JSON_BYTES = 16 * 1024 * 1024;
+  try {
+    const many = (n) => one({ outer: ring(n, 50) });
+    assert.doesNotThrow(() => validateEnvelope(env(many(LIMITS.OUTLINE_SEGMENTS))));
+    throwsShare(() => validateEnvelope(env(many(LIMITS.OUTLINE_SEGMENTS + 1))), 'toolarge', /outline pieces/);
+    const two = one({ outer: ring(LIMITS.OUTLINE_SEGMENTS / 2, 50) }); two.bodies.push({ ...structuredClone(two.bodies[0]), id: 'b2' });
+    assert.doesNotThrow(() => validateEnvelope(env(two)));
+    two.bodies[1].node.regions[0].outer = ring(LIMITS.OUTLINE_SEGMENTS / 2 + 1, 50); throwsShare(() => validateEnvelope(env(two)), 'toolarge', /outline pieces/);
+  } finally { Object.assign(LIMITS, saved); }
+  // thousands of pieces crowded into one corner of a big outline: refused quickly as too complicated, not checked pair by pair forever
+  // (a fine sawtooth 4 µm long on one edge of a 10 m outline: all 4,000 teeth in one grid cell)
+  const saw = []; for (let i = 0; i < 2000; i++) saw.push([i * 2e-6, 0], [i * 2e-6 + 1e-6, 1e-6]);
+  saw.push([10000, 0], [10000, -10000], [0, -10000]);
+  const t0 = Date.now();
+  throwsShare(() => validateEnvelope(env(one({ outer: saw.map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % p.length] })) }))), 'toolarge', /too complicated/);
+  assert.ok(Date.now() - t0 < 5000);
+});
+
+test("Box Maker outlines of every style pass the new outline checks", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const body = fixture('beginner-box').bodies[0];
+  for (const style of ['bin', 'drawer', 'tilt', 'door']) for (const sideLock of ['dovetail', 'pegs', 'none']) for (const layout of ['', 'print']) for (const lock of ['dovetail', 'pegs']) {
+    const o = { ...BIN_DEFAULTS, style, sideLock, layout, lock, across: 2, units: 2, lid: style === 'bin', stack: style === 'bin', label: true }, set = binSet(o), ids = {};
+    for (const q of set.parts) if (q.key !== 'main') ids[q.key] = 'p_' + q.key;
+    const bodies = set.parts.map((q) => ({ ...structuredClone(body), id: q.key === 'main' ? 'main' : ids[q.key], node: q.node, ...(q.key === 'main' ? { bin: { ...o, ids } } : { binPart: 'main' }) }));
+    assert.doesNotThrow(() => validateEnvelope(env({ ...structuredClone(fixture('beginner-box')), bodies, sketches: [] })), JSON.stringify({ style, sideLock, layout, lock }));
+  }
+});
+
+test("2.9.3 Browser folders: flat, named, with real members; names stay text", async () => {
+  const d = fixture('beginner-box'); d.folders = [{ id: 'fd1', name: '<img src=x onerror=alert(1)>', open: true }, { id: 'fd2', name: 'Folder 2', open: false }]; d.bodies[0].folder = 'fd1';
+  const link = await makeLink(d, BASE); assert.equal(link.ok, true, link.message);
+  assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  const bad = (harm, kind) => { const x = structuredClone(d); harm(x); throwsShare(() => validateEnvelope(env(x)), kind, undefined); };
+  bad((x) => { x.bodies[0].folder = 'fd9'; }, 'damaged'); bad((x) => { x.bodies[0].folder = ['fd1']; }, 'damaged');
+  bad((x) => { x.folders[1].id = 'fd1'; }, 'damaged'); bad((x) => { x.folders[0].id = 'a b'; }, 'damaged');
+  bad((x) => { x.folders[0].name = '   '; }, 'damaged'); bad((x) => { x.folders[0].name = 'x'.repeat(61); }, 'damaged'); bad((x) => { x.folders[0].name = 7; }, 'damaged');
+  bad((x) => { x.folders[0].open = 'yes'; }, 'damaged'); bad((x) => { delete x.folders[0].open; }, 'damaged');
+  bad((x) => { x.folders[0].parent = 'fd2'; }, 'unsupported'); bad((x) => { x.folders[0].children = ['fd2']; }, 'unsupported');
+  bad((x) => { x.folders = { fd1: {} }; }, 'damaged');
+  const ok = structuredClone(d); ok.folders[0].name = 'x'.repeat(60); assert.doesNotThrow(() => validateEnvelope(env(ok)));
+  const many = (n) => { const x = structuredClone(d); x.folders = Array.from({ length: n }, (_, i) => ({ id: 'f' + i, name: 'F' + i, open: true })); delete x.bodies[0].folder; return () => validateEnvelope(env(x)); };
+  assert.doesNotThrow(many(LIMITS.FOLDERS)); throwsShare(many(LIMITS.FOLDERS + 1), 'damaged');
+});
+
+test("2.9.3 clearance cuts and whole-body offsets stay refused (no guard yet against offsets that hang the engine)", () => {
+  const d = fixture('beginner-box');
+  const x = structuredClone(d); x.bodies[0].node.mods = [{ id: 'm1', seq: 1, t: 'offset', all: true, d: 1, faces: [] }];
+  throwsShare(() => validateEnvelope(env(x)), 'unsupported', /all/);
+  const y = structuredClone(d); y.bodies[0].node.mods = [{ id: 'm1', seq: 1, t: 'bool', src: 'clearance', op: 'cut', gap: 0.2, other: 'Lid', tool: { t: 'group', children: [] } }];
+  throwsShare(() => validateEnvelope(env(y)), 'unsupported');
+});
+
+test("Box Maker sets (build 31 review): all the compartments together are capped, and no part is numbered past the set", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const body = fixture('beginner-box').bodies[0];
+  const make = (o) => {
+    const set = binSet({ ...BIN_DEFAULTS, ...o, cols: 1, rows: 1 }), ids = {};
+    for (const q of set.parts) if (q.key !== 'main') ids[q.key] = 'p_' + q.key;
+    // each part as a plain box: the check is of the settings, and 64 real bins would pass the entry cap first
+    const bodies = set.parts.map((q) => ({ ...structuredClone(body), id: q.key === 'main' ? 'main' : ids[q.key], ...(q.key === 'main' ? { bin: { ...BIN_DEFAULTS, ...o, ids } } : { binPart: 'main' }) }));
+    return { ...structuredClone(fixture('beginner-box')), bodies, sketches: [] };
+  };
+  const work = (o) => () => validateEnvelope(env(make(o)));
+  assert.equal(LIMITS.BIN_WORK, 1600);
+  assert.doesNotThrow(work({ cols: 20, rows: 20, units: 4, across: 1 })); // 1600: four bins of 20 x 20
+  throwsShare(work({ cols: 20, rows: 20, units: 5, across: 1 }), 'toolarge', /1600/);
+  assert.doesNotThrow(work({ cols: 5, rows: 5, units: 8, across: 8 })); // 1600: an 8 x 8 wall of 5 x 5 bins
+  throwsShare(work({ cols: 5, rows: 6, units: 8, across: 8 }), 'toolarge');
+  assert.doesNotThrow(work({ style: 'door', cols: 20, rows: 20, units: 8, across: 8 })); // a door case has no compartments
+  assert.doesNotThrow(work({ style: 'tilt', cols: 8, rows: 20, units: 8, across: 8 })); // a tilt bin counts its sections only (8 x 64)
+  throwsShare(work({ style: 'drawer', cols: 12, rows: 12, units: 4, across: 3 }), 'toolarge'); // 144 x 12
+  // the part keys stop at units x across
+  const d = make({ units: 2, across: 2 });
+  assert.deepEqual(Object.keys(d.bodies[0].bin.ids).sort(), ['bin1', 'bin2', 'bin3']);
+  for (const [key, good] of [['bin3', true], ['bin4', false], ['case4', false], ['front3', true], ['front4', false], ['lid', true]]) {
+    const x = structuredClone(d); x.bodies = [x.bodies[0], { ...structuredClone(body), id: 'p_extra', binPart: 'main' }]; x.bodies[0].bin.ids = { [key]: 'p_extra' };
+    if (good) assert.doesNotThrow(() => validateEnvelope(env(x)), key); else throwsShare(() => validateEnvelope(env(x)), 'damaged', /past the end/);
   }
 });
