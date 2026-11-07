@@ -660,14 +660,15 @@ export const COMMUNITY_TUTORIALS = [
     ],
   },
   {
-    id: "c3-turned-bead", mode: "beginner", level: "Easy", minutes: "6-8", item: "Turned Bead",
+    // jumpstart-3d: 2.9.6 took the Lathe off the Beginner ribbon (it is in Advanced → Workshop), so this lesson moved to Advanced like his Spinning top
+    id: "c3-turned-bead", mode: "advanced", level: "Easy", minutes: "6-8", item: "Turned Bead",
     title: "Turn a grooved bead shape",
     blurb: "Use a round blank and cut a shallow ring around its middle.",
     learn: ["Lathe", "Round blank", "Foot pedal", "Parting tool"],
     steps: [
       nameStep("Turned Bead", "Lopez, Maria, Turned Bead"),
-      { title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#bb-lathe" }, anim: false,
-        how: ["Click <b>Lathe</b> in the toolbar."],
+      { title: "Open the Lathe", tool: "Lathe", icon: "lathe", show: { sel: "#ad-lathe", via: "#ad-workshop" }, anim: false,
+        how: ["At the right end of the <b>Design</b> ribbon, click <b>Workshop</b>, then <b>Lathe</b>."],
         when: "A lathe cuts round shapes by spinning the work." },
       { title: "Start with a round blank", tool: "Round blank", icon: "cylinder", show: { sel: "#lathe-start" }, anim: false,
         how: ["Choose <b>Round blank</b>. Set Diameter 30 and Length 30 mm.", "Click <b>Put it on the lathe</b>."],

@@ -1249,6 +1249,20 @@ body.s3d-on .tut-panel { z-index: 96; }
 .flood-verdict.good { background: color-mix(in srgb, #2e7d32 12%, var(--panel)); color: #23692a; border: 1px solid #a8d3ab; }
 .arch-chips .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .arch-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.cam-pad { position: absolute; left: 14px; bottom: 14px; display: flex; align-items: flex-end; gap: 12px; z-index: 5; pointer-events: none; }
+.cam-pad > * { pointer-events: auto; }
+.cam-pad-grid { display: grid; grid-template-columns: repeat(3, 46px); gap: 4px; }
+.cam-pad-b { width: 46px; height: 46px; padding: 0; font-size: 18px; border-radius: 10px; background: var(--panel, #fff); opacity: .92; touch-action: none; user-select: none; -webkit-user-select: none; }
+.cam-shot { min-height: 46px; padding: 0 16px; font-size: 15px; }
+.cam-flash { position: absolute; inset: 0; background: #fff; opacity: .7; pointer-events: none; animation: camflash .26s ease-out forwards; z-index: 6; }
+@keyframes camflash { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cam-flash { animation: none; opacity: 0; } }
+.cam-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.cam-photo { margin: 0; border: 1px solid var(--line, #ccd3da); border-radius: 8px; overflow: hidden; background: var(--bg2, #f4f6f8); }
+.cam-photo img { display: block; width: 100%; height: auto; }
+.cam-photo figcaption { display: flex; align-items: center; gap: 4px; padding: 4px; font-size: 11.5px; }
+.cam-photo figcaption .btn { padding: 2px 6px; min-height: 0; font-size: 11.5px; }
+.cam-photo figcaption .btn:first-of-type { margin-left: auto; }
 .arch-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 4px 0 8px; }
 .arch-tiles .arch-tile span { font-size: 11px; line-height: 1.2; }
 .arch-tile b { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
@@ -1728,7 +1742,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.9.3 · community build 29</p>
+    <p class="sp-ver" id="sp-ver">Version 2.9.7.1 · community build 30</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

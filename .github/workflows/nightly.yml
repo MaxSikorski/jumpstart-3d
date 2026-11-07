@@ -88,7 +88,8 @@ jobs:
     if: ${{ inputs.specs == '' }}
     # J1: The pinned consumer AppImages were probed on Ubuntu 24.04.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 45: the phone Show me walks (112 lessons) take about 11 minutes each; a shard holding them ran past 30 on 2026-11-06
+    timeout-minutes: 45
     strategy:
       # every part runs to the end, so one failure shows all the others
       fail-fast: false

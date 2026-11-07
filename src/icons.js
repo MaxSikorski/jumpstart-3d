@@ -102,6 +102,7 @@ export const ICON = {
   archRoof: S('<path d="M2 12 12 4l10 8" stroke="#a85b48"/><path d="M5 10v10h14V10"/><path d="M16 6V3.5h2.5v4.5"/>'),
   archFloor: S('<path d="M2 15 12 10l10 5-10 5z" stroke="#1f4fa8"/><path d="M2 15v2.5l10 5 10-5V15"/>'),
   archPlan: S('<path d="M3 3h18v18H3z"/><path d="M3 10h8v11M11 14h10M15 3v7" stroke="#1f4fa8"/>'),
+  archCamera: S('<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5" stroke="#1f4fa8"/>'),
   archXray: S('<path d="M4 20V8l8-5 8 5v12z" stroke-dasharray="2.5 2.5"/><path d="M10 20v-6h4v6" stroke="#1f4fa8"/>'),
   archHole: S('<path d="M2 14 12 9l10 5-10 5z"/><path d="M8 14l4-2 4 2-4 2z" fill="#e8a317" stroke="#b07a0c"/>'),
   archStairs: S('<path d="M3 20h4v-4h4v-4h4V8h4V4h2" stroke="#1f4fa8"/><path d="M3 20h18V4"/>'),

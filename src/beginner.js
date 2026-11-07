@@ -205,9 +205,8 @@ export function initBeginner(app) {
     mb.setAttribute("aria-pressed", multi);
     bar.append(el("span", { class: "sep" }));
     btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
-    btn("chipcarve", "Chip Carve", "Chip carve a board or a shape with knives, like real wood carving (pen pressure sets the depth)", () => app.carve.open(), "bb-chipcarve", true);
-    btn("lathe", "Lathe", "Turn a shape or a wood blank on a virtual lathe, with chisels, then hollow it out", () => app.lathe.open(), "bb-lathe", true);
-    btn("stainedglass", "Stained Glass", "Turn a shape (or a lamp shade) into stained glass with a lead or copper frame, then paint the glass (opens in its own window)", () => app.stainedGlass.open(), "bb-sglass", true);
+    btn("neon", "Neon Sign", "Neon Sign Builder: glowing words, shapes and traced pictures as 3D-printed shells for LED strips, with a backing they snap into (opens in its own window)", () => app.neon.open(), "bb-neon", true);
+    btn("box", "Box Maker", "Bin & Box Maker: open bins with compartments, or cases with drawers, tilt-out bins or doors, stacked and interlocking", () => app.advanced.openBins(), "bb-bins", true);
     bar.append(el("button", { class: "ibtn panel-toggle", onclick: () => $("shapes-tab").click() }, el("span", { class: "lbl" }, "Objects")));
     ribbon.append(bar);
     updateRibbon();
@@ -718,6 +717,14 @@ export function initBeginner(app) {
 
   // ---------------------------------------------------------------- pointer interaction
   let drag = null;
+  // a Bin & Box Maker set (its cases, drawers, bins, doors and lid) is picked and moved together
+  function setOf(id) {
+    const b = findBody(store.doc, id); if (!b) return [id];
+    const main = b.bin ? b : findBody(store.doc, b.binPart || b.binLid);
+    if (!main || !main.bin) return [id];
+    const ids = [main.id, ...Object.values(main.bin.ids || {}), ...(main.bin.lidId ? [main.bin.lidId] : [])];
+    return [...new Set(ids)].filter((x) => findBody(store.doc, x));
+  }
   let hot = null;
   let multi = false;
   const handler = {
@@ -737,7 +744,10 @@ export function initBeginner(app) {
     dblclick(e) {
       // double-click a sketch shape to edit the sketch
       const hits = vp.pick(e, app.scene.regionMeshes());
-      if (hits.length) app.enterSketch(hits[0].object.userData.region.sketch);
+      if (hits.length) { app.enterSketch(hits[0].object.userData.region.sketch); return; }
+      // double-click a bin or case set to change it in the Box Maker
+      const f = app.scene.pickFace(e), b = f && findBody(store.doc, f.body);
+      if (b && (b.bin || b.binPart || b.binLid) && !app.isLocked(b.id)) { drag = null; app.advanced.openBins(b.bin ? b.id : b.binPart || b.binLid); }
     },
     wantsTouch(e) { return !!(pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e) || (!multi && app.directEdit.regionAt(e))); }, // jumpstart-3d: pivot, direct edit
     down(e) {
@@ -753,13 +763,14 @@ export function initBeginner(app) {
       const f = app.scene.pickFace(e);
       if (f) {
         let sel = app.sel.slice();
+        const set = setOf(f.body);
         if (e.shiftKey || e.ctrlKey || e.metaKey || multi) {
-          sel = sel.includes(f.body) ? sel.filter((x) => x !== f.body) : [...sel, f.body];
+          sel = sel.includes(f.body) ? sel.filter((x) => !set.includes(x)) : [...sel, ...set.filter((x) => !sel.includes(x))];
           app.select(sel);
           drag = { kind: "none" };
           return true;
         }
-        if (!sel.includes(f.body)) { sel = [f.body]; app.select(sel); }
+        if (!sel.includes(f.body)) { sel = set; app.select(sel); }
         const movable = sel.filter((id) => !app.isLocked(id));
         if (!movable.length) { drag = { kind: "locked", start: vp.local(e) }; return true; }
         const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -f.point.z);
@@ -1032,6 +1043,17 @@ export function initBeginner(app) {
     inspKey = key;
     inspector.hidden = false;
     inspector.innerHTML = "";
+    // a whole Bin & Box Maker set selected: it shows as one thing, changed in the Box Maker
+    const setMain = sel.length && (() => { const ids = setOf(sel[0].id); return ids.length > 1 && ids.length === sel.length && sel.every((b) => ids.includes(b.id)) ? findBody(store.doc, ids[0]) : null; })();
+    if (setMain) {
+      inspector.append(el("header", {}, el("h4", {}, setMain.name), el("button", { class: "xbtn", "aria-label": "Deselect", title: "Deselect", html: ICON.close, onclick: () => app.select([]) })));
+      const bb = el("div", { class: "body" });
+      inspector.append(bb);
+      bb.append(el("p", { class: "hint", style: { padding: 0 } }, `A Box Maker set: ${sel.length} parts that move together. Drag it to move it.`));
+      bb.append(el("button", { class: "btn primary", id: "insp-bins", onclick: () => app.advanced.openBins(setMain.id) }, "Edit in Box Maker"));
+      bb.append(el("p", { class: "hint", style: { padding: 0 } }, "Or double-click it. Delete removes the whole set."));
+      return;
+    }
     const one = sel.length === 1 ? sel[0] : null;
     const title = one ? el("input", { class: "num", id: "insp-name", value: one.name, style: { fontFamily: "var(--f-ui)", fontWeight: 600 }, "aria-label": "Shape name" }) : el("h4", {}, `${sel.length} shapes`);
     if (one) {

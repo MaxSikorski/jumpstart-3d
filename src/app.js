@@ -844,6 +844,25 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.9.7.1", [
+        ["Box Maker doors:", "pick the door's pull: a knob, a finger hole through the door, or a bar. The back of the door is now completely flat (the knob no longer pokes out the back, and the hinge pins are no thicker than the door), so it prints lying on its back; Laid out to print lays it that way."],
+      ]),
+      sec("New in version 2.9.7", [
+        ["Box Maker fixes:", "placing a set no longer climbs onto its own drawers and cases and tips over; typing a size waits until you pause before rebuilding (no more flashing \"too small\" errors); the panel keeps your place when it redraws; making a set smaller (fewer cases, no lid, another style) now really removes the extra parts."],
+        ["Box Maker sets in Beginner:", "a click picks the whole set (cases, drawers, bins, doors and lid) so it moves and deletes as one, the side panel shows it as one set with Edit in Box Maker (instead of a Group button that would have merged it), and double-clicking it opens the Box Maker to change it."],
+      ]),
+      sec("New in version 2.9.6", [
+        ["Beginner toolbar:", "Neon Sign and Box Maker are on the Beginner toolbar now, in place of Chip Carve, Lathe and Stained Glass. Those three are still in Advanced (Design ribbon → Workshop, and the Simulate tab), and the Spinning top lathe tutorial has moved to the Advanced tutorials."],
+      ]),
+      sec("New in version 2.9.5", [
+        ["Bin & Box Maker styles:", "besides open bins, make a case with a drawer (with compartments and a bar, knob or finger-notch pull), a case with a tilt-out bin that tips forward on two pins and stops at about 30°, or a case with a door that swings on pins top and bottom (hinged left or right)."],
+        ["Stacking:", "make up to 8 units stacked one on another. Cases interlock with dovetail rails that slide into grooves under the case above and stop flush, or with pegs; open bins lock with a rim and foot. Show them assembled or laid out to print. Each case and each drawer, bin or door is its own body, and double-clicking any of them opens the maker again."],
+      ]),
+      sec("New in version 2.9.4", [
+        ["Architect, Show:", "a menu next to See-through (or the A key) picks how the house is shown: this level with the others faded (as before), the whole house solid with nothing see-through, or cut away above this level, with no roof and no floors above, so you look down into the rooms."],
+        ["Staging camera (C):", "stand inside the house at eye height. Drag to look around, walk with W A S D or the arrow keys (or the on-screen pad on a tablet), step with the wheel or a pinch, and double-click a floor to walk there. The level menu takes you up or down a floor. Pick a lens (extra wide to close) and an eye height (child, seated, standing, tall)."],
+        ["Photos of the inside:", "Take photo (or Space) renders the view at the size you pick (this window, HD, 4K, square or portrait) without the grid or handles; photos collect in the panel to save as PNG pictures, one at a time or all at once."],
+      ]),
       sec("New in version 2.9.3", [
         ["Neon Sign Builder projects:", "Save project keeps the whole sign (words, shapes, traced pictures, tubes, backing, printer and light show) in a file you can Open again; New starts fresh. Your last sign also comes back by itself the next time you open the builder in the same browser."],
         ["Undo, redo, cut, copy, paste and delete:", "buttons at the top and the usual shortcuts: Ctrl/⌘ Z, Ctrl/⌘ Shift Z or Ctrl Y, Ctrl/⌘ X, C, V, D (duplicate), S (save), O (open), Delete, and the arrow keys to nudge a part (Shift for 10 mm)."],
