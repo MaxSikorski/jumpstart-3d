@@ -1,5 +1,5 @@
 {
-  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run. ar-planexp (Floor plan: PDF, SVG, DXF) is in none of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats. From J.Siwek 2.7.8 to 2.8.1.3: his new buttons (Floor Planner, whose ten tutorials live inside the planner; Quick Hinge; Bin & Box Maker; Stained Glass; the Fasteners entries other than Advanced Create; the Print Sim ribbon G-code button) have no JumpStart 3D lesson; upstream2813.spec.mjs covers each. From J.Siwek 2.8.1.4 to 2.9.3: Clearance, his Gears entries, the Neon Sign Builder, the pinned Constraints palette, Architect furniture, stairs, railings, porches and floor holes, the STL/3MF quality and Save-download switches, and the layout and Tablet entries have no JumpStart 3D lesson; upstream293.spec.mjs covers the headline ones (his ten Advanced/Expert tutorials are walked; his twelve Chisel tutorials run inside Chisel and are not).",
+  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run. ar-planexp (Floor plan: PDF, SVG, DXF) is in none of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats. From J.Siwek 2.7.8 to 2.8.1.3: his new buttons (Floor Planner, whose ten tutorials live inside the planner; Quick Hinge; Bin & Box Maker; Stained Glass; the Fasteners entries other than Advanced Create; the Print Sim ribbon G-code button) have no JumpStart 3D lesson; upstream2813.spec.mjs covers each. From J.Siwek 2.8.1.4 to 2.9.3: Clearance, his Gears entries, the Neon Sign Builder, the pinned Constraints palette, Architect furniture, stairs, railings, porches and floor holes, the STL/3MF quality and Save-download switches, and the layout and Tablet entries have no JumpStart 3D lesson; upstream293.spec.mjs covers the headline ones (his ten Advanced/Expert tutorials are walked; his twelve Chisel tutorials run inside Chisel and are not). From J.Siwek 2.9.4 to 2.9.7.1: Neon Sign and Box Maker replace Chip Carve, Lathe and Stained Glass on the Beginner ribbon (bb-neon, bb-bins have no lesson; upstream2971.spec.mjs covers them); the Architect staging camera has no lesson.",
   "gaps": {
     "Advanced toolbar": [
       "ad-chipcarve",
@@ -21,7 +21,7 @@
       "ad-sketch3d"
     ],
     "Beginner toolbar": [
-      "bb-chipcarve",
+      "bb-bins",
       "bb-cosforge",
       "bb-extrude",
       "bb-facebox",
@@ -29,7 +29,7 @@
       "bb-fillopen",
       "bb-hinge",
       "bb-import",
-      "bb-sglass",
+      "bb-neon",
       "bb-shell",
       "bb-sketch",
       "bb-sketch3d"
@@ -152,6 +152,7 @@
     "Architect toolbar": [
       "Architect toolbar:text:Metric",
       "Architect toolbar:text:ft · in",
+      "ar-camera",
       "ar-floorplanner",
       "ar-furn-tool",
       "ar-hole",

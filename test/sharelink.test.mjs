@@ -552,6 +552,30 @@ test("new parts and sweep paths survive sharing and reject unsafe data", async (
   const y = structuredClone(s); y.bodies[0].node.rail = { sketch: 's1', ents: ['missing'] }; throwsShare(() => validateEnvelope(env(y)));
 });
 
+test("J.Siwek 2.9.5 Box Maker sets (a stacked door case) survive sharing; their part references are checked", async () => {
+  const { BIN_DEFAULTS, binSet } = await import('../src/bins.js');
+  const base = fixture('beginner-box'), body = base.bodies[0];
+  const o = { ...BIN_DEFAULTS, style: 'door', units: 2, doorPull: 'bar', layout: 'print' };
+  const set = binSet(o), ids = {};
+  for (const q of set.parts) if (q.key !== 'main') ids[q.key] = 'p_' + q.key;
+  const bodies = set.parts.map((q) => ({ ...structuredClone(body), id: q.key === 'main' ? 'main' : ids[q.key], node: q.node, ...(q.key === 'main' ? { bin: { ...o, ids } } : { binPart: 'main' }) }));
+  const d = { ...structuredClone(base), bodies, sketches: [] };
+  const link = await makeLink(d, BASE);
+  assert.equal(link.ok, true, link.message);
+  assert.deepEqual(await readFragment(link.url.split('#')[1]), snapshot(d));
+  for (const change of [{ style: 'safe' }, { units: 9 }, { doorPull: 'rope' }, { ids: { evil: 'p_case1' } }, { caseT: -1 }]) {
+    const x = structuredClone(d); Object.assign(x.bodies[0].bin, change); throwsShare(() => validateEnvelope(env(x)));
+  }
+  const y = structuredClone(d); y.bodies[1].binPart = y.bodies[2].id; throwsShare(() => validateEnvelope(env(y))); // a part pointing at another part, not the set
+  const z = structuredClone(d); z.bodies[1].bin = { ...o }; throwsShare(() => validateEnvelope(env(z))); // both a set and a part of one
+  // the parts' own outlines (extrudes with regions on a plane, no sketch) are checked piece by piece
+  const outline = (x) => { const st = [x.bodies.map((q) => q.node)]; while (st.length) { const n = st.pop(); if (Array.isArray(n)) { st.push(...n); continue; } if (n.t === 'extrude' && n.regions) return n; if (n.children) st.push(n.children.map((c) => c.node)); } };
+  assert.ok(outline(d), 'a door set has an outline extrude');
+  for (const harm of [(n) => { n.regions[0].outer[0].t = 'bez'; }, (n) => { delete n.plane; }, (n) => { n.regions[0].outer[0].a = [0, Infinity]; }, (n) => { n.regions[0].outer[0].evil = 1; }, (n) => { n.plane.n = [0, 0, 0]; }]) {
+    const x = structuredClone(d); harm(outline(x)); throwsShare(() => validateEnvelope(env(x)));
+  }
+});
+
 test("hinge companions and sketch guide rails check their references and settings", async () => {
   const { HINGE_DEFAULTS, hingeParts } = await import('../src/hinges.js');
   const d = fixture('advanced-sketch-extrude'), base = d.bodies[0], sk = d.sketches[0];

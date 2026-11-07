@@ -1143,7 +1143,7 @@ export function initArch(app) {
   const labels = el("div", { class: "vp-labels arch-labels" });
   vpEl.append(panel, elev, labels);
   movablePanel(panel, "arch-panel");
-  const st = { tool: "select", sel: null, level: "L1", draft: null, hover: null, preset: { door: "int32", window: "sh3648" }, roof: { kind: "gable", pitch: 26.6, over: 300, dir: "y", flip: false, thick: 200 }, xray: true, others: true, autoRaise: false, drag: null, typed: "", plan: false };
+  const st = { tool: "select", sel: null, level: "L1", draft: null, hover: null, preset: { door: "int32", window: "sh3648" }, roof: { kind: "gable", pitch: 26.6, over: 300, dir: "y", flip: false, thick: 200 }, xray: true, others: true, show: "level", autoRaise: false, drag: null, typed: "", plan: false };
   st.stair = { kind: "straight", rail: "wood", flip: false, r: 0, cut: true, w: null };
   st.railT = { style: "wood", h: 914 };
   st.porch = { post: "square", roof: "shed", pitch: 14, deck: 450, postH: 2438, rail: "wood", steps: true };
@@ -1183,9 +1183,12 @@ export function initArch(app) {
     drawLand();
     const S = printScale();
     const selWall = st.sel && (st.sel.k === "wall" ? st.sel.id : st.sel.k === "open" ? openById(st.sel.id)?.wall : null);
+    const camOn = st.tool === "camera", cutAway = st.show === "cut" && !camOn, elev0 = (cur() || { elev: 0 }).elev;
     for (const L of a.levels) {
       const curL = L.id === st.level;
-      if (!curL && !st.others) continue;
+      if (!curL && !st.others && !camOn) continue;
+      // cut away: nothing above the level being worked on, so you look down into its rooms
+      if (cutAway && L.elev > elev0 + 1) continue;
       for (const w of a.walls.filter((q) => q.lvl === L.id)) {
         const ext = wallExt(a.walls, w);
         const m = (w.h || 0) > 0 ? anyWallMesh(a, w, L.elev, ext) : planWallMesh(w, L.elev, ext);
@@ -1207,7 +1210,7 @@ export function initArch(app) {
         m.userData.pick = { k: "slab", id: s.id }; m.userData.level = L.id;
         root.add(m); meshes.slabs.set(s.id, m);
       }
-      for (const r of a.roofs.filter((q) => q.lvl === L.id)) {
+      for (const r of a.roofs.filter((q) => q.lvl === L.id && !cutAway)) {
         const m = new THREE.Mesh(roofGeometry(effRoof(a, r), L.elev + roofZ(a, r)), mat(COL.roof).clone());
         m.material.userData.own = true; m.material.userData.base = { transparent: false, opacity: 1, depthWrite: true };
         m.userData.pick = { k: "roof", id: r.id }; m.userData.level = L.id;
@@ -1227,13 +1230,14 @@ export function initArch(app) {
     // see-through: while a wall (or one of its doors and windows) is being edited, everything else
     // fades away; other levels are always a little faded
     root.traverse((o) => {
-      if (o.userData.edge) { const pk = o.parent.userData.pick, lvl = o.parent.userData.level; let op = 0.55; if (lvl && lvl !== st.level) op = 0.2; if (selWall && st.xray && !(pk && pk.id === selWall)) op = 0.06; o.material.opacity = op; return; }
+      const fadeOthers = st.show === "level" && !camOn;
+      if (o.userData.edge) { const pk = o.parent.userData.pick, lvl = o.parent.userData.level; let op = 0.55; if (lvl && lvl !== st.level && fadeOthers) op = 0.2; if (selWall && st.xray && !(pk && pk.id === selWall)) op = 0.06; o.material.opacity = op; return; }
       if (!o.isMesh || !o.material) return;
       let op = 1;
       const pk = o.userData.pick, lvl = o.userData.level || (o.parent && o.parent.userData.level);
-      if (lvl && lvl !== st.level) op = 0.35;
+      if (lvl && lvl !== st.level && fadeOthers) op = 0.35;
       if (st.plan && pk && pk.k === "roof") op = Math.min(op, 0.12);
-      if (selWall && st.xray) {
+      if (selWall && st.xray && !camOn) {
         const mine = (pk && pk.k === "wall" && pk.id === selWall) || (pk && pk.k === "open" && openById(pk.id)?.wall === selWall);
         if (!mine) op = Math.min(op, 0.12);
       }
@@ -2175,7 +2179,7 @@ export function initArch(app) {
   function drawOverlay() {
     clearGroup(ov); labels.replaceChildren(); lbls.length = 0;
     updateTypeBox();
-    if (!active) return;
+    if (!active || st.tool === "camera") return;
     const a = A(), L = cur(), z = L.elev + 6;
     const P3 = (p) => new THREE.Vector3(p[0], p[1], z);
     // wall ends you can drag (Select tool, selected wall)
@@ -2300,7 +2304,10 @@ export function initArch(app) {
   function setTool(t) {
     if (t !== "sim" && st.flood && (st.flood.sim || st.flood.result)) floodClear();
     if (st.draft && st.draft.kind === "chain" && st.draft.pts.length > 1) finishChain();
+    if (st.tool === "camera" && t !== "camera") camExit();
+    const intoCam = t === "camera" && st.tool !== "camera";
     st.tool = t; st.draft = null; st.ghost = null; st.fghost = null; st.sghost = null; st.snap = null; st.typed = "";
+    if (intoCam) { st.sel = null; camEnter(); }
     // a standard overhang for the units in use (12" or 300 mm)
     if (Math.abs(st.roof.over - 300) < 0.01 && isInch()) st.roof.over = 12 * IN; else if (Math.abs(st.roof.over - 12 * IN) < 0.01 && !isInch()) st.roof.over = 300;
     if (t !== "select" && st.sel && st.sel.k !== "wall") st.sel = null;
@@ -2784,7 +2791,10 @@ export function initArch(app) {
     panel.hidden = false;
     const a = A(), body = el("div", { class: "body" });
     const t = st.tool, s = st.sel;
-    if (t === "wall" || t === "room") {
+    if (t === "camera") {
+      panel.append(head("Staging camera", "inside the house"));
+      cameraPanel(body);
+    } else if (t === "wall" || t === "room") {
       panel.append(head(t === "wall" ? "Draw walls" : "Draw a room"));
       body.append(el("p", { class: "arch-hint" }, t === "wall" ? "Click to start a wall, click again for each corner. Double-click, press Enter or click the first point again to finish. Type a length (like 12' or 3600) and press Enter for an exact wall." : "Drag from one corner of the room to the opposite corner (or click both corners). It makes four walls."));
       body.append(row("Wall type", wallTypeSelect(a.wallT, (W) => update((aa) => { aa.wallT = W.t; if (W.log) aa.wallLog = W.log; else delete aa.wallLog; }, W.log ? "Log walls" : "Wall type"), a.wallLog)));
@@ -3224,7 +3234,7 @@ export function initArch(app) {
     sep();
     const a = A();
     const lv = el("select", { class: "num arch-level", id: "ar-level", "aria-label": "Level", title: "The level (floor) you are working on" }, ...a.levels.map((l) => el("option", { value: l.id, selected: l.id === st.level }, l.name)), el("option", { value: "+" }, "+ Add a level above"));
-    lv.onchange = () => { if (lv.value === "+") { addLevel(); return; } st.level = lv.value; st.sel = null; st.draft = null; renderPanel(); rebuild(); };
+    lv.onchange = () => { if (lv.value === "+") { addLevel(); return; } st.level = lv.value; st.sel = null; st.draft = null; if (vp.fpv) { cam.lvl = st.level; vp.fpv.eye.z = eyeZ(); vp.request(); } renderPanel(); rebuild(); };
     bar.append(lv);
     // units: imperial (feet and inches) or metric, for every size shown and typed
     const un = el("div", { class: "seg arch-units", id: "ar-units", role: "group", "aria-label": "Units", title: "Units for sizes: feet and inches, or metric (mm)" },
@@ -3233,6 +3243,11 @@ export function initArch(app) {
     bar.append(un);
     btn("archPlan", st.plan ? "3D view" : "Plan view", "Look straight down at the floor plan, or back to 3D (P)", () => togglePlan(), "ar-plan", st.plan);
     btn("archXray", "See-through", "When you edit a wall, make the rest of the building see-through (X)", () => { st.xray = !st.xray; renderRibbon(); rebuild(); }, "ar-xray", st.xray);
+    // how the other levels and the roof are shown (A goes through them)
+    const sh = el("select", { class: "num arch-level", id: "ar-show", "aria-label": "Show", title: "What to show: this level with the others faded, the whole house solid, or cut away above this level (no roof, no floors above) to look down into the rooms (A)" }, ...SHOW_OPTS.map(([v, l]) => el("option", { value: v, selected: v === st.show }, l)));
+    sh.onchange = () => setShow(sh.value);
+    bar.append(sh);
+    btn("archCamera", "Staging camera", "Walk inside the house at eye height and take photos of the rooms (C)", () => setTool(st.tool === "camera" ? "select" : "camera"), "ar-camera", T === "camera");
     sep();
     btn("archSend", "Send to design", "Turn the building into shapes in Beginner or Advanced, at a scale you pick", () => sendDialog(), "ar-send");
     btn("archExport", "Export", "Export the house with its landscape, scaled to fit the build plate, as 3MF, OBJ or STL", () => exportDialog(), "ar-export");
@@ -3266,7 +3281,206 @@ export function initArch(app) {
     renderRibbon(); renderPanel(); rebuild();
     if (!quietUnits) app.toast(inch ? "Sizes in feet and inches (like 12' 6\"). Walls default to 6½\" thick and 9' high; the grid is 6\"." : "Sizes in millimetres. Walls default to 200 mm thick and 2.7 m high; the grid is 100 mm.");
   });
+  const SHOW_OPTS = [["level", "This level (others faded)"], ["all", "Whole house (solid)"], ["cut", "Cut away above (no roof)"]];
+  function setShow(v) { st.show = v; if (v !== "level") st.others = true; renderRibbon(); rebuild(); app.toast(SHOW_OPTS.find((q) => q[0] === v)[1]); }
+
+  // ------------------------------------------------------------ staging camera: inside the house at eye height
+  // Drag to look around, W A S D or the arrow keys to walk, the wheel or a pinch to step forward or back,
+  // double-click (double-tap) a floor to walk there. Photos render the view at the size picked.
+  const cam = { eyeH: 1600, fov: 60, size: "screen", photos: [], keys: new Set(), raf: 0, saved: null, listeners: null, pad: null, shots: 0 };
+  const CAM_LENS = [["Extra wide", 80], ["Wide", 65], ["Normal", 50], ["Close", 35]];
+  const CAM_SIZES = [["screen", "This window"], ["1920x1080", "HD 1920 × 1080"], ["3840x2160", "4K 3840 × 2160"], ["2048x2048", "Square 2048"], ["1080x1350", "Portrait 1080 × 1350"]];
+  const eyeZ = () => ((cur() || { elev: 0 }).elev) + cam.eyeH;
+  function camStartPoint() {
+    const a = A(), ws = a.walls.filter((w) => w.lvl === st.level);
+    if (!ws.length) return [vp.view.target.x, vp.view.target.y];
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const w of ws) for (const q of [w.a, w.b]) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+    return [(x0 + x1) / 2, (y0 + y1) / 2];
+  }
+  function camEnter() {
+    cam.saved = { view: { target: vp.view.target.clone(), az: vp.view.az, el: vp.view.el, dist: vp.view.dist, roll: vp.view.roll || 0 }, bg: vp.bg.clone(), grid: vp.grid.visible, fov: vp.persp.fov };
+    if (!cam.eye || cam.lvl !== st.level) { const [x, y] = camStartPoint(); cam.eye = new THREE.Vector3(x, y, 0); cam.yaw = vp.view.az + Math.PI; cam.pitch = 0; }
+    cam.eye.z = eyeZ(); cam.lvl = st.level;
+    vp.fpv = { eye: cam.eye, yaw: cam.yaw, pitch: cam.pitch, fov: cam.fov, near: 20, far: 600000 };
+    vp.grid.visible = false; vp.bg = new THREE.Color("#cfe2f3");
+    // the plan overlay (axes, snaps, handles) is drawn on top of everything: not wanted inside
+    cam.ovWas = ov.visible; ov.visible = false;
+    // indoors the light from below (the hemisphere's ground colour) lights ceilings: make it a warm room light
+    cam.hemiG = vp.hemi.groundColor.clone(); vp.hemi.groundColor.set("#e9e4da");
+    camListen(true); camPad(true); vp.request();
+  }
+  function camExit() {
+    camListen(false); camPad(false); cancelAnimationFrame(cam.raf); cam.raf = 0; cam.keys.clear();
+    if (vp.fpv) { cam.yaw = vp.fpv.yaw; cam.pitch = vp.fpv.pitch; }
+    vp.fpv = null; if (active) ov.visible = cam.ovWas !== false;
+    if (cam.hemiG) { vp.hemi.groundColor.copy(cam.hemiG); cam.hemiG = null; }
+    const S0 = cam.saved; if (S0) { vp.persp.fov = S0.fov; vp.persp.updateProjectionMatrix(); vp.bg = S0.bg; vp.grid.visible = S0.grid; Object.assign(vp.view, S0.view); }
+    vp.request();
+  }
+  const camLook = () => { const f = vp.fpv, cp = Math.cos(f.pitch); return [cp * Math.cos(f.yaw), cp * Math.sin(f.yaw)]; };
+  function camMove(fwd, side) {
+    const f = vp.fpv; if (!f) return;
+    const c = Math.cos(f.yaw), s2 = Math.sin(f.yaw);
+    f.eye.x += c * fwd - s2 * side; f.eye.y += s2 * fwd + c * side;
+    f.eye.z = eyeZ(); vp.request();
+  }
+  // walking with the keys (or the on-screen pad) while they are held
+  function camTick() {
+    let last = performance.now();
+    const step = (t) => {
+      const dt = Math.min(0.1, (t - last) / 1000); last = t;
+      const f = vp.fpv; if (!f || !cam.keys.size) { cam.raf = 0; return; }
+      const K = cam.keys, run = K.has("shift") ? 2.6 : 1, v = (isInch() ? 4.5 * FT : 1400) * run * dt, turn = 1.5 * dt;
+      let fw = 0, sd = 0;
+      if (K.has("fwd")) fw += v; if (K.has("back")) fw -= v; if (K.has("left")) sd += v; if (K.has("right")) sd -= v;
+      if (K.has("tl")) f.yaw += turn; if (K.has("tr")) f.yaw -= turn;
+      if (K.has("up")) f.pitch = Math.min(1.3, f.pitch + turn * 0.6); if (K.has("down")) f.pitch = Math.max(-1.3, f.pitch - turn * 0.6);
+      camMove(fw, sd);
+      cam.raf = requestAnimationFrame(step);
+    };
+    if (!cam.raf) cam.raf = requestAnimationFrame(step);
+  }
+  const CAM_KEYS = { w: "fwd", arrowup: "fwd", s: "back", arrowdown: "back", a: "left", d: "right", arrowleft: "tl", arrowright: "tr", q: "tl", e: "tr", pageup: "up", pagedown: "down", r: "up", f: "down" };
+  // walking to a spot: on a floor, stand there; on a wall or furniture, stop in front of it
+  function camWalkTo(e) {
+    const f = vp.fpv; if (!f) return;
+    const rc = new THREE.Raycaster(); rc.setFromCamera(vp.ndc(e), vp.persp);
+    const hit = rc.intersectObjects(root.children, true).find((h) => h.object.isMesh && h.object.visible && !(h.object.material && h.object.material.transparent && h.object.material.opacity < 0.6));
+    if (!hit) return;
+    const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 0, 1);
+    let to;
+    if (n.z > 0.7) {
+      to = [hit.point.x, hit.point.y];
+      // a floor on another level: go to that level
+      const lv = A().levels.filter((L) => L.elev <= hit.point.z + 50).sort((p, q) => q.elev - p.elev)[0];
+      if (lv && lv.id !== st.level && Math.abs(hit.point.z - lv.elev) < 400) { st.level = lv.id; cam.lvl = lv.id; renderRibbon(); }
+    } else { const [lx, ly] = camLook(), l = Math.hypot(lx, ly) || 1; to = [hit.point.x - (lx / l) * 700, hit.point.y - (ly / l) * 700]; }
+    const from = [f.eye.x, f.eye.y], z0 = f.eye.z, z1 = eyeZ(), t0 = performance.now();
+    const go = (t) => { const k = Math.min(1, (t - t0) / 450), e2 = k * k * (3 - 2 * k); if (!vp.fpv) return; f.eye.x = from[0] + (to[0] - from[0]) * e2; f.eye.y = from[1] + (to[1] - from[1]) * e2; f.eye.z = z0 + (z1 - z0) * e2; vp.request(); if (k < 1) requestAnimationFrame(go); };
+    requestAnimationFrame(go);
+  }
+  function camListen(on) {
+    const C = vp.container, cv = vp.canvas;
+    if (!on) { if (cam.listeners) for (const [t, el2, fn] of cam.listeners) el2.removeEventListener(t, fn, true); cam.listeners = null; return; }
+    const ptrs = new Map(); let drag = null, lastTap = 0, lastXY = [0, 0];
+    const mine = (e) => e.target === cv;
+    const L = [
+      ["pointerdown", C, (e) => {
+        if (!mine(e)) return; e.stopImmediatePropagation(); e.preventDefault(); cv.focus({ preventScroll: true });
+        try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+        ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+        const f = vp.fpv;
+        if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, yaw: f.yaw, pitch: f.pitch, moved: false, t: performance.now() };
+        else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; drag = { two: true, d: Math.hypot(a[0] - b[0], a[1] - b[1]), c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], moved: true }; }
+      }],
+      ["pointermove", C, (e) => {
+        if (!ptrs.has(e.pointerId)) return; e.stopImmediatePropagation(); e.preventDefault();
+        ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+        const f = vp.fpv; if (!f || !drag) return;
+        if (drag.two && ptrs.size >= 2) {
+          const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+          const unit = isInch() ? FT : 300;
+          camMove((d - drag.d) * unit / 60, (c[0] - drag.c[0]) * unit / 120); drag.d = d; drag.c = c; return;
+        }
+        if (drag.two) return;
+        const k = ((f.fov * Math.PI) / 180) / Math.max(200, vp.h);
+        if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
+        // drag the view: the room moves with the pointer
+        f.yaw = drag.yaw + (e.clientX - drag.x) * k; f.pitch = Math.max(-1.3, Math.min(1.3, drag.pitch + (e.clientY - drag.y) * k));
+        vp.request();
+      }],
+      ["pointerup", C, (e) => {
+        if (!ptrs.has(e.pointerId)) return; e.stopImmediatePropagation();
+        ptrs.delete(e.pointerId);
+        if (drag && !drag.moved && !drag.two && ptrs.size === 0) {
+          const t = performance.now();
+          if (t - lastTap < 400 && Math.hypot(e.clientX - lastXY[0], e.clientY - lastXY[1]) < 30) { camWalkTo(e); lastTap = 0; } else { lastTap = t; lastXY = [e.clientX, e.clientY]; }
+        }
+        if (ptrs.size === 0) drag = null;
+      }],
+      ["pointercancel", C, (e) => { ptrs.delete(e.pointerId); if (!ptrs.size) drag = null; }],
+      ["dblclick", C, (e) => { if (mine(e)) { e.stopImmediatePropagation(); e.preventDefault(); } }],
+      ["wheel", C, (e) => { if (!mine(e)) return; e.stopImmediatePropagation(); e.preventDefault(); const unit = isInch() ? FT : 300; camMove(-Math.sign(e.deltaY) * Math.min(3, Math.abs(e.deltaY) / 40) * unit * 0.6, 0); }],
+      ["keydown", window, (e) => {
+        if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const k = e.key.toLowerCase();
+        if (k === "escape") { e.stopImmediatePropagation(); e.preventDefault(); setTool("select"); return; }
+        if (k === " " || k === "enter") { e.stopImmediatePropagation(); e.preventDefault(); if (!e.repeat) camShot(); return; }
+        if (k === "shift") { cam.keys.add("shift"); return; }
+        const m = CAM_KEYS[k]; if (!m) return;
+        e.stopImmediatePropagation(); e.preventDefault(); cam.keys.add(m); camTick();
+      }],
+      ["keyup", window, (e) => { const k = e.key.toLowerCase(); if (k === "shift") cam.keys.delete("shift"); const m = CAM_KEYS[k]; if (m) { cam.keys.delete(m); e.stopImmediatePropagation(); } }],
+      ["blur", window, () => cam.keys.clear()],
+    ];
+    for (const [t, el2, fn] of L) el2.addEventListener(t, fn, { capture: true, passive: false });
+    cam.listeners = L;
+  }
+  // an on-screen pad for walking on a tablet, and the shutter button
+  function camPad(on) {
+    if (cam.pad) { cam.pad.remove(); cam.pad = null; }
+    if (!on) return;
+    const hold = (m, label, title) => { const b = el("button", { class: "btn cam-pad-b", type: "button", title, "aria-label": title }, label); const up = () => { cam.keys.delete(m); }; b.addEventListener("pointerdown", (e) => { e.preventDefault(); cam.keys.add(m); camTick(); }); for (const t of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(t, up); return b; };
+    cam.pad = el("div", { class: "cam-pad", id: "ar-cam-pad" },
+      el("div", { class: "cam-pad-grid" }, el("span"), hold("fwd", "▲", "Walk forward (W or ↑)"), el("span"), hold("tl", "↺", "Turn left (← or Q)"), hold("back", "▼", "Walk back (S or ↓)"), hold("tr", "↻", "Turn right (→ or E)"), hold("left", "◀", "Step left (A)"), el("span"), hold("right", "▶", "Step right (D)")),
+      el("button", { class: "btn primary cam-shot", id: "ar-cam-shot2", type: "button", title: "Take a photo (Space)", onclick: () => camShot() }, "📷 Take photo"));
+    vp.container.append(cam.pad);
+  }
+  // a photo of the view at the size picked: drawn again without the grid and handles, saved as PNG
+  function camShot() {
+    const f = vp.fpv; if (!f) return;
+    const r = vp.renderer, max = Math.min(r.capabilities.maxTextureSize || 4096, 8192);
+    let W, H;
+    if (cam.size === "screen") { W = Math.round(vp.w * Math.min(2, window.devicePixelRatio || 1)); H = Math.round(vp.h * Math.min(2, window.devicePixelRatio || 1)); }
+    else [W, H] = cam.size.split("x").map(Number);
+    const k = Math.min(1, max / Math.max(W, H)); W = Math.round(W * k); H = Math.round(H * k);
+    const dpr = r.getPixelRatio(), grid = vp.grid.visible;
+    vp.grid.visible = false;
+    r.setPixelRatio(1); r.setSize(W, H, false);
+    vp.fpv = { ...f }; vp.w0 = vp.w; vp.h0 = vp.h; vp.w = W; vp.h = H; vp.updateCamera();
+    r.setClearColor(vp.bg, 1); r.clear(); r.render(vp.scene, vp.persp);
+    const url = r.domElement.toDataURL("image/png");
+    vp.w = vp.w0; vp.h = vp.h0; vp.fpv = f; vp.grid.visible = grid;
+    r.setPixelRatio(dpr); r.setSize(vp.w, vp.h, false); vp.updateCamera(); vp.request();
+    // a small copy for the panel
+    const th = document.createElement("canvas"), tw = 240; th.width = tw; th.height = Math.round((tw * H) / W);
+    const im = new Image();
+    im.onload = () => { th.getContext("2d").drawImage(im, 0, 0, th.width, th.height); cam.shots++; const ph = { n: cam.shots, url, thumb: th.toDataURL("image/jpeg", 0.8), w: W, h: H, lvl: (cur() || {}).name }; cam.photos.unshift(ph); if (cam.photos.length > 24) cam.photos.pop(); renderPanel(); app.toast(`Photo ${ph.n} taken (${W} × ${H}). Save it from the panel.`); };
+    im.src = url;
+    flash();
+  }
+  function flash() { const d = el("div", { class: "cam-flash" }); vp.container.append(d); setTimeout(() => d.remove(), 260); }
+  const photoName = (ph) => `${(store.doc.name || "house").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "house"}-photo-${ph.n}.png`;
+  const dataBytes = (url) => { const b = atob(url.split(",")[1]), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  const savePhoto = (ph) => app.projects.saveModel(photoName(ph), dataBytes(ph.url));
+  function cameraPanel(body) {
+    const inch = isInch();
+    body.append(el("p", { class: "arch-hint" }, "You are standing inside on " + ((cur() || {}).name || "this level") + ". Drag to look around. Walk with W A S D or the arrow keys (Shift to hurry), or the pad in the corner. The wheel or a pinch steps forward and back. Double-click (double-tap) a floor to walk there. Change floors with the level menu at the top."));
+    body.append(row("Eye height", lenField(cam.eyeH, (v) => { cam.eyeH = v; if (vp.fpv) { vp.fpv.eye.z = eyeZ(); vp.request(); } }, "ar-cam-eye", { min: 300 })));
+    body.append(chips(inch ? [["Child 3' 6\"", 42 * IN], ["Seated 4'", 48 * IN], ["Standing 5' 3\"", 63 * IN], ["Tall 6'", 72 * IN]] : [["Child 1.1 m", 1100], ["Seated 1.2 m", 1200], ["Standing 1.6 m", 1600], ["Tall 1.8 m", 1800]], (v) => { cam.eyeH = v; if (vp.fpv) { vp.fpv.eye.z = eyeZ(); vp.request(); } renderPanel(); }));
+    body.append(row("Lens", seg(CAM_LENS.map(([l, v]) => [v, l]), cam.fov, (v) => { cam.fov = v; if (vp.fpv) { vp.fpv.fov = v; vp.request(); } renderPanel(); }, "ar-cam-lens")));
+    body.append(el("div", { class: "arch-inline" },
+      el("button", { class: "btn", id: "ar-cam-level", title: "Look straight ahead (no tilt up or down)", onclick: () => { if (vp.fpv) { vp.fpv.pitch = 0; vp.request(); } } }, "Level the camera"),
+      el("button", { class: "btn", id: "ar-cam-middle", title: "Go back to the middle of this level", onclick: () => { const [x, y] = camStartPoint(); if (vp.fpv) { vp.fpv.eye.set(x, y, eyeZ()); vp.request(); } } }, "Middle of the level")));
+    body.append(el("div", { class: "subhead" }, "Photos"));
+    const sz = el("select", { class: "num", id: "ar-cam-size", "aria-label": "Photo size" }, ...CAM_SIZES.map(([v, l]) => el("option", { value: v, selected: v === cam.size }, l)));
+    sz.onchange = () => { cam.size = sz.value; };
+    body.append(row("Size", sz));
+    body.append(el("button", { class: "btn primary", id: "ar-cam-shot", title: "Take a photo of this view (Space)", onclick: () => camShot() }, "📷 Take photo"));
+    if (!cam.photos.length) body.append(el("p", { class: "arch-hint" }, "Photos you take show here; save them as PNG pictures. Tip: Extra wide fits a whole room in; Level the camera keeps walls upright."));
+    else {
+      body.append(el("div", { class: "cam-photos", id: "ar-cam-photos" }, ...cam.photos.map((ph) => el("figure", { class: "cam-photo" },
+        el("img", { src: ph.thumb, alt: `Photo ${ph.n}${ph.lvl ? ", " + ph.lvl : ""}` }),
+        el("figcaption", {}, `${ph.n} · ${ph.w}×${ph.h}`, el("button", { class: "btn", title: "Save this photo as a PNG", onclick: () => savePhoto(ph) }, "Save"), el("button", { class: "btn", title: "Remove this photo", "aria-label": "Remove photo " + ph.n, onclick: () => { cam.photos = cam.photos.filter((q) => q !== ph); renderPanel(); } }, "✕"))))));
+      body.append(el("div", { class: "arch-inline" }, el("button", { class: "btn", id: "ar-cam-saveall", onclick: async () => { for (const ph of [...cam.photos].reverse()) await savePhoto(ph); } }, "Save all " + cam.photos.length), el("button", { class: "btn", onclick: () => { cam.photos = []; renderPanel(); } }, "Clear")));
+    }
+    body.append(el("button", { class: "btn", id: "ar-cam-exit", onclick: () => setTool("select") }, "Leave the camera (Esc)"));
+  }
+
   function togglePlan() {
+    if (st.tool === "camera") setTool("select");
     st.plan = !st.plan; if (st.plan) st.planSeen = true;
     vp.setView(st.plan ? "top" : "home", box3());
     renderRibbon(); rebuild();
@@ -3432,6 +3646,8 @@ export function initArch(app) {
     const tools = { v: "select", w: "wall", r: "room", e: "raise", d: "door", n: "window", o: "roof", g: "floor", l: "land", t: "finish", s: "sim", u: "furn", h: "hole", k: "stairs", j: "rail", y: "porch" };
     if (tools[k]) { setTool(tools[k]); return true; }
     if (k === "p") { togglePlan(); return true; }
+    if (k === "c") { setTool(st.tool === "camera" ? "select" : "camera"); return true; }
+    if (k === "a") { const i = SHOW_OPTS.findIndex((q) => q[0] === st.show); setShow(SHOW_OPTS[(i + 1) % SHOW_OPTS.length][0]); return true; }
     if (k === "x") { st.xray = !st.xray; renderRibbon(); rebuild(); return true; }
     if (k === "f" || k === "h") { vp.setView(k === "h" ? "home" : st.plan ? "top" : "home", box3()); return true; }
     if (/^Arrow/.test(e.key) && st.sel && st.sel.k === "roof") {
@@ -3449,6 +3665,7 @@ export function initArch(app) {
   }
   function hint() {
     const t = st.tool;
+    if (t === "camera") return "Staging camera: drag to look, W A S D or arrows to walk (Shift hurries), wheel or pinch to step, double-click a floor to walk there, Space for a photo, Esc to leave.";
     if (t === "wall") return st.draft ? "Click the next corner. Double-click, Enter or click the first point to finish; type a length and press Enter for an exact wall; Esc to stop." : "Click where the wall starts. Snaps to the grid, wall ends and straight lines (Shift: any angle).";
     if (t === "room") return st.draft && st.draft.waiting ? "Click the opposite corner of the room." : "Drag from one corner of the room to the opposite corner.";
     if (t === "raise") return "Pick a height and raise the walls.";
@@ -3503,6 +3720,7 @@ export function initArch(app) {
   }
   function leave() {
     if (!active) return;
+    if (st.tool === "camera") { camExit(); st.tool = "select"; }
     if (st.draft && st.draft.kind === "chain" && st.draft.pts.length > 1) finishChain();
     let box = null;
     try { box = autoSync(); } catch (e) { console.warn("house transfer failed", e); }
@@ -3532,5 +3750,5 @@ export function initArch(app) {
     rebuild();
     if (kind !== "preview") { renderRibbon(); renderPanel(); }
   }
-  return { enter, leave, refresh, key, hint, handler, get active() { return active; }, box: box3, setTool, state: st, send, select, weather: WX.state, animals: AN, importFloorPlan };
+  return { enter, leave, refresh, key, hint, handler, get active() { return active; }, box: box3, setTool, state: st, root, cam, send, select, weather: WX.state, animals: AN, importFloorPlan };
 }

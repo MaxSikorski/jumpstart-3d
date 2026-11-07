@@ -178,9 +178,11 @@ test("the sketch line width and colour are a setting: the menu sets them, they a
 });
 
 // ---------------------------------------------------------------- Chip Carving
-test("Chip Carving opens from the Beginner button and closes without work or errors; the page API is blocked while it is open", async () => {
-  await loadDoc(page, newDoc("Carve", "beginner", { bodies: [body("b1", "Box", prim("box", { w: 40, d: 30, h: 20, r: 0, c: 0 }))] }));
-  await page.locator("#bb-chipcarve").click();
+test("Chip Carving opens from Advanced → Workshop and closes without work or errors; the page API is blocked while it is open", async () => {
+  // 2.9.6 took Chip Carve off the Beginner ribbon (Neon Sign and Box Maker took its place); it stays in Advanced's Workshop menu
+  await loadDoc(page, newDoc("Carve", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 40, d: 30, h: 20, r: 0, c: 0 }))] }));
+  await page.locator("#ad-workshop").click();
+  await page.locator("#ad-chipcarve").click();
   await expect(page.getByRole("dialog", { name: "Choose what to carve" })).toBeVisible();
   expect(await run(() => window.__app.carve.active)).toBe(true);
   expect(await run(() => { try { JS3D.newDesign(); return "allowed"; } catch (e) { return e.message; } })).toBe("close Chip Carving first");
