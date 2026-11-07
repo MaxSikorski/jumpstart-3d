@@ -1,13 +1,12 @@
 // Upstream 2.9.8 (J.Siwek), shared by the site and single-file projects. One outcome test per headline feature:
-//  - the splash and About show 2.9.8 with his "New in version 2.9.8" note
+//  - About still lists his "New in version 2.9.8" note (the version itself: the newest upstream spec)
 //  - Box Maker grids: across as well as high; parts keyed down each column then across, named A1, A2, B1, B2
 //  - side joints: dovetail rails or pegs stand out of each box's right side; flat sides add nothing
 //  - doors open outwards only: a stop strip behind the door along the case floor and ceiling (in his 2.9.8 the case's inside cut
-//    removed the strips again; bins.js adds them after the cut, marked jumpstart-3d)
+//    removed the strips again; his 2.9.8.1 adds them after the cut)
 // His own tests (JumpStart-3D-v2.9.8-full-source/tests/tbingrid.cjs, tsa298.cjs) are screenshot scripts; the checks below assert real state.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc } from "./helpers.mjs";
-import { BUILD, VERSION } from "../src/version.js";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -48,13 +47,10 @@ const extent = (id) => run((id) => {
   return { lo, hi };
 }, id);
 
-test("the splash and About show version 2.9.8 with his notes for 2.9.8", async () => {
-  expect(VERSION).toBe("2.9.8");
-  const label = `Version 2.9.8 · community build ${BUILD}`;
-  expect(await page.locator("#sp-ver").textContent()).toBe(label);
+test("About still lists his notes for 2.9.8 and 2.9.7.1", async () => {
+  // the version and splash label are checked by the newest upstream spec (upstream2981.spec.mjs)
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText(label);
   for (const t of ["New in version 2.9.8", "Box Maker grids:", "Doors open outwards only:", "New in version 2.9.7.1"]) await expect(about).toContainText(t);
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();
