@@ -14,6 +14,7 @@ import { ICON } from "./icons.js";
 import { inflateRaw } from "./inflate.js";
 import { evalExpr } from "./params.js";
 import { MAX_SLOTS } from "./paint3mf.js";
+import { GEAR_DEFAULTS } from "./gearlib.js";
 
 // ---------------------------------------------------------------- limits (named, and tested at their edges)
 export const LIMITS = {
@@ -26,6 +27,9 @@ export const LIMITS = {
   PAINT_FACES: 4096, NAME: 256, EXPR: 512, STRING: 2048, ASSET_BYTES: 256 * 1024,
   // the most the app's own controls allow (advanced.js pattern box, beginner.js sliders, kernel.js coil and thread), so a link cannot ask the engine for more
   REPEAT: 200, REPEAT_TOTAL: 2000, CIRCULAR: 360, TURNS: 400, MEASURE: 1e5, SIDES: 24, PYRAMID_SIDES: 12, POINTS: 16,
+  // jumpstart-3d: J.Siwek 2.9.3 parts. Browser folders; a rack of at most 400 teeth; outline pieces across the whole design; the pairs of
+  // outline pieces the crossing check may compare before it gives up (a real gear needs a few per piece). Box Maker: compartments x bins.
+  FOLDERS: 256, FOLDER_NAME: 60, RACK_TEETH: 400, OUTLINE_SEGMENTS: 20000, OUTLINE_PAIRS: 4e6, OUTLINE_HOLES: 16, BIN_WORK: 1600,
 };
 const SITE = "https://maxsikorski.github.io/jumpstart-3d/"; // the community website; a file:// copy shares this address, never its own path
 const PREFIX = "js3d=";
@@ -178,10 +182,10 @@ const B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; // SVG, http(s), blob:, file: and the rest are not in it
 
 // explicit tables, taken from what the app writes and the kernel reads (kernel.js evalNode and applyMod)
-const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint"]);
+const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint", "folders"]);
 // the part kinds of the Fasteners dialog (FASTENER_KINDS in fasteners.js, which this module does not import; test/sharelink.test.mjs compares)
 export const FASTENER_KINDS = new Set(["hexbolt", "shcs", "button", "flat", "set", "wood", "rod", "nut", "nyloc", "sqnut", "washer", "lockw", "insert", "dowel", "cutter"]);
-const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "binPart", "hinge", "hingePart"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
+const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "binPart", "hinge", "hingePart", "gear", "gearPart", "folder"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
 const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "railEdgeSegs", "railScale", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
@@ -213,23 +217,53 @@ function count(v, max, what) { if (!Number.isInteger(v) || v < 1 || v > max) thr
 
 // jumpstart-3d: an extrude that carries its outline: { regions: [{ outer: [segment], holes?: [[segment]] }], plane: { o, x, n }, dist, mode }.
 // Segments are lines { t, a, b } and three-point arcs { t, a, b, m } in the plane (what bins.js writes); nothing else reaches the kernel.
-function inlineExtrude(n) {
+// jumpstart-3d: J.Siwek 2.9.3 gears add a loop that is one whole circle { t: "circle", c, r } (a bore, a ring's rim, a lightening hole).
+// Every loop must be closed, every piece must have length, and no loop may cross or touch itself (except neighbours at their shared end):
+// the kernel makes each loop a face, and a loop that crosses itself is no face. How the holes lie against the outer loop and each other is
+// left to the kernel, which cuts each hole from the outline as a flat boolean: the app makes such outlines itself (a big gear's lightening
+// holes overlap; a big keyway on a small gear cuts into its teeth). An arc is checked as its two chords.
+function inlineExtrude(n, ctx) {
   const pt = (v) => { vec(v, 2, "an outline point"); if (Math.abs(v[0]) > LIMITS.MEASURE || Math.abs(v[1]) > LIMITS.MEASURE) throw damaged("an outline point"); };
-  let segs = 0;
+  const piece = () => { if (++ctx.outline > LIMITS.OUTLINE_SEGMENTS) throw tooBig("This design has too many outline pieces for a link."); };
+  const same = (p, q) => Math.abs(p[0] - q[0]) <= 1e-9 && Math.abs(p[1] - q[1]) <= 1e-9;
+  // a loop -> the corners of the polygon the checks use
   const loop = (l) => {
-    if (arr(l, "an outline", LIMITS.SKETCH_ITEMS).length < 2) throw damaged("an outline");
-    for (const g of l) {
-      obj(g, "an outline piece");
+    if (Array.isArray(l) && ctx.outline + l.length > LIMITS.OUTLINE_SEGMENTS) throw tooBig("This design has too many outline pieces for a link.");
+    arr(l, "an outline", LIMITS.OUTLINE_SEGMENTS);
+    if (l.length === 1 && isObj(l[0]) && l[0].t === "circle") {
+      const g = l[0]; allow(g, new Set(["t", "c", "r"]), "an outline circle"); pt(g.c); positive(g.r, "an outline radius"); piece();
+      if (Math.abs(g.c[0]) + g.r > LIMITS.MEASURE || Math.abs(g.c[1]) + g.r > LIMITS.MEASURE) throw damaged("an outline circle");
+      return Array.from({ length: 32 }, (_, i) => [g.c[0] + g.r * Math.cos((i * Math.PI) / 16), g.c[1] + g.r * Math.sin((i * Math.PI) / 16)]);
+    }
+    if (l.length < 2) throw damaged("an outline");
+    const poly = [];
+    for (let i = 0; i < l.length; i++) {
+      const g = obj(l[i], "an outline piece");
       if (g.t === "line") allow(g, new Set(["t", "a", "b"]), "an outline line");
       else if (g.t === "arc") { allow(g, new Set(["t", "a", "b", "m"]), "an outline arc"); pt(g.m); }
       else throw unsupported("an outline piece");
-      pt(g.a); pt(g.b);
-      if (++segs > LIMITS.SKETCH_ITEMS) throw tooBig("This design has too many outline pieces for a link.");
+      pt(g.a); pt(g.b); piece();
+      if (g.t === "arc") { // three points on one line make no arc
+        const ux = g.m[0] - g.a[0], uy = g.m[1] - g.a[1], vx = g.b[0] - g.a[0], vy = g.b[1] - g.a[1];
+        if (!(Math.abs(ux * vy - uy * vx) > 1e-9 * Math.max(ux * ux + uy * uy, vx * vx + vy * vy))) throw damaged("a degenerate outline arc");
+      }
+      // the kernel closes a loop itself and never draws its last line, so a last line that starts where the loop starts is no piece at all
+      // (gearlib.js's keyway bore ends that way)
+      if (i === l.length - 1 && g.t === "line" && Math.hypot(g.a[0] - l[0].a[0], g.a[1] - l[0].a[1]) <= 1e-6) continue;
+      poly.push(g.a); if (g.t === "arc") poly.push(g.m);
     }
+    for (let i = 0; i < l.length; i++) if (!same(l[i].b, l[(i + 1) % l.length].a)) throw damaged("an outline that is not closed");
+    return poly;
   };
-  const regions = arr(n.regions, "outlines", LIMITS.SKETCH_ITEMS);
+  // the app writes one outline per extrude, with at most 9 holes (a gear's bore and 8 lightening holes): each hole is a cut in the engine
+  const regions = arr(n.regions, "outlines", 1);
   if (!regions.length) throw damaged("an empty outline");
-  for (const r of regions) { obj(r, "an outline"); allow(r, new Set(["outer", "holes"]), "an outline"); loop(r.outer); if (r.holes !== undefined) arr(r.holes, "outline holes", LIMITS.SKETCH_ITEMS).forEach(loop); }
+  for (const r of regions) {
+    obj(r, "an outline"); allow(r, new Set(["outer", "holes"]), "an outline");
+    const loops = [loop(r.outer)];
+    if (r.holes !== undefined) for (const h of arr(r.holes, "outline holes", LIMITS.OUTLINE_HOLES)) loops.push(loop(h));
+    simpleOutline(loops, ctx);
+  }
   const pl = obj(n.plane, "an outline plane"); allow(pl, new Set(["o", "x", "n"]), "an outline plane");
   vec(pl.o, 3, "plane"); if (pl.o.some((x) => Math.abs(x) > LIMITS.MEASURE)) throw damaged("plane"); normal(pl.x, "plane direction"); normal(pl.n, "plane normal");
   // jumpstart-3d: the plane's x must lie across n, not along it (no plane can be built from two parallel directions)
@@ -237,6 +271,54 @@ function inlineExtrude(n) {
   if (!(Math.abs(num(n.dist, "a distance")) <= LIMITS.MEASURE)) throw damaged("a distance");
   if (n.mode !== undefined && !["one", "sym", "two"].includes(n.mode)) throw damaged("an extrude mode");
   if (n.dist2 !== undefined && !(Math.abs(num(n.dist2, "a distance")) <= LIMITS.MEASURE)) throw damaged("a distance");
+}
+
+// loops[0] is the outer polygon, the rest are holes; each is checked on its own. Pieces go in a grid so a big gear (thousands of pieces) is cheap to check; a
+// design built to crowd its pieces into one cell, or to send long pieces across every cell, runs into OUTLINE_PAIRS (cells visited and
+// pairs compared, together) and is refused, never left to run.
+const complicated = () => tooBig("This design's outlines are too complicated to check for a link.");
+function simpleOutline(loops, ctx) {
+  const area = (p) => { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[i], r = p[(i + 1) % p.length]; a += q[0] * r[1] - r[0] * q[1]; } return a / 2; };
+  const edges = [];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  loops.forEach((p, k) => {
+    if (!(Math.abs(area(p)) > 1e-9)) throw damaged("an outline with no area");
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length], c = p[(i + 2) % p.length];
+      const ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - b[0], vy = c[1] - b[1];
+      if (Math.hypot(ux, uy) <= 1e-7) throw damaged("an outline piece with no length");
+      // the next piece turning straight back along this one
+      if (Math.abs(ux * vy - uy * vx) <= 1e-12 * Math.hypot(ux, uy) * Math.hypot(vx, vy) && ux * vx + uy * vy < 0) throw damaged("an outline that doubles back");
+      edges.push({ a, b, k, i, n: p.length });
+      x0 = Math.min(x0, a[0]); y0 = Math.min(y0, a[1]); x1 = Math.max(x1, a[0]); y1 = Math.max(y1, a[1]);
+    }
+  });
+  const G = Math.max(1, Math.ceil(Math.sqrt(edges.length))), size = Math.max(x1 - x0, y1 - y0, 1e-9) / G, cells = new Map();
+  const cell = (v, o) => Math.min(G - 1, Math.max(0, Math.floor((v - o) / size)));
+  const orient = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const within = (p, q, r) => Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0]) && Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
+  const meet = (e, f) => {
+    const d1 = orient(e.a, e.b, f.a), d2 = orient(e.a, e.b, f.b), d3 = orient(f.a, f.b, e.a), d4 = orient(f.a, f.b, e.b);
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+    return (d1 === 0 && within(e.a, e.b, f.a)) || (d2 === 0 && within(e.a, e.b, f.b)) || (d3 === 0 && within(f.a, f.b, e.a)) || (d4 === 0 && within(f.a, f.b, e.b));
+  };
+  const neighbours = (e, f) => e.k === f.k && ((e.i + 1) % e.n === f.i || (f.i + 1) % f.n === e.i);
+  edges.forEach((e, j) => {
+    const seen = new Set();
+    for (let cx = cell(Math.min(e.a[0], e.b[0]), x0); cx <= cell(Math.max(e.a[0], e.b[0]), x0); cx++) for (let cy = cell(Math.min(e.a[1], e.b[1]), y0); cy <= cell(Math.max(e.a[1], e.b[1]), y0); cy++) {
+      if (++ctx.outlinePairs > LIMITS.OUTLINE_PAIRS) throw complicated();
+      const key = cx * G + cy, list = cells.get(key);
+      if (!list) { cells.set(key, [j]); continue; }
+      for (const o of list) {
+        if (++ctx.outlinePairs > LIMITS.OUTLINE_PAIRS) throw complicated();
+        if (seen.has(o)) continue;
+        seen.add(o);
+        const f = edges[o];
+        if (e.k === f.k && !neighbours(e, f) && meet(e, f)) throw unsupported("an outline that crosses or touches itself");
+      }
+      list.push(j);
+    }
+  });
 }
 
 // Saved edge paths are fixed world-space segments, not references to the source body.
@@ -328,9 +410,8 @@ export function validateEnvelope(env) {
   if (!Number.isInteger(doc.seq) || doc.seq < 0) throw damaged("seq");
   if (doc.grid !== undefined) num(doc.grid, "the grid");
   if (doc.ver !== undefined) num(doc.ver, "the version");
-  const ctx = { nodes: 0, bodyRefs: [], assetBytes: 0, sketches: new Map(), assets: {}, media: {} };
+  const ctx = { nodes: 0, bodyRefs: [], assetBytes: 0, sketches: new Map(), assets: {}, media: {}, outline: 0, outlinePairs: 0 };
 
-  if (doc.joints !== undefined && (!Array.isArray(doc.joints) || doc.joints.length)) throw unsupported("joints");
   // parameters: names, and every expression must evaluate to a finite value with the existing arithmetic parser
   const params = arr(doc.params === undefined ? [] : doc.params, "parameters", LIMITS.PARAMS), names = new Set(), pids = new Set(), done = [];
   for (const p of params) {
@@ -434,6 +515,15 @@ export function validateEnvelope(env) {
   const planes = arr(doc.planes === undefined ? [] : doc.planes, "planes", LIMITS.SKETCHES), plid = new Set();
   for (const p of planes) { obj(p, "a plane"); allow(p, PLANE_KEYS, "a plane"); id(p.id, "a plane id"); if (plid.has(p.id)) throw damaged("duplicate plane id"); plid.add(p.id); if (p.name !== undefined) text(p.name, "a plane name"); }
 
+  // jumpstart-3d: J.Siwek 2.9.3 Browser folders: flat (no folder inside a folder), shown as text only
+  const folders = arr(doc.folders === undefined ? [] : doc.folders, "folders", LIMITS.FOLDERS), fid = new Set();
+  for (const f of folders) {
+    obj(f, "a folder"); allow(f, new Set(["id", "name", "open"]), "a folder");
+    id(f.id, "a folder id"); if (fid.has(f.id)) throw damaged("duplicate folder id"); fid.add(f.id);
+    if (!text(f.name, "a folder name", LIMITS.FOLDER_NAME).trim()) throw damaged("a folder name");
+    bool(f.open, "a folder open");
+  }
+
   // bodies
   const bodies = arr(doc.bodies, "bodies", LIMITS.BODIES), bid = new Set();
   for (const b of bodies) {
@@ -463,8 +553,12 @@ export function validateEnvelope(env) {
       for (const k of ["threads", "left"]) if (fa[k] !== undefined) bool(fa[k], k);
     }
     if (b.bin !== undefined && (b.binLid !== undefined || b.binPart !== undefined) || b.binLid !== undefined && b.binPart !== undefined || b.hinge !== undefined && b.hingePart !== undefined) throw damaged("conflicting part roles");
+    // jumpstart-3d: J.Siwek 2.9.3 gear sets: the first gear holds the set (gear), every other gear points back at it (gearPart)
+    if ((b.gear !== undefined || b.gearPart !== undefined) && ["bin", "binLid", "binPart", "hinge", "hingePart", "gear", "gearPart"].filter((k) => b[k] !== undefined).length > 1) throw damaged("conflicting part roles");
+    if (b.folder !== undefined && (typeof b.folder !== "string" || !fid.has(b.folder))) throw damaged("a body in a missing folder");
+    if (b.gear !== undefined) gearSettings(b.gear);
     const ref = (v) => { id(v, "a part body id"); };
-    for (const k of ["binLid", "binPart", "hingePart"]) if (b[k] !== undefined) ref(b[k]);
+    for (const k of ["binLid", "binPart", "hingePart", "gearPart"]) if (b[k] !== undefined) ref(b[k]);
     if (b.bin !== undefined) {
       const o = obj(b.bin, "a bin");
       allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids", "across", "sideLock", "doorCatch"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies; 2.9.8 grids (across) and side joints (sideLock); 2.9.8.1 door catch (doorCatch)
@@ -485,7 +579,12 @@ export function validateEnvelope(env) {
         // one body per part: the same body under two keys, or a lid other than lidId, is not a set the app makes
         if (new Set(e.map(([, v]) => v)).size !== e.length) throw damaged("a bin set lists a body twice");
         if (o.ids.lid !== undefined && o.lidId != null && o.ids.lid !== o.lidId) throw damaged("a bin set has two lids");
+        // jumpstart-3d: build 31 review: no part numbered past the set (units high x across)
+        for (const [k] of e) if (k !== "lid" && +k.replace(/^\D+/, "") >= (o.units ?? 1) * (o.across ?? 1)) throw damaged("a bin set part past the end of the set");
       }
+      // jumpstart-3d: build 31 review: the compartments of every bin together (bins and drawers have columns and rows, a tilt bin columns)
+      const style = o.style ?? "bin", cells = style === "bin" || style === "drawer" ? (o.cols ?? 1) * (o.rows ?? 1) : style === "tilt" ? (o.cols ?? 1) : 1;
+      if (cells * (o.units ?? 1) * (o.across ?? 1) > LIMITS.BIN_WORK) throw tooBig(`This Box Maker set has more compartments than a link can open (at most ${LIMITS.BIN_WORK} in all). Use a project file for this design.`);
     }
     if (b.hinge !== undefined) {
       const o = obj(b.hinge, "a hinge");
@@ -518,7 +617,9 @@ export function validateEnvelope(env) {
     check(b, "binPart", (target) => !!target.bin && (target.bin.lidId === b.id || Object.values(target.bin.ids || {}).includes(b.id)));
     check(b, "hingePart", (target) => target.hinge && (target.hinge.bId === b.id || target.hinge.pinId === b.id));
     if (b.hinge?.bId != null && b.hinge.bId === b.hinge.pinId) throw damaged("part references do not agree");
+    check(b, "gearPart", (target) => !!target.gear);
   }
+  gearSets(bodies, byId, doc);
   if (doc.printPaint !== undefined) printPaint(doc.printPaint, bid);
   return doc;
 }
@@ -542,6 +643,92 @@ function printPaint(pp, bid) {
   }
 }
 
+// jumpstart-3d: J.Siwek 2.9.3 gear sets (gearlib.js, the Gears dialog in advanced.js). The settings make a new set on Edit, so they are held
+// to the dialog's own ranges even when the saved gears look harmless: gear { o: settings, ids: { role: body }, jids: { role: joint }, base, base0, spin }.
+const GEAR_KEYS = new Set(Object.keys(GEAR_DEFAULTS));
+const GEAR_ROLE_NAMES = new Set(["g1", "g2", "rk", "ring", "sun", "p0", "p1", "p2", "p3", "p4", "p5"]);
+// the parts of each kind of set, the first being the body that holds the set
+function gearRoles(o) {
+  const v = { ...GEAR_DEFAULTS, ...o };
+  return v.type === "spur" ? ["g1"] : v.type === "pair" ? ["g1", "g2"] : v.type === "rack" ? ["g1", "rk"] : v.type === "ring" ? (v.z2 - v.z >= 8 ? ["ring", "g1"] : ["ring"])
+    : ["sun", ...Array.from({ length: v.nPlanets }, (_, k) => "p" + k), "ring"];
+}
+function gearSettings(g) {
+  obj(g, "a gear set"); allow(g, new Set(["o", "ids", "jids", "base", "base0", "spin"]), "a gear set");
+  const o = obj(g.o, "gear settings"); allow(o, GEAR_KEYS, "gear settings");
+  const v = { ...GEAR_DEFAULTS, ...o };
+  const whole = (k, lo, hi) => { if (!Number.isInteger(v[k]) || v[k] < lo || v[k] > hi) throw damaged("gear " + k); };
+  const range = (k, lo) => { if (!(num(v[k], "gear " + k) >= lo && v[k] <= LIMITS.MEASURE)) throw damaged("gear " + k); };
+  whole("z", 6, 300); whole("z2", 6, 400); whole("zs", 8, 200); whole("zp", 8, 200); whole("nPlanets", 2, 6);
+  range("m", 0.3); range("thick", 0.5); range("boreD", 0.5); range("hubH", 0.5); range("backlash", 0); range("rackLen", 0);
+  if (v.hubD !== 0) range("hubD", 1);
+  if (![14.5, 20, 25].includes(v.pa)) throw damaged("a gear pressure angle");
+  if (!["spur", "pair", "ring", "rack", "planet"].includes(v.type)) throw damaged("a gear type");
+  if (!["round", "d", "hex", "key", "none"].includes(v.bore)) throw damaged("a gear bore");
+  for (const k of ["hub", "joints", "spokes"]) bool(v[k], "gear " + k);
+  if (v.rackH !== 8) throw unsupported("a rack height the Gears dialog does not set");
+  // what the settings make: a rack of at most RACK_TEETH teeth, and no set wider than a link's largest measurement
+  const teeth = v.rackLen > 0 ? Math.max(3, Math.round(v.rackLen / (Math.PI * v.m))) : Math.max(8, v.z);
+  if (v.type === "rack" && teeth > LIMITS.RACK_TEETH) throw tooBig(`This design has a gear rack with more teeth than a link can open (at most ${LIMITS.RACK_TEETH}). Use a project file for this design.`);
+  const across = v.type === "pair" ? v.z + v.z2 : v.type === "ring" ? v.z2 : v.type === "planet" ? v.zs + 2 * v.zp : v.type === "rack" ? Math.max(v.z, teeth * Math.PI) : v.z;
+  if (v.m * (across + 8) + 6 > LIMITS.MEASURE) throw tooLarge();
+  if (g.base !== undefined) mat16(g.base, "a gear placement");
+  if (g.base0 !== undefined) mat16(g.base0, "a gear placement");
+  if (g.spin !== undefined && !(Math.abs(num(g.spin, "a gear spin")) <= 360)) throw damaged("a gear spin");
+  for (const k of ["ids", "jids"]) {
+    const e = Object.entries(obj(g[k], "a gear set's parts"));
+    for (const [role, x] of e) { if (!GEAR_ROLE_NAMES.has(role)) throw unsupported("a gear set has " + role.slice(0, 16).replace(/[^\w.-]/g, "?")); id(x, "a gear part id"); }
+    if (new Set(e.map(([, x]) => x)).size !== e.length) throw damaged("a gear set lists a part twice");
+  }
+}
+// After every body is read: the sets' parts and joints agree both ways. A part or joint the person deleted is dropped from the set, as
+// for Box Maker and hinge companions. Joints come only from gear sets (revolute or slider, unlimited, linked by the tooth ratio).
+function gearSets(bodies, byId, doc) {
+  const joints = arr(doc.joints === undefined ? [] : doc.joints, "joints", LIMITS.BODIES), jById = new Map(), jBodies = new Set();
+  for (const j of joints) {
+    obj(j, "a joint"); allow(j, new Set(["id", "name", "seq", "type", "body", "parent", "o", "d", "limited", "min", "max", "link"]), "a joint");
+    id(j.id, "a joint id"); if (jById.has(j.id)) throw damaged("duplicate joint id"); jById.set(j.id, j);
+    text(j.name, "a joint name");
+    if (!Number.isInteger(j.seq) || j.seq < 0) throw damaged("a joint number");
+    if (j.type !== "revolute" && j.type !== "slider") throw unsupported("a joint of another kind");
+    if (typeof j.body !== "string" || !byId.has(j.body)) throw damaged("a joint on a missing body");
+    if (jBodies.has(j.body)) throw damaged("two joints on one body"); jBodies.add(j.body);
+    if (j.parent !== null || j.limited !== false || j.min !== -180 || j.max !== 180) throw unsupported("a joint that is not a gear's");
+    vec(j.o, 3, "a joint origin"); vec(j.d, 3, "a joint direction");
+    if (!(Math.abs(Math.hypot(...j.d) - 1) <= 1e-3)) throw damaged("a joint direction");
+    if (j.link !== undefined) { obj(j.link, "a joint link"); allow(j.link, new Set(["to", "ratio"]), "a joint link"); id(j.link.to, "a linked joint"); num(j.link.ratio, "a joint ratio"); }
+  }
+  const owned = new Map(); // joint id -> { b: the body holding the set, role, v: its settings }
+  for (const b of bodies) {
+    if (!b.gear) continue;
+    const g = b.gear, roles = gearRoles(g.o), v = { ...GEAR_DEFAULTS, ...g.o };
+    for (const [role, x] of Object.entries(g.ids)) {
+      if (x !== b.id && !byId.has(x)) { delete g.ids[role]; continue; } // a part the person deleted
+      if (!roles.includes(role) || (x === b.id) !== (role === roles[0]) || (x !== b.id && byId.get(x).gearPart !== b.id)) throw damaged("gear parts do not agree");
+    }
+    if (g.ids[roles[0]] !== b.id) throw damaged("gear parts do not agree");
+    for (const [role, x] of Object.entries(g.jids)) {
+      if (!jById.has(x)) { delete g.jids[role]; continue; } // joints switched off or deleted
+      const j = jById.get(x), on = role === roles[0] ? b.id : g.ids[role];
+      if (!roles.includes(role) || owned.has(x) || (on !== undefined ? j.body !== on : byId.get(j.body).gearPart !== b.id)) throw damaged("gear joints do not agree");
+      owned.set(x, { b, role, v });
+    }
+  }
+  for (const j of joints) {
+    const own = owned.get(j.id);
+    if (!own) throw unsupported("a joint that is not part of a gear set");
+    const { b, role, v } = own;
+    // the part it follows, and the ratio gearSet writes (degrees, or mm for the rack, per degree of that part)
+    const [driver, ratio] = role === "g2" ? ["g1", -v.z / v.z2] : role === "rk" ? ["g1", -(Math.PI * v.m * v.z) / 360] : role === "g1" && v.type === "ring" ? ["ring", v.z2 / v.z]
+      : /^p\d$/.test(role) ? ["sun", -v.zs / v.zp] : role === "ring" && v.type === "planet" ? ["sun", -v.zs / (v.zs + 2 * v.zp)] : [null, 0];
+    if (j.type !== (role === "rk" ? "slider" : "revolute")) throw damaged("a gear joint type");
+    if (!driver) { if (j.link !== undefined) throw damaged("a gear joint link"); continue; }
+    // the person deleted the driving gear's joint (Browser, Delete joint): the link to it drops out, as deleted parts do
+    if (b.gear.jids[driver] === undefined && (j.link === undefined || !jById.has(j.link.to))) { delete j.link; continue; }
+    if (!j.link || j.link.to === j.id || j.link.to !== b.gear.jids[driver] || Math.abs(j.link.ratio - +ratio.toFixed(8)) > 1e-9) throw damaged("a gear joint link");
+  }
+}
+
 // node: one shape-building step and its modifiers. Only the types and fields the kernel reads are in the tables.
 function node(n, ctx, what) {
   if (++ctx.nodes > LIMITS.NODES) throw tooBig("This design has too many steps to open from a link.");
@@ -557,7 +744,7 @@ function node(n, ctx, what) {
     bounds({ ...n.p, exprs: n.exprs, exprUnits: n.exprUnits }, ctx, [["turns", LIMITS.TURNS, "turns"], ["sides", n.kind === "pyramid" ? LIMITS.PYRAMID_SIDES : LIMITS.SIDES, "sides"], ["points", LIMITS.POINTS, "points"]]);
     for (const [k, v] of Object.entries(n.p)) { if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) throw damaged("a size name"); if (typeof v !== "number" && typeof v !== "string" && typeof v !== "boolean") throw damaged("a size"); }
   } else if (t === "extrude" && n.sketch === undefined && n.profiles === undefined) {
-    inlineExtrude(n); // jumpstart-3d: J.Siwek 2.9.5 Box Maker parts carry their own outline (regions on a plane), no sketch
+    inlineExtrude(n, ctx); // jumpstart-3d: J.Siwek 2.9.5 Box Maker parts carry their own outline (regions on a plane), no sketch
   } else if (t === "extrude" || t === "revolve" || t === "sweep") {
     sk(n.sketch);
     arr(n.profiles, "profiles", LIMITS.SKETCH_ITEMS);
