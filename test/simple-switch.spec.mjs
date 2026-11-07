@@ -3,12 +3,22 @@ import { test, expect } from "@playwright/test";
 import { boot, reload, waitIdle, watchErrors } from "./helpers.mjs";
 
 let errors;
-test.beforeEach(async ({ page }) => { errors = watchErrors(page); });
+test.beforeEach(async ({ page }, info) => {
+  errors = watchErrors(page);
+  if (info.project.name !== "mobile") await page.setViewportSize({ width: 1500, height: 880 }); // Original shows its switch from 1440 px (below that, Settings › Look)
+});
 test.afterEach(async () => { expect(errors, "console or page errors").toEqual([]); });
 
 const mobile = (info) => info.project.name === "mobile";
 const face = (page) => page.locator("html");
 const storedFace = (page) => page.evaluate(() => localStorage.getItem("jumpstart.face"));
+// From Original to Simple as a person does: the switch in the top bar, or on a phone (where Original keeps its whole view) Open/Export › Try Simple
+const toSimple = async (page, info) => {
+  if (!mobile(info)) return page.click("#face-simple");
+  await expect(page.locator("#face-simple")).toBeHidden();
+  await page.click("#btn-export");
+  await page.click("#face-menu-export");
+};
 const ready = (page) => page.waitForFunction(() => window.__app?.projects?.started === true, null, { timeout: 90_000 });
 
 test("Original is the default", async ({ page }, info) => {
@@ -26,7 +36,7 @@ test("switching keeps the design and persists the choice", async ({ page }, info
   await waitIdle(page);
   const count = await page.evaluate(() => window.__store.doc.bodies.length);
   expect(count).toBeGreaterThan(0);
-  await page.click("#face-simple");
+  await toSimple(page, info);
   await expect(face(page)).toHaveAttribute("data-face", "simple");
   await expect(page.locator("#face-simple")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#face-original")).toHaveAttribute("aria-pressed", "false");
@@ -47,7 +57,7 @@ test("switching keeps the design and persists the choice", async ({ page }, info
 
 test("More opens the existing dialogs and supports keyboard navigation", async ({ page }, info) => {
   await boot(page, info);
-  await page.click("#face-simple");
+  await toSimple(page, info);
   const more = page.locator("#face-more"), menu = page.locator("#menu-face-more");
   await more.click();
   await expect(menu).toBeVisible();
@@ -106,7 +116,7 @@ test("Not now dismisses the first-run card permanently", async ({ page }, info) 
 test("the switch dismisses the first-run card", async ({ page }, info) => {
   await boot(page, info, { face: false });
   await expect(page.locator("#try-simple")).toBeVisible();
-  await page.click("#face-simple");
+  await toSimple(page, info);
   await expect(page.locator("#try-simple")).toHaveCount(0);
   await expect(face(page)).toHaveAttribute("data-face", "simple");
   await reload(page);
@@ -156,7 +166,7 @@ test("neither face scrolls sideways", async ({ page }, info) => {
 
 test("Simple top bar steps aside in Architect", async ({ page }, info) => {
   await boot(page, info);
-  await page.click("#face-simple");
+  await toSimple(page, info);
   await page.evaluate(() => window.__app.switchMode("arch"));
   await expect(page.locator("#mode-arch")).toBeVisible();
   await expect(page.locator("#face-more")).toBeHidden();
@@ -168,13 +178,12 @@ test("the switch never puts the Original top bar on a second row; Settings › L
   test.skip(mobile(info), "phones give the switch its own row by design");
   await boot(page, info);
   const oneRow = () => page.evaluate(() => document.querySelector(".topbar").offsetHeight < 50);
-  for (const width of [1920, 1440, 1366, 1280]) {
+  for (const [width, shown] of [[2200, true], [1920, true], [1600, true], [1440, true], [1366, false], [1280, false], [1024, false]]) {
     await page.setViewportSize({ width, height: 880 });
     await expect.poll(oneRow, { message: `Original at ${width}px is one row` }).toBe(true);
-    await expect(page.locator("#face-simple"), `the way to Simple shows at ${width}px`).toBeVisible();
+    if (shown) await expect(page.locator("#face-simple"), `the way to Simple shows at ${width}px`).toBeVisible();
+    else await expect(page.locator("#face-simple"), `no room for the switch at ${width}px`).toBeHidden();
   }
-  await page.setViewportSize({ width: 1024, height: 880 });
-  await expect.poll(oneRow, { message: "Original at 1024px is one row" }).toBe(true);
   await page.click("#btn-theme");
   await page.click("#face-menu-simple");
   await expect(face(page)).toHaveAttribute("data-face", "simple");
@@ -185,4 +194,47 @@ test("the switch never puts the Original top bar on a second row; Settings › L
   await expect(page.locator("#face-menu-simple")).toHaveAttribute("aria-checked", "true");
   await page.click("#face-menu-original");
   await expect(face(page)).toHaveAttribute("data-face", "original");
+});
+
+test("closing the Try Simple card leaves focus on the switch or Settings, not the page", async ({ page }, info) => {
+  await boot(page, info, { face: false });
+  await page.locator(mobile(info) ? "#try-simple-close" : "#try-simple-no").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#try-simple")).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement.id)).toMatch(/^(face-simple|face-original|btn-theme|btn-export)$/);
+});
+
+// Lessons point at top-bar buttons; in Simple some sit under More. Such a lesson runs in Original (not stored) and Simple comes back after it.
+test("in Simple every lesson can point at its top-bar buttons, and Simple comes back after it", async ({ page }, info) => {
+  await boot(page, info);
+  await page.evaluate(() => window.__app.setFace("simple", true));
+  const lessons = await page.evaluate(() => window.__app.tutorials.list.filter((t) => t.mode !== "plan" && !(t.minWidth > innerWidth)).map((t) => t.id));
+  const switched = [];
+  for (const id of lessons) {
+    const r = await page.evaluate((id) => {
+      const app = window.__app, t = app.tutorials.list.find((x) => x.id === id);
+      app.tutorials.start(id);
+      const face = app.face, stored = localStorage.getItem("jumpstart.face"), missing = [];
+      for (const st of t.steps) {
+        const parts = ((st.show && st.show.sel) || "").split(",").map((q) => q.trim()).filter(Boolean);
+        const inBar = parts.map((q) => document.querySelector(q)).filter((e) => e && e.closest(".topbar") && !e.closest(".menu"));
+        const shown = () => inBar.some((e) => e.getClientRects().length);
+        if (!inBar.length || inBar.length !== parts.length || shown()) continue;
+        app.setFace("original", true, true); // hidden in Original too (the name box on a phone): not Simple's doing
+        const inOriginal = shown();
+        app.setFace(face, true, true);
+        if (inOriginal) missing.push(st.title + ": " + parts.join(", "));
+      }
+      app.tutorials.close();
+      return { face, stored, missing, after: app.face };
+    }, id);
+    expect(r.missing, `${id}: top-bar targets hidden in its look`).toEqual([]);
+    expect(r.stored, `${id}: the lesson does not change the stored look`).toBe("simple");
+    expect(r.after, `${id}: Simple after the lesson`).toBe("simple");
+    if (r.face === "original") switched.push(id);
+    await page.evaluate(() => window.__app.setMode("beginner"));
+  }
+  if (!mobile(info)) expect(switched).toEqual(expect.arrayContaining(["c-overhang", "c3-clay-pebble", "c4-top-bar"]));
+  console.log(`[${info.project.name}] ${switched.length} of ${lessons.length} lessons ran in Original: ${switched.join(", ")}`);
+  if (!mobile(info)) expect(switched.length, "most lessons stay in Simple").toBeLessThan(lessons.length / 2);
 });

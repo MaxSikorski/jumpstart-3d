@@ -4,7 +4,6 @@ try { hadPrefs = localStorage.getItem("workplane.ui.v1") !== null; } catch (e) {
 
 const CSS = `
 .faceswitch-row { display: contents; }
-.faceswitch-row.nofit { display: none; }
 .faceswitch { display: inline-flex; flex: none; gap: 2px; padding: 3px; border-radius: 999px; background: #0f151c; }
 .faceswitch button { border: 0; border-radius: 999px; background: transparent; color: #aeb9c6; padding: 5px 13px; font: 600 13px/1 var(--f-ui); cursor: pointer; }
 .faceswitch button[aria-pressed="true"] { background: #ffd66b; color: #1b1407; }
@@ -36,18 +35,26 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar #btn-save .lbl { display: inline; }
 }
 @media (max-width: 1100px) { .faceswitch button { padding: 4px 9px; font-size: 12px; } }
-/* The full (Original) top bar has no room for both halves at laptop widths: it shows only the way to Simple */
-@media (min-width: 561px) and (max-width: 1999px) {
+/* The full (Original) top bar has no room for the switch between phone and 1440 px wide: Settings › Look has it there. From 1440 px the Simple half fits, both halves from 2000 px */
+@media (min-width: 561px) and (max-width: 1439px) { html:not([data-face="simple"]) .faceswitch-row, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch-row { display: none; } }
+@media (min-width: 1440px) and (max-width: 1999px) {
   html:not([data-face="simple"]) .faceswitch button[aria-pressed="true"], html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button[aria-pressed="true"] { display: none; }
   html:not([data-face="simple"]) .faceswitch, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch { padding: 2px; }
   html:not([data-face="simple"]) .faceswitch button, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button { padding: 4px 9px; font-size: 12px; color: #ffd66b; }
+  html:not([data-face="simple"]) .topbar, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .topbar { gap: 8px; }
 }
-@media (min-width: 1181px) and (max-width: 1999px) { html:not([data-face="simple"]) .topbar, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .topbar { gap: 8px; } }
 @media (max-width: 560px) {
   .faceswitch-row { order: 99; flex-basis: 100%; display: flex; justify-content: center; padding-bottom: 4px; }
+  /* a phone in Original keeps all of J.Siwek's view: Simple is offered in the Open/Export menu instead */
+  html:not([data-face="simple"]) .faceswitch-row, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch-row { display: none; }
+  html:not([data-face="simple"]) #menu-export #face-menu-export { display: flex; }
+}
+#menu-export #face-menu-export { display: none; }
+/* Simple below 640 px: Learn and Beginner / Advanced move into More */
+@media (max-width: 640px) {
   #menu-face-more button.face-phone { display: flex; }
   #menu-face-more hr.face-phone { display: block; }
-  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-save, #btn-tutorials, .modeswitch) { display: none; }
+  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-tutorials, .modeswitch) { display: none; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
 }
 .try-simple { position: absolute; left: 14px; top: 14px; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
@@ -77,22 +84,13 @@ export function initSimpleMode(app) {
   const wrap = document.createElement("div");
   wrap.className = "face-more-wrap";
   wrap.innerHTML = `<button class="tb-btn" id="face-more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-face-more" title="More: designs, AI, settings, other studios" aria-label="More"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button><div class="menu" id="menu-face-more" role="menu" aria-label="More" hidden>
-    <button class="face-phone" role="menuitem" data-for="btn-save">Save</button><button class="face-phone" role="menuitem" data-for="btn-tutorials">Learn</button><button class="face-phone" role="menuitem" data-for="mode-beginner">Beginner</button><button class="face-phone" role="menuitem" data-for="mode-advanced">Advanced</button><hr class="face-phone">
+    <button class="face-phone" role="menuitem" data-for="btn-tutorials">Learn</button><button class="face-phone" role="menuitem" data-for="mode-beginner">Beginner</button><button class="face-phone" role="menuitem" data-for="mode-advanced">Advanced</button><hr class="face-phone">
     <button role="menuitem" data-for="btn-projects">Designs <small>your saved designs</small></button><button role="menuitem" data-for="btn-autosave">Autosave</button><button role="menuitem" data-for="btn-chat">AI chat</button><button role="menuitem" data-for="btn-theme">Settings: theme, layout, printer…</button><button role="menuitem" data-for="btn-keys">Keyboard shortcuts</button><button role="menuitem" data-for="btn-full">Full screen</button><button role="menuitem" data-for="btn-about">About JumpStart 3D</button><hr><div class="menu-head">Other studios</div><button role="menuitem" data-for="mode-chisel">Chisel <small>sculpt like clay</small></button><button role="menuitem" data-for="mode-arch">Architect <small>floor plans and buildings</small></button></div>`;
   $("btn-export").closest(".menu-wrap").before(wrap);
   // Look: Simple or Original, also in the Settings menu, for a full top bar with no room for the switch
   $("menu-theme").insertAdjacentHTML("afterbegin", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false" title="Simple: fewer buttons in the top bar; the rest is under ⋯ More">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false" title="Original: every button on the bar">Original</button></div>`);
+  $("btn-tutorials-menu").nextElementSibling.after(Object.assign(document.createElement("button"), { id: "face-menu-export", innerHTML: "Try Simple <small>fewer, bigger buttons</small>", title: "Simple: fewer buttons in the top bar; the rest is under ⋯ More", onclick: () => { $("menu-export").hidden = true; setFace("simple"); } }));
   for (const name of ["simple", "original"]) $("face-menu-" + name).addEventListener("click", () => { $("menu-theme").hidden = true; setFace(name); });
-  // The switch never pushes the top bar onto a second row: where the bar is full (Original between phone and wide screens) it steps out, and Settings › Look stays
-  const bar = document.querySelector("header.topbar"), phone = matchMedia("(max-width: 560px)");
-  function fit() {
-    row.classList.remove("nofit");
-    if (phone.matches) return;
-    const h = bar.offsetHeight; row.classList.add("nofit");
-    if (h <= bar.offsetHeight) row.classList.remove("nofit");
-  }
-  new ResizeObserver(fit).observe(bar);
-  new MutationObserver(fit).observe($("app"), { attributes: true, attributeFilter: ["data-mode"] });
   const more = $("face-more"), menu = $("menu-face-more");
   const labels = [[document.querySelector("#btn-tutorials .lbl"), "Learn"], [document.querySelector("#btn-export .lbl"), "Print / Export"]].map(([el, simple]) => ({ el, simple, original: el.textContent }));
   const caret = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -127,18 +125,18 @@ export function initSimpleMode(app) {
   try { stored = localStorage.getItem("jumpstart.face"); } catch (e) { /* storage may be unavailable */ }
   const url = new URL(location.href), hasParam = url.searchParams.has("face"), param = url.searchParams.get("face");
   let face;
-  let card = null;
+  let card = null, lessonInOriginal = false;
   function apply(name) {
     face = name; document.documentElement.dataset.face = face;
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
-    fit();
   }
-  function setFace(name, quiet) {
+  // lesson: a temporary switch for a lesson, not stored, so a reload mid-lesson still opens in the stored look
+  function setFace(name, quiet, lesson) {
     if (name !== "simple" && name !== "original") return;
     apply(name);
-    try { localStorage.setItem("jumpstart.face", face); } catch (e) { /* storage may be unavailable */ }
+    if (!lesson) { lessonInOriginal = false; try { localStorage.setItem("jumpstart.face", face); } catch (e) { /* storage may be unavailable */ } }
     close(); if (card) { card.remove(); card = null; }
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     if (!quiet) app.toast(face === "simple" ? "Simple: a calmer top bar. Designs, AI, settings, Chisel and Architect are under ⋯ More. Switch back any time." : "Original: JumpStart 3D's full top bar, every button where J.Siwek put it.");
@@ -153,8 +151,22 @@ export function initSimpleMode(app) {
   if (app.trySimpleShown) {
     card = document.createElement("aside"); card.className = "try-simple"; card.id = "try-simple"; card.setAttribute("role", "region"); card.setAttribute("aria-label", "Try Simple");
     card.innerHTML = '<p><b>New here?</b> Try <b>Simple</b>: fewer, bigger buttons.<span class="ts-more"> You can switch back any time.</span></p><div><button id="try-simple-yes" class="ts-yes">Try Simple</button><button id="try-simple-no" class="ts-no">Not now</button></div><button id="try-simple-close" class="ts-x" aria-label="Close">×</button>';
-    card.addEventListener("click", (e) => { if (e.target.id === "try-simple-yes") setFace("simple"); else if (e.target.id === "try-simple-no" || e.target.id === "try-simple-close") setFace("original", true); });
+    card.addEventListener("click", (e) => {
+      if (e.target.id === "try-simple-yes") setFace("simple"); else if (e.target.id === "try-simple-no" || e.target.id === "try-simple-close") setFace("original", true); else return;
+      [$("face-simple"), $("face-original"), $("btn-theme"), $("btn-export")].find((b) => b.getClientRects().length)?.focus(); // the card is gone: focus goes to the switch (or Settings, which has Look, or Open/Export on a phone), not to the page
+    });
     $("viewport").append(card);
   }
+  // A lesson whose steps point at top-bar buttons that Simple moved into More runs in Original, and Simple comes back when it ends (tutorials.js calls these)
+  const MOVED = ["btn-autosave", "btn-theme", "btn-chat", "btn-about", "btn-keys", "btn-full", "btn-projects", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
+  const narrow = matchMedia("(max-width: 640px)");
+  const moved = (q) => (narrow.matches ? [...MOVED, ...MOVED_NARROW] : MOVED).some((id) => new RegExp("#" + id + "(?![\\w-])").test(q));
+  const needsOriginal = (tut) => tut.steps.some((st) => { const parts = ((st.show && st.show.sel) || "").split(",").map((q) => q.trim()).filter(Boolean); return parts.length && parts.every(moved); });
+  app.onLessonStart = (tut) => {
+    if (face !== "simple" || !needsOriginal(tut)) return;
+    setFace("original", true, true); lessonInOriginal = true;
+    app.toast("This lesson uses buttons from the full top bar, so it runs in Original. Simple comes back when the lesson ends.");
+  };
+  app.onLessonEnd = () => { if (lessonInOriginal) setFace("simple", true); };
   return { set: app.setFace, get face() { return face; } };
 }
