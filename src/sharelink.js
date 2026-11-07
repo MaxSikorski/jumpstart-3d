@@ -29,7 +29,7 @@ export const LIMITS = {
   REPEAT: 200, REPEAT_TOTAL: 2000, CIRCULAR: 360, TURNS: 400, MEASURE: 1e5, SIDES: 24, PYRAMID_SIDES: 12, POINTS: 16,
   // jumpstart-3d: J.Siwek 2.9.3 parts. Browser folders; a rack of at most 400 teeth; outline pieces across the whole design; the pairs of
   // outline pieces the crossing check may compare before it gives up (a real gear needs a few per piece). Box Maker: compartments x bins.
-  FOLDERS: 256, FOLDER_NAME: 60, RACK_TEETH: 400, OUTLINE_SEGMENTS: 20000, OUTLINE_PAIRS: 4e6, BIN_WORK: 1600,
+  FOLDERS: 256, FOLDER_NAME: 60, RACK_TEETH: 400, OUTLINE_SEGMENTS: 20000, OUTLINE_PAIRS: 4e6, OUTLINE_HOLES: 16, BIN_WORK: 1600,
 };
 const SITE = "https://maxsikorski.github.io/jumpstart-3d/"; // the community website; a file:// copy shares this address, never its own path
 const PREFIX = "js3d=";
@@ -255,12 +255,13 @@ function inlineExtrude(n, ctx) {
     for (let i = 0; i < l.length; i++) if (!same(l[i].b, l[(i + 1) % l.length].a)) throw damaged("an outline that is not closed");
     return poly;
   };
-  const regions = arr(n.regions, "outlines", LIMITS.OUTLINE_SEGMENTS);
+  // the app writes one outline per extrude, with at most 9 holes (a gear's bore and 8 lightening holes): each hole is a cut in the engine
+  const regions = arr(n.regions, "outlines", 1);
   if (!regions.length) throw damaged("an empty outline");
   for (const r of regions) {
     obj(r, "an outline"); allow(r, new Set(["outer", "holes"]), "an outline");
     const loops = [loop(r.outer)];
-    if (r.holes !== undefined) for (const h of arr(r.holes, "outline holes", LIMITS.OUTLINE_SEGMENTS)) loops.push(loop(h));
+    if (r.holes !== undefined) for (const h of arr(r.holes, "outline holes", LIMITS.OUTLINE_HOLES)) loops.push(loop(h));
     simpleOutline(loops, ctx);
   }
   const pl = obj(n.plane, "an outline plane"); allow(pl, new Set(["o", "x", "n"]), "an outline plane");
@@ -313,7 +314,7 @@ function simpleOutline(loops, ctx) {
         if (seen.has(o)) continue;
         seen.add(o);
         const f = edges[o];
-        if (e.k === f.k && !neighbours(e, f) && meet(e, f)) throw damaged("an outline that crosses or touches itself");
+        if (e.k === f.k && !neighbours(e, f) && meet(e, f)) throw unsupported("an outline that crosses or touches itself");
       }
       list.push(j);
     }
@@ -722,6 +723,8 @@ function gearSets(bodies, byId, doc) {
       : /^p\d$/.test(role) ? ["sun", -v.zs / v.zp] : role === "ring" && v.type === "planet" ? ["sun", -v.zs / (v.zs + 2 * v.zp)] : [null, 0];
     if (j.type !== (role === "rk" ? "slider" : "revolute")) throw damaged("a gear joint type");
     if (!driver) { if (j.link !== undefined) throw damaged("a gear joint link"); continue; }
+    // the person deleted the driving gear's joint (Browser, Delete joint): the link to it drops out, as deleted parts do
+    if (b.gear.jids[driver] === undefined && (j.link === undefined || !jById.has(j.link.to))) { delete j.link; continue; }
     if (!j.link || j.link.to === j.id || j.link.to !== b.gear.jids[driver] || Math.abs(j.link.ratio - +ratio.toFixed(8)) > 1e-9) throw damaged("a gear joint link");
   }
 }

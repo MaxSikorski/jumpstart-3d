@@ -874,6 +874,14 @@ test("2.9.3 gear parts point both ways, never at themselves, one role each; dele
   // a part whose set was deleted keeps its shape and loses the pointer
   const y = structuredClone(d); y.bodies.splice(main, 1); y.joints = [];
   assert.equal(jsonTrip(y).bodies[0].gearPart, undefined);
+  // the person deleted the driving gear's joint in the Browser: the joints that followed it keep turning on their own
+  for (const [o, gone] of [[{ type: 'pair' }, 'j_g1'], [{ type: 'planet', nPlanets: 3 }, 'j_sun']]) {
+    const w = await gearDoc(o); w.joints = w.joints.filter((j) => j.id !== gone);
+    const r = jsonTrip(w);
+    assert.ok(r.joints.length && r.joints.every((j) => j.link === undefined), JSON.stringify(o));
+    assert.equal(Object.values(r.bodies[0].gear.jids).includes(gone), false);
+    if (w.joints.length > 1) { const v = structuredClone(w); v.joints[0].link.to = v.joints[1].id; throwsShare(() => validateEnvelope(env(v)), 'damaged', /joint link/); } // a link to another existing joint is still refused
+  }
   // and the joints switched off later leave old joint ids behind in the set: dropped too
   const z = await gearDoc({ type: 'pair', joints: false }); z.bodies[0].gear.jids = { g1: 'j_old1', g2: 'j_old2' };
   assert.deepEqual(jsonTrip(z).bodies[0].gear.jids, {});
@@ -936,8 +944,8 @@ test("2.9.3 gear outlines: whole circles, closed loops that never cross themselv
   bad({ outer: [{ t: 'arc', a: [0, 0], m: [5, 0], b: [10, 0] }, { t: 'line', a: [10, 0], b: [10, 10] }, { t: 'line', a: [10, 10], b: [0, 0] }] }, 'damaged', /degenerate/); // an arc through three points on a line
   assert.doesNotThrow(() => validateEnvelope(env(one({ outer: [{ t: 'arc', a: [0, 0], m: [5, -2], b: [10, 0] }, { t: 'line', a: [10, 0], b: [10, 10] }, { t: 'line', a: [10, 10], b: [0, 0] }] }))));
   bad({ outer: [[0, 0], [10, 0], [5, 0], [5, 5]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] })) }, 'damaged', /doubles back/);
-  bad({ outer: [[0, 0], [10, 10], [10, 0], [0, 4]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] })) }, 'damaged', /crosses/); // a bow tie
-  bad({ outer: box(10), holes: [[[0, 0], [5, 5], [5, 0], [0, 4]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] }))] }, 'damaged', /crosses/); // a hole that crosses itself
+  bad({ outer: [[0, 0], [10, 10], [10, 0], [0, 4]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] })) }, 'unsupported', /crosses/); // a bow tie
+  bad({ outer: box(10), holes: [[[0, 0], [5, 5], [5, 0], [0, 4]].map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % 4] }))] }, 'unsupported', /crosses/); // a hole that crosses itself
   // how holes lie against the outline and each other is the kernel's flat boolean cut: the app makes overlapping holes (a big gear's
   // lightening holes) and holes into the edge (a big keyway on a small gear) itself
   for (const holes of [[box(5), box(1)], [box(3, -2, 0), box(3, 2, 0)], [box(2, 9, 0)], [box(10)], [box(2, 30, 0)]]) assert.doesNotThrow(() => validateEnvelope(env(one({ outer: box(10), holes }))));
@@ -945,7 +953,12 @@ test("2.9.3 gear outlines: whole circles, closed loops that never cross themselv
   const part = (o, key) => () => validateEnvelope(env({ ...one({ outer: box(1) }), bodies: [{ ...structuredClone(fixture('beginner-box').bodies[0]), node: gearSet({ ...GEAR_DEFAULTS, ...o }).parts.find((p) => p.key === key).node }] }));
   for (const o of [{ type: 'spur', z: 200, m: 3, spokes: true }, { type: 'planet', m: 0.5, zs: 19, zp: 44, bore: 'key', boreD: 20 }]) for (const p of gearSet({ ...GEAR_DEFAULTS, ...o }).parts) assert.doesNotThrow(part(o, p.key), JSON.stringify(o) + p.key);
   // a ring gear with more backlash than about three quarters of its module: gearlib.js's tooth spaces run into each other, which is no face
-  throwsShare(part({ type: 'ring', m: 0.5, z: 12, z2: 40, backlash: 0.6 }, 'ring'), 'damaged', /crosses/);
+  throwsShare(part({ type: 'ring', m: 0.5, z: 12, z2: 40, backlash: 0.6 }, 'ring'), 'unsupported', /crosses/);
+  // one outline per extrude, at most 16 holes (the app writes 1 and at most 9): each hole costs the engine a cut
+  const h16 = Array.from({ length: 16 }, (_, i) => circle(0.2, [i - 8, 0]));
+  assert.doesNotThrow(() => validateEnvelope(env(one({ outer: box(10), holes: h16 }))));
+  bad({ outer: box(10), holes: [...h16, circle(0.2, [0, 5])] }, 'damaged', /holes/);
+  throwsShare(() => { const x = one({ outer: box(10) }); x.bodies[0].node.regions.push({ outer: box(2, 30, 0) }); validateEnvelope(env(x)); }, 'damaged', /outlines/);
   assert.doesNotThrow(part({ type: 'ring', m: 0.5, z: 12, z2: 40, backlash: 0.15 }, 'ring'));
   // the outline pieces of the whole design together
   const ring = (n, r) => Array.from({ length: n }, (_, i) => [r * Math.cos((2 * Math.PI * i) / n), r * Math.sin((2 * Math.PI * i) / n)]).map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % n] }));
@@ -960,9 +973,11 @@ test("2.9.3 gear outlines: whole circles, closed loops that never cross themselv
     two.bodies[1].node.regions[0].outer = ring(LIMITS.OUTLINE_SEGMENTS / 2 + 1, 50); throwsShare(() => validateEnvelope(env(two)), 'toolarge', /outline pieces/);
   } finally { Object.assign(LIMITS, saved); }
   // thousands of pieces crowded into one corner of a big outline: refused quickly as too complicated, not checked pair by pair forever
-  const holes = []; for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) holes.push(circle(0.0004, [i * 0.001, j * 0.001]));
+  // (a fine sawtooth 4 µm long on one edge of a 10 m outline: all 4,000 teeth in one grid cell)
+  const saw = []; for (let i = 0; i < 2000; i++) saw.push([i * 2e-6, 0], [i * 2e-6 + 1e-6, 1e-6]);
+  saw.push([10000, 0], [10000, -10000], [0, -10000]);
   const t0 = Date.now();
-  throwsShare(() => validateEnvelope(env(one({ outer: box(5000, 4990, 4990), holes }))), 'toolarge', /too complicated/);
+  throwsShare(() => validateEnvelope(env(one({ outer: saw.map((a, i, p) => ({ t: 'line', a, b: p[(i + 1) % p.length] })) }))), 'toolarge', /too complicated/);
   assert.ok(Date.now() - t0 < 5000);
 });
 
