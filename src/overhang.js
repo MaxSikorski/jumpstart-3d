@@ -59,6 +59,7 @@ export function startJob(positions, indices, m = IDENTITY, deg = 45) {
     total: nT,
     get processed() { return Math.min(t, nT); },
     get done() { return t >= nT; },
+    get area() { return area; },
     step(ms = 8) {
       const deadline = nowMs() + ms;
       while (t < nT) {

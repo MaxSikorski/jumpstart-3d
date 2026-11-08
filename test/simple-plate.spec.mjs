@@ -2,6 +2,13 @@
 import { test, expect } from "@playwright/test";
 import { boot, waitIdle, watchErrors } from "./helpers.mjs";
 
+async function expectVerdict(locator, state) {
+  await expect.poll(async () => {
+    const status = await locator.evaluate(el => [el.dataset.state, el.getAttribute("aria-busy")]);
+    return status[0] === state && status[1] === "false";
+  }, { timeout: 30000 }).toBe(true);
+}
+
 let errors;
 test.beforeEach(async ({ page }, info) => { errors = watchErrors(page); await boot(page, info); await page.evaluate(() => window.__app.setFace("simple", true)); });
 test.afterEach(() => expect(errors).toEqual([]));
@@ -56,14 +63,14 @@ test("selected shape panel keeps the inspector and proxies", async ({ page }, in
   await expect(panel).toBeVisible();
   await expect(panel.locator("#inspector")).toBeVisible();
   if (info.project.name === "mobile") await page.click("#simple-sheet-handle");
-  await expect(panel.locator("#simple-ready")).toHaveAttribute("data-state", "ready", { timeout: 30000 });
+  await expectVerdict(panel.locator("#simple-ready"), "ready");
   for (const id of ["drop", "dup", "mirror", "shell", "fillet", "del"]) await expect(panel.locator(`[data-for="bb-${id}"]`)).toHaveCount(1);
   await page.locator("#insp-w").fill("30"); await page.locator("#insp-w").press("Enter"); await waitIdle(page);
   expect(await page.evaluate(() => window.__app.selected()[0].node.p.w)).toBe(30);
   await page.locator("#insp-pos2").fill("5"); await page.locator("#insp-pos2").press("Enter"); await waitIdle(page);
-  await expect(panel.locator("#simple-ready")).toHaveAttribute("data-state", "fail", { timeout: 30000 });
+  await expectVerdict(panel.locator("#simple-ready"), "fail");
   await panel.locator('[data-for="bb-drop"]').click(); await waitIdle(page);
-  await expect(panel.locator("#simple-ready")).toHaveAttribute("data-state", "ready", { timeout: 30000 });
+  await expectVerdict(panel.locator("#simple-ready"), "ready");
   await panel.locator(".solidhole button").nth(1).click();
   expect(await page.evaluate(() => window.__app.selected()[0].hole)).toBe(true);
   await panel.locator('[data-for="bb-del"]').click(); await waitIdle(page);
@@ -78,5 +85,5 @@ test("plate panel and sphere check", async ({ page }, info) => {
   await waitIdle(page);
   await expect(page.locator("#simple-panel")).toBeVisible();
   if (info.project.name === "mobile") { await page.click("#simple-sheet-handle"); await expect(page.locator("#simple-sheet-handle")).toHaveAttribute("aria-expanded", "true"); }
-  await expect(page.locator("#simple-ready")).toHaveAttribute("data-state", "warn", { timeout: 30000 });
+  await expectVerdict(page.locator("#simple-ready"), "warn");
 });

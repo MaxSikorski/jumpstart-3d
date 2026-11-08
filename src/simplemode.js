@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets.js";
 import { startJob } from "./overhang.js";
-import { worldBounds, fitsPlate, restsOnPlate, verdict } from "./printcheck.js";
+import { startPlateJob, fitsPlate, flatness, verdict } from "./printcheck.js";
 import { ICON } from "./icons.js";
 
 const TOOLS = {
@@ -68,7 +68,7 @@ function initPlate(app) {
       const original = $(b.dataset.for); b.hidden = !original;
       if (!original) continue;
       b.disabled = original.disabled; b.classList.toggle("dim", original.classList.contains("dim"));
-      if (b.dataset.for === "bb-multi") b.setAttribute("aria-pressed", original.getAttribute("aria-pressed"));
+      if (b.dataset.for === "bb-multi" && original.hasAttribute("aria-pressed")) b.setAttribute("aria-pressed", original.getAttribute("aria-pressed"));
       const old = TOOLS[b.dataset.for.slice(3)]?.[2]; b.title = old ? `${TOOLS[b.dataset.for.slice(3)][0]} (${old}): ${original.title}` : original.title;
     }
     // Hole has a useful action even without a selection.
@@ -90,7 +90,8 @@ function initPlate(app) {
     if (b.id === "sr-hole" && !app.sel.length) { $("dock-holes")?.click(); app.toast("Drag a hole shape onto a solid, then Group them to cut it."); return; }
     close(); $(b.dataset.for)?.click(); sync();
   }
-  rail.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }); // the app's own key handler must not also see them (it submits an open tool)
+  function toolKeys(e) { if (e.key !== "Enter" && e.key !== " ") return; if (app.command) e.preventDefault(); else e.stopPropagation(); }
+  rail.addEventListener("keydown", toolKeys);
   rail.addEventListener("click", activate);shapes.addEventListener("click", activate); more.addEventListener("click", activate);
   footer.onclick = () => app.setFace("original"); find.addEventListener("input", filter);
   work.addEventListener("keydown", (e) => {
@@ -100,8 +101,10 @@ function initPlate(app) {
     if (e.key === "/" && panel === more && e.target !== find) { e.preventDefault(); find.focus(); return; }
     const buttons = [...panel.querySelectorAll("button")].filter((b) => b.getClientRects().length && !b.disabled);
     if (e.key === "Enter" && e.target === find) { e.preventDefault(); e.stopPropagation(); buttons.find((b) => b.dataset.for)?.click(); return; }
+    if (e.target === find && ["ArrowLeft", "ArrowRight", "ArrowUp"].includes(e.key)) return;
+    if (e.target === find && e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); buttons.find(b => b.dataset.for)?.focus(); return; }
     if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) { e.preventDefault(); e.stopPropagation(); const i = buttons.indexOf(document.activeElement), step = ["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1; buttons[(i + step + buttons.length) % buttons.length]?.focus(); }
-    if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+    if (e.key === "Enter" || e.key === " ") toolKeys(e);
   });
   window.addEventListener("pointerdown", (e) => { if (!rail.contains(e.target) && !shapes.contains(e.target) && !more.contains(e.target)) close(); });
   function proxyFor(id) {
@@ -116,11 +119,13 @@ function initPlate(app) {
   for (const key of ["group", "align", "ungroup"]) $("simple-multi").append(proxy(key));
   for (const key of ["drop", "dup", "mirror", "shell", "fillet", "del", "fillopen"]) $("simple-fixes").append(proxy(key));
   panel.addEventListener("click", activate);
-  panel.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
+  $("simple-actions").addEventListener("keydown", toolKeys);
+  panel.querySelector(".simple-print-footer").addEventListener("keydown", toolKeys);
   $("simple-print").onclick = () => { if ($("menu-export").hidden) $("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]')?.click(); };
   $("simple-export-more").onclick = () => $("btn-export").click();
   $("simple-sheet-handle").onclick = () => { const expanded = panel.classList.toggle("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", expanded); };
-  const inspector = $("inspector"), oldParent = inspector.parentNode, oldNext = inspector.nextSibling;
+  const inspector = $("inspector"), oldParent = inspector.parentNode, placeholder = document.createComment("inspector position");
+  oldParent.insertBefore(placeholder, inspector.nextSibling);
   const label = document.createElement("button"); label.id = "simple-plate-label"; label.onclick = () => app.plateView.open(); $("viewport").append(label);
   const ready = $("simple-ready"); let timer, generation = 0;
   function plateName() { const choice = getPlatePref().printer; return choice === "none" ? "No plate boundary" : choice === "generic" ? "256 × 256 mm" : (PRINTERS[choice]?.name || "256 × 256 mm"); }
@@ -128,7 +133,7 @@ function initPlate(app) {
   function layout() {
     const active = document.documentElement.dataset.face === "simple" && app.mode === "beginner";
     if (active && inspector.parentNode !== $("simple-inspector-slot")) $("simple-inspector-slot").append(inspector);
-    else if (!active && inspector.parentNode !== oldParent) oldParent.insertBefore(inspector, oldNext);
+    else if (!active && inspector.parentNode !== oldParent) oldParent.insertBefore(inspector, placeholder);
     const selected = app.selected(); panel.classList.toggle("has-selection", !!selected.length);
     $("simple-plate-empty").hidden = !!selected.length; $("simple-actions").hidden = !selected.length;
     $("simple-multi").hidden = selected.length < 2;
@@ -136,38 +141,71 @@ function initPlate(app) {
     $("simple-fixes").querySelector('[data-for="bb-fillopen"]').hidden = !selected.some(b => b.node.t === "mesh" || b.node.t === "step");
     if (!selected.length) { panel.classList.remove("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", "false"); }
   }
-  function schedule() { generation++; clearTimeout(timer); if (document.documentElement.dataset.face !== "simple" || app.mode !== "beginner") return; ready.dataset.state = "checking"; ready.textContent = "Checking overhangs…"; const g = generation; timer = setTimeout(() => check(g), 250); }
+  const cache = new WeakMap();
+  function setText(state, text) {
+    ready.dataset.state = state; ready.setAttribute("aria-busy", "false"); delete ready.dataset.verdict;
+    if (ready.textContent !== text || ready.children.length) ready.textContent = text;
+  }
+  function schedule() {
+    generation++; clearTimeout(timer);
+    if (document.documentElement.dataset.face !== "simple" || app.mode !== "beginner") { ready.setAttribute("aria-busy", "false"); return; }
+    ready.setAttribute("aria-busy", "true");
+    if (ready.dataset.state === "empty") { ready.dataset.state = "checking"; ready.textContent = "Checking…"; }
+    const g = generation; timer = setTimeout(() => check(g), 250);
+  }
   function check(g) {
     const selected = new Set(app.sel), views = [...app.scene.views].filter(([id,v]) => (!selected.size || selected.has(id)) && v.data && v.mesh && v.body && !v.body.hole && !v.body.cmdPreview && !v.body.cutPreview && !v.pending && v.group.visible && !app.scene.state.ghost.has(id));
-    if (!views.length) { ready.dataset.state = "empty"; ready.textContent = "Add a shape to check it."; return; }
-    const pref = getPlatePref(), dims = plateDims(pref.printer), jobs = []; let flat = null, fit = true, area = 0, large = false;
+    if (!views.length) { setText("empty", "Add a shape to check it."); return; }
+    const pref = getPlatePref(), dims = plateDims(pref.printer); let minZ = Infinity, contact = 0, fit = true, area = 0, large = false, index = 0, current = null;
     const matrix = new THREE.Matrix4(), local = new THREE.Matrix4();
-    for (const [,v] of views) {
-      const geo = v.mesh.geometry, pos = geo.getAttribute("position").array, indices = geo.getIndex()?.array;
-      if (!indices) continue;
-      local.compose(v.mesh.position, v.mesh.quaternion, v.mesh.scale); const m = matrix.multiplyMatrices(v.group.matrix, local).elements.slice();
-      const rest = restsOnPlate(pos, indices, m), bounds = worldBounds(v.data.vertices, v.group.matrix.elements), f = fitsPlate(bounds, dims);
-      if (rest.minZ > .05) flat = { type: "float", value: rest.minZ }; else if (rest.minZ < -.05) flat = { type: "below", value: -rest.minZ }; else if (rest.contactArea < 1 && !flat) flat = { type: "point" };
-      if (!f.ok && (fit === true || f.why === "size")) fit = f.why;
-      if (indices.length / 3 > 300000) large = true; else jobs.push(startJob(pos, indices, m, pref.angle));
-    }
     function finish() {
-      const state = verdict({ flat: flat?.type, fit: fit === true, overhang: large ? "large" : area > 0 }); ready.dataset.state = state;
+      const flat = flatness(minZ, contact), state = verdict({ flat: flat?.type, fit: fit === true, overhang: large ? "large" : area > 0 });
       const heading = state === "ready" ? "✓ Ready to print" : state === "warn" ? "Check before printing" : "Not ready yet";
-      ready.replaceChildren(); const h = document.createElement("strong"); h.textContent = heading; ready.append(h);
-      const line = (text, action, buttonText) => { const p = document.createElement("p"); p.textContent = text; if (action) { const b = document.createElement("button"); b.textContent = buttonText; b.onclick = () => $(action)?.click(); p.append(" ", b); } ready.append(p); };
+      const lines = [];
+      const line = (text, action, buttonText) => lines.push({ text, action, buttonText });
       if (state === "ready") line(`Sits flat, ${dims ? `fits the ${plateName()} plate` : "no printer picked"}, 0 overhangs.`);
       else {
         if (flat) line(flat.type === "point" ? "Touches the plate only at a point or edge" : `${flat.type === "float" ? "Floats" : "Goes"} ${Number(flat.value.toFixed(2))} mm ${flat.type === "float" ? "above" : "below"} the plate`, flat.type === "float" && selected.size ? "bb-drop" : null, "Lay flat");
         if (fit !== true) line(fit === "size" ? `Too big for the ${plateName()} plate` : "Reaches past the plate edge");
         if (!dims) line("No printer picked");
-        if (large) line("Too detailed to check here — use Print check", "bb-printsim", "Details"); else if (area > 0) line(`${Math.round(area)} mm² leans more than ${pref.angle}° — needs supports`, "bb-printsim", "Details");
+        if (large) line("Too detailed to check here — use Print check", "bb-printsim", "Details"); else if (area > 0) line(`${Math.round(area)} mm² leans more than ${pref.angle}° — may need supports`, "bb-printsim", "Details");
       }
+      const signature = JSON.stringify([heading, lines]);
+      if (ready.dataset.verdict !== signature) {
+        ready.replaceChildren(); const h = document.createElement("strong"); h.textContent = heading; ready.append(h);
+        for (const item of lines) { const p = document.createElement("p"); p.textContent = item.text; if (item.action) { const b = document.createElement("button"); b.textContent = item.buttonText; b.onclick = () => $(item.action)?.click(); p.append(" ", b); } ready.append(p); }
+        ready.dataset.verdict = signature;
+      }
+      ready.dataset.state = state; ready.setAttribute("aria-busy", "false");
     }
-    function step() { if (g !== generation) return; const job = jobs[0]; if (!job) { finish(); return; } if (job.step(8)) { area += job.result().area; jobs.shift(); } setTimeout(step, 0); } step();
+    function step() {
+      if (g !== generation) return;
+      const deadline = performance.now() + 8;
+      while (performance.now() < deadline) {
+        if (!current) {
+          if (index >= views.length) { finish(); return; }
+          const v = views[index++][1], geo = v.mesh.geometry, pos = geo.getAttribute("position").array, indices = geo.getIndex()?.array;
+          if (!indices) continue;
+          local.compose(v.mesh.position, v.mesh.quaternion, v.mesh.scale); const m = matrix.multiplyMatrices(v.group.matrix, local).elements.slice();
+          const signature = v.key + ":" + m.join(","), saved = cache.get(geo);
+          current = { geo, pos, indices, m, signature, saved: saved?.signature === signature && saved.pos === pos && saved.indices === indices ? saved : null };
+          if (!current.saved) current.plate = startPlateJob(pos, indices, m);
+        }
+        const c = current;
+        if (c.plate) { if (!c.plate.step(Math.max(0, deadline - performance.now()))) break; c.saved = { signature: c.signature, pos: c.pos, indices: c.indices, plate: c.plate.result() }; c.plate = null; cache.set(c.geo, c.saved); }
+        if (!c.applied) { const p = c.saved.plate, f = fitsPlate(p.bounds, dims); minZ = Math.min(minZ, p.minZ); contact += p.contactArea; if (!f.ok && (fit === true || f.why === "size")) fit = f.why; c.applied = true; }
+        if (c.indices.length / 3 > 300000) { large = true; current = null; continue; }
+        if (c.saved.angle === pref.angle) { area += c.saved.area; current = null; continue; }
+        if (!c.overhang) c.overhang = startJob(c.pos, c.indices, c.m, pref.angle);
+        if (!c.overhang.step(Math.max(0, deadline - performance.now()))) break;
+        c.saved.angle = pref.angle; c.saved.area = c.overhang.area; area += c.saved.area; current = null;
+      }
+      setTimeout(step, 0);
+    }
+    setTimeout(step, 0);
   }
-  const refresh = app.refreshUI; app.refreshUI = function (...args) { const result = refresh.apply(this, args); sync(); layout(); schedule(); return result; };
-  const sceneRefresh = app.onSceneRefresh; app.onSceneRefresh = function (...args) { sceneRefresh?.apply(this, args); layout(); schedule(); };
+  const refresh = app.refreshUI; app.refreshUI = function (...args) { const result = refresh.apply(this, args); const active = document.documentElement.dataset.face === "simple" && app.mode === "beginner"; if (active) { sync(); layout(); schedule(); } else if (inspector.parentNode !== oldParent) { layout(); schedule(); } return result; };
+  const sceneRefresh = app.onSceneRefresh; app.onSceneRefresh = function (...args) { sceneRefresh?.apply(this, args); if (document.documentElement.dataset.face === "simple" && app.mode === "beginner") { layout(); schedule(); } };
   onPlatePref(() => { updateLabel(); schedule(); }); updateLabel();
 
   sync(); return { sync, proxyFor, close, layout, schedule };

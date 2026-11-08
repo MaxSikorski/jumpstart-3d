@@ -15,3 +15,16 @@ test('plate contact, size, and edge', () => {
   assert.equal(restsOnPlate(p,ix,tilted).contactArea, 0);
   assert.equal(verdict({flat:'point',fit:true,overhang:false}), 'warn');
 });
+
+test('combined plate job and stacked-body flatness', async () => {
+  const { startPlateJob, flatness } = await import('../src/printcheck.js');
+  const lower = startPlateJob(p, ix, matrix()), upper = startPlateJob(p, ix, matrix(0,10));
+  while (!lower.step(0));
+  while (!upper.step(0));
+  const a = lower.result(), b = upper.result();
+  assert.deepEqual(a.bounds, worldBounds(p, matrix()));
+  assert.equal(b.contactArea, 0);
+  assert.equal(flatness(Math.min(a.minZ, b.minZ), a.contactArea + b.contactArea), null);
+  assert.deepEqual(flatness(Math.min(-2, 3), 0), { type: 'below', value: 2 });
+  assert.deepEqual(flatness(3, 0), { type: 'float', value: 3 });
+});
