@@ -47,3 +47,14 @@ test("Original hides controls and layouts have no horizontal overflow", async ({
   await expect(page.locator("#simple-whole-plate")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test("Show the whole plate puts every corner of the printer plate on screen", async ({ page }) => {
+  await page.evaluate(() => { const id = JS3D.add("box", { size: [20, 20, 20] }); JS3D.select([id]); }); await waitIdle(page);
+  await page.click("#nav-fit"); // start zoomed in on the shape
+  await page.waitForTimeout(800);
+  await page.click("#simple-whole-plate");
+  await expect.poll(() => page.evaluate(() => {
+    const vp = window.__app.vp, cam = vp.camera, c = document.querySelector("#viewport canvas").getBoundingClientRect(), V = cam.position.constructor;
+    return [[-128, -128], [128, -128], [128, 128], [-128, 128]].every(([x, y]) => { const p = new V(x, y, 0).project(cam); return Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && c.width > 0; });
+  }), { timeout: 5000 }).toBe(true);
+});

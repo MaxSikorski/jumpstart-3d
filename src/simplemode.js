@@ -236,7 +236,7 @@ function initCollapse(app, plate) {
     hidden = parts.filter(x => next.includes(x));
     syncing = true; if (active && $("shapes").classList.contains("tucked") !== hidden.includes("bottom")) toggleDock(); syncing = false;
     if (hidden.includes("rail")) plate.close(); draw(); save();
-    if (refit && app.face === "simple") requestAnimationFrame(() => { window.dispatchEvent(new Event("resize")); requestAnimationFrame(() => $("nav-home").click()); });
+    if (refit && app.face === "simple") requestAnimationFrame(() => { window.dispatchEvent(new Event("resize")); requestAnimationFrame(() => { const d = plateDims(getPlatePref().printer) || { w: 256, d: 256, h: null }, vpEl = $("viewport"), k = Math.max(1, 0.6 * vpEl.clientHeight / Math.max(1, vpEl.clientWidth)); app.vp.setView("home", new THREE.Box3(new THREE.Vector3(-d.w * k / 2, -d.d * k / 2, 0), new THREE.Vector3(d.w * k / 2, d.d * k / 2, Math.min(d.h ?? 40, 40)))); /* a tall, narrow view (a phone) is limited by its width */ }); }); // frame the whole printer plate, not just the shapes
   }
   whole.onclick = () => { if (before !== null) { const restore = before; before = null; setHidden(restore); } else { before = hidden.slice(); setHidden(parts); } };
   // Keep the original dock control authoritative, including clicks made by Beginner tools.
@@ -257,8 +257,8 @@ const CSS = `
 .simple-collapse, #simple-whole-plate { display: none; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #simple-whole-plate { display: grid; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .simple-collapse { display: grid; place-items: center; position: absolute; z-index: 38; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); font-size: 23px; cursor: pointer; }
-#simple-collapse-rail { left: 0; top: 40%; } #simple-collapse-panel { right: 0; top: 40%; }
-#simple-collapse-top { top: 0; left: 8px; } #simple-collapse-bottom { bottom: 0; left: 8px; }
+#simple-collapse-rail { left: 0; top: 40%; } #simple-collapse-panel { right: 0; bottom: 12px; }
+#simple-collapse-top { top: 0; left: 50%; transform: translateX(-50%); } #simple-collapse-bottom { bottom: 0; left: 8px; }
 #simple-collapse-panel.selected::after { content: ""; position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
 html[data-face="simple"] #app[data-mode="advanced"] :is(#simple-collapse-rail, #simple-collapse-panel) { display: none; }
 html[data-face="simple"][data-simple-hide~="top"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .topbar { display: none; }
@@ -266,7 +266,7 @@ html[data-face="simple"][data-simple-hide~="bottom"] #app:is([data-mode="beginne
 html[data-face="simple"] #app[data-mode="beginner"] #shapes { transition: none; }
 html[data-face="simple"] #app[data-mode="beginner"] #shapes-tab { display: none !important; }
 html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] #simple-rail, html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="beginner"] #simple-panel { display: none !important; }
-html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 280px; }
+html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) var(--simple-panel-w, 280px); }
 html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="beginner"] .work { grid-template-columns: 80px minmax(0, 1fr) 0; }
 html[data-face="simple"][data-simple-hide~="rail"][data-simple-hide~="panel"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
 :root.touch-ui .simple-collapse { min-width: 44px; min-height: 44px; }
@@ -276,7 +276,7 @@ html[data-face="simple"][data-simple-hide~="rail"][data-simple-hide~="panel"] #a
  html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] #simple-panel { bottom: 0; max-height: 100%; }
  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .simple-collapse { width: 44px; height: 44px; }
  #simple-collapse-rail { left: 56px; top: auto; bottom: 0; }
- #simple-collapse-panel { right: 0; top: 50px; }
+ #simple-collapse-panel { right: 0; top: auto; bottom: 8px; }
 }
 
 #simple-panel, #simple-plate-label { display: none; }
@@ -303,7 +303,7 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: fle
 #simple-sheet-handle { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { display: block; position: absolute; top: 14px; left: 14px; z-index: 6; padding: 8px 12px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
 #viewport:has(.try-simple) #simple-plate-label { display: none !important; }
-@media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 80px minmax(0, 1fr) 236px; } }
+@media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { --simple-panel-w: 236px; grid-template-columns: 80px minmax(0, 1fr) 236px; } }
 @media (max-width: 640px) {
  html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
  html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: absolute; z-index: 35; grid-column: 1 / -1; grid-row: 1; left: 0; right: 0; bottom: 58px; height: 40vh; max-height: calc(100% - 58px); border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
