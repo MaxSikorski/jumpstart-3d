@@ -4,7 +4,7 @@ import { boot, loadDoc, newDoc, body, prim, watchErrors } from "./helpers.mjs";
 
 const cases = [
   ["About JumpStart 3D", (page) => page.click("#btn-about")],
-  ["Keyboard shortcuts", (page) => page.click("#btn-keys")],
+  ["Keyboard shortcuts", async (page) => { if (await page.locator("#btn-keys").isVisible()) return page.click("#btn-keys"); await page.click("#btn-theme"); await page.click("#cz-keys"); }], // below 1440 px Original keeps it in Customize › Workspace
   ["Tutorials", (page) => page.click("#btn-tutorials")],
   ["Report a problem", async (page) => {
     await page.click("#btn-export");
