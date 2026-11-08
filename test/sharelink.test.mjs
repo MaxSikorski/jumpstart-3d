@@ -423,6 +423,7 @@ test("print paint (painted 3MF): a painted design round-trips; anything outside 
   bad((d) => { d.printPaint.faces.b1 = { n: 6.5, f: {} }; }, "damaged", /face count/, name);
   bad((d) => { d.printPaint.faces.b1 = { n: 99999999, f: { 99999998: 1 } }; }, "toolarge", undefined, name); // caught by the measurement cap first
   bad((d) => { d.printPaint.faces.b1.f = { 99999998: 1 }; }, "damaged", /face number/, name);
+  bad((d) => { d.bodies[0].color = "#1234"; }, "damaged", /colour/, name);
   bad((d) => { d.printPaint.slots[1] = "red"; }, "damaged", /colour/, name);
   bad((d) => { d.printPaint.slots[1] = "url(http://x)"; }, "damaged", /colour/, name);
   bad((d) => { d.printPaint.slots[1] = 5; }, "damaged", /colour/, name);

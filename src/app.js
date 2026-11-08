@@ -219,6 +219,8 @@ app.voxel = initVoxel(app);
 
   store.on((kind) => {
     const doc = store.view;
+    // jumpstart-3d: explain pictures discarded by the shared load guard.
+    if (kind === "load" && store.droppedUnsafeMedia) app.toast("Left out a picture that could not be used safely.");
     // keep the selection valid
     app.sel = app.sel.filter((id) => findBody(doc, id));
     if (app.sketcher.active && !doc.sketches.some((s) => s.id === app.sketcher.active)) app.exitSketch();

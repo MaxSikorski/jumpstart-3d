@@ -1,5 +1,6 @@
 // Keeps three.js objects in sync with the document and kernel results.
 import * as THREE from "three";
+import { isSafeMediaSrc, warnUnsafeMedia } from "./safeurl.js"; // jumpstart-3d: project pictures cannot fetch URLs
 import { theme, sketchColor, sketchScaled } from "./theme.js";
 import { thickLines } from "./thickline.js";
 import { fromB64 } from "./meshimport.js";
@@ -48,7 +49,9 @@ export function textOutlines(sk) {
 
 // a sketch's reference picture, as a see-through plane in sketch coordinates
 const imgTex = new Map();
-export function sketchImageMesh(im, onLoad) {
+export function sketchImageMesh(im, onLoad, id) {
+  // jumpstart-3d: reference pictures also come from untrusted projects.
+  if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(id || im.id || "sketch image"); return new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial()); }
   let tex = imgTex.get(im.src);
   if (!tex) {
     tex = new THREE.TextureLoader().load(im.src, () => onLoad && onLoad());
@@ -521,7 +524,8 @@ export class SceneSync {
         cl.computeLineDistances();
         g.add(cl);
       }
-      if (sk.image) g.add(sketchImageMesh(sk.image, () => this.vp.request()));
+      // jumpstart-3d: name rejected reference pictures by sketch id.
+      if (sk.image?.src) g.add(sketchImageMesh(sk.image, () => this.vp.request(), sk.id));
       // profile fills (pickable for extrude)
       const regs = regionsFor(sk);
       regs.forEach((r, i) => {

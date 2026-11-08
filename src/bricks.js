@@ -389,7 +389,7 @@ export function initBricks(app) {
     // parts list (for the layer, or all)
     const rows = parts(here || list);
     s.append(el("small", { class: "bk-ph" }, here ? "Bricks in this layer" : "Parts list"),
-      el("table", { class: "bk-parts", id: "bk-parts" }, el("tbody", {}, ...rows.map((r) => el("tr", {}, el("td", {}, el("span", { class: "bk-sw", style: { background: r.color } })), el("td", {}, r.size + (st.height === "plate" ? " plate" : " brick")), el("td", { class: "n" }, "× " + r.n))))));
+      el("table", { class: "bk-parts", id: "bk-parts" }, el("tbody", {}, ...rows.map((r) => el("tr", {}, el("td", {}, el("span", { class: "bk-sw", style: { backgroundColor: r.color } })), el("td", {}, r.size + (st.height === "plate" ? " plate" : " brick")), el("td", { class: "n" }, "× " + r.n))))));
     // how it goes into the design
     const seg = (id, items, cur, on) => el("div", { class: "seg s3d-seg", id }, ...items.map(([v, l, t]) => el("button", { "aria-pressed": String(cur === v), title: t || "", onclick: () => on(v) }, l)));
     s.append(el("small", { class: "bk-ph" }, "Add to the design"),

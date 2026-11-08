@@ -1446,7 +1446,8 @@ export class Sketcher {
       pushPoly(segs[k], pts);
     }
     for (const { id, pts } of textOutlines(sk)) pushPoly(segs[this.sel.has(id) ? "sel" : this.hover === id ? "hover" : "line"], pts);
-    if (sk.image) { const im = sketchImageMesh(sk.image, () => this.vp.request()); im.material.depthTest = false; im.renderOrder = 4; g.add(im); }
+    // jumpstart-3d: identify rejected reference pictures without logging their URL.
+    if (sk.image?.src) { const im = sketchImageMesh(sk.image, () => this.vp.request(), sk.id); im.material.depthTest = false; im.renderOrder = 4; g.add(im); }
     // profiles
     const regs = regionsFor(sk);
     for (const r of regs) {

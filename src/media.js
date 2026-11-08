@@ -10,6 +10,7 @@
 // Pictures are saved with the design (scaled to at most 1600 px). Videos stay while the page
 // is open: after reopening a design, add the video again (the fitting is remembered).
 import * as THREE from "three";
+import { isSafeMediaSrc, warnUnsafeMedia } from "./safeurl.js"; // jumpstart-3d: project pictures cannot fetch URLs
 import { store } from "./store.js";
 import { el, uid } from "./util.js";
 
@@ -53,25 +54,28 @@ void main(){
 export function initMedia(app) {
   const vp = app.vp, scene = app.scene;
   const reg = new Map(); // media id -> { kind, tex, video?, url?, w, h }
-  let missingTex = null;
+  const missingTex = {}; // jumpstart-3d: distinguish missing pictures from videos
   // ---- textures for the media of the design
-  function missing(name) {
-    if (!missingTex) {
+  function missing(kind) {
+    kind = kind === "image" ? "image" : "video";
+    if (!missingTex[kind]) {
       const c = document.createElement("canvas"); c.width = 512; c.height = 256;
       const g = c.getContext("2d");
       g.fillStyle = "#22262c"; g.fillRect(0, 0, 512, 256);
       g.strokeStyle = "#e8a33d"; g.lineWidth = 8; g.strokeRect(8, 8, 496, 240);
       g.fillStyle = "#fff"; g.font = "bold 34px system-ui, sans-serif"; g.textAlign = "center";
-      g.fillText("Video missing", 256, 116); g.font = "22px system-ui, sans-serif"; g.fillText("Add it again in Media", 256, 156);
-      missingTex = new THREE.CanvasTexture(c); missingTex.colorSpace = THREE.SRGBColorSpace;
+      g.fillText(kind === "image" ? "Picture missing" : "Video missing", 256, 116); g.font = "22px system-ui, sans-serif"; g.fillText("Add it again in Media", 256, 156);
+      missingTex[kind] = new THREE.CanvasTexture(c); missingTex[kind].colorSpace = THREE.SRGBColorSpace;
     }
-    return { kind: "missing", tex: missingTex, w: 2, h: 1 };
+    return { kind: "missing", tex: missingTex[kind], w: 2, h: 1 };
   }
   function entryFor(id, doc) {
+    const m = doc && doc.media && doc.media[id];
+    // jumpstart-3d: guard at use, including documents already saved locally.
+    if (!m) return missing();
+    if (m.src !== undefined && !isSafeMediaSrc(m.src, m.kind)) { warnUnsafeMedia(id); return missing(m.kind); }
     let e = reg.get(id);
     if (e) return e;
-    const m = doc && doc.media && doc.media[id];
-    if (!m) return null;
     if (m.kind === "image" && m.src) {
       const tex = new THREE.TextureLoader().load(m.src, (t) => { e.w = t.image.width; e.h = t.image.height; scene.refresh(); vp.request(); });
       tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
@@ -79,7 +83,7 @@ export function initMedia(app) {
       reg.set(id, e);
       return e;
     }
-    return missing(m.name);
+    return missing(m.kind);
   }
   // ---- put the media on a body's view (called whenever the scene refreshes)
   function applyToView(v, b, doc) {
@@ -293,7 +297,7 @@ export function initMedia(app) {
         el("button", { class: "btn", id: "media-sound", "aria-pressed": String(!v.muted), title: "Sound plays from this window", onclick: () => { v.muted = !v.muted; renderPanel(); } }, v.muted ? "Sound off" : "Sound on"),
         el("label", { class: "check" }, el("input", { type: "checkbox", checked: v.loop, onchange: (ev) => { v.loop = ev.target.checked; } }), "Loop")));
     } else if (e && e.kind === "missing") {
-      body.append(el("div", { class: "hint", style: { padding: 0 } }, "This video isn't loaded (videos aren't saved with the design). Use ", el("b", {}, "Change picture or video"), " to add it again: the fitting stays."));
+      body.append(el("div", { class: "hint", style: { padding: 0 } }, info && info.kind === "image" ? "This picture isn't loaded. Use " : "This video isn't loaded (videos aren't saved with the design). Use ", el("b", {}, "Change picture or video"), " to add it again: the fitting stays."));
     }
     body.append(el("button", { class: "btn danger", id: "media-remove", style: { width: "100%", marginTop: "6px" }, onclick: () => store.update((d) => { for (const b of d.bodies) if (ids.includes(b.id)) delete b.media; }, "Remove media") }, "Remove from " + (sel.length === 1 ? "this object" : "these objects")));
     body.append(el("div", { class: "hint", style: { padding: "6px 0 0", fontSize: "11.5px" } }, "Media changes only how objects look (here and in the Projector), not what gets 3D printed."));
@@ -305,7 +309,9 @@ export function initMedia(app) {
     const row = el("div", { class: "media-lib" });
     for (const [id, m] of lib) {
       const t = el("button", { class: "media-thumb", title: (ids ? "Use " : "") + m.name, disabled: !ids, onclick: () => ids && store.update((d) => { for (const b of d.bodies) if (ids.includes(b.id)) b.media = fitFor(b, id, b.media); }, "Use media") });
-      if (m.kind === "image" && m.src) t.append(el("img", { src: m.src, alt: "" }));
+      // jumpstart-3d: thumbnails must obey the same rule as projection textures.
+      if (m.src !== undefined && !isSafeMediaSrc(m.src, m.kind)) warnUnsafeMedia(id);
+      if (isSafeMediaSrc(m.src, m.kind)) t.append(el("img", { src: m.src, alt: "" }));
       else t.append(el("span", { html: ICON }));
       t.append(el("span", { class: "nm" }, m.name || ""));
       row.append(t);
