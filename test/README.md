@@ -536,3 +536,5 @@ measurements still use hits; planar tools and pivot caches need no new behavior.
 The Node suite checks exact curved centers, analytic fields, planar-only normals,
 face coverage and mesh closure. Browser export coverage is authored but must be run
 separately; no Playwright run was authorized during implementation.
+
+- `simple-collapse.spec.mjs`: Simple panel handles, viewport resizing, whole-plate restoration across reload, Home framing, keyboard shortcut, Original visibility and horizontal overflow on desktop and mobile.

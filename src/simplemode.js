@@ -173,11 +173,74 @@ function initPlate(app) {
   sync(); return { sync, proxyFor, close, layout, schedule };
 }
 
+function initCollapse(app, plate) {
+  const root = document.documentElement, $ = id => document.getElementById(id);
+  const parts = ["rail", "panel", "top", "bottom"], names = { rail: "tools", panel: "shape panel", top: "top bar", bottom: "shape strip" };
+  const targets = { rail: "simple-rail", panel: "simple-panel", top: "simple-topbar", bottom: "shapes" };
+  document.querySelector("header.topbar").id = targets.top;
+  let hidden = [], before = null, syncing = false, active = false, originalTucked = false;
+  try { const saved = JSON.parse(localStorage.getItem("jumpstart.simple.hide")); if (Array.isArray(saved)) hidden = saved.filter(x => parts.includes(x)); const b = JSON.parse(localStorage.getItem("jumpstart.simple.hide.before")); if (Array.isArray(b)) before = b.filter(x => parts.includes(x)); } catch (e) { /* storage may be unavailable */ }
+  const buttons = {};
+  for (const part of parts) {
+    const b = document.createElement("button"); b.type = "button"; b.id = "simple-collapse-" + part; b.className = "simple-collapse"; b.setAttribute("aria-controls", targets[part]);
+    $("viewport").append(b); buttons[part] = b;
+    b.onclick = () => { before = null; setHidden(hidden.includes(part) ? hidden.filter(x => x !== part) : [...hidden, part]); };
+  }
+  const whole = document.createElement("button"); whole.id = "simple-whole-plate"; whole.type = "button"; whole.title = "Show the whole plate (hide every panel)"; whole.setAttribute("aria-label", whole.title); whole.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5M4 4l6 6m10-6-6 6m6 10-6-6M4 20l6-6"/></svg>'; $("nav-fit").after(whole);
+  function toggleDock() { let old; try { old = localStorage.getItem("jumpstart.shapesTucked"); } catch (e) {} $("shapes-tab").click(); try { if (old === null) localStorage.removeItem("jumpstart.shapesTucked"); else if (old !== undefined) localStorage.setItem("jumpstart.shapesTucked", old); } catch (e) {} }
+  function save() { try { localStorage.setItem("jumpstart.simple.hide", JSON.stringify(hidden)); if (before) localStorage.setItem("jumpstart.simple.hide.before", JSON.stringify(before)); else localStorage.removeItem("jumpstart.simple.hide.before"); } catch (e) { /* storage may be unavailable */ } }
+  function draw() {
+    root.dataset.simpleHide = hidden.join(" ");
+    for (const part of parts) { const closed = hidden.includes(part), b = buttons[part]; b.setAttribute("aria-expanded", String(!closed)); b.setAttribute("aria-label", (closed ? "Show the " : "Hide the ") + names[part]); b.title = b.getAttribute("aria-label"); b.textContent = part === "rail" ? (closed ? "›" : "‹") : part === "panel" ? (closed ? "‹" : "›") : part === "top" ? (closed ? "⌄" : "⌃") : (closed ? "⌃" : "⌄"); }
+    buttons.panel.classList.toggle("selected", !!app.sel.length); whole.setAttribute("aria-pressed", String(before !== null));
+  }
+  function setHidden(next, refit = true) {
+    hidden = parts.filter(x => next.includes(x));
+    syncing = true; if (active && $("shapes").classList.contains("tucked") !== hidden.includes("bottom")) toggleDock(); syncing = false;
+    if (hidden.includes("rail")) plate.close(); draw(); save();
+    if (refit && app.face === "simple") requestAnimationFrame(() => { window.dispatchEvent(new Event("resize")); requestAnimationFrame(() => $("nav-home").click()); });
+  }
+  whole.onclick = () => { if (before !== null) { const restore = before; before = null; setHidden(restore); } else { before = hidden.slice(); setHidden(parts); } };
+  // Keep the original dock control authoritative, including clicks made by Beginner tools.
+  new MutationObserver(() => { if (syncing || app.face !== "simple" || app.mode !== "beginner") return; const tucked = $("shapes").classList.contains("tucked"); if (tucked !== hidden.includes("bottom")) { before = null; setHidden(tucked ? [...hidden, "bottom"] : hidden.filter(x => x !== "bottom")); } }).observe($("shapes"), { attributes: true, attributeFilter: ["class"] });
+  window.addEventListener("keydown", e => { if (app.face !== "simple" || !["beginner", "advanced"].includes(app.mode) || !e.shiftKey || !e.altKey || e.ctrlKey || e.metaKey || e.code !== "KeyP" || e.target.closest("input, textarea, select, [contenteditable=true]")) return; e.preventDefault(); e.stopImmediatePropagation(); whole.click(); }, true);
+  const layout = plate.layout; plate.layout = (...args) => { const r = layout(...args); draw(); return r; };
+  const refresh = app.refreshUI; app.refreshUI = function (...args) { const r = refresh.apply(this, args); draw(); return r; };
+  draw();
+  return { activate(on) { if (on === active) return; syncing = true; if (on) originalTucked = $("shapes").classList.contains("tucked"); active = on; const wanted = on ? hidden.includes("bottom") : originalTucked; if ($("shapes").classList.contains("tucked") !== wanted) toggleDock(); syncing = false; draw(); }, reveal(el) { if (!el || app.face !== "simple") return; const part = el.closest("#simple-rail, #simple-shapes, #simple-more, #ribbon") ? "rail" : el.closest("#simple-panel, #inspector") ? "panel" : el.closest(".topbar") ? "top" : el.closest("#shapes") ? "bottom" : null; if (part && hidden.includes(part)) { before = null; setHidden(hidden.filter(x => x !== part)); } }, revealBottom() { if (hidden.includes("bottom")) { before = null; setHidden(hidden.filter(x => x !== "bottom")); } } };
+}
+
 // jumpstart-3d: Simple | Original switch, its More menu and the first-visit card.
 let hadPrefs = false;
 try { hadPrefs = localStorage.getItem("workplane.ui.v1") !== null; } catch (e) { /* storage may be unavailable */ }
 
 const CSS = `
+
+.simple-collapse, #simple-whole-plate { display: none; }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #simple-whole-plate { display: grid; }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .simple-collapse { display: grid; place-items: center; position: absolute; z-index: 38; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); font-size: 23px; cursor: pointer; }
+#simple-collapse-rail { left: 0; top: 40%; } #simple-collapse-panel { right: 0; top: 40%; }
+#simple-collapse-top { top: 0; left: 8px; } #simple-collapse-bottom { bottom: 0; left: 8px; }
+#simple-collapse-panel.selected::after { content: ""; position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
+html[data-face="simple"] #app[data-mode="advanced"] :is(#simple-collapse-rail, #simple-collapse-panel) { display: none; }
+html[data-face="simple"][data-simple-hide~="top"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .topbar { display: none; }
+html[data-face="simple"][data-simple-hide~="bottom"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status { display: none; }
+html[data-face="simple"] #app[data-mode="beginner"] #shapes { transition: none; }
+html[data-face="simple"] #app[data-mode="beginner"] #shapes-tab { display: none !important; }
+html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] #simple-rail, html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="beginner"] #simple-panel { display: none !important; }
+html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 280px; }
+html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="beginner"] .work { grid-template-columns: 80px minmax(0, 1fr) 0; }
+html[data-face="simple"][data-simple-hide~="rail"][data-simple-hide~="panel"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
+:root.touch-ui .simple-collapse { min-width: 44px; min-height: 44px; }
+@media (max-width: 640px) {
+ html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0 !important; }
+ html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] .work { grid-template-rows: minmax(0, 1fr) auto 0; }
+ html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="beginner"] #simple-panel { bottom: 0; max-height: 100%; }
+ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .simple-collapse { width: 44px; height: 44px; }
+ #simple-collapse-rail { left: 56px; top: auto; bottom: 0; }
+ #simple-collapse-panel { right: 0; top: 50px; }
+}
+
 #simple-panel, #simple-plate-label { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 80px minmax(0, 1fr) 280px; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: flex; grid-column: 3; grid-row: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); color: var(--ink); border-left: 1px solid var(--line); }
@@ -321,6 +384,7 @@ export function initSimpleMode(app) {
   }
   const $ = (id) => document.getElementById(id);
   const plate = initPlate(app);
+  const collapse = initCollapse(app, plate);
   const row = document.createElement("div");
   row.className = "faceswitch-row";
   row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: fewer buttons in the top bar; the rest is under ⋯ More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
@@ -371,7 +435,7 @@ export function initSimpleMode(app) {
   let face;
   let card = null, lessonInOriginal = false;
   function apply(name) {
-    face = name; document.documentElement.dataset.face = face; plate.layout(); plate.schedule();
+    face = name; document.documentElement.dataset.face = face; collapse.activate(face === "simple"); plate.layout(); plate.schedule();
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
@@ -412,6 +476,6 @@ export function initSimpleMode(app) {
     app.toast("This lesson uses buttons from the full top bar, so it runs in Original. Simple comes back when the lesson ends.");
   };
   app.onLessonEnd = () => { if (lessonInOriginal) setFace("simple", true); };
-  app.simple = { ...plate, set: app.setFace, get face() { return face; } };
+  app.simple = { ...plate, ...collapse, set: app.setFace, get face() { return face; } };
   return app.simple;
 }

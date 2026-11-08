@@ -482,6 +482,7 @@ export function initTutorials(app) {
     }
     // jumpstart-3d: below 801 px the top bar hides the name box, so the name step points at the lesson's own quick name boxes
     if (show.name && panel) { const d = document.querySelector(show.sel); if (!d || !d.getClientRects().length) return panel.querySelector("#tut-last"); }
+    if (show.tile && app.face === "simple") app.simple?.revealBottom(); // jumpstart-3d: reveal a collapsed dock before pointing to a tile
     if (show.tile) return app.beginner && app.beginner.showTile ? app.beginner.showTile(show.tile, !!show.hole) : null;
     if (show.ch) {
       // inside Chisel's frame: the first of the selectors that is showing there
@@ -491,6 +492,7 @@ export function initTutorials(app) {
     }
     for (const s of (show.sel || "").split(",").map((x) => x.trim()).filter(Boolean)) {
       const e = document.querySelector(s);
+      if (app.face === "simple") app.simple?.reveal(e); // jumpstart-3d: reveal the target before measuring it
       if (e && e.getClientRects().length) return e;
       // jumpstart-3d: Simple mode redirects hidden ribbon targets to their proxies or menu buttons
       if (app.face === "simple" && e && e.id) { const p = app.simple?.proxyFor(e.id); if (p) return p; }
