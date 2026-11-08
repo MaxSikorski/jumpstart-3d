@@ -238,6 +238,7 @@ async function openOnce(w, cfg) {
   const page = await w.context.newPage();
   const errors = watchErrors(page);
   w.errors.push(errors);
+  await page.addInitScript(() => { try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {} });
   await page.addInitScript(INIT, { db: DB, marker: MARKER, noKernel: true, ...cfg });
   const expected = w.tokens;
   if (cfg.dieEarly) { await page.goto(w.url, { waitUntil: "commit" }); w.tokens = []; return page; }

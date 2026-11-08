@@ -27,7 +27,7 @@ test.beforeAll(async ({ browser }, info) => {
   senderErrors = watchErrors(sender);
   senderRequests = [];
   sender.on("request", (r) => senderRequests.push(r.url()));
-  await sender.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
+  await sender.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
   await boot(sender, info);
 });
 test.afterAll(async () => { await sender?.close(); });
@@ -50,7 +50,7 @@ async function receiver(browser, { frag, init, query } = {}) {
   const errors = watchErrors(page);
   const requests = [];
   page.on("request", (r) => requests.push(r.url() + " " + (r.postData() || "")));
-  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
+  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); localStorage.setItem("jumpstart.exportQuality", "standard"); } catch (e) {} });
   if (init) await page.addInitScript(init);
   if (frag !== undefined) { await page.goto(receiverUrl(frag, query)); await ready(page); }
   return { context, page, errors, requests };
@@ -616,7 +616,7 @@ test("the link does not leak while the question is open, after Cancel, with the 
     page.on("console", (m) => consoleText.push(m.text()));
     page.on("request", (q) => requests.push(q.url() + " " + (q.postData() || "")));
     await page.addInitScript((refuse) => {
-      try { localStorage.setItem("jumpstart.chisel.intro", "1"); localStorage.setItem("jumpstart.agent", "on"); } catch (e) {} // the AI-agent connection was already on
+      try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); localStorage.setItem("jumpstart.agent", "on"); } catch (e) {} // the AI-agent connection was already on
       if (refuse) history.replaceState = () => { throw new DOMException("refused", "SecurityError"); };
     }, refuseHistory);
     await page.routeWebSocket(/^ws:\/\/127\.0\.0\.1:8822\/?$/, (ws) => { ws.onMessage((m) => sockets.push(String(m))); });

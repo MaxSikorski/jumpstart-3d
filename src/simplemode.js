@@ -249,8 +249,6 @@ function initCollapse(app, plate) {
 }
 
 // jumpstart-3d: Simple | Original switch, its More menu and the first-visit card.
-let hadPrefs = false;
-try { hadPrefs = localStorage.getItem("workplane.ui.v1") !== null; } catch (e) { /* storage may be unavailable */ }
 
 const CSS = `
 
@@ -406,7 +404,6 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 @media (max-width: 560px) {
   .try-simple { left: 8px; top: 8px; max-width: calc(100% - 120px); padding: 7px 26px 7px 10px; font-size: 12px; }
   .try-simple p { margin: 0 0 6px; }
-  .try-simple .ts-more, .try-simple .ts-no { display: none; }
   .try-simple button { padding: 5px 9px; font-size: 12px; }
 }
 .try-simple button { font: 600 13px/1 var(--f-ui); cursor: pointer; border: 0; border-radius: 6px; padding: 7px 10px; }
@@ -425,7 +422,7 @@ export function initSimpleMode(app) {
   const collapse = initCollapse(app, plate);
   const row = document.createElement("div");
   row.className = "faceswitch-row";
-  row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: fewer buttons in the top bar; the rest is under ⋯ More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
+  row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
   document.querySelector("header.topbar .modeswitch").before(row);
   const wrap = document.createElement("div");
   wrap.className = "face-more-wrap";
@@ -434,8 +431,8 @@ export function initSimpleMode(app) {
     <button role="menuitem" data-for="btn-projects">Designs <small>your saved designs</small></button><button role="menuitem" data-for="btn-autosave">Autosave</button><button role="menuitem" data-for="btn-chat">AI chat</button><button role="menuitem" data-for="btn-theme">Settings: theme, layout, printer…</button><button role="menuitem" data-for="btn-keys">Keyboard shortcuts</button><button role="menuitem" data-for="btn-full">Full screen</button><button role="menuitem" data-for="btn-about">About JumpStart 3D</button><hr><div class="menu-head">Other studios</div><button role="menuitem" data-for="mode-chisel">Chisel <small>sculpt like clay</small></button><button role="menuitem" data-for="mode-arch">Architect <small>floor plans and buildings</small></button></div>`;
   $("btn-export").closest(".menu-wrap").before(wrap);
   // Look: Simple or Original, also in the Settings menu, for a full top bar with no room for the switch
-  $("menu-theme").insertAdjacentHTML("afterbegin", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false" title="Simple: fewer buttons in the top bar; the rest is under ⋯ More">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false" title="Original: every button on the bar">Original</button></div>`);
-  $("btn-tutorials-menu").nextElementSibling.after(Object.assign(document.createElement("button"), { id: "face-menu-export", innerHTML: "Try Simple <small>fewer, bigger buttons</small>", title: "Simple: fewer buttons in the top bar; the rest is under ⋯ More", onclick: () => { $("menu-export").hidden = true; setFace("simple"); } }));
+  $("menu-theme").insertAdjacentHTML("afterbegin", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false" title="Original: every button on the bar">Original</button></div>`);
+  $("btn-tutorials-menu").nextElementSibling.after(Object.assign(document.createElement("button"), { id: "face-menu-export", innerHTML: "Try Simple <small>fewer, bigger buttons</small>", title: "Simple: big tools on the left, your shape and a print check on the right; every other tool under More", onclick: () => { $("menu-export").hidden = true; setFace("simple"); } }));
   for (const name of ["simple", "original"]) $("face-menu-" + name).addEventListener("click", () => { $("menu-theme").hidden = true; setFace(name); });
   const more = $("face-more"), menu = $("menu-face-more");
   const labels = [[document.querySelector("#btn-tutorials .lbl"), "Learn"], [document.querySelector("#btn-export .lbl"), "Print / Export"]].map(([el, simple]) => ({ el, simple, original: el.textContent }));
@@ -485,20 +482,20 @@ export function initSimpleMode(app) {
     if (!lesson) { lessonInOriginal = false; try { localStorage.setItem("jumpstart.face", face); } catch (e) { /* storage may be unavailable */ } }
     close(); plate.close(); if (card) { card.remove(); card = null; }
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-    if (!quiet) app.toast(face === "simple" ? "Simple: a calmer top bar. Designs, AI, settings, Chisel and Architect are under ⋯ More. Switch back any time." : "Original: JumpStart 3D's full top bar, every button where J.Siwek put it.");
+    if (!quiet) app.toast(face === "simple" ? "Simple: the main tools on the left, your shape on the right. Everything else is under More. Switch back any time." : "Original: JumpStart 3D's full top bar, every button where J.Siwek put it.");
   }
   Object.defineProperty(app, "face", { get: () => face });
   app.setFace = setFace;
   row.addEventListener("click", (e) => { const button = e.target.closest("button"); if (button) setFace(button.id === "face-simple" ? "simple" : "original"); });
   if (param === "simple" || param === "original") {
     setFace(param, true); url.searchParams.delete("face"); history.replaceState(history.state, "", url.href);
-  } else apply(stored === "simple" ? "simple" : "original");
-  app.trySimpleShown = stored === null && !hadPrefs && !hasParam;
+  } else apply(stored === "original" ? "original" : "simple");
+  app.trySimpleShown = stored === null && !hasParam;
   if (app.trySimpleShown) {
-    card = document.createElement("aside"); card.className = "try-simple"; card.id = "try-simple"; card.setAttribute("role", "region"); card.setAttribute("aria-label", "Try Simple");
-    card.innerHTML = '<p><b>New here?</b> Try <b>Simple</b>: fewer, bigger buttons.<span class="ts-more"> You can switch back any time.</span></p><div><button id="try-simple-yes" class="ts-yes">Try Simple</button><button id="try-simple-no" class="ts-no">Not now</button></div><button id="try-simple-close" class="ts-x" aria-label="Close">×</button>';
+    card = document.createElement("aside"); card.className = "try-simple"; card.id = "try-simple"; card.setAttribute("role", "region"); card.setAttribute("aria-label", "Choose app look");
+    card.innerHTML = '<p><b>Prefer the full toolbar?</b> You\'re in Simple: big tools on the left, your shape on the right.</p><div><button id="face-card-original" class="ts-yes">Switch to Original</button><button id="face-card-keep" class="ts-no">Keep Simple</button></div><button id="try-simple-close" class="ts-x" aria-label="Close">×</button>';
     card.addEventListener("click", (e) => {
-      if (e.target.id === "try-simple-yes") setFace("simple"); else if (e.target.id === "try-simple-no" || e.target.id === "try-simple-close") setFace("original", true); else return;
+      if (e.target.id === "face-card-original") setFace("original"); else if (e.target.id === "face-card-keep" || e.target.id === "try-simple-close") setFace("simple", true); else return;
       [$("face-simple"), $("face-original"), $("btn-theme"), $("btn-export")].find((b) => b.getClientRects().length)?.focus(); // the card is gone: focus goes to the switch (or Settings, which has Look, or Open/Export on a phone), not to the page
     });
     $("viewport").append(card);

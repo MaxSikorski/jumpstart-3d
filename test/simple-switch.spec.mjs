@@ -21,12 +21,20 @@ const toSimple = async (page, info) => {
 };
 const ready = (page) => page.waitForFunction(() => window.__app?.projects?.started === true, null, { timeout: 90_000 });
 
-test("Original is the default", async ({ page }, info) => {
-  await boot(page, info);
+test("a new visitor starts in Simple with the one-time card", async ({ page }, info) => {
+  await boot(page, info, { face: false });
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
+  await expect(page.locator("#simple-rail")).toBeVisible();
+  await expect(page.locator("#try-simple")).toBeVisible();
+  await expect(page.locator("#try-simple")).toContainText("Prefer the full toolbar?");
+  expect(await page.evaluate(() => window.__app.trySimpleShown)).toBe(true);
+  expect(await storedFace(page)).toBeNull();
+  await page.click("#face-card-original");
   await expect(face(page)).toHaveAttribute("data-face", "original");
-  await expect(page.locator("#face-original")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#face-more")).toBeHidden();
-  if (!mobile(info)) await expect(page.locator("#btn-projects")).toBeVisible();
+  expect(await storedFace(page)).toBe("original");
+  await reload(page);
+  await ready(page);
+  await expect(face(page)).toHaveAttribute("data-face", "original");
   await expect(page.locator("#try-simple")).toHaveCount(0);
 });
 
@@ -101,42 +109,40 @@ test("query parameter chooses and stores a face, then is removed", async ({ page
   expect(await page.evaluate(() => ({ search: location.search, hash: location.hash }))).toEqual({ search: "?keep=1", hash: "#kept" });
 });
 
-test("Not now dismisses the first-run card permanently", async ({ page }, info) => {
+test("Keep Simple stores the choice and dismisses the card", async ({ page }, info) => {
   await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toBeVisible();
-  expect(await page.evaluate(() => window.__app.trySimpleShown)).toBe(true);
-  await page.click(mobile(info) ? "#try-simple-close" : "#try-simple-no"); // a phone shows only × (same as Not now)
+  await page.click("#face-card-keep");
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
+  expect(await storedFace(page)).toBe("simple");
+  await reload(page);
+  await ready(page);
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
   await expect(page.locator("#try-simple")).toHaveCount(0);
-  expect(await storedFace(page)).toBe("original");
+});
+
+test("closing the card stores Simple", async ({ page }, info) => {
+  await boot(page, info, { face: false });
+  await page.click("#try-simple-close");
+  expect(await storedFace(page)).toBe("simple");
   await reload(page);
   await ready(page);
   await expect(page.locator("#try-simple")).toHaveCount(0);
 });
 
-test("the switch dismisses the first-run card", async ({ page }, info) => {
-  await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toBeVisible();
-  await toSimple(page, info);
-  await expect(page.locator("#try-simple")).toHaveCount(0);
-  await expect(face(page)).toHaveAttribute("data-face", "simple");
-  await reload(page);
-  await ready(page);
-  await expect(page.locator("#try-simple")).toHaveCount(0);
-});
-
-test("Try Simple selects Simple", async ({ page }, info) => {
-  await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toBeVisible();
-  await page.click("#try-simple-yes");
-  await expect(face(page)).toHaveAttribute("data-face", "simple");
-  await expect(page.locator("#try-simple")).toHaveCount(0);
-});
-
-test("existing preferences suppress the first-run card", async ({ page }, info) => {
+test("existing preferences still show the first-run card", async ({ page }, info) => {
   await page.addInitScript(() => { try { localStorage.setItem("workplane.ui.v1", "{}"); } catch (e) {} });
   await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toHaveCount(0);
+  await expect(page.locator("#try-simple")).toBeVisible();
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
+});
+
+test("a fresh visitor can choose Original by query", async ({ page }, info) => {
+  const base = info.project.use.baseURL;
+  await page.goto(base + (base.includes("?") ? "&" : "?") + "face=original");
+  await ready(page);
   await expect(face(page)).toHaveAttribute("data-face", "original");
+  expect(await storedFace(page)).toBe("original");
+  await expect(page.locator("#try-simple")).toHaveCount(0);
 });
 
 test("the existing layout is called Big buttons", async ({ page }, info) => {
@@ -196,9 +202,9 @@ test("the switch never puts the Original top bar on a second row; Settings › L
   await expect(face(page)).toHaveAttribute("data-face", "original");
 });
 
-test("closing the Try Simple card leaves focus on the switch or Settings, not the page", async ({ page }, info) => {
+test("closing the face card leaves focus on the switch or Settings, not the page", async ({ page }, info) => {
   await boot(page, info, { face: false });
-  await page.locator(mobile(info) ? "#try-simple-close" : "#try-simple-no").focus();
+  await page.locator(mobile(info) ? "#try-simple-close" : "#face-card-keep").focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#try-simple")).toHaveCount(0);
   expect(await page.evaluate(() => document.activeElement.id)).toMatch(/^(face-simple|face-original|btn-theme|btn-export)$/);
