@@ -175,11 +175,14 @@ test.describe("geometry and tools", () => {
       return u && u.g && u.g.occ.some((v) => v > 0);
     });
     await expect(page.locator("#vx-count").getByRole("button", { name: "16", exact: true })).toHaveAttribute("aria-pressed", "true");
-    expect(await page.evaluate(() => window.__app.voxel._ui().g.colors)).toEqual(["#12abef", "#c8ccd2"]);
-    expect(await voxelExportColors(page)).toEqual(["#12ABEFFF", "#C8CCD2FF"]);
+    // Opening the design already turns the two broken colours into the app's default grey #a7b0ba (#292); "#abc" is a valid
+    // colour for the app but not six digits, so Voxel Studio's own guard gives it its default #c8ccd2.
+    expect(await page.evaluate(() => window.__store.doc.bodies.map((b) => b.color))).toEqual(["#12ABEF", "#a7b0ba", "#a7b0ba", "#abc"]);
+    expect((await page.evaluate(() => window.__app.voxel._ui().g.colors)).sort()).toEqual(["#12abef", "#a7b0ba", "#c8ccd2"]); // the order can differ between machines
+    expect((await voxelExportColors(page)).sort()).toEqual(["#12ABEFFF", "#A7B0BAFF", "#C8CCD2FF"]);
     // Bypass import normalization to exercise the independent XML boundary too.
-    await page.evaluate(() => { window.__app.voxel._ui().g.colors.splice(0, 2, "#abcdef", '#123456" injected="yes'); });
-    expect(await voxelExportColors(page)).toEqual(["#ABCDEFFF", "#C8CCD2FF"]);
+    await page.evaluate(() => { const c = window.__app.voxel._ui().g.colors; c.splice(0, c.length, "#abcdef", '#123456" injected="yes', "#a7b0ba"); });
+    expect((await voxelExportColors(page)).sort()).toEqual(["#A7B0BAFF", "#ABCDEFFF", "#C8CCD2FF"]);
     await page.click("#vx-cancel");
     await expect(page.locator("#voxel")).toHaveCount(0);
     await waitIdle(page);
