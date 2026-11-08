@@ -54,3 +54,15 @@ test("Positions are copied and reject non-finite coordinates", () => {
   assert.deepEqual(at3(null), [0,0,0]);
   for (const v of [[1,2], [1,2,Infinity], "1,2,3"]) fails(at3, v, 'at must be [x, y, z] in mm');
 });
+
+test("case minima, planetary assembly and every gear bore clamp", () => {
+  for (const style of ["drawer", "tilt", "door"]) for (const [k, n] of [["w",30], ["d",30], ["h",20]]) {
+    fails(boxOptions, { style, [k]: n - 1 }, `${k} must be a number from ${n} to 1000 (mm)`);
+    assert.equal(boxOptions({ style, [k]: n }).o[k], n);
+  }
+  fails(gearSetOptions, { bore: 30 }, "bore must be 0 (none) or from 0.5 to 28 mm for these gears");
+  fails(gearSetOptions, { type: "planet", bore: 10 }, "bore must be 0 (none) or from 0.5 to 9.5 mm for these gears");
+  fails(gearSetOptions, { type: "planet", sunTeeth: 19 }, "these teeth cannot be assembled with 3 planets: sun + ring teeth (62) must divide by the number of planets");
+  fails(gearSetOptions, { type: "planet", sunTeeth: 8, planetTeeth: 200, planets: 4 }, "neighbouring planets need more than 0.5 mm clearance between their teeth");
+  assert.equal(gearSetOptions({ type: "planet" }).o.nPlanets, 3);
+});

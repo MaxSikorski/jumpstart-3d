@@ -52,7 +52,7 @@ JS3D.get(id).volume;        // 24000
   Bad input throws an `Error` with a plain message that says what to change.
 - While Chisel mode is open, every call that edits or loads throws `leave Chisel mode first` (`setMode` is how you leave it).
 - Everything is synchronous except `ready`, `export`, `screenshot`,
-  `screenshotDataURL`, `load`, `newDesign`, `run` and `invoke`, which return promises.
+  `screenshotDataURL`, `load`, `newDesign`, `run`, `invoke`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `faces` and `edges`, which return promises.
 - Every edit is one undo step with a readable label (the Undo button and
   `JS3D.undo()` use it) and leaves the selection alone.
 - **Shapes are built in the background.** After an edit, `volume` and `bbox`
@@ -115,6 +115,117 @@ idle and every visible body has been built (or has an error). It checks every
 Locks (`locked` in `list()`) are a guard for the mouse; the bridge does not
 check them.
 
+### Advanced CAD: sketches, features and selectors
+
+These calls make the same sketches and features the Advanced dialogs make, so a person can open the feature tree, the dialogs and the
+sketch editor on the result. Each is one undo step. They work in a design of any mode (`newDesign("advanced")` is the natural start).
+Every one starts like the other edits (Chisel, CosForge and Chip Carving refuse), a missing body throws `no body <id>`, and nothing is
+added when a call throws. The geometry calls wait for the shapes to build themselves (`ready`), then refuse a body that is marked as a
+hole (`<name> is marked as a hole; features go on solid bodies`), has a build error (`<name> has a build error: <message>`), or is hidden
+and so was never built (`<name> is hidden and has not been built; show it first`). A "length" is a number of mm more than 0 (or an
+expression); an **expression** is text such as `"W/2"` or `"d1 + 2"` that can use parameters and sketch dimensions. A value given as an
+expression is kept as one, so it follows the parameter: `exprs` on the feature (Part 2).
+
+| Call | What it does |
+|---|---|
+| `await JS3D.sketch({ on, name, shapes, hidden })` → `{ sketch, name, plane, shapes, profiles, dof, dims }` | Adds a sketch of fully dimensioned shapes (every shape has degrees of freedom 0; `dof` says so). `on`: `"XY"` (default), `"XZ"` (the Front plane), `"YZ"` (the Right plane), `{ plane, offset }` (offset in mm along the plane's normal: XY +z, XZ -y, YZ +x) or `{ body, face }` (`face`: a face selector or index that gives exactly one flat face). `shapes`: 1 to 200 objects, see below. `name` defaults to `Sketch N`; `hidden` to `false`. The result's `plane` is `{ o, x, y, n }` in the world, `shapes` lists each shape's `type`, `ents` (entity ids) and `center`, `profiles` the closed regions (`pt` inside each, `area`), `dims` the named dimensions (`name`, `value`, `expr`). Label `Create sketch`. The face's outline is not copied into the sketch: only the shapes you give are in it. |
+| `await JS3D.extrude({ sketch, profiles, dist, through, mode, dist2, op, body, name })` → `{ body, feature }` | Pushes closed profiles of a sketch along its normal. `dist` is a number of mm, not 0 (or an expression; negative goes the other way, into the body for a face sketch). `profiles`: points `[x, y]` in the sketch, each picks the region holding it; the default is every profile that does not lie inside an odd number of others (a rectangle with a circle in it gives the ring; separate shapes all of them). `mode`: `"one"` (default), `"sym"` (dist split both ways) or `"two"` (also `dist2`, more than 0, the other way). `op`: `"new"` (default: a new body, named `name` or `Body N`; `feature` is `null`), `"join"` or `"cut"` (both need `body`, a solid body: the extrude becomes a feature of it). `through: true` (cut only, instead of `dist`) cuts right through the body: the distance is worked out at the call, from the body's size then, like the hole pattern's. The sketch is hidden, as the dialog's OK does. Labels `Extrude`, `Extrude join`, `Extrude cut`. |
+| `await JS3D.revolve({ sketch, profiles, axis, angle, op, body, name })` → `{ body, feature }` | Turns profiles about `axis`: `"X"`, `"Y"` or `"Z"` (a world axis through the origin that lies in the sketch's plane) or the id of a `line` of the sketch. `angle` is degrees, more than 0 and at most 360 (default 360; or an expression). The rest as `extrude`. Label `Revolve`. A profile that crosses the axis builds with the geometry engine's own error in `list()`. |
+| `await JS3D.fillet(id, edges, r)` → `{ body, feature, edges }` | Rounds the edges `edges` picks (a selector, an index or a list of indices) with radius `r` (a length or expression). Exactly those edges: no growing along tangent chains. A radius that is too large is not checked here: the body shows the engine's message in `list()` (`Fillet radius 5 mm is too large ... about 4.8 mm`). Label `Fillet`. |
+| `await JS3D.chamfer(id, edges, d)` → `{ body, feature, edges }` | The same with a bevel of distance `d`. Label `Chamfer`. |
+| `await JS3D.shell(id, { th, open, dir })` → `{ body, feature, open }` | Hollows the body to walls `th` thick (a length or expression). `open`: a face selector, index or list for the faces to take away (`"top"` makes an open box); left out or `[]` makes a closed hollow. `dir`: `"in"` (default), `"out"` or `"both"`. Labels `Shell` and `Hollow`. |
+| `await JS3D.hole(id, { face, points, kind, size, dia, depth, tip, cbDia, cbDepth, csDia, csAngle, pitch, clear })` → `{ body, feature, holes }` | Round holes at world points `[x, y, z]` on one flat face (`face` must give exactly one flat face: `a hole needs exactly one`). Each point is moved onto the face along its normal. One `hole` feature for all of them. `kind`, `size`, `dia`, `depth` and the rest are the Hole dialog's, checked as `holePattern` checks them (leave `depth` out for a through hole). Errors: `point 2 [22, 12, 0] is not on the face, or the hole there runs over its edge`, `holes 1 and 3 overlap (centres 2.5 mm apart; each is 3.4 mm wide)`, `Too many holes (N; the most is M for plain holes).`, and `hole makes round holes; use holePattern for square, hex or slot holes` when `shape` is given. Label `Hole (4 holes)`. |
+| `JS3D.pattern(id, { features, type, axis, count, spacing, axis2, count2, spacing2, both, angle, center })` → `{ body, feature, copies }` | Repeats features of the body (this call is synchronous). `features`: ids of holes, extrude, revolve and sweep cuts or joins, and embossed text on the body, or `["shape"]` for the whole body (copies joined). `type`: `"rect"` (`count` 1 to 200 along `axis`, `spacing` mm apart, not 0 when `count` is more than 1; optionally `axis2`, `count2`, `spacing2`, not 0 when `count2` is more than 1 and ignored at `count2` 1, so `spacing2: 0` with `count2: 1` is accepted; `both` spreads the copies to both sides) or `"circle"` (`count` 2 to 360 copies over `angle` degrees, default 360, about `axis` through `center`, default the origin). `axis` is `"x"`, `"y"`, `"z"` or `[x, y, z]`, in the world. `count`, `spacing`, `angle` may be expressions. Label `Pattern`. `copies` is the number of new copies, at most 1999 (the original and its copies together are at most 2000, a `both` direction counting 2n - 1): more is refused with `this pattern would make 159200 copies; the most is 1999 (counting the original, 2000 in all)`. |
+| `await JS3D.faces(id, selector)` / `await JS3D.edges(id, selector)` → list | The faces or edges of the built body that the selector picks (default `"all"`; also a whole number or a list of them), in world mm, sorted by index. A face: `index`, `type` (`plane`, `cylinder`, `cone`, `sphere`, `torus`, `other`), `center`, `normal` (planes), `area`, `radius` and `axis` (cylinders), `hole` (a cylinder that is a hole wall), `edgeCount`. An edge: `index`, `type` (`line`, `circle`, `ellipse`, `other`), `start`, `end`, `mid`, `center`, `direction` (lines), `length`, `radius` (circles), `faces` (the faces it joins). Seams and smooth joins are not edges. **Indices belong to the shape as built now and are valid until the next edit**; selectors are what to keep. Errors: `Body 1 has no face 17 (it has 0 to 9)`, `Body 1 has no edge 40 (it has 0 to 23; seams and smooth joins are not edges)`, `no faces match "cone" on Body 1`. |
+
+**Shapes** for `sketch` (sizes may be expressions, positions are numbers; coordinates are the sketch's own x, y: world x, y on XY and on a
+face looking up, x, z on XZ, y, z on YZ, and for any face the returned `plane` says which world directions they are):
+
+| `type` | Keys |
+|---|---|
+| `rect` | `center` (default `[0, 0]`), `size` `[w, h]` |
+| `roundrect` | `center`, `size`, `radius` (more than 0, less than half the smaller side) |
+| `circle` | `center`, `diameter` |
+| `slot` | `center`, `length` (overall, more than `width`), `width`, `angle` (0 or 90) |
+| `polygon` | `center`, `sides` (3 to 64), `diameter` (across the corners; the first side is flat at the bottom) |
+| `polyline` | `points` `[[x, y], ...]` (2 to 200; 3 or more when `closed`, which is the default), straight sides only |
+| `line` | `from`, `to`, `construction` (a revolve axis, or a guide line left out of the profiles) |
+
+Each shape carries the dimensions and constraints the sketcher's own tools give (a rectangle: horizontal and vertical sides, two
+dimensions, a construction diagonal with a centre point), plus a position from the origin, so the sketch reads like one drawn by hand;
+dimensions are named `d1`, `d2`, ... and can be used in expressions. Errors: `shapes[2].type must be one of rect, roundrect, circle, slot,
+polygon, polyline, line`; `shapes[0].size must be [w, h] in mm, each more than 0`; `shapes[1].diameter must be a number of mm more than 0,
+or an expression`; `shapes[0].radius must be more than 0 and less than half the smaller side (12.5 mm here)`; `shapes[3].length must be
+more than its width`; `shapes[3].angle must be 0 or 90 (for other angles use a polyline)`; `shapes[4].sides must be a whole number from 3
+to 64`; `shapes[5].points must be 2 to 200 [x, y] points in mm (3 or more when closed)`; `shapes[5] has a zero-length side at point 3`;
+`shapes[0] has an unknown key "corner"; it takes center, size`; `shapes[0].center must be [x, y] in mm (numbers; expressions are for
+sizes)`. **Size limit:** one `sketch` call may make at most 2000 points and 2000 entities in all, counted before anything is built: `this sketch would have 40000 points; the most is 2000 per call — split it into several sketches` (or `entities`). An expression (any length or angle given as text) is at most 200 characters: `shapes[0].diameter is too long; an expression can have at most 200 characters`. A number or expression that cannot be used: `shapes[1].diameter "W/0" does not give a usable number`. `on` errors: `on must be
+"XY", "XZ", "YZ", {plane, offset} or {body, face}`, `on takes plane (and offset) or body and face, not both`, `offset must be a number of
+mm`, `face "top" on Body 1 matches 3 faces; a sketch needs exactly one`, `face "hole" on Body 1 is not flat (it is a cylinder)`.
+
+#### Selectors
+
+A selector is at most 500 characters: `a selector can be at most 500 characters; this one has 507`. A word that is not in the grammar, such as `constructor`, gives the ordinary `unknown word` error.
+
+A selector is text that picks faces (for `faces`, `shell`, `hole`, `sketch`) or edges (for `edges`, `fillet`, `chamfer`) by where they are,
+in **world** coordinates, so "top" means up on the screen also for a body that was moved or turned.
+
+```
+selector := chain ( "or" chain )*
+chain    := item ( "and" item )*
+item     := "not" item | primary
+primary  := "(" selector ")"
+          | "edges of" item                  edge selectors only; the item is a face selector
+          | "face" N | "edge" N              their own kind only
+          | (">" | "<") AXIS [ "[" N "]" ]
+          | ("|" | "#") AXIS
+          | ("+" | "-") AXIS                 face selectors only
+          | ALIAS [ "[" N "]" ]
+          | TYPE | "all"
+AXIS  := x | y | z            ALIAS := top (>Z) | bottom (<Z) | front (<Y) | back (>Y) | left (<X) | right (>X)
+TYPE (faces) := plane | cylinder | cone | sphere | torus | other | hole       TYPE (edges) := line | circle | ellipse | other
+```
+
+- Case does not matter and spaces around the operators are optional (`> z`, `TOP`). Front is **-Y**: the app's XZ plane is the Front plane and looks along -Y.
+- A chain starts from all faces (or all drawn edges) and each item narrows the set, left to right. `or` joins chains. `not X` removes what X picks from the current set; brackets work on the current set.
+- `>Z` keeps the items whose centre is highest (within 0.01 mm); `<Z` the lowest. `>Z[1]` is the second level from the top (items whose centres differ by less than 0.01 mm are one level); a negative number counts from the other end, so `>Z[-1]` is the lowest level.
+- `|Z` keeps flat faces whose normal, or straight edges whose direction, is within 1 degree of parallel to the axis; `#Z` within 1 degree of perpendicular. `+Z` and `-Z` (faces) keep flat faces that face that way.
+- `plane`, `cylinder`, ... keep that type; `hole` keeps cylinder faces that are the wall of a hole; `all` keeps what there is.
+- `edges of <face selector>` keeps the edges of those faces (it is evaluated on all the faces, then intersected with the current set of edges).
+- `face 3` and `edge 3` pick an index (see `faces`, `edges`).
+- An empty result throws `no faces match "<text>" on <name>` (or edges). Other errors: `empty selector`, `unexpected "<token>" at character <n> in "<text>"`, `unknown word "<word>"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, <types>, all, not, and, or, (, ), edges of, face N, edge N`, `"edges of" is for edges; this call takes faces`, `"circle" is an edge type; face types are plane, cylinder, cone, sphere, torus, other, hole` (and the mirror), `+Z and -Z are for faces; for edges use |Z or >Z`, `an index [n] only follows >X, <X ... or top, bottom, front, back, left, right`, `missing ")" in "<text>"`.
+
+Example: `"edges of top and (>x or <x or >y or <y)"` is the four outer edges of the rim of a shelled box (the inner four of the ring are not the farthest in any direction).
+
+#### What survives an edit
+
+A selector is resolved **once, when you call**, against the shape as built, and the result is stored the way the app stores it: a
+fillet's edges as the edge signatures the Fillet dialog stores, a shell's open faces as face centres, a hole's points in the body's own
+coordinates. The selector text is not stored (a project file and a share link have no room for it, and every Advanced dialog rewrites its
+feature from scratch). After an edit upstream, the engine finds the stored edges again by its own rules: first by the exact middle point,
+else by the same position relative to the body's box and the same type, within 4 % of the box. A box whose width is bound to a parameter
+and goes from 60 to 80 keeps its four outer top edges filleted, a shell's open face is the nearest face centre (within 5 % of the
+diagonal: still the top), a hole keeps its place. What can fail: an edge whose place relative to the box moves by more than 4 % (an edge near a
+hole at a fixed distance from a corner, after a large resize) can be lost (`Fillet: its edges no longer exist`) or move to a neighbour. Then undo and
+call again, or call again with the same selector (keep your selectors, not your indices). After a parameter change, look at `faces` and `edges` again.
+
+#### Example: a closed enclosure
+
+```js
+await JS3D.newDesign("advanced");
+const sk = await JS3D.sketch({ on: "XY", name: "Base", shapes: [{ type: "rect", center: [0, 0], size: [60, 40] }] });
+const { body } = await JS3D.extrude({ sketch: sk.sketch, dist: 25, name: "Enclosure" });
+await JS3D.shell(body, { th: 2, open: "top" });
+const f = await JS3D.fillet(body, "edges of top and (>X or <X or >Y or <Y)", 1);   // f.edges === 4
+await JS3D.hole(body, { face: "bottom", points: [[-22, -12, 0], [22, -12, 0], [-22, 12, 0], [22, 12, 0]], size: "M3" });
+await JS3D.ready();
+```
+
+The volume to expect: the box is 60 x 40 x 25 = 60000 mm3; the 2 mm shell with the top open takes out 56 x 36 x 23 = 46368, leaving 13632. A
+fillet of radius 1 on the four outer rim edges takes r^2 (1 - pi/4) = 0.2146 mm3 per mm over 2 x 60 + 2 x 40 = 200 mm, 42.92, and the two
+fillets at each of the 4 corners overlap in r^3 (1 - pi/2 + 2/3) = 0.0959, so the net is 42.92 - 0.38 = 42.54. The four M3 clearance holes (3.4 mm)
+through the 2 mm floor take 4 x pi x 1.7^2 x 2 = 72.63. Total **13516.83 mm3**; the box stays `[-30, -20, 0]` to `[30, 20, 25]`.
+
 ### Parameters
 
 | Call | What it does |
@@ -166,11 +277,11 @@ All lengths are mm, angles degrees. Omitted or null settings use defaults. `at` 
 
 | Call and return | Options, defaults and errors | Undo label |
 |---|---|---|
-| `JS3D.boxMaker(opts = {})` → `{id, parts, cell, info}`; each part is `{id, name, kind}` | `style`: bin (default), drawer, tilt, door. `w` 10–1000 (120), `d` 10–1000 (80), `h` 5–1000 (40); `units`, `across` integers 1–8 (1). `cols` 1–20 for bin/door, 1–12 drawer, 1–8 tilt (3); `rows` 1–20 except drawer 1–12 (2). `shape`: square (default), round, hex. `wall`, `divider`, `floor` 0.4–20 (1.6, 1.2, 1.2); `radius` 0–100 (4), `inner` 0–50 (2); `scoop` true, `scoopR` 1–100 (10), `label` false, `labelW` 2–100 (10); `stack` false, `foot` 1–50 (3), `lid` false; `clear` 0–2 (0.25), `caseT` 1.2–20 (2.4). `lock`, `sideLock`: dovetail (default), pegs, none; `pull`: bar (default), knob, notch; `hinge`: left (default), right; `doorPull`: knob (default), hole, bar; `doorCatch`: none, light (default), firm. `layout`: assembled (default), print. Also `at`, `name`. Range, choice and flag errors follow the exact forms below. Too-small cells throw the library's `The compartments are too small: ...` message unchanged. | `Bin` |
-| `JS3D.gearSet(opts = {})` → `{id, parts, info}`; each part is `{id, name}` | `type`: pair (default), rack, ring, planet, bevel, helical. `module` 0.3–10 (2), `width` 0.5–200 (8 for library types; bevel/helical use `JS3D.gear` defaults), `bore` 0 for none; `at`. Library types: `teeth` integer 6–300 (20), `teeth2` integer 6–400 (40); planet uses `sunTeeth`, `planetTeeth` integers 8–200 (18,12), `planets` integer 2–6 (3). `backlash` 0–1 (0.15), `pressureAngle` 14.5,20,25 (20), `boreShape` round (default), d, hex, key; `joints` true. Rack alone: `rackLength` 0–2000 (0 gives max(8,teeth) teeth), `rackHeight` 2–100 (8). Pair/ring take teeth and teeth2; rack takes teeth; planet takes its three planet settings. Bevel/helical take teeth and teeth2 (default 20 and the same as teeth), `clear` as `JS3D.gear`; helical also takes `angle` 5–30 (20), `hand` right (default) or left; the second gets the opposite hand. Errors: `<k> is not used for type "<type>"`; `pressureAngle must be 14.5, 20 or 25 (degrees)`; `a ring gear needs at least 8 more teeth than its pinion (teeth2 at least teeth + 8)`; `bore must be 0 (none) or from 0.5 to <max> mm for these gears` or `bore must be 0 (none): these gears are too small for a bore`. Here max is module × (smallest relevant tooth count − 4.5), rounded down to 0.1 mm; ring uses its pinion, planet its sun. Bevel/helical: `<teeth or teeth2> must be a whole number from 12 to 90 for a bevel gear` or `... from 12 to 30 for a helical gear`; all other `JS3D.gear` errors above pass through unchanged. | `Gears`, `Bevel gear pair`, `Helical gear pair` |
+| `JS3D.boxMaker(opts = {})` → `{id, parts, cell, info}`; each part is `{id, name, kind}` | `style`: bin (default), drawer, tilt, door. `w` 10–1000 (120), `d` 10–1000 (80), `h` 5–1000 (40); for drawer, tilt and door cases the minima are 30, 30 and 20 mm respectively; `units`, `across` integers 1–8 (1). `cols` 1–20 for bin/door, 1–12 drawer, 1–8 tilt (3); `rows` 1–20 except drawer 1–12 (2). `shape`: square (default), round, hex. `wall`, `divider`, `floor` 0.4–20 (1.6, 1.2, 1.2); `radius` 0–100 (4), `inner` 0–50 (2); `scoop` true, `scoopR` 1–100 (10), `label` false, `labelW` 2–100 (10); `stack` false, `foot` 1–50 (3), `lid` false; `clear` 0–2 (0.25), `caseT` 1.2–20 (2.4). `lock`, `sideLock`: dovetail (default), pegs, none; `pull`: bar (default), knob, notch; `hinge`: left (default), right; `doorPull`: knob (default), hole, bar; `doorCatch`: none, light (default), firm. `layout`: assembled (default), print. Also `at`, `name`. Range, choice and flag errors follow the exact forms below. Too-small cells throw the library's `The compartments are too small: ...` message unchanged. | `Bin` |
+| `JS3D.gearSet(opts = {})` → `{id, parts, info}`; each part is `{id, name}` | `type`: pair (default), rack, ring, planet, bevel, helical. `module` 0.3–10 (2), `width` 0.5–200 (8 for library types; bevel/helical use `JS3D.gear` defaults), `bore` 0 for none; `at`. Library types: `teeth` integer 6–300 (20), `teeth2` integer 6–400 (40); planet uses `sunTeeth`, `planetTeeth` integers 8–200 (18,12), `planets` integer 2–6 (3). `backlash` 0–1 (0.15), `pressureAngle` 14.5,20,25 (20), `boreShape` round (default), d, hex, key; `joints` true. Rack alone: `rackLength` 0–2000 (0 gives max(8,teeth) teeth), `rackHeight` 2–100 (8). Pair/ring take teeth and teeth2; rack takes teeth; planet takes its three planet settings. Bevel/helical take teeth and teeth2 (default 20 and the same as teeth), `clear` as `JS3D.gear`; helical also takes `angle` 5–30 (20), `hand` right (default) or left; the second gets the opposite hand. Errors: `<k> is not used for type "<type>"`; `pressureAngle must be 14.5, 20 or 25 (degrees)`; `a ring gear needs at least 8 more teeth than its pinion (teeth2 at least teeth + 8)`; `bore must be 0 (none) or from 0.5 to <max> mm for these gears` or `bore must be 0 (none): these gears are too small for a bore`. Here max is the smaller of module × (smallest relevant tooth count − 4.5) and 1.6 times its root radius, rounded down to 0.1 mm; planetary sets also limit the bore to half the planet root diameter. Planet sets require sun + ring teeth divisible by the planet count and more than 0.5 mm clearance between adjacent planet tips. Bevel/helical: `<teeth or teeth2> must be a whole number from 12 to 90 for a bevel gear` or `... from 12 to 30 for a helical gear`; all other `JS3D.gear` errors above pass through unchanged. | `Gears`, `Bevel gear pair`, `Helical gear pair` |
 | `JS3D.hardware(opts = {})` → id | Required `part`: hexbolt, shcs, button, flat, set, wood, rod, nut, nyloc, sqnut, washer, lockw, insert, dowel; required `size` from that part's metric or inch list (`M3`, `1/4-20`; the latter is stored as `1/4"-20`). `length` 1–300, default the library's roughly three diameters, only for screws/rods/dowels. `threads` false, `clear` −1–0 (design's thread offset), `left` false; `at`, `name`. The lowest point rests on at's z. Errors: `part must be one of: <ids joined by comma and space>`; `unknown size "<size>" for part "<part>"; sizes: <available sizes>`; `length is not used for part "<part>"`; `length must be a number from 1 to 300 (mm)`; `part "<part>" has no thread`; `threads must be true or false`; `left must be true or false`; `clear must be a number from -1 to 0 (mm)`; `Too many turns (<n>; the most is 150). Make it shorter or pick a larger size.` | `Add fastener` |
 | `JS3D.textures()` → `[{key, name, category, size}]` | Lists every built-in texture and its default tile size. No options or edits. | none |
-| `await JS3D.texture(id, opts = {})` → `{body, texture, faces}` | `texture` key (knurl); `faces` "all" (default), a non-empty selector such as "top", an index ≥0, or a non-empty list of selectors/indices. `size` 0.5–100 (texture's size, otherwise 4), `depth` 0.05–3 (0.6), `dir`: raise (default), engrave, both; `rotation` −180–180 (0), `mapping`: auto (default), planar, cylindrical, triplanar; `edgeBlend` 0–10 (0), `invert`, `once` false. Returns faces "all" or the number chosen; texture is the new layer id. Errors: `unknown texture "<key>"; list_textures (JS3D.textures()) gives the <count> keys`; `faces must be "all", a face selector such as "top", a face index or a list of indices`; `<name> is marked as a hole; textures go on solid bodies`; `<name> has a build error: <msg>`; `<name> could not be built`; `faces <JSON selector> matches no face of <name>`. Selector errors pass through from `JS3D.faces`. Until bridge 1.9's face calls merge, choosing faces throws `texture on chosen faces needs JS3D.faces (bridge 1.9)`. | `Texture` |
+| `await JS3D.texture(id, opts = {})` → `{body, texture, faces}` | `texture` key (knurl); `faces` "all" (default), a non-empty selector such as "top", an index ≥0, or a non-empty list of selectors/indices. `size` 0.5–100 (texture's size, otherwise 4), `depth` 0.05–3 (0.6), `dir`: raise (default), engrave, both; `rotation` −180–180 (0), `mapping`: auto (default), planar, cylindrical, triplanar; `edgeBlend` 0–10 (0), `invert`, `once` false. Returns faces "all" or the number chosen; texture is the new layer id. Errors: `unknown texture "<key>"; list_textures (JS3D.textures()) gives the <count> keys`; `faces must be "all", a face selector such as "top", a face index or a list of indices`; `<name> is marked as a hole; textures go on solid bodies`; `<name> has a build error: <msg>`; `<name> could not be built`; `faces <JSON selector> matches no face of <name>`. Selector errors pass through from `JS3D.faces`. | `Texture` |
 | `await JS3D.drawing(opts = {})` → DXF `Uint8Array` | `ids` limits bodies (one id or a list); holes and hidden bodies are omitted. `views` is a non-empty list of distinct top/front/right, default all three, always drawn in that order; Top above Front, Right beside it. `scale` 0.01–100 (1 full size), `units` mm (default) or in; `dims` false adds overall size lines when true. Errors: `views must be a list of "top", "front" and "right"`; `scale must be a number from 0.01 to 100 (1 is full size)`; `units must be "mm" or "in"`; `dims must be true or false`; `nothing to draw: holes and hidden shapes are left out`; `"<name>" has a build error (<msg>); fix it before drawing`; `could not draw: <names joined by comma and space>`; `Drawings need CAD bodies: <names> came from a mesh (STL/3MF/OBJ). Leave them out of the selection, or use Mesh to STEP first.`; `Nothing to draw.`; `Cancelled.`. Geometry-engine errors pass through unchanged. | none |
 
 Unknown options throw `unknown option "<k>"; options: <keys joined by comma and space>`. The option order is: boxMaker `style, w, d, h, units, across, cols, rows, shape, wall, divider, floor, radius, inner, scoop, scoopR, label, labelW, stack, foot, lid, clear, lock, sideLock, caseT, pull, hinge, doorPull, doorCatch, layout, at, name`; gearSet `type, module, teeth, teeth2, sunTeeth, planetTeeth, planets, width, bore, boreShape, backlash, pressureAngle, rackLength, rackHeight, joints, clear, angle, hand, at`; hardware `part, size, length, threads, clear, left, at, name`; texture `texture, faces, size, depth, dir, rotation, mapping, edgeBlend, invert, once`; drawing `ids, views, scale, units, dims`.
@@ -184,7 +295,7 @@ const drawers = JS3D.boxMaker({ style: "drawer" });
 const rack = JS3D.gearSet({ type: "rack", at: [160, 0, 0] });
 const screw = JS3D.hardware({ part: "shcs", size: "M3", length: 10 });
 const box = JS3D.add("box", { size: [40, 30, 20] });
-await JS3D.texture(box, { texture: "knurl", faces: "top" }); // needs 9.1; use faces: "all" before it merges
+await JS3D.texture(box, { texture: "knurl", faces: "top" });
 const dxf = await JS3D.drawing({ views: ["top"] });
 ```
 
@@ -206,10 +317,10 @@ The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","versi
 
 ### What the bridge does not do
 
-- It builds Beginner shapes (the 20 kinds), groups, scale and parameters.
-  Sketches, extrudes, fillets and the other Advanced features are not
-  available as calls. To get an Advanced design in, write or generate a
-  project file (Part 2) and `load` it.
+- It builds Beginner shapes (the 20 kinds), groups, scale and parameters, and the Advanced calls above (sketches, extrude, revolve,
+  fillet, chamfer, shell, holes, patterns). Sweeps, lofts, mirrors, split, emboss, threads, construction planes and sketch
+  constraints other than the ones the shapes make have no call yet: write or generate a project file (Part 2) and `load` it, or use `run`.
+  The fillet and shell selections are stored the way the app stores them, not as selector text.
 - It does not push, publish or save anything outside this browser. `load`
   does save the opened design in this browser's storage, as opening a file does.
 
@@ -354,8 +465,8 @@ an unusable number is skipped and the stored number stays.
 | `id`, `name`, `seq` | As for bodies. |
 | `plane` | `{ o: [x,y,z], x: [..], n: [..] }`: origin, the sketch's x direction and its normal, in world coordinates. The sketch's y direction is `n × x`: with `n = [0,0,1]` and `x = [1,0,0]` the sketch lies on the floor; with `n = [0,-1,0]` it stands up in the x–z plane with y pointing up. |
 | `pts` | `[{ id, x, y }]` points in sketch coordinates (mm). |
-| `ents` | Shapes drawn on the points: `{ id, t: "line", a, b }`, `{ id, t: "circle", c, r }` and `{ id, t: "arc", c, a, b }` (`a`, `b`, `c` are point ids; a circle's `r` is a number). Other entity types (splines, text, ...): **not checked**. |
-| `cons` | Optional constraints: `{ id, t: "origin", p }`, `{ id, t: "horizontal", e1 }`, `{ id, t: "vertical", e1 }`, and a dimension `{ id, t: "dim", k, p1, p2, o, v, off, expr }`. `v` is the value in mm; `expr` is optional text using parameters, and `name` (`d1`, `d2`... added when missing) lets other expressions use the dimension. `k` was `"dist"` in the test designs. Other constraint types and dimension kinds, and how the solver reads `o`, `off`: **not checked**. |
+| `ents` | Shapes drawn on the points: `{ id, t: "line", a, b }`, `{ id, t: "circle", c, r }` `{ id, t: "arc", c, a, b }` (counter-clockwise from `a` to `b`) and `{ id, t: "point", p }` (`a`, `b`, `c`, `p` are point ids; a circle's `r` is a number). `cons: true` on an entity makes it construction (a guide: left out of the profiles). Other entity types (splines, text, ...): **not checked**. |
+| `cons` | Optional constraints: `{ id, t: "origin", p }`, `fixed`, `horizontal` and `vertical` (`{ e1 }` or `{ p1, p2 }`), `parallel`, `perpendicular` and `equal` (`{ e1, e2 }`), `coincident` and `midpoint` (`{ p, e }`), `tangent` (`{ e1, e2 }`), and a dimension `{ id, t: "dim", k, ..., v, off, expr }` with `k` `"dist"` (`p1`, `p2`, `o` `"h"`, `"v"` or `"a"`), `"pl"`, `"ll"` (`e1`, `e2`), `"dia"`, `"rad"` (`e1`) or `"ang"`. `v` is the value in mm; `expr` is optional text using parameters, and `name` (`d1`, `d2`... added when missing) lets other expressions use the dimension. `JS3D.sketch` writes the kinds above. Anything else in the file, and how the solver reads `o`, `off`: **not checked**. |
 | `hidden` | `true` hides the sketch lines. |
 
 A sketch ties to a body only through the `sketch` id in an extrude, revolve,

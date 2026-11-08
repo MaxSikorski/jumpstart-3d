@@ -1,6 +1,6 @@
 ---
 name: jumpstart-3d
-description: "Build and edit 3D parts in JumpStart 3D through its MCP tools: Beginner shapes, holes, groups, parameters, screenshots, STL/STEP/OBJ/3MF export. Use when the user asks for a part, bracket, box, enclosure or any 3D model, or for an edit to the design they have open in JumpStart 3D."
+description: "Build and edit 3D parts in JumpStart 3D through its MCP tools: Beginner shapes, Advanced sketches and features (extrude, fillet, shell, holes), groups, parameters, screenshots, STL/STEP/OBJ/3MF export. Use when the user asks for a part, bracket, box, enclosure or any 3D model, or for an edit to the design they have open in JumpStart 3D."
 ---
 
 # Driving JumpStart 3D
@@ -49,9 +49,20 @@ If a tool fails with "could not start the headless browser", tell the user to ru
 
 To cut one existing solid out of another instead: `group_bodies` with `"op": "cut"` subtracts every later id from the first.
 
+## Advanced parts: sketches, features, selectors
+
+For a part that is more than basic shapes (an enclosure, a bracket with fillets and holes), work in Advanced mode and build it like a person does:
+
+1. `new_design` with `mode: "advanced"` (only when the user wants a fresh design, never on their open tab unasked).
+2. `add_sketch` with shapes (`rect`, `roundrect`, `circle`, `slot`, `polygon`, `polyline`, `line`; sizes may be expressions such as `"W/2"`), then `extrude` (or `revolve`). Cut or join with `op`; `through: true` cuts right through.
+3. `list_faces` and `list_edges` to look: positions, normals, sizes, in world mm. Indices are valid only until the next edit.
+4. `shell_body`, `fillet_edges`, `chamfer_edges`, `add_holes`, `pattern_features`, then `wait_ready`, `list_bodies` (error? volume?) and `screenshot`.
+
+Faces and edges are picked with a selector, not an index: `top`, `bottom`, `front` (-y), `>z` (the highest), `|z` (parallel to z), `#z`, `hole`, `circle`, `edges of top`, joined with `and`, `or`, `not` and brackets. The outer rim of an open box: `edges of top and (>x or <x or >y or <y)`. A selector is resolved when you call; after a parameter change, look again with `list_faces` or `list_edges`. A fillet too large for the walls shows as the body's `error` in `list_bodies`: undo and use a smaller radius.
+
 ## What the tools cannot do
 
-Sketches, extrudes, revolves, fillets, chamfers and the other Advanced features have no tool. Use `run_script` for anything else: it runs JavaScript in the page with `JS3D` in scope and returns the value as JSON. Top-level `await` works; end with `return` to give a value back. It has the full power of the page, so use it for the design only. Full reference: BRIDGE.md in the JumpStart 3D repository (https://github.com/MaxSikorski/jumpstart-3d/blob/main/BRIDGE.md). The calls you will use most:
+Sweeps, lofts, mirrors, split, emboss, threads and construction planes have no tool. Use `run_script` for those and anything else: it runs JavaScript in the page with `JS3D` in scope and returns the value as JSON. Top-level `await` works; end with `return` to give a value back. It has the full power of the page, so use it for the design only. Full reference: BRIDGE.md in the JumpStart 3D repository (https://github.com/MaxSikorski/jumpstart-3d/blob/main/BRIDGE.md). The calls you will use most:
 
 ```js
 JS3D.add("box", { size: [40, 30, 20], at: [0, 0, 0], hole: false })   // returns an id
@@ -64,7 +75,7 @@ await JS3D.export("step")                                             // bytes; 
 await JS3D.load(jsonText)                                             // open a project file you wrote
 ```
 
-To get an Advanced design (sketches, features) in, write a project file by hand (format in BRIDGE.md Part 2) and open it with `load_project`.
+To get something no tool makes in, write a project file by hand (format in BRIDGE.md Part 2) and open it with `load_project`.
 
 ## Mistakes to avoid
 

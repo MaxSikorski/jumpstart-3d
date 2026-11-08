@@ -100,11 +100,15 @@ function hasMesh(root) {
 }
 
 // jumpstart-3d: share the drawing work between the dialog and JS3D.drawing.
-export async function drawBodies(app, bodies, { views, scale, dims, units }, hooks = {}) {
+async function drawingPreflight(bodies) {
   const { resolveNode, store } = await import("./store.js");
   const list = bodies.map((b) => ({ id: b.id, node: resolveNode(b.node, store.doc), m: b.m }));
   const mesh = bodies.filter((b, i) => hasMesh(list[i].node)); // resolved, so a mirror of an imported mesh counts too
   if (mesh.length) throw Object.assign(new Error(`Drawings need CAD bodies: ${mesh.map((b) => b.name).join(", ")} came from a mesh (STL/3MF/OBJ). Leave them out of the selection, or use Mesh to STEP first.`), { kind: "mesh" });
+  return list;
+}
+export async function drawBodies(app, bodies, { views, scale, dims, units }, hooks = {}) {
+  const list = await drawingPreflight(bodies);
   const fonts = app.kernel.waitFor && list.map((b) => app.kernel.waitFor(b)).find(Boolean);
   if (fonts) { hooks.onFonts?.(); await Promise.resolve(fonts).catch(() => {}); }
   if (hooks.stop?.()) throw Object.assign(new Error("Cancelled."), { kind: "cancelled" });
@@ -164,6 +168,7 @@ export function openBodyDrawing(app, { bodies, name }) {
     const views = names.filter((n) => checks[n].checked);
     if (!views.length) { app.toast("Choose at least one view.", "err"); return; }
     const options = { scale: +scale.value, dims: dims.checked, units: units.value };
+    try { await drawingPreflight(bodies); } catch (e) { app.toast(e.message, "err"); return; }
     try { localStorage.setItem("jumpstart.bodyDrawing", JSON.stringify({ ...Object.fromEntries(names.map((n) => [n, checks[n].checked])), ...options, scale: scale.value })); } catch (e) {}
     submit.disabled = true; state.textContent = "Preparing the views…";
     try {

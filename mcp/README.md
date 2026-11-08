@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 39 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 49 tools is a lot for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -181,7 +181,13 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `add_box_maker` | A Box Maker set: compartment bins or cases with drawers, tilt bins or doors |
 | `add_gear_set` | Already placed meshing gears: pair, rack, ring, planetary set, bevel pair or helical pair |
 | `add_hardware` | Any Fasteners-library screw, nut, washer, insert or dowel |
-| `list_textures`, `add_texture` | List surface patterns or apply one to a body or chosen faces; mesh exports only; chosen faces need bridge 1.9 |
+| `list_textures`, `add_texture` | List surface patterns or apply one to a body or chosen faces; mesh exports only |
+| `list_faces`, `list_edges` | A body's faces or edges in world mm: index, type, centre, normal, size, the faces an edge joins. `select` takes a selector (`top`, `>z`, `|z`, `hole`, `edges of top`, ...); indices change after every edit, selectors do not |
+| `add_sketch` | A sketch of fully dimensioned `rect`, `roundrect`, `circle`, `slot`, `polygon`, `polyline` and `line` shapes (sizes may be expressions) on XY, XZ, YZ (with an `offset`) or one flat face of a body. Returns the sketch id, plane, profiles and named dimensions |
+| `extrude`, `revolve` | Push or turn a sketch's profiles into a new body, or join to or cut a body (`through` cuts right through) |
+| `fillet_edges`, `chamfer_edges`, `shell_body` | Round or bevel the edges a selector picks (such as `edges of top`); hollow a body, with the `open` faces taken away |
+| `add_holes` | Round holes (plain, counterbore, countersink, tapped; `size` such as M3) at world points on one flat face, as one Hole feature |
+| `pattern_features` | Repeat holes or cuts of a body in a grid or around an axis, or the whole body |
 | `move_bodies`, `move_to`, `rotate_bodies`, `resize_shape`, `scale_bodies` | Place and size them |
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
@@ -195,14 +201,17 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `run_script` | Run JavaScript in the page with `JS3D` and `app` in scope; returns the value as JSON |
 
 Typical loop: `add_shape` (a block), `add_shape` with `hole: true` (a cylinder), `group_bodies` to cut it, `wait_ready`,
-`screenshot` to look, `export_file` at the end.
+`screenshot` to look, `export_file` at the end. For an Advanced part: `new_design` (advanced), `add_sketch`, `extrude`, `list_faces` and
+`list_edges` to look, `shell_body`, `fillet_edges`, `add_holes`, `wait_ready`, `screenshot`. Faces and edges are picked with selectors such as
+`edges of top and (>x or <x or >y or <y)`, resolved when the tool is called (BRIDGE.md, Selectors).
 
 ## What an agent can and cannot do
 
-It can do what the calls above can: Beginner shapes (20 kinds), groups, scale, parameters, undo, look at the view, and read and
-write files you name in `export_file`, `save_project` and `load_project`. Sketches, extrudes, fillets and the other Advanced
-features have no tool of their own; `run_script` reaches anything in the page, and `load_project` opens a project file written
-by hand (format in BRIDGE.md Part 2).
+It can do what the calls above can: Beginner shapes (20 kinds), groups, scale, parameters, Advanced sketches and features (extrude, revolve,
+fillet, chamfer, shell, holes, patterns, with faces and edges picked by selector), undo, look at the view, and read and write files you
+name in `export_file`, `save_project` and `load_project`. Sweeps, lofts, mirrors, split, emboss, threads, construction planes and
+other sketch constraints have no tool of their own; `run_script` reaches anything in the page, and `load_project` opens a project file
+written by hand (format in BRIDGE.md Part 2).
 
 ## Command line
 

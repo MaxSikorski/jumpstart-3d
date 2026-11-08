@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, stlTriangles } from "./helpers.mjs";
 import { LIB } from "../src/texture.js";
+import { gearSet as buildGearSet } from "../src/gearlib.js";
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
   page = await browser.newPage(); errors = watchErrors(page);
@@ -68,16 +69,32 @@ test("library gear sets store placed bodies and linked motion joints", async () 
   expect(doc.bodies[1].m[12]).toBe(60); expect(Object.values(doc.bodies[0].gear.ids)).toEqual(result.parts.map((p) => p.id));
   expect(doc.bodies[1].gearPart).toBe(result.id); expect(doc.joints).toHaveLength(2); expect(doc.joints[1].link.ratio).toBe(-0.5);
   expect(await lastLabel()).toBe("Gears");
-  await fresh(); expect((await run(() => JS3D.gearSet({ type: "rack" }))).parts.map((p) => p.name)).toEqual(["Pinion 1", "Rack 1"]);
+  await fresh(); const rack = await run(() => JS3D.gearSet({ type: "rack", teeth: 24, module: 1.5, rackLength: 100, rackHeight: 12, bore: 4, at: [3, 4, 5] }));
+  const saved = await run(() => __store.doc);
+  expect(saved.bodies[0].gear.o).toMatchObject({ type: "rack", z: 24, m: 1.5, rackLen: 100, rackH: 12, boreD: 4 });
+  expect(saved.bodies[1].gearPart).toBe(rack.id);
+  expect(Object.values(saved.bodies[0].gear.ids)).toEqual(rack.parts.map((p) => p.id));
+  expect(saved.joints.map((j) => j.body)).toEqual(rack.parts.map((p) => p.id));
+  expect(saved.joints[1].link.to).toBe(saved.joints[0].id);
+  const rebuilt = buildGearSet(saved.bodies[0].gear.o);
+  expect(saved.bodies.map((b) => b.node)).toEqual(rebuilt.parts.map((p) => p.node));
   const before = await undoCount();
   expect(await failure(() => JS3D.gearSet({ type: "ring", teeth: 20, teeth2: 25 }))).toBe(ringError); expect(await undoCount()).toBe(before);
 });
 test("bevel and helical pairs build with the designed placement", async () => {
   test.setTimeout(240_000);
   await fresh(); const before = await undoCount();
-  const result = await run(() => JS3D.gearSet({ type: "bevel", teeth: 20, teeth2: 30 }));
+  const result = await run(() => JS3D.gearSet({ type: "bevel", teeth: 20, teeth2: 30, at: [5, 7, 9] }));
   const m = await run((id) => JS3D.get(id).m, result.parts[1].id);
-  expect(m.slice(8,11)).toEqual([-1,0,0]); expect(m.slice(12,15)).toEqual([20,0,30]);
+  expect(m.slice(8,11)).toEqual([-1,0,0]); expect(m.slice(12,15)).toEqual([25,7,39]);
+  const apices = await run((ids) => ids.map((id) => {
+    const body = __store.doc.bodies.find((b) => b.id === id);
+    const sketches = body.node.sections.map((s) => __store.doc.sketches.find((sk) => sk.id === s.sketch));
+    const [a, b] = sketches, radius = (sk) => Math.hypot(sk.pts[0].x, sk.pts[0].y);
+    const h = (b.plane.o[2] - a.plane.o[2]) / (1 - radius(b) / radius(a)) + a.plane.o[2];
+    return [0, 1, 2].map((i) => body.m[12 + i] + body.m[8 + i] * h);
+  }), result.parts.map((p) => p.id));
+  for (let i = 0; i < 3; i++) expect(apices[0][i]).toBeCloseTo(apices[1][i], 3);
   const bodies = await run(async () => { await JS3D.ready(); return JS3D.list(); });
   for (const b of bodies) { expect(b.volume).toBeGreaterThan(0); expect(b.error).toBeNull(); }
   expect(await undoCount()).toBe(before+1); expect(await lastLabel()).toBe("Bevel gear pair");
@@ -118,16 +135,29 @@ test("whole-body textures change exported mesh and keep a dialog layer", async (
   const hole = await run(() => JS3D.add("box", { hole: true, name: "Cutter" }));
   expect(await failure((id) => JS3D.texture(id), hole)).toBe("Cutter is marked as a hole; textures go on solid bodies");
 });
-test("chosen-face textures explain the missing 9.1 dependency", async () => {
-  test.skip(await run(() => typeof JS3D.faces === "function"), "JS3D.faces is now available");
-  await fresh(); const id = await run(() => JS3D.add("box", { size: [40,30,20] })), before = await undoCount();
-  expect(await failure((id) => JS3D.texture(id, { faces: "top" }), id)).toBe("texture on chosen faces needs JS3D.faces (bridge 1.9)");
-  expect(await undoCount()).toBe(before);
-});
-test.skip("texture on chosen faces needs JS3D.faces (bridge 1.9)", async () => {
+test("texture on chosen faces", async () => {
   await fresh(); const id = await run(() => JS3D.add("box", { size: [40,30,20] }));
   expect(await run((id) => JS3D.texture(id, { texture: "ribs", faces: "top" }), id)).toMatchObject({ faces: 1 });
   expect(await run(() => __store.doc.bodies[0].textures[0].faces)).toMatchObject([{ t: "PLANE", n: [0,0,1], c: [0,0,20] }]);
+});
+test("textures use mesh detail and reject changes while waiting", async () => {
+  try {
+    for (const detail of ["fine", "extra"]) {
+      await run((d) => { __app.setMeshDetail(d, true, true); return JS3D.ready(); }, detail);
+      await fresh(); const id = await run(() => JS3D.add("box"));
+      expect(await run((id) => JS3D.texture(id, { faces: "top" }), id)).toMatchObject({ faces: 1 });
+    }
+    for (const change of ["hole", "geometry"]) {
+      await fresh();
+      const result = await run(async (change) => {
+        const id = JS3D.add("box", { name: "Changing" });
+        const p = JS3D.texture(id, { faces: "top" });
+        if (change === "hole") JS3D.setHole(id, true); else JS3D.resize(id, { w: 35 });
+        try { await p; return null; } catch (e) { return e.message; }
+      }, change);
+      expect(result).toBe("Changing changed while the texture was being prepared; try again");
+    }
+  } finally { await run(() => { __app.setMeshDetail("normal", true, true); return JS3D.ready(); }); }
 });
 test("drawing gives three measured DXF views, inches, bytes and no undo step", async () => {
   await fresh(); await run(() => JS3D.add("box", { size: [40,30,20] })); const before = await undoCount();

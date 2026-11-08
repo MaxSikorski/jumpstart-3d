@@ -1,3 +1,4 @@
+import { baseOf } from "./bridgecad.js";
 // jumpstart-3d: generator calls (IMPROVEMENT_PLAN 9.3), stored as the dialogs store them. See BRIDGE.md.
 import * as THREE from "three";
 import { store, findBody, nextSeq, resolveNode, bodyKey } from "./store.js";
@@ -86,16 +87,23 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     edit();
     const b = need(id), { layer, faces } = textureOptions(opts ?? {});
     if (b.hole) throw new Error(`${b.name} is marked as a hole; textures go on solid bodies`);
+    const key = bodyKey(resolveNode(b.node, store.doc));
+    const validate = () => {
+      const current = findBody(store.doc, id);
+      if (!current || current.hole || bodyKey(resolveNode(current.node, store.doc)) !== key) throw new Error(`${b.name} changed while the texture was being prepared; try again`);
+      return current;
+    };
     await ready();
+    validate();
     if (app.scene.errors.has(id)) throw new Error(`${b.name} has a build error: ${app.scene.errors.get(id)}`);
-    const r = app.kernel.get(bodyKey(resolveNode(b.node, store.doc)));
-    if (!r || !r.ok) throw new Error(`${b.name} could not be built`);
+    const r = baseOf(app, id);
+    if (!r) throw new Error(`${b.name} could not be built`);
     let stored = "all";
     if (faces !== "all") {
-      if (typeof api.faces !== "function") throw new Error("texture on chosen faces needs JS3D.faces (bridge 1.9)");
       const list = await api.faces(id, faces);
+      validate();
       if (!list.length) throw new Error(`faces ${JSON.stringify(faces)} matches no face of ${b.name}`);
-      stored = list.map(({ index }) => { const f = r.mesh.faceInfo[index]; return f.n ? { c: f.c, t: f.t, n: f.n } : { c: f.c, t: f.t }; });
+      stored = list.map(({ index }) => { const f = r.data.faceInfo[index]; return f.n ? { c: f.c, t: f.t, n: f.n } : { c: f.c, t: f.t }; });
     }
     const tid = uid("t");
     store.update((doc) => { const x = findBody(doc, id); (x.textures = x.textures || []).push({ id: tid, seq: nextSeq(doc), faces: stored, ...layer }); }, "Texture");

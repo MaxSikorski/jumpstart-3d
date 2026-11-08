@@ -26,8 +26,8 @@ export function boxOptions(opts = {}) {
   only(opts, boxKeys);
   pick(opts, "style", ["bin", "drawer", "tilt", "door"]);
   const style = opts.style ?? "bin";
-  for (const k of ["w", "d"]) num(opts, k, 10, 1000);
-  num(opts, "h", 5, 1000);
+  for (const k of ["w", "d"]) num(opts, k, style === "bin" ? 10 : 30, 1000);
+  num(opts, "h", style === "bin" ? 5 : 20, 1000);
   for (const k of ["units", "across"]) int(opts, k, 1, 8);
   int(opts, "cols", 1, { bin: 20, drawer: 12, tilt: 8, door: 20 }[style]);
   int(opts, "rows", 1, style === "drawer" ? 12 : 20);
@@ -73,7 +73,16 @@ export function gearSetOptions(opts = {}) {
   pick(opts, "boreShape", ["round", "d", "hex", "key"]); flag(opts, "joints");
   const z = opts.teeth ?? 20, z2 = opts.teeth2 ?? 40, zs = opts.sunTeeth ?? 18, bore = opts.bore ?? 0;
   if (type === "ring" && z2 - z < 8) throw new Error("a ring gear needs at least 8 more teeth than its pinion (teeth2 at least teeth + 8)");
-  const zMin = type === "pair" ? Math.min(z, z2) : type === "planet" ? zs : z, max = Math.floor(m * (zMin - 4.5) * 10) / 10;
+  const zp = opts.planetTeeth ?? 12, planets = opts.planets ?? 3;
+  if (type === "planet") {
+    const sum = 2 * (zs + zp);
+    if (sum % planets) throw new Error(`these teeth cannot be assembled with ${planets} planets: sun + ring teeth (${sum}) must divide by the number of planets`);
+    if (m * (zs + zp) * Math.sin(Math.PI / planets) <= m * (zp + 2) + 0.5) throw new Error("neighbouring planets need more than 0.5 mm clearance between their teeth");
+  }
+  const zMin = type === "pair" ? Math.min(z, z2) : type === "planet" ? zs : z;
+  const limits = [m * (zMin - 4.5), m * (zMin / 2 - 1.25) * 1.6];
+  if (type === "planet") limits.push((zp - 2.5) * m * 0.5, m * (zp / 2 - 1.25) * 1.6);
+  const max = Math.floor(Math.min(...limits) * 10 + 1e-9) / 10;
   if (!isNum(bore) || (bore !== 0 && (bore < 0.5 || bore > max))) throw new Error(max < 0.5 ? "bore must be 0 (none): these gears are too small for a bore" : `bore must be 0 (none) or from 0.5 to ${max} mm for these gears`);
   const o = { ...GEAR_DEFAULTS, type, m, z, z2, zs, zp: opts.planetTeeth ?? 12, nPlanets: opts.planets ?? 3, thick: width ?? 8, backlash: opts.backlash ?? 0.15, pa: opts.pressureAngle ?? 20, bore: bore > 0 ? opts.boreShape ?? "round" : "none", boreD: bore > 0 ? bore : GEAR_DEFAULTS.boreD, rackLen: opts.rackLength ?? 0, rackH: opts.rackHeight ?? 8, joints: opts.joints ?? true, hub: false, spokes: false };
   return { type, lib, o, at };
