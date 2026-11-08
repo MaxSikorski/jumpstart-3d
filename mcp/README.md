@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 49 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 54 tools is a lot for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -171,6 +171,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `wait_ready` | Waits until every shape is built. Call it after edits, before reading sizes |
 | `list_kinds` | The 20 shape kinds and their default sizes |
 | `list_bodies`, `get_body` | Read bodies: place, box, volume, errors; one in full |
+| `inspect_bodies`, `measure`, `check_print`, `check_collisions`, `section_view` | Check your work without a picture: size, volume, area, weight; distances and wall thickness; Ready to print on a chosen printer; parts that collide; the outline and area of a cut (with an optional picture) |
 | `add_shape`, `remove_bodies`, `duplicate_bodies` | Make, delete, copy shapes |
 | `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
 | `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
@@ -199,7 +200,21 @@ Typical loop: `add_shape` (a block), `add_shape` with `hole: true` (a cylinder),
 `list_edges` to look, `shell_body`, `fillet_edges`, `add_holes`, `wait_ready`, `screenshot`. Faces and edges are picked with selectors such as
 `edges of top and (>x or <x or >y or <y)`, resolved when the tool is called (BRIDGE.md, Selectors).
 
+### The whole loop for an agent
+
+Call these MCP tools in order (use the id returned by `add_shape` as `id`):
+
+1. `new_design`: `{"mode":"advanced"}`; then `add_shape`: `{"kind":"box","size":[60,40,25],"at":[0,0,0]}`.
+2. `shell_body`: `{"id":id,"th":2,"open":"top"}`; then `fillet_edges`: `{"id":id,"edges":"edges of top and (>x or <x or >y or <y)","r":1}`.
+3. `add_holes`: `{"id":id,"face":"bottom","points":[[-22,-12,0],[22,-12,0],[-22,12,0],[22,12,0]],"size":"M3"}`. Leaving depth out makes the holes through.
+4. `inspect_bodies` with `{"material":"pla"}` should report bounds [-30,-20,0] to [30,20,25], volume about 13516.83 mm³ and weight about 16.76 g at 100% infill. `check_print` should have no problems (review any warnings); `check_collisions` should have no pairs. `section_view` with `{"axis":"z","at":10}` should report about 384 mm².
+5. `export_file` with `{"kind":"stl","path":"/path/to/enclosure.stl"}` writes the result.
+
+Check each tool result for an error before continuing. The headless end-to-end test is `mcp/test/proof.test.mjs`.
+
 ## What an agent can and cannot do
+
+An agent can check its work with `inspect_bodies`, `check_print`, `check_collisions` and `section_view`.
 
 It can do what the calls above can: Beginner shapes (20 kinds), groups, scale, parameters, Advanced sketches and features (extrude, revolve,
 fillet, chamfer, shell, holes, patterns, with faces and edges picked by selector), undo, look at the view, and read and write files you

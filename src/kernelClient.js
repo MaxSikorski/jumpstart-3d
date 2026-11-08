@@ -75,9 +75,11 @@ export class KernelClient {
     if (this.slow.worker && this.slow.ready) this.slow.worker.postMessage({ type: "dropasset", id }); // the second engine has the file too
   }
   // jumpstart-3d: Code CAD. builds one node in the design's own worker, outside the scene, and answers with its result (or a failure after ms)
+  // jumpstart-3d: inspect probes are keyed "inspect:..."; a late answer after a timeout is dropped too (settleProbes)
+  isProbeKey(key) { return key.startsWith("inspect:"); }
   probe(item, ms = 120000) {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => { this.probes.delete(item.key); this.queue.delete(item.key); resolve({ ok: false, error: "The geometry engine did not answer in time." }); }, ms);
+      const timer = setTimeout(() => { this.probes.delete(item.key); this.queue.delete(item.key); if (item.key.startsWith("inspect:")) this.meshes.delete(item.key); resolve({ ok: false, error: "The geometry engine did not answer in time." }); }, ms);
       this.probes.set(item.key, (r) => { clearTimeout(timer); resolve(r); });
       this.request([{ ...item, pinned: true }]);
     });
@@ -85,7 +87,7 @@ export class KernelClient {
   settleProbes(results) {
     for (const r of results) {
       const done = this.probes.get(r.key);
-      if (!done) continue;
+      if (!done) { if (r.key.startsWith("inspect:")) this.meshes.delete(r.key); continue; } // jumpstart-3d: late answer of a timed-out probe
       this.probes.delete(r.key);
       this.meshes.delete(r.key);
       done(r);
@@ -130,8 +132,9 @@ export class KernelClient {
       const res = msg.type === "built" ? msg.results.map((r) => { r.key = r.rev; delete r.rev; return r; }) : items.map((b) => ({ id: b.id, key: b.key, ok: false, error: msg.error }));
       for (const r of res) {
         if (this.dropStale(r.key, items)) continue; // jumpstart-3d: extra fonts
-        if (r.ok && r.ms) this.buildMs.set(r.key, r.ms);
-        if (r.ok && this.disk && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
+        const one = this.isProbeKey(r.key); // jumpstart-3d: a one-off probe is not a body of the design: no build time, no disk cache
+        if (r.ok && r.ms && !one) this.buildMs.set(r.key, r.ms);
+        if (r.ok && this.disk && !one && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
         this.meshes.set(r.key, r);
       }
       this.perf && this.perf.done(res, "slow"); // jumpstart-3d: perf panel
@@ -226,8 +229,9 @@ export class KernelClient {
         r.key = r.rev;
         delete r.rev;
         if (this.dropStale(r.key)) continue; // jumpstart-3d: extra fonts
-        if (r.ok && r.ms) this.buildMs.set(r.key, r.ms);
-        if (r.ok && this.disk && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
+        const one = this.isProbeKey(r.key); // jumpstart-3d: a one-off probe is not a body of the design: no build time, no disk cache
+        if (r.ok && r.ms && !one) this.buildMs.set(r.key, r.ms);
+        if (r.ok && this.disk && !one && r.ms >= DISK_MS && diskSize(r.mesh) <= DISK_MAX && !this.fontless(r.key)) diskPut(VERSION, r.key, r.mesh, r.ms);
         this.meshes.set(r.key, r);
         this.trimMeshes(); // jumpstart-3d: STEP parts (#173)
       }
@@ -454,10 +458,11 @@ export class KernelClient {
     });
   }
   // Clearance: which bodies touch, overlap or are closer than gap ({ pairs, vols })
-  contacts(bodies, gap) {
+  contacts(bodies, gap, ms) { // jumpstart-3d: optional ms limit (inspect calls); the answer of a timed-out request is ignored
     const req = ++this.req;
     return new Promise((resolve, reject) => {
-      this.stepWaiters.set(req, { resolve, reject });
+      const timer = ms ? setTimeout(() => { this.stepWaiters.delete(req); reject(new Error("The geometry engine did not answer in time.")); }, ms) : null;
+      this.stepWaiters.set(req, ms ? { resolve: (r) => { clearTimeout(timer); resolve(r); }, reject: (e) => { clearTimeout(timer); reject(e); } } : { resolve, reject });
       this.worker.postMessage({ type: "contacts", req, gap, bodies });
     });
   }

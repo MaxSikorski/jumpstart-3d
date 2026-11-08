@@ -58,6 +58,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `stepload.js` | Checked STEP transfer, one fresh-reader healing retry, scoped build stages, Normal-only dense STEP angular policy; all face centers remain exact |
 | `stepprogress.js` | STEP import sessions, stage/elapsed panel, current-mesh completion checks and timeout formatting |
 | `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
+| `bridgeinspect.js` | Inspect calls on JS3D |
+| `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |

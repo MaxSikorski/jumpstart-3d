@@ -9,6 +9,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
 
 ## Facts to keep straight
 
+- `inspect_bodies` gives size, volume, area and weight (default PLA); `measure` gives distances (two flat faces picked with `a_near`/`b_near` give a wall's thickness); `check_print` says whether the design prints as it sits (on the plate, fits the printer, overhangs); `check_collisions` finds parts that overlap or touch; `section_view` cuts the design and gives the outline areas.
 - Lengths are millimetres, angles degrees, positions `[x, y, z]` with z up.
 - `add_shape` puts the middle of the shape's footprint at `at` `[x, y]` and its base at `at` z. Default `[0, 0, 0]`.
 - Sizes are `{w, d, h}` (width x, depth y, height z) or `[w, d, h]`. `list_kinds` shows the 20 kinds and their size keys.
@@ -29,7 +30,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
    - `headless`: your own invisible browser with a blank design.
    - `none`: nothing yet. Any other tool starts headless. If the user wants their open tab, tell them: theme menu (half-moon button), turn on "Connect to AI agent". Chrome may ask to allow "local network access" for the website; they must allow it.
 2. Build with `add_shape`, then `set_hole`, `move_bodies`, `resize_shape`, `group_bodies`.
-3. `wait_ready`, then `list_bodies` to check sizes and volumes. A body with an `error` did not build; read the message, fix it, or `undo`.
+3. `wait_ready`, then `inspect_bodies` (or `list_bodies`) to check sizes and volumes, and `check_print` before you call a part printable. A body with an `error` did not build; read the message, fix it, or `undo`.
 4. `screenshot` after every few edits and look at it. Do not trust the numbers alone. If your model cannot see images, pass `path` (a file name): the PNG is saved there and you get `{path, bytes, width}` as text, so the user can look at the file.
 5. At the end `export_file` and tell the user the full path. Use an absolute path; a relative one is relative to the folder the server was started in. Kinds: `stl`, `obj`, `3mf`, `glb`, `step`, `json` (the project file).
 
@@ -75,6 +76,7 @@ To get something no tool makes in, write a project file by hand (format in BRIDG
 
 ## Mistakes to avoid
 
+- Calling a part ready to print without `check_print`.
 - Reading `volume` before `wait_ready`.
 - Rotating or scaling before `wait_ready` (the tools throw while a body is still being built unless you pass `about`).
 - Calling `group_bodies` with a hole alone: a hole needs a solid to cut.

@@ -27,6 +27,7 @@
 //   Advanced   sketch(...), extrude(...), revolve(...), fillet(id, edges, r), chamfer(id, edges, d), shell(id, {th, open, dir}), hole(id, {...}), pattern(id, {...}), faces(id, sel), edges(id, sel)
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
 import { VERSION } from "./version.js";
@@ -34,6 +35,7 @@ import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
 import { uid } from "./util.js";
+import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -195,7 +197,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.9", // jumpstart-3d: advanced CAD calls
+    version: "1.10", // jumpstart-3d: inspect calls (9.1 is 1.9)
     appVersion: VERSION,
     internals: { app, store },
 
@@ -486,6 +488,7 @@ export function initBridge(app) {
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
   api.delete = api.remove;
+  Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeCad(app, { edit, need, ready })); // jumpstart-3d: advanced CAD calls
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers

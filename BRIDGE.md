@@ -68,7 +68,7 @@ JS3D.get(id).volume;        // 24000
 
 | Call | Returns |
 |---|---|
-| `JS3D.version` | `"1.9"`. The last number goes up when calls are added; the first changes when a call changes shape. |
+| `JS3D.version` | `"1.10"`. The last number goes up when calls are added; the first changes when a call changes shape. |
 | `JS3D.appVersion` | The app's version, such as `"2.0"`. |
 | `JS3D.kinds()` | `[{ kind, defaults }]`: the 20 shape kinds `add` accepts and their default sizes (`box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, `arrow`). |
 | `JS3D.list()` | The top-level bodies: `[{ id, name, kind, hole, hidden, locked, color, position, bbox, volume, error, children? }]`. `kind` is the shape kind for a basic shape and `"group"`, `"extrude"`, `"revolve"`... for the rest. `bbox` is the world box `{ min: [x,y,z], max: [x,y,z] }` and `volume` is in mm³; both are `null` until built (and while an error is shown). `error` is the geometry engine's message or `null`. `children` is the number of parts in a group. |
@@ -85,6 +85,64 @@ JS3D.get(id).volume;        // 24000
 `await JS3D.ready(timeoutMs = 90000)` resolves when the geometry engine is
 idle and every visible body has been built (or has an error). It checks every
 50 ms. If time runs out it throws and names the bodies still building. A body whose definition cannot be read at all (a hand-written file with a broken node) is never sent to the geometry engine; `ready` does not wait for it, and `list()` shows its `error`.
+
+### Inspecting and checking
+
+These five calls check a design without a picture. Each waits for the shapes to build (like `ready`), then reads them. They change nothing: no undo step, the selection stays as it was, nothing is saved. A call refuses while the design shows a preview or an earlier step (see the errors below), so every number comes from one design. Lengths are mm, areas mm², volumes mm³, weights grams, angles degrees. A call with no `ids` uses every top-level body that is not a hole and not hidden; with `ids` it uses those bodies (a missing one throws `no body <id>`). A body that has not built shows its build error; a hidden body that was never built says `<name> is hidden and has not been built; show it first`.
+
+| Call | Result | Exact or mesh |
+|---|---|---|
+| `inspect(ids?, {material, density})` | `{ material: {key, name, density}, bodies: [{ id, name, hole, hidden, bbox: {min, max}, size: [x, y, z], volume, volumeFrom, area, weight, solids, error }], total: { bodies, bbox, size, volume, area, weight } }`. `material` is a filament key (`pla` by default; `pla`, `plaplus`, `petg`, `abs`, `asa`, `nylon`, `pc`, `cfpla`, `cfnylon`, `peek`, `tpu`); `density` (g/cm³, 0.1 to 25) overrides it and the key is then `"custom"`. `weight` is a solid part (100 % infill); a slicer's estimate is lower. A body with an `error` has null numbers and is left out of `total`. A wire-only body (curves, no surface) comes back with bbox null, volume 0, area 0 and a `note`. | `bbox`, `size`: exact box of the mesh. `volume`: the exact solid (`volumeFrom: "solid"`), else the mesh (`"mesh"`). `area`: the mesh (within about 0.5 %, a little low on curved faces). |
+| `measure(a, b)` | `{ distance, exact, kind, from?, to?, delta?, angle?, parallel?, a, b }`. A target is a point `[x, y, z]`, a body id, `{body, face}` (a face number) or `{body, near: [x, y, z]}` (the face nearest that point; the result's `a.face` tells you its number). Kinds: `point-point` (with `delta`), `body-body` (shortest distance between the surfaces, 0 when they touch or overlap), `planes` (two flat parallel faces: the distance between their planes, such as a wall's thickness), `mesh`. Two flat faces also give `angle` (0 to 90). | `point-point`, `body-body`, `planes`: exact. `mesh`: `exact: false`, from the display mesh; crossing meshes do not report 0. |
+| `printCheck({ids, printer, angle})` | `{ ok, summary, printer, bed: {w, d, h} or null, angle, issues: [{level, code, id, name, text}], bodies: [{ id, name, bbox, minZ, contactArea, overhangArea, overhangTriangles, fits }], ignored: [{id, name, why}] }`. `printer` is `generic` (256 x 256 mm, no height limit), `none` (no plate), or `a1`, `x1`, `p1s`, `mk4`, `mini`, `ender3`, `u1`; the default is the plate chosen in Settings. `angle` 10 to 80 (default the angle saved in Settings, 45 at first). Errors (`ok` false): `empty`, `build_error`, `wire_only`, `floating`, `below_plate`, `outside_bed`, `too_tall`. Warnings: `overhang` (more than 1 mm² of underside leaning out past `angle`), `small_contact` (less than a tenth of the footprint on the plate). Holes and hidden bodies go to `ignored`. | Mesh rules. Wall thickness is not checked. |
+| `collisions({ids, gap})` | `{ pairs: [{ a, b, aName, bName, distance, state, overlap }], checked, skipped: [{id, name, error}] }`. `state` is `overlap`, `touch` (distance 0) or `near` (closer than `gap`, default 0). `overlap` is the shared volume; for `near` it is null. At most 50 bodies; the shared volume is worked out for the first 20 touching or overlapping pairs (later ones say `note`). A pair is listed when its distance is at most `gap` plus a 0.001 mm contact tolerance; 0.001 mm or less counts as touching. All distances and overlaps are worked out from one snapshot of the bodies taken at the start. The whole call has 90 seconds: pairs whose shared volume is not reached in time get `note: "not measured (the 90 second time limit was used up)"`. | Distances: exact solids. |
+| `section(plane, {ids, points, picture, width})` | `plane` is `{axis: "x"|"y"|"z", at}` or `{origin, normal}`. `{ plane: {origin, normal, u, v}, shifted, area, bodies: [{ id, name, area, loops: [{ area, perimeter, hole, closed, min, max, points? }] }], skipped, truncated?, dataURL? }`. Loop coordinates are 2D, along `plane.u` and `plane.v` from `plane.origin`. `area` is the net area (outer loops minus holes), summed over bodies. A plane that passes exactly through a vertex moves 0.0001 mm (`shifted`). `points: true` adds each loop's points (over 5000 in all: `truncated`). `picture: true` adds `dataURL`, a PNG of the 3D view with the camera's side cut away (Beginner or Advanced mode; `width` default 800); the section view and the camera are put back as they were (the picture is always taken from the Home view). A cut of more than 200000 segments or 2000 outlines is refused. | Mesh cut (areas within the mesh's accuracy). |
+
+Errors, word for word (a call that throws leaves the design as it was):
+
+| Call | Text |
+|---|---|
+| any with `ids` | `no body <id>`, `no body ids given` |
+| any, a body without a mesh | its build error, or `<name> is hidden and has not been built; show it first` |
+| any | `the design is showing a preview; finish or cancel it first`, `the design is rolled back to an earlier step; return to the latest step first` |
+| `measure`, `section`, `collisions` | `<name> is a wire-only shape (lines, no surface); it has no volume, area or faces to measure` (a body made only of curves, such as a wire from a STEP file; `measure` throws it, `section` and `collisions` list it in `skipped`) |
+| `section` | `the cut has more than 200000 line segments; cut fewer or simpler bodies (pass ids)`, `the cut has more than 2000 separate outlines; cut fewer or simpler bodies (pass ids)` |
+| `collisions` | `The geometry engine did not answer in time.` (the distances took longer than the 90 second limit) |
+| `inspect` | `unknown material "<m>"; valid materials: pla, plaplus, petg, abs, asa, nylon, pc, cfpla, cfnylon, peek, tpu` |
+| `inspect` | `density must be a number of g/cm3 from 0.1 to 25` |
+| `measure` | `<a or b> must be a point [x, y, z], a body id, or {body, face} or {body, near}` |
+| `measure` | `<a or b> must be [x, y, z] in mm` (a point or `near` that is not three numbers; `near` says `near must be ...`) |
+| `measure` | `face must be a whole number from 0 to <n-1> (<name> has <n> faces)` |
+| `measure` | `<name> has no face list; measure the body or a point instead` |
+| `measure` | `a and b are the same body` |
+| `measure` | `the geometry engine could not measure between <name> and <name>` |
+| `measure` | `these two are too finely meshed to measure here (<n> vertex-triangle pairs, at most 40000000); measure between two points or two whole bodies instead` |
+| `printCheck` | `unknown printer "<p>"; valid: generic, none, a1, x1, p1s, mk4, mini, ender3, u1 (or any 3D Print Sim printer id)` |
+| `printCheck` | `angle must be a number of degrees from 10 to 80` |
+| `collisions` | `gap must be a number of mm from 0 to 50` |
+| `collisions` | `collisions takes at most 50 bodies at a time (got <n>); pass ids` |
+| `section` | `give axis ("x", "y" or "z") and at, or origin [x, y, z] and normal [x, y, z]` (neither, both, or a bad axis) |
+| `section` | `at must be a number (mm along <axis>)` |
+| `section` | `origin must be [x, y, z] in mm`, `normal must be [x, y, z] in mm` |
+| `section` | `normal must not be [0, 0, 0]` |
+| `section` | `section pictures need Beginner or Advanced mode (now <mode>)` |
+| `section` | `width must be a number of pixels between 1 and 8192` |
+
+An example, on an open box:
+
+```js
+const outer = JS3D.add("box", { size: [60, 40, 25], name: "Box" });
+const cavity = JS3D.add("box", { size: [56, 36, 25], at: [0, 0, 2], hole: true });
+const box = JS3D.group([outer, cavity], { name: "Box" });
+await JS3D.ready();
+(await JS3D.inspect([box])).bodies[0].weight;                      // grams of PLA
+(await JS3D.printCheck()).summary;                                 // "Ready to print: 1 part, no problems found."
+JS3D.add("box", { size: [60, 40, 3], at: [0, 0, 26], name: "Lid" });
+await JS3D.ready();
+(await JS3D.collisions()).pairs;                                   // [] (1 mm apart); {gap: 2} lists them as "near"
+(await JS3D.measure({ body: box, near: [30, 0, 12] }, { body: box, near: [28, 0, 12] })).distance; // 2, a wall's thickness
+(await JS3D.section({ axis: "z", at: 10 })).bodies[0].area;        // 384
+```
 
 ### Making and changing shapes
 
@@ -283,10 +341,23 @@ To save an export from the console, wrap the bytes in a download:
 
 Nothing connects unless asked: the page makes no connection until `connect` is called or the **Connect to AI agent** row in the theme menu (◐) is turned on. That row is remembered in this browser (`jumpstart.agent`, "on" or "off", off by default) and connects to the default address when the page loads. There is no web address parameter.
 
-The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.9","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
+The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.10","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
+
+### The whole loop for an agent
+
+Call these MCP tools in order (use the id returned by `add_shape` as `id`):
+
+1. `new_design`: `{"mode":"advanced"}`; then `add_shape`: `{"kind":"box","size":[60,40,25],"at":[0,0,0]}`.
+2. `shell_body`: `{"id":id,"th":2,"open":"top"}`; then `fillet_edges`: `{"id":id,"edges":"edges of top and (>x or <x or >y or <y)","r":1}`.
+3. `add_holes`: `{"id":id,"face":"bottom","points":[[-22,-12,0],[22,-12,0],[-22,12,0],[22,12,0]],"size":"M3"}`. Leaving depth out makes the holes through.
+4. `inspect_bodies` with `{"material":"pla"}` should report bounds [-30,-20,0] to [30,20,25], volume about 13516.83 mm³ and weight about 16.76 g at 100% infill. `check_print` should have no problems (review any warnings); `check_collisions` should have no pairs. `section_view` with `{"axis":"z","at":10}` should report about 384 mm².
+5. `export_file` with `{"kind":"stl","path":"/path/to/enclosure.stl"}` writes the result.
+
+Check each tool result for an error before continuing. The headless end-to-end test is `mcp/test/proof.test.mjs`.
 
 ### What the bridge does not do
 
+- It does not check wall thickness or slice; `printCheck` is a quick check, not a slicer.
 - It builds Beginner shapes (the 20 kinds), groups, scale and parameters, and the Advanced calls above (sketches, extrude, revolve,
   fillet, chamfer, shell, holes, patterns). Sweeps, lofts, mirrors, split, emboss, threads, construction planes and sketch
   constraints other than the ones the shapes make have no call yet: write or generate a project file (Part 2) and `load` it, or use `run`.
