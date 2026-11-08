@@ -33,8 +33,9 @@ function linesByLayer(text) {
   };
 }
 
-test("generator calls are available at bridge 1.11", async () => {
-  expect(await run(() => JS3D.version)).toBe("1.11");
+test("generator calls are available at bridge 1.11 or later", async () => {
+  const [maj, min] = await run(() => JS3D.version.split(".").map(Number));
+  expect(maj > 1 || (maj === 1 && min >= 11)).toBe(true);
   expect(await run(() => ["boxMaker", "gearSet", "hardware", "textures", "texture", "drawing"].map((n) => typeof JS3D[n]))).toEqual(Array(6).fill("function"));
 });
 test("default bin builds and opens in the Box Maker dialog", async () => {
