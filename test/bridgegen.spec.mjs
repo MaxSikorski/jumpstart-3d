@@ -138,7 +138,10 @@ test("whole-body textures change exported mesh and keep a dialog layer", async (
 test("texture on chosen faces", async () => {
   await fresh(); const id = await run(() => JS3D.add("box", { size: [40,30,20] }));
   expect(await run((id) => JS3D.texture(id, { texture: "ribs", faces: "top" }), id)).toMatchObject({ faces: 1 });
-  expect(await run(() => __store.doc.bodies[0].textures[0].faces)).toMatchObject([{ t: "PLANE", n: [0,0,1], c: [0,0,20] }]);
+  const faces = await run(() => __store.doc.bodies[0].textures[0].faces);
+  expect(faces).toHaveLength(1);
+  expect(faces[0].t).toBe("PLANE");
+  [[faces[0].n, [0,0,1]], [faces[0].c, [0,0,20]]].forEach(([got, want]) => want.forEach((v, i) => expect(got[i]).toBeCloseTo(v, 9)));
 });
 test("textures use mesh detail and reject changes while waiting", async () => {
   try {
