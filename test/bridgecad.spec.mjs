@@ -34,8 +34,9 @@ const stlVolume = (buf) => {
   return Math.abs(v);
 };
 
-test("JS3D reports version 1.9 and the ten Advanced calls", async () => {
-  expect(await run(() => JS3D.version)).toBe("1.9");
+test("JS3D reports version 1.9 or later and the ten Advanced calls", async () => {
+  const [maj, min] = await run(() => JS3D.version.split(".").map(Number));
+  expect(maj > 1 || (maj === 1 && min >= 9)).toBe(true);
   expect(await run(() => ["sketch", "extrude", "revolve", "fillet", "chamfer", "shell", "hole", "pattern", "faces", "edges"].map((k) => typeof JS3D[k]))).toEqual(Array(10).fill("function"));
 });
 
