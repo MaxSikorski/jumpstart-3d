@@ -12,6 +12,8 @@
 //              hardware({part, size, length, threads, clear, left, at, name}) -> id
 //              textures() -> [{key, name, category, size}], texture(id, {texture, faces, size, depth, ...}) -> {body, texture, faces}
 //              drawing({ids, views, scale, units, dims}) -> Uint8Array (DXF)
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
@@ -35,6 +37,7 @@
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
 import { initBridgeGen } from "./bridgegen.js"; // jumpstart-3d: generator calls
+import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 import { VERSION } from "./version.js";
 import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
@@ -566,6 +569,7 @@ export function initBridge(app) {
   const row = document.querySelector("#menu-theme button[data-agent]");
   if (row) row.addEventListener("click", () => app.setAgent(!link.on));
 
+  Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls
   window.JS3D = api;
   app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
