@@ -27,6 +27,18 @@ test('cleanup drops unsafe entries, preserves fitting and runtime-only video rec
   assert.equal(dropUnsafeMedia(doc), false);
 });
 
+test('cleanup covers archived bodies and nested tool nodes', () => {
+  const bad = 'url(http://bad)';
+  const mod = { tool: { color: bad, src: { color: bad }, children: [{ color: bad }] }, tools: [{ color: bad, node: { mods: [{ tools: [{ color: '#12345678' }, { color: bad }] }] } }] };
+  const doc = { bodies: [{ node: { mods: [mod] } }] };
+  dropUnsafeMedia(doc);
+  assert.equal(mod.tool.color, '#a7b0ba');
+  assert.equal(mod.tool.src.color, '#a7b0ba');
+  assert.equal(mod.tool.children[0].color, '#a7b0ba');
+  assert.equal(mod.tools[0].color, '#a7b0ba');
+  assert.deepEqual(mod.tools[0].node.mods[0].tools.map(t => t.color), ['#12345678', '#a7b0ba']);
+});
+
 test('thumbnail allowlist accepts only bounded JPEG and PNG data', () => {
   for (const type of ['jpeg', 'png']) assert.equal(isSafeThumb(`data:image/${type};base64,AA==`), true);
   for (const src of ['http://example.test/a', 'data:image/webp;base64,AA==', 'data:image/jpeg;base64,' + 'A'.repeat(200001)]) assert.equal(isSafeThumb(src), false);

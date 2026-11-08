@@ -29,7 +29,17 @@ export function dropUnsafeMedia(doc) {
     if (!b || typeof b !== "object") return;
     if (b.color !== undefined && (typeof b.color !== "string" || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(b.color))) b.color = "#a7b0ba";
     if (b.media && removed.has(b.media.id)) delete b.media;
-    for (const child of b.node?.children || []) cleanBody(child);
+    cleanNode(b.node);
+  };
+  const cleanNode = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.color !== undefined && (typeof node.color !== "string" || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(node.color))) node.color = "#a7b0ba";
+    cleanNode(node.src);
+    for (const child of node.children || []) cleanBody(child);
+    for (const mod of node.mods || []) {
+      cleanNode(mod.tool);
+      for (const tool of mod.tools || []) cleanBody(tool);
+    }
   };
   for (const b of doc.bodies || []) cleanBody(b);
   for (const sk of doc.sketches || []) {

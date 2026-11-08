@@ -297,7 +297,7 @@ export function initMedia(app) {
         el("button", { class: "btn", id: "media-sound", "aria-pressed": String(!v.muted), title: "Sound plays from this window", onclick: () => { v.muted = !v.muted; renderPanel(); } }, v.muted ? "Sound off" : "Sound on"),
         el("label", { class: "check" }, el("input", { type: "checkbox", checked: v.loop, onchange: (ev) => { v.loop = ev.target.checked; } }), "Loop")));
     } else if (e && e.kind === "missing") {
-      body.append(el("div", { class: "hint", style: { padding: 0 } }, "This video isn't loaded (videos aren't saved with the design). Use ", el("b", {}, "Change picture or video"), " to add it again: the fitting stays."));
+      body.append(el("div", { class: "hint", style: { padding: 0 } }, info && info.kind === "image" ? "This picture isn't loaded. Use " : "This video isn't loaded (videos aren't saved with the design). Use ", el("b", {}, "Change picture or video"), " to add it again: the fitting stays."));
     }
     body.append(el("button", { class: "btn danger", id: "media-remove", style: { width: "100%", marginTop: "6px" }, onclick: () => store.update((d) => { for (const b of d.bodies) if (ids.includes(b.id)) delete b.media; }, "Remove media") }, "Remove from " + (sel.length === 1 ? "this object" : "these objects")));
     body.append(el("div", { class: "hint", style: { padding: "6px 0 0", fontSize: "11.5px" } }, "Media changes only how objects look (here and in the Projector), not what gets 3D printed."));

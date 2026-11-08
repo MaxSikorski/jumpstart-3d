@@ -177,7 +177,7 @@ const DANGER = new Set(["__proto__", "prototype", "constructor"]);
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const ID = /^[A-Za-z0-9_.-]{1,64}$/;
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
-const COLOR = /^#[0-9a-fA-F]{3,8}$/;
+const COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; // SVG, http(s), blob:, file: and the rest are not in it
 

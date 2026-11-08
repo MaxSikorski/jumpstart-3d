@@ -80,6 +80,21 @@ for (const mode of ['beginner', 'advanced']) test(`${mode} rejects CSS URLs in b
   expect(requests).toEqual([]);
 });
 
+test('sketch picture survives save and reload and draws', async ({ page }, info) => {
+  await boot(page, info);
+  const picture = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = c.height = 2; c.getContext('2d').fillRect(0, 0, 2, 2); return c.toDataURL('image/png'); });
+  await page.evaluate(d => window.JS3D.load(d), newDoc('Sketch picture', 'advanced', { sketches: [sketch(picture)] }));
+  await page.evaluate(() => window.__app.projects.saveNow());
+  const saved = await page.evaluate(async () => JSON.parse(await window.__app.projects._store.get(window.__store.doc.id)));
+  expect(saved.sketches[0].image.src).toBe(picture);
+  await page.evaluate(d => window.JS3D.load(d), saved);
+  expect(await page.evaluate(() => window.__store.doc.sketches[0].image.src)).toBe(picture);
+  await expect.poll(() => page.evaluate(() => {
+    const mesh = window.__app.scene.sketchViews.get('s1')?.group.children.find(o => o.userData.sketchImage);
+    return mesh?.visible && mesh.material.map?.image?.naturalWidth > 0;
+  })).toBe(true);
+});
+
 test('restored thumbnails cannot fetch addresses and saved pictures round trip', async ({ page }, info) => {
   const requests = [];
   page.on('request', r => { if (r.url().includes('media-source.example.test')) requests.push(r.url()); });
@@ -89,7 +104,7 @@ test('restored thumbnails cannot fetch addresses and saved pictures round trip',
   const doc = design('saved', picture);
   await page.evaluate(d => window.JS3D.load(d), doc);
   await page.evaluate(() => window.__app.projects.saveNow());
-  const saved = await page.evaluate(async id => JSON.parse(await window.__app.projects._store.get(id)), doc.id);
+  const saved = await page.evaluate(async () => JSON.parse(await window.__app.projects._store.get(window.__store.doc.id)));
   expect(saved.media.saved.src).toBe(picture);
   await page.evaluate(d => window.JS3D.load(d), saved);
   await expect.poll(() => page.evaluate(() => window.__app.scene.views.get('box')?.mediaMesh?.material.uniforms.map.value?.image?.naturalWidth || 0)).toBeGreaterThan(0);
