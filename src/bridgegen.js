@@ -10,7 +10,7 @@ import { resolve as resolveGear, gearBody } from "./gears.js";
 import { FASTENER_KINDS, sizesFor, sizeData, defaultLength, fastenerPart, partLowZ, MAX_TURNS, tooMany } from "./fasteners.js";
 import { LIB } from "./texture.js";
 import { drawBodies } from "./bodydrawing.js";
-import { boxOptions, gearSetOptions, textureOptions, drawingOptions, at3 } from "./genopts.js";
+import { boxOptions, gearSetOptions, textureOptions, drawingOptions, at3, generatorName } from "./genopts.js";
 
 const T3 = (v) => arr(new THREE.Matrix4().makeTranslation(...v));
 export function initBridgeGen(app, { edit, need, idList, ready, api }) {
@@ -78,8 +78,8 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     if (o.clear != null && (typeof o.clear !== "number" || !Number.isFinite(o.clear) || o.clear < -1 || o.clear > 0)) throw new Error("clear must be a number from -1 to 0 (mm)");
     const clear = o.clear ?? (store.doc.threadOffset || 0), at = at3(o.at), n = Math.round(len / sizeData(std, key).p);
     if (threads && kind.len && n > MAX_TURNS) throw new Error(tooMany(n));
-    const pt = fastenerPart(kind.id, std, key, len, { threads, clear, left }), id = uid("b");
-    store.update((doc) => doc.bodies.push({ id, name: (o.name != null && String(o.name).trim()) || pt.name, seq: nextSeq(doc), color: pt.color, hole: false, hidden: false, m: T3([at[0], at[1], +(at[2] - partLowZ(pt.node)).toFixed(6)]), node: pt.node, fastener: { kind: kind.id, std, size: key, len, threads, name: pt.name, clear, left } }), "Add fastener");
+    const name = generatorName(o.name), pt = fastenerPart(kind.id, std, key, len, { threads, clear, left }), id = uid("b");
+    store.update((doc) => doc.bodies.push({ id, name: name || pt.name, seq: nextSeq(doc), color: pt.color, hole: false, hidden: false, m: T3([at[0], at[1], +(at[2] - partLowZ(pt.node)).toFixed(6)]), node: pt.node, fastener: { kind: kind.id, std, size: key, len, threads, name: pt.name, clear, left } }), "Add fastener");
     return id;
   }
   const textures = () => LIB.map((t) => ({ key: t.key, name: t.name, category: t.cat, size: t.size || 4 }));
@@ -87,10 +87,13 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     edit();
     const b = need(id), { layer, faces } = textureOptions(opts ?? {});
     if (b.hole) throw new Error(`${b.name} is marked as a hole; textures go on solid bodies`);
+    const checkLimit = (body) => { if ((body.textures || []).length >= 16) throw new Error(`${body.name} already has 16 textures; remove one in the Texture dialog first`); };
+    checkLimit(b);
     const key = bodyKey(resolveNode(b.node, store.doc));
     const validate = () => {
       const current = findBody(store.doc, id);
       if (!current || current.hole || bodyKey(resolveNode(current.node, store.doc)) !== key) throw new Error(`${b.name} changed while the texture was being prepared; try again`);
+      checkLimit(current);
       return current;
     };
     await ready();
@@ -100,7 +103,10 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     if (!r) throw new Error(`${b.name} could not be built`);
     let stored = "all";
     if (faces !== "all") {
-      const list = await api.faces(id, faces);
+      const list = [], seen = new Set();
+      for (const selector of Array.isArray(faces) ? faces : [faces]) {
+        for (const face of await api.faces(id, selector)) if (!seen.has(face.index)) { seen.add(face.index); list.push(face); }
+      }
       validate();
       if (!list.length) throw new Error(`faces ${JSON.stringify(faces)} matches no face of ${b.name}`);
       stored = list.map(({ index }) => { const f = r.data.faceInfo[index]; return f.n ? { c: f.c, t: f.t, n: f.n } : { c: f.c, t: f.t }; });

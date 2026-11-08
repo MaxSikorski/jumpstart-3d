@@ -20,6 +20,11 @@ export function at3(v) {
   if (!Array.isArray(v) || v.length !== 3 || !Array.from(v).every(isNum)) throw new Error("at must be [x, y, z] in mm");
   return v.slice();
 }
+export function generatorName(v) {
+  const name = v == null ? "" : String(v).trim();
+  if (name.length > 256) throw new Error("name can have at most 256 characters");
+  return name || null;
+}
 const r6 = (x) => Math.round(x * 1e6) / 1e6;
 const boxKeys = "style w d h units across cols rows shape wall divider floor radius inner scoop scoopR label labelW stack foot lid clear lock sideLock caseT pull hinge doorPull doorCatch layout at name".split(" ");
 export function boxOptions(opts = {}) {
@@ -42,7 +47,7 @@ export function boxOptions(opts = {}) {
   const o = { ...BIN_DEFAULTS };
   for (const k of boxKeys) if (!["at", "name", "layout"].includes(k) && given(opts[k])) o[k] = opts[k];
   if (given(opts.layout)) o.layout = opts.layout === "print" ? "print" : "";
-  return { o, at: at3(opts.at), name: given(opts.name) ? String(opts.name).trim() || null : null };
+  return { o, at: at3(opts.at), name: generatorName(opts.name) };
 }
 export function pairMatrix(type, m, z1, z2, angleDeg, at) {
   const s = z2 % 2 === 0 ? Math.PI / z2 : 0, sin = Math.sin(s), cos = Math.cos(s);
