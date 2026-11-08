@@ -28,6 +28,7 @@ test.beforeAll(async ({ browser }, info) => {
   page.on("dialog", (d) => d.accept()); // the Lathe asks "Start over?" before it throws work away
   await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
   await page.emulateMedia({ reducedMotion: "reduce" }); // the "Next" button pulses when a step is done; reduced motion turns that off, so plain clicks do not wait for it
+  if (process.env.JS3D_FACE === "simple") await page.addInitScript(() => { try { localStorage.setItem("jumpstart.face", "simple"); } catch {} });
   await boot(page, info);
   const list = await page.evaluate(() => window.__app.tutorials.list.map((t) => ({
     id: t.id, mode: t.mode, level: t.level, title: t.title, item: t.item, learn: t.learn, minutes: t.minutes,
@@ -196,7 +197,7 @@ async function checkShowMe(tutId, i, show, mode) {
       id: e.id, onScreen: e.getClientRects().length > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight,
       bubble: !!document.querySelector("#tut-bubble"),
       isTile: tile ? e.dataset.kind === tile.kind && e.classList.contains("tile") && e.classList.contains("hole") === tile.hole : false,
-      isSel: sel ? e.matches(sel) : false, isVia: via ? e.matches(via) : false,
+      isSel: sel ? e.matches(sel) || (document.documentElement.dataset.face === "simple" && (sel.split(",").some((s) => s.trim() === "#" + e.dataset.for) || ["sr-more", "sr-shapes"].includes(e.id))) : false, isVia: via ? e.matches(via) : false,
     };
   }, { sel: show.sel || null, via: show.via || null, tile: show.tile ? { kind: show.tile, hole: !!show.hole } : null });
   let spot = await showMe(), prepared = null;
@@ -411,6 +412,7 @@ function referenced() {
 }
 
 test("every toolbar and menu button is used by a tutorial, or is a known gap in test/tutorial-gaps.json", async () => {
+  test.skip(process.env.JS3D_FACE === "simple", "Button coverage runs in Original");
   const universe = await collectUniverse();
   const used = referenced();
   const gapsFile = new URL("./tutorial-gaps.json", import.meta.url);

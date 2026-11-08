@@ -492,6 +492,8 @@ export function initTutorials(app) {
     for (const s of (show.sel || "").split(",").map((x) => x.trim()).filter(Boolean)) {
       const e = document.querySelector(s);
       if (e && e.getClientRects().length) return e;
+      // jumpstart-3d: Simple mode redirects hidden ribbon targets to their proxies or menu buttons
+      if (app.face === "simple" && e && e.id) { const p = app.simple?.proxyFor(e.id); if (p) return p; }
     }
     if (show.via) { const v = document.querySelector(show.via); if (v && v.getClientRects().length) return v; }
     return null;
@@ -534,7 +536,7 @@ export function initTutorials(app) {
     // end jumpstart-3d
     let r = t.getBoundingClientRect();
     if (t.ownerDocument !== document && app.chisel && app.chisel.frameRect) { const f = app.chisel.frameRect(); if (f) r = { left: r.left + f.left, right: r.right + f.left, top: r.top + f.top, bottom: r.bottom + f.top, width: r.width, height: r.height, x: r.x + f.left, y: r.y + f.top }; }
-    const via = step.show.via && t.matches(step.show.via);
+    const via = (step.show.via && t.matches(step.show.via)) || (app.face === "simple" && (t.id === "sr-more" || t.id === "sr-shapes")); // jumpstart-3d: Simple mode menu buttons act as tutorial vias
     bubble = el("div", { class: "tut-bubble", id: "tut-bubble", role: "status" },
       el("b", {}, step.tool), el("span", {}, via ? (t.matches(".panel-toggle") ? "Open this panel, then tap Show me again." : "Open this menu, then pick it from the list.") : step.show.name ? (t.id === "tut-last" ? "Type your name in these boxes, then tap Use this name." : "Click here and type your name.") : bubbleText(step))); // jumpstart-3d: the Browser panel and the quick name boxes (phone tutorials)
     document.body.append(bubble);

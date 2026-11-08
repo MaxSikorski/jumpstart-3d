@@ -221,6 +221,7 @@ export function initBeginner(app) {
     const lk = $("bb-lock");
     if (lk) { const all = n && app.sel.every((id) => app.isLocked(id)); lk.innerHTML = ICON[all ? "unlock" : "lock"]; lk.append(el("span", { class: "lbl" }, all ? "Unlock" : "Lock")); } set("bb-pattern", n); set("bb-fillet", true); set("bb-shell", true); set("bb-drop", n); set("bb-hole", n); set("bb-solid", n);
     renderMirror();
+    app.simple?.sync(); // jumpstart-3d: Simple mode mirrors the ribbon's enabled states
   }
 
   // ---------------------------------------------------------------- operations

@@ -1,8 +1,153 @@
+import { ICON } from "./icons.js";
+
+const TOOLS = {
+  sketch: ["Sketch", "sketch"], import: ["Import", "import"], hole: ["Hole", "holeToggle"], group: ["Group", "group"], align: ["Align", "align"], fillet: ["Round edges", "fillet", "Fillet"], measure: ["Measure", "measure"],
+  sketch3d: ["3D Sketch", "spline"], extrude: ["Extrude", "extrude"], facebox: ["Box on face", "rect"], pattern: ["Pattern", "pattern"], mirror: ["Mirror", "mirror"], shell: ["Hollow", "shell", "Shell"],
+  dup: ["Duplicate", "duplicate"], del: ["Delete", "del"], copy: ["Copy", "copy"], paste: ["Paste", "paste"], ungroup: ["Ungroup", "ungroup"], solid: ["Solid", "box"], lock: ["Lock", "lock"], multi: ["Multi-select", "select"],
+  drop: ["Lay flat", "drop", "Drop"], printsim: ["Print check", "printsim", "3D Print Sim"], texture: ["Texture", "texture"], facepat: ["Face pattern", "facePattern"], fillopen: ["Fill openings", "fillOpen"],
+  fastener: ["Fasteners", "thread"], gear: ["Gear", "gear"], nameplate: ["Name plate", "tag"], knurl: ["Knurled knob", "knurl"], spring: ["Coil spring", "spring"], hinge: ["Hinge", "hinge"], bins: ["Box Maker", "box"], neon: ["Neon Sign", "neon"], cosforge: ["CosForge", "cosforge"]
+};
+const PARTS = ["fastener", "gear", "nameplate", "knurl", "spring", "hinge"];
+const MAKERS = ["bins", "neon", "cosforge"];
+
+function initPlate(app) {
+  const $ = (id) => document.getElementById(id);
+  const work = document.querySelector("main.work");
+  const rail = document.createElement("nav"); rail.id = "simple-rail"; rail.setAttribute("aria-label", "Simple tools");
+  const shapes = document.createElement("div"); shapes.id = "simple-shapes"; shapes.className = "simple-panel"; shapes.hidden = true;
+  const more = document.createElement("div"); more.id = "simple-more"; more.className = "simple-panel"; more.hidden = true; more.setAttribute("role", "dialog"); more.setAttribute("aria-label", "More tools");
+  work.prepend(rail, shapes, more);
+  function proxy(key, id) {
+    const b = document.createElement("button"), [label, icon] = TOOLS[key];
+    b.type = "button"; b.dataset.for = "bb-" + key; if (id) b.id = id;
+    b.innerHTML = (ICON[icon] || "") + `<span>${label}</span>`;
+    return b;
+  }
+  function special(id, label, icon) {
+    const b = document.createElement("button"); b.type = "button"; b.id = id; b.innerHTML = (ICON[icon] || "") + `<span>${label}</span>`; b.title = label; return b;
+  }
+  const shapeButton = special("sr-shapes", "Shapes", "box"), move = special("sr-move", "Move", "select"), moreButton = special("sr-more", "More", "more");
+  moreButton.querySelector("span").insertAdjacentHTML("beforebegin", '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>');
+  for (const [b, panel] of [[shapeButton, shapes], [moreButton, more]]) { b.setAttribute("aria-haspopup", "dialog"); b.setAttribute("aria-expanded", "false"); b.setAttribute("aria-controls", panel.id); }
+  rail.append(shapeButton, proxy("sketch", "sr-sketch"), proxy("import", "sr-import"), move, proxy("hole", "sr-hole"), proxy("group", "sr-group"), proxy("align", "sr-align"), proxy("fillet", "sr-fillet"), proxy("measure", "sr-measure"), moreButton);
+  $("sr-fillet").querySelector("span").textContent = "Round";
+  function group(parent, title, keys, className = "") {
+    const section = document.createElement("section"); section.className = className;
+    const heading = document.createElement("h3"); heading.textContent = title; section.append(heading);
+    const grid = document.createElement("div"); grid.className = "simple-grid"; for (const key of keys) grid.append(proxy(key)); section.append(grid); parent.append(section); return section;
+  }
+  shapes.innerHTML = '<h2>Shapes and parts</h2><p>Basic shapes and holes are in the strip at the bottom</p><div class="simple-grid"><button type="button" data-dock="objects">Shapes</button><button type="button" data-dock="holes">Holes</button></div>';
+  group(shapes, "Parts", PARTS); group(shapes, "Makers", MAKERS);
+  more.innerHTML = '<input id="simple-find" type="search" placeholder="Find a tool" aria-label="Find a tool"><p id="simple-empty" hidden>No tool by that name</p>';
+  group(more, "Arrange", ["align", "fillet", "measure"], "simple-arrange");
+  group(more, "Shape it", ["sketch3d", "extrude", "facebox", "pattern", "mirror", "shell"]);
+  group(more, "Edit", ["dup", "del", "copy", "paste", "ungroup", "solid", "lock", "multi"]);
+  group(more, "Print", ["drop", "printsim"]); group(more, "Surfaces", ["texture", "facepat", "fillopen"]); group(more, "Parts and makers", [...PARTS, ...MAKERS]);
+  const other = group(more, "Other", []); other.hidden = true;
+  const footer = document.createElement("button"); footer.id = "simple-original"; footer.type = "button"; footer.textContent = "Switch to Original →"; more.append(footer);
+  const find = $("simple-find");
+  function filter() {
+    const q = find.value.trim().toLowerCase(); more.classList.toggle("searching", !!q); let count = 0;
+    for (const section of more.querySelectorAll("section")) {
+      let found = 0;
+      for (const b of section.querySelectorAll("button[data-for]")) { b.hidden = !$(b.dataset.for) || !(`${b.textContent} ${b.title}`.toLowerCase().includes(q)); if (!b.hidden) found++; }
+      section.hidden = !found; if (!section.classList.contains("simple-arrange") || q || matchMedia("(max-width: 640px)").matches) count += found;
+    }
+    $("simple-empty").hidden = !!count;
+  }
+  function sync() {
+    for (const original of document.querySelectorAll('#ribbon .bbar button[id^="bb-"]')) {
+      const key = original.id.slice(3);
+      if (!TOOLS[key]) { TOOLS[key] = [original.getAttribute("aria-label") || original.textContent.trim(), ""]; other.querySelector(".simple-grid").append(proxy(key)); }
+    }
+    for (const b of work.querySelectorAll('button[data-for^="bb-"]')) {
+      const original = $(b.dataset.for); b.hidden = !original;
+      if (!original) continue;
+      b.disabled = original.disabled; b.classList.toggle("dim", original.classList.contains("dim"));
+      if (b.dataset.for === "bb-multi") b.setAttribute("aria-pressed", original.getAttribute("aria-pressed"));
+      const old = TOOLS[b.dataset.for.slice(3)]?.[2]; b.title = old ? `${TOOLS[b.dataset.for.slice(3)][0]} (${old}): ${original.title}` : original.title;
+    }
+    // Hole has a useful action even without a selection.
+    $("sr-hole").disabled = false;
+    filter();
+  }
+  function close(focus = false) {
+    const was = !shapes.hidden ? shapeButton : !more.hidden ? moreButton : null;
+    shapes.hidden = more.hidden = true; shapeButton.setAttribute("aria-expanded", "false"); moreButton.setAttribute("aria-expanded", "false");
+    if (focus && was) was.focus();
+  }
+  function toggle(panel, button) { const opening = panel.hidden; close(); if (opening) { sync(); panel.hidden = false; if (panel === more && !matchMedia("(max-width: 640px)").matches) { panel.style.bottom = (work.clientHeight - rail.offsetTop - rail.offsetHeight) + "px"; panel.style.maxHeight = rail.offsetHeight + "px"; } else { panel.style.bottom = ""; panel.style.maxHeight = ""; } button.setAttribute("aria-expanded", "true"); } }
+  shapeButton.onclick = () => toggle(shapes, shapeButton); moreButton.onclick = () => toggle(more, moreButton);
+  move.onclick = () => { if (app.sel.length) { $("insp-pos0")?.focus(); app.toast("Drag the shape on the plate, or type where it goes here."); } else app.toast("Pick a shape first, then drag it on the plate."); };
+  function activate(e) {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.dock) { $("dock-" + b.dataset.dock)?.click(); close(); return; }
+    if (!b.dataset.for) return;
+    if (b.id === "sr-hole" && !app.sel.length) { $("dock-holes")?.click(); app.toast("Drag a hole shape onto a solid, then Group them to cut it."); return; }
+    close(); $(b.dataset.for)?.click(); sync();
+  }
+  rail.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }); // the app's own key handler must not also see them (it submits an open tool)
+  rail.addEventListener("click", activate);shapes.addEventListener("click", activate); more.addEventListener("click", activate);
+  footer.onclick = () => app.setFace("original"); find.addEventListener("input", filter);
+  work.addEventListener("keydown", (e) => {
+    const panel = !more.hidden ? more : !shapes.hidden ? shapes : null; if (!panel) return;
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(true); return; }
+    if (e.key === "Tab") { setTimeout(() => { if (!panel.contains(document.activeElement) && document.activeElement !== (panel === more ? moreButton : shapeButton)) close(); }, 0); return; }
+    if (e.key === "/" && panel === more && e.target !== find) { e.preventDefault(); find.focus(); return; }
+    const buttons = [...panel.querySelectorAll("button")].filter((b) => b.getClientRects().length && !b.disabled);
+    if (e.key === "Enter" && e.target === find) { e.preventDefault(); e.stopPropagation(); buttons.find((b) => b.dataset.for)?.click(); return; }
+    if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) { e.preventDefault(); e.stopPropagation(); const i = buttons.indexOf(document.activeElement), step = ["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1; buttons[(i + step + buttons.length) % buttons.length]?.focus(); }
+    if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+  });
+  window.addEventListener("pointerdown", (e) => { if (!rail.contains(e.target) && !shapes.contains(e.target) && !more.contains(e.target)) close(); });
+  function proxyFor(id) {
+    const proxies = [...work.querySelectorAll('button[data-for]')].filter((b) => b.dataset.for === id);
+    const visible = proxies.find((b) => b.getClientRects().length); if (visible) return visible;
+    if (!moreButton.getClientRects().length) return null;
+    return proxies.some((b) => b.closest("#simple-more")) ? moreButton : proxies.some((b) => b.closest("#simple-shapes")) ? shapeButton : null;
+  }
+  sync(); return { sync, proxyFor, close };
+}
+
 // jumpstart-3d: Simple | Original switch, its More menu and the first-visit card.
 let hadPrefs = false;
 try { hadPrefs = localStorage.getItem("workplane.ui.v1") !== null; } catch (e) { /* storage may be unavailable */ }
 
 const CSS = `
+#simple-rail, .simple-panel { display: none; }
+html[data-face="simple"] #app[data-mode="beginner"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; grid-row: 1; }
+html[data-face="simple"] #app[data-mode="beginner"] > .work { grid-column: 1; grid-row: 2; }
+html[data-face="simple"] #app[data-mode="beginner"] > .status { grid-column: 1; grid-row: 3; }
+html[data-face="simple"] #app[data-mode="beginner"] #ribbon { display: none; }
+html[data-face="simple"] #app[data-mode="beginner"] #simple-rail { display: flex; grid-column: 1; grid-row: 1; width: 80px; min-height: 0; box-sizing: border-box; flex-direction: column; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
+#simple-rail button, .simple-panel button { font: 600 12px/1.2 var(--f-ui); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
+#simple-rail button { flex: 1 0 44px; min-height: 44px; padding: 4px 2px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }
+#simple-rail button svg, .simple-panel button svg { width: 22px; height: 22px; flex: none; }
+#simple-rail #sr-more { margin-top: auto; flex-grow: 0; }
+#simple-rail button:hover, .simple-panel button:hover { background: var(--accent-soft); color: var(--accent); }
+#simple-rail button:disabled, .simple-panel button:disabled, #simple-rail button.dim, .simple-panel button.dim { opacity: .45; }
+#simple-rail button:focus-visible, .simple-panel button:focus-visible, #simple-find:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+html[data-face="simple"] #app[data-mode="beginner"] .simple-panel:not([hidden]) { display: block; position: absolute; left: 80px; z-index: 40; width: min(380px, calc(100% - 80px)); box-sizing: border-box; max-height: 100%; overflow: auto; padding: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 0 10px 10px 0; box-shadow: 0 8px 24px #0003; }
+#simple-shapes { top: 0; } #simple-more { bottom: 0; }
+.simple-panel h2 { font-size: 16px; margin: 0 0 8px; } .simple-panel p { color: var(--ink-2); font-size: 13px; }
+.simple-panel h3 { font-size: 12px; color: var(--ink-2); margin: 15px 0 6px; }
+.simple-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.simple-panel .simple-grid button { display: flex; align-items: center; text-align: left; gap: 8px; min-height: 44px; padding: 6px; }
+.simple-panel [hidden], #simple-rail [hidden] { display: none !important; }
+#simple-find { box-sizing: border-box; width: 100%; min-height: 44px; padding: 8px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; }
+#simple-original { min-height: 44px; margin-top: 12px; color: var(--accent); }
+#simple-more:not(.searching) .simple-arrange { display: none; }
+@media (max-width: 640px) {
+  html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-rows: minmax(0, 1fr) auto 58px; }
+  html[data-face="simple"] #app[data-mode="beginner"] #simple-rail { grid-column: 1 / -1; grid-row: 3; width: 100%; flex-direction: row; overflow: hidden; border-right: 0; border-top: 1px solid var(--line); }
+  #simple-rail button { flex: 1 1 0; min-width: 0; font-size: 10px; }
+  #simple-rail #sr-more { margin: 0; flex: 1 1 0; }
+  #simple-rail :is(#sr-align, #sr-fillet, #sr-measure) { display: none; }
+  html[data-face="simple"] #app[data-mode="beginner"] .simple-panel:not([hidden]) { left: 0; right: 0; top: auto; bottom: 58px; width: 100%; max-height: min(70vh, calc(100% - 58px)); border-radius: 10px 10px 0 0; }
+  #simple-more:not(.searching) .simple-arrange { display: block; }
+}
+
 .faceswitch-row { display: contents; }
 .faceswitch { display: inline-flex; flex: none; gap: 2px; padding: 3px; border-radius: 999px; background: #0f151c; }
 .faceswitch button { border: 0; border-radius: 999px; background: transparent; color: #aeb9c6; padding: 5px 13px; font: 600 13px/1 var(--f-ui); cursor: pointer; }
@@ -77,6 +222,7 @@ export function initSimpleMode(app) {
     style.id = "simplemode-css"; style.textContent = CSS; document.head.append(style);
   }
   const $ = (id) => document.getElementById(id);
+  const plate = initPlate(app);
   const row = document.createElement("div");
   row.className = "faceswitch-row";
   row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: fewer buttons in the top bar; the rest is under ⋯ More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
@@ -137,7 +283,7 @@ export function initSimpleMode(app) {
     if (name !== "simple" && name !== "original") return;
     apply(name);
     if (!lesson) { lessonInOriginal = false; try { localStorage.setItem("jumpstart.face", face); } catch (e) { /* storage may be unavailable */ } }
-    close(); if (card) { card.remove(); card = null; }
+    close(); plate.close(); if (card) { card.remove(); card = null; }
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     if (!quiet) app.toast(face === "simple" ? "Simple: a calmer top bar. Designs, AI, settings, Chisel and Architect are under ⋯ More. Switch back any time." : "Original: JumpStart 3D's full top bar, every button where J.Siwek put it.");
   }
@@ -168,5 +314,6 @@ export function initSimpleMode(app) {
     app.toast("This lesson uses buttons from the full top bar, so it runs in Original. Simple comes back when the lesson ends.");
   };
   app.onLessonEnd = () => { if (lessonInOriginal) setFace("simple", true); };
-  return { set: app.setFace, get face() { return face; } };
+  app.simple = { ...plate, set: app.setFace, get face() { return face; } };
+  return app.simple;
 }
