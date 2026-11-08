@@ -525,7 +525,7 @@ export class SceneSync {
         g.add(cl);
       }
       // jumpstart-3d: name rejected reference pictures by sketch id.
-      if (sk.image) g.add(sketchImageMesh(sk.image, () => this.vp.request(), sk.id));
+      if (sk.image?.src) g.add(sketchImageMesh(sk.image, () => this.vp.request(), sk.id));
       // profile fills (pickable for extrude)
       const regs = regionsFor(sk);
       regs.forEach((r, i) => {

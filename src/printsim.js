@@ -1326,7 +1326,7 @@ export function initPrintSim(app, X) {
     const host = document.getElementById("viewport");
     if (st.view === "layers" && S && byFilament()) {
       const T = toolsOf();
-      legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Filament"), ...usedSlots().map((sl) => el("div", { class: "it" }, el("i", { style: { background: st.slots[sl].color, outline: "1px solid rgba(0,0,0,.25)" } }), "F" + (sl + 1) + (T.kind === "heads" ? " · nozzle " + headName(headOf(sl)) : ""))));
+      legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Filament"), ...usedSlots().map((sl) => el("div", { class: "it" }, el("i", { style: { backgroundColor: st.slots[sl].color, outline: "1px solid rgba(0,0,0,.25)" } }), "F" + (sl + 1) + (T.kind === "heads" ? " · nozzle " + headName(headOf(sl)) : ""))));
     } else if (st.view === "layers" && S) {
       legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Line type"), ...LEGEND.map(([k, l]) => el("div", { class: "it" }, el("i", { style: { background: "#" + COL[k].toString(16).padStart(6, "0") } }), l)));
     } else if (st.view === "strength" && S) {
@@ -1423,15 +1423,15 @@ export function initPrintSim(app, X) {
               st.ids = solids.map((x) => x.id).filter((id) => ids.includes(id));
               stopAnim(); st.refit = true; rebuild();
             } });
-            const lab = el("label", { class: "check platenode" }, cb, el("span", { class: "sw", style: { background: b.color || "#a7b0ba" } }), el("span", { class: "pn" }, b.name));
+            const lab = el("label", { class: "check platenode" }, cb, el("span", { class: "sw", style: { backgroundColor: b.color || "#a7b0ba" } }), el("span", { class: "pn" }, b.name));
             // which filament this body prints with (like Orca's per-object filament)
             if (st.ids.includes(b.id) && (multiOK() || st.slots.length > 1)) {
               ensureSlots();
               const cur = st.slotOf.get(b.id) ?? 0;
               const fs = el("select", { class: "num psfil", id: "ps-slot-" + b.id, "aria-label": "Filament for " + b.name, title: "Which filament prints this body" },
-                ...st.slots.map((q, i) => el("option", { value: i, selected: i === cur, style: { background: q.color, color: lightText(q.color) } }, "F" + (i + 1))),
+                ...st.slots.map((q, i) => el("option", { value: i, selected: i === cur, style: { backgroundColor: q.color, color: lightText(q.color) } }, "F" + (i + 1))),
                 ...(st.slots.length < MAX_SLOTS ? [el("option", { value: "new" }, "+ New")] : [])); // jumpstart-3d: painted 3MF
-              fs.style.background = st.slots[cur]?.color || "";
+              fs.style.backgroundColor = st.slots[cur]?.color || "";
               fs.style.color = lightText(st.slots[cur]?.color);
               fs.onclick = (e) => e.stopPropagation();
               fs.onchange = () => {

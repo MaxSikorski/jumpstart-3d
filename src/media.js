@@ -54,25 +54,26 @@ void main(){
 export function initMedia(app) {
   const vp = app.vp, scene = app.scene;
   const reg = new Map(); // media id -> { kind, tex, video?, url?, w, h }
-  let missingTex = null;
+  const missingTex = {}; // jumpstart-3d: distinguish missing pictures from videos
   // ---- textures for the media of the design
-  function missing(name) {
-    if (!missingTex) {
+  function missing(kind) {
+    kind = kind === "image" ? "image" : "video";
+    if (!missingTex[kind]) {
       const c = document.createElement("canvas"); c.width = 512; c.height = 256;
       const g = c.getContext("2d");
       g.fillStyle = "#22262c"; g.fillRect(0, 0, 512, 256);
       g.strokeStyle = "#e8a33d"; g.lineWidth = 8; g.strokeRect(8, 8, 496, 240);
       g.fillStyle = "#fff"; g.font = "bold 34px system-ui, sans-serif"; g.textAlign = "center";
-      g.fillText("Video missing", 256, 116); g.font = "22px system-ui, sans-serif"; g.fillText("Add it again in Media", 256, 156);
-      missingTex = new THREE.CanvasTexture(c); missingTex.colorSpace = THREE.SRGBColorSpace;
+      g.fillText(kind === "image" ? "Picture missing" : "Video missing", 256, 116); g.font = "22px system-ui, sans-serif"; g.fillText("Add it again in Media", 256, 156);
+      missingTex[kind] = new THREE.CanvasTexture(c); missingTex[kind].colorSpace = THREE.SRGBColorSpace;
     }
-    return { kind: "missing", tex: missingTex, w: 2, h: 1 };
+    return { kind: "missing", tex: missingTex[kind], w: 2, h: 1 };
   }
   function entryFor(id, doc) {
     const m = doc && doc.media && doc.media[id];
     // jumpstart-3d: guard at use, including documents already saved locally.
     if (!m) return missing();
-    if (m.src !== undefined && !isSafeMediaSrc(m.src, m.kind)) { warnUnsafeMedia(id); return missing(); }
+    if (m.src !== undefined && !isSafeMediaSrc(m.src, m.kind)) { warnUnsafeMedia(id); return missing(m.kind); }
     let e = reg.get(id);
     if (e) return e;
     if (m.kind === "image" && m.src) {
@@ -82,7 +83,7 @@ export function initMedia(app) {
       reg.set(id, e);
       return e;
     }
-    return missing(m.name);
+    return missing(m.kind);
   }
   // ---- put the media on a body's view (called whenever the scene refreshes)
   function applyToView(v, b, doc) {

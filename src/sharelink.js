@@ -504,7 +504,7 @@ export function validateEnvelope(env) {
     }
     if (s.image !== undefined) {
       obj(s.image, "a sketch picture"); allow(s.image, new Set(["src", "name", "w", "h", "cx", "cy", "rot", "opacity"]), "a sketch picture");
-      text(s.image.src, "a picture", LIMITS.JSON_BYTES); image(s.image.src, "a sketch picture");
+      if (s.image.src !== null) { text(s.image.src, "a picture", LIMITS.JSON_BYTES); image(s.image.src, "a sketch picture"); } // jumpstart-3d: preserve a quarantined picture placement
       if (ctx.assetBytes > LIMITS.ASSET_BYTES) throw tooBig("The pictures and imported models in this design are too big for a link.");
       for (const k of ["w", "h", "cx", "cy", "rot", "opacity"]) if (s.image[k] !== undefined) num(s.image[k], "a picture " + k);
     }

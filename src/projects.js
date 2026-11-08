@@ -1,4 +1,5 @@
 // Saving designs (account storage when available, plus this browser), export and import.
+import { isSafeThumb } from "./safeurl.js"; // jumpstart-3d: thumbnails must be embedded images
 import { store, newDoc, IDENTITY } from "./store.js";
 import { el, uid, debounce, makeZip, fmt } from "./util.js";
 import { handOff } from "./sendslicer.js"; // jumpstart-3d: send to slicer
@@ -370,7 +371,7 @@ export function initProjects(app) {
       el("button", { class: "newcard", onclick: () => { close(); createNew(null, "advanced"); } }, el("div", {}, el("b", {}, "+ Advanced design"), el("span", {}, "Sketches, features, timeline")))));
     for (const p of list) {
       const card = el("div", { class: "pcard" + (p.id === store.doc.id ? " current" : "") });
-      const th = el("button", { class: "thumb", style: { backgroundImage: p.thumb ? `url(${p.thumb})` : "none", border: 0, cursor: "pointer" }, "aria-label": "Open " + p.name, onclick: async () => { close(); await open(p.id); } });
+      const th = el("button", { class: "thumb", style: { backgroundImage: isSafeThumb(p.thumb) ? `url(${p.thumb})` : "none", border: 0, cursor: "pointer" }, "aria-label": "Open " + p.name, onclick: async () => { close(); await open(p.id); } });
       const when = p.updated ? new Date(p.updated).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
       const acts = el("div", { class: "acts" });
       acts.append(el("button", { onclick: async () => { close(); await open(p.id); } }, "Open"));
@@ -783,7 +784,7 @@ export function initProjects(app) {
       if (have) for (const x of idx) { if (dup) break; const o = await docOf(x.id); dup = !!o && same({ ...o, id: doc.id, name: doc.name }, doc); }
       if (dup) { here++; continue; }
       const copy = !!have, id = copy ? uid("d") : entry.id;
-      const ent = copy ? { ...entry, id, name: (entry.name || doc.name || "Untitled") + " (restored)" } : entry;
+      const ent = { ...entry, ...(copy ? { id, name: (entry.name || doc.name || "Untitled") + " (restored)" } : {}), thumb: isSafeThumb(entry.thumb) ? entry.thumb : null }; // jumpstart-3d: reject unsafe backup thumbnails
       const stored = copy ? { ...doc, id, name: ent.name } : doc;
       if (full || !await ps.put(id, JSON.stringify(stored), ent)) { full++; continue; }
       docs.set(id, stored);

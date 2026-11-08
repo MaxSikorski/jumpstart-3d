@@ -7561,7 +7561,7 @@ export function initAdvanced(app) {
     const bodyRow = (b, sub) => {
       const eye = el("button", { class: "eye", title: b.hidden ? "Show" : "Hide", "aria-label": b.hidden ? "Show " + b.name : "Hide " + b.name, html: b.hidden ? ICON.eyeOff : ICON.eye, onclick: (e) => { e.stopPropagation(); store.update((d) => { findBody(d, b.id).hidden = !b.hidden; }, b.hidden ? "Show body" : "Hide body"); } });
       const n = el("div", { class: "node" + (app.sel.includes(b.id) ? " sel" : ""), title: b.name }, eye,
-        el("span", { class: "swatch", style: { background: b.hole ? "repeating-linear-gradient(135deg,#c2c9d1 0 2px,#fff 2px 4px)" : b.color } }),
+        el("span", { class: "swatch", style: b.hole ? { background: "repeating-linear-gradient(135deg,#c2c9d1 0 2px,#fff 2px 4px)" } : { backgroundColor: b.color } }),
         el("span", { class: "nm" }, b.name + (b.hole ? " (hole)" : "")),
         scene.errors.has(b.id) ? el("span", { class: "err-dot", title: scene.errors.get(b.id) }) : null,
         el("button", { class: "eye lockbtn" + (b.locked ? " on" : ""), title: b.locked ? "Unlock" : "Lock", "aria-label": (b.locked ? "Unlock " : "Lock ") + b.name, "aria-pressed": !!b.locked, html: ICON[b.locked ? "lock" : "unlock"], onclick: (e) => { e.stopPropagation(); toggleLock([b.id]); } }));
