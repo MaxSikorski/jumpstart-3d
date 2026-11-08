@@ -202,16 +202,38 @@ by hand (format in BRIDGE.md Part 2).
 
 `mcp/cli.mjs` (installed as `jumpstart` when the package is linked; from a checkout, `node mcp/cli.mjs`) runs a script or makes a file
 without an agent. It starts its own headless browser (so it needs Chromium, see above) and never touches your tab or a running
-server. It prints a JSON result on stdout; progress and errors go to stderr. Exit codes: 0 done, 1 the script or the app failed, 2 bad usage.
+server. It prints a JSON result on stdout; progress and errors go to stderr. Exit codes: 0 done, 1 the script, a recipe step or the app failed, 2 bad usage, 3 `build --check` found problems.
 
 ```
 jumpstart run <script.js> [--app <url|file|dir>]         run a script with JS3D in scope; prints what it returns
 jumpstart export <project.json> <out.stl|obj|3mf|glb|step>   open a project, write the export, print the path and size
+jumpstart build <design.json> [--export stl|obj|3mf|glb|step|json] [--out <file>] [--check]
+                                                         build a project file or a recipe, optionally check it and export it
 jumpstart shot <project.json> <out.png> [--width N]      a picture of the 3D view (800 pixels wide by default)
 jumpstart status [--app <url|file|dir>]                  start the app and print app version, JS3D version, design, body count
 ```
 
-`--app` is the same as `JS3D_APP` above. For example `node mcp/cli.mjs run tools/bridge-demo.js` runs the scripting demo and prints its summary.
+`--app` is the same as `JS3D_APP` above.
+
+**`jumpstart build`** makes a part with no browser window and no agent. The design file is either a project file (as Save writes it, or a bare
+design) or a **recipe**, a list of bridge calls kept as data:
+
+```json
+{ "jumpstart": "recipe", "version": 1, "steps": [
+  { "call": "add", "args": ["box", { "size": [60, 40, 25] }], "as": "box" },
+  { "call": "rename", "args": ["$box", "Block"] } ] }
+```
+
+Steps run in order through the same `JS3D.invoke` the tools use. A string that is exactly `"$name"` anywhere in a step's `args` is replaced by the
+result of the earlier step saved with `"as": "name"`: its `id` if the result is an object with one, else the result itself; `"$name.key"` is a field
+(for example `"$box.body"`). Recipes are data, not code: `run`, `codeCad`, `connect`, `disconnect`, `load` and `newDesign` are refused, with the step number
+named, before anything starts; at most 2000 steps, file at most 5 MB. A failing step stops the build with exit 1, prints `step 3 (fillet): <message>` on
+stderr and `{"ok":false,"step":3,"call":"fillet","error":"..."}` on stdout; an unknown call lists the real ones. A full example (an open box with a filleted rim and
+M3 holes) is `examples/recipes/open-box.json`.
+
+After the steps it waits for the geometry and prints `{"ok":true,"bodies":[{id,name,bbox,volume}],"check"?,"file"?}`. `--check` adds the result of
+`JS3D.printCheck()` (an app without it says `check needs bridge 1.10`); **exit code 3** means the check reported problems (`check.ok` is false). `--export`
+writes the file (default: the design file's name with the new extension, next to it; `--out` names it) and prints its path and size. For example `node mcp/cli.mjs run tools/bridge-demo.js` runs the scripting demo and prints its summary.
 
 ## Security
 

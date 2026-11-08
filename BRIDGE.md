@@ -162,6 +162,8 @@ To save an export from the console, wrap the bytes in a download:
 
 ### Scripts, and the link to a tool server
 
+**Recipes and the command line.** `jumpstart build design.json --export stl` (`mcp/cli.mjs`, see `mcp/README.md`) runs a design headless on your own computer: the file is a project or a recipe, a JSON list of `{ "call", "args", "as" }` steps that go through `invoke` with `"$name"` standing for an earlier step's result. See `examples/recipes/open-box.json`.
+
 | Call | What it does |
 |---|---|
 | `await JS3D.run(text)` → value | Runs script text with `JS3D` and `app` in scope and returns what the script returns: the last statement's value of a plain script (a promise is awaited), or the `return` value of a script with top-level `await`. It is what Open/Export › Run script… uses. Same trust as the console. |

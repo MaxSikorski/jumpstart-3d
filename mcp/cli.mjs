@@ -3,15 +3,18 @@
 // browser through session.mjs, never the MCP server and never the WebSocket port, so it cannot touch a tab or a running server.
 // stdout carries the JSON result and nothing else; progress and errors go to stderr.
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { Session } from "./session.mjs";
 import { save, where } from "./tools.mjs";
+import { MAX_BYTES, checkRecipe, isRecipe, substitute } from "./recipe.mjs";
 
 const USAGE = `jumpstart: run scripts and make files with JumpStart 3D, in a headless browser.
 
 Usage:
   jumpstart run <script.js> [--app <url|file|dir>]        run a script (JS3D in scope); prints its return value as JSON
   jumpstart export <project.json> <out.stl|obj|3mf|glb|step>  open a project and write an export file
+  jumpstart build <design.json> [--export stl|obj|3mf|glb|step|json] [--out <file>] [--check] [--app ...]
+                                                          build a project file or a recipe, then check it (--check) and export it
   jumpstart shot <project.json> <out.png> [--width N]     write a picture of the 3D view (default 800 pixels wide)
   jumpstart status [--app <url|file|dir>]                 start the app and print its versions and design as JSON
 
@@ -19,13 +22,19 @@ Usage:
 Without it: the docs/ folder of this checkout, else https://maxsikorski.github.io/jumpstart-3d/.
 JS3D_VIEWPORT sets the window size (default 1000x700). Needs Chromium: npx playwright@1.62.1 install chromium
 
-Results are JSON on stdout. Exit codes: 0 ok, 1 the script or the app failed, 2 bad usage.`;
+build takes a project file (as Save writes it) or a recipe: {"jumpstart":"recipe","version":1,"steps":[{"call":"add","args":["box",{"size":[60,40,25]}],"as":"box"}, ...]}.
+"$box" in a later step's args is that step's result (its id; "$box.key" is a field). --check runs JS3D.printCheck().
+Results are JSON on stdout. Exit codes: 0 ok, 1 the script, a recipe step or the app failed, 2 bad usage, 3 --check found problems.`;
 
 const LONG = { timeoutMs: 600_000 }; // exports, pictures and scripts of big designs can take minutes
 const KINDS = new Set(["stl", "obj", "3mf", "glb", "step"]);
-const ARITY = { run: 1, export: 2, shot: 2, status: 0 }; // how many arguments each command takes
+const BUILD_KINDS = new Set([...KINDS, "json"]);
+const ARITY = { run: 1, export: 2, build: 1, shot: 2, status: 0 }; // how many arguments each command takes
 
 class Usage extends Error {} // bad usage: exit 2
+class BuildFail extends Error { // a recipe step failed: exit 1, with {ok:false, step, call, error} on stdout
+  constructor(step, call, error, named = true) { super(`step ${step}${named ? ` (${call})` : ""}: ${error}`); this.step = step; this.call = call; this.error = error; }
+}
 
 function parse(argv) {
   const flags = {}, rest = [];
@@ -33,7 +42,8 @@ function parse(argv) {
     const eq = /^--[^=]+=/.test(argv[i]) ? argv[i].indexOf("=") : -1; // --app=URL as well as --app URL
     const a = eq < 0 ? argv[i] : argv[i].slice(0, eq);
     if (a === "--help" || a === "-h") flags.help = true;
-    else if (a === "--app" || a === "--width") {
+    else if (a === "--check") flags.check = true;
+    else if (a === "--app" || a === "--width" || a === "--export" || a === "--out") {
       if (eq < 0 && i + 1 >= argv.length) throw new Usage(`${a} needs a value`);
       flags[a.slice(2)] = eq < 0 ? argv[++i] : argv[i].slice(eq + 1);
     } else if (a.startsWith("--")) throw new Usage(`unknown option ${a}`);
@@ -55,6 +65,39 @@ const COMMANDS = {
     if (!KINDS.has(kind)) throw new Usage(`export writes .stl, .obj, .3mf, .glb or .step, not "${extname(out) || out}"`);
     const text = await readFile(where(project), "utf8");
     return async (s) => { await s.call("load", [text], LONG); return save(out, await s.call("export", [kind, {}], LONG)); };
+  },
+  async build([file], flags) {
+    if (!file) throw new Usage("build needs a design file (a project or a recipe)");
+    const kind = flags.export === undefined ? undefined : String(flags.export).toLowerCase();
+    if (kind !== undefined && !BUILD_KINDS.has(kind)) throw new Usage("--export must be stl, obj, 3mf, glb, step or json");
+    if (flags.out !== undefined && kind === undefined) throw new Usage("--out needs --export");
+    const path = where(file);
+    const text = await readFile(path, "utf8");
+    if (Buffer.byteLength(text) > MAX_BYTES) throw new Error(`${file} is larger than 5 MB`);
+    let design;
+    try { design = JSON.parse(text); } catch (e) { throw new Error(`${file} is not valid JSON: ${e.message}`); }
+    const recipe = isRecipe(design) ? checkRecipe(design) : null;
+    const out = kind && (flags.out ?? join(dirname(path), basename(path, extname(path)) + "." + kind));
+    return async (s) => {
+      if (recipe) {
+        const names = await s.call("run", ["return Object.keys(JS3D).filter((k) => typeof JS3D[k] === 'function' && k !== 'invoke')"]);
+        const vars = {};
+        for (const [i, st] of recipe.steps.entries()) {
+          if (!names.includes(st.call)) throw new BuildFail(i + 1, st.call, `unknown call "${st.call}"; calls: ${names.join(", ")}`, false);
+          try { const r = await s.call(st.call, substitute(st.args ?? [], vars), LONG); if (st.as !== undefined) vars[st.as] = r; }
+          catch (e) { throw new BuildFail(i + 1, st.call, (e && e.message) || String(e)); }
+        }
+      } else await s.call("load", [text], LONG);
+      await s.call("ready", [], LONG);
+      const result = { ok: true, bodies: (await s.call("list")).map(({ id, name, bbox, volume }) => ({ id, name, bbox, volume })) };
+      if (flags.check) {
+        const has = await s.call("run", ["return typeof JS3D.printCheck === 'function'"]);
+        result.check = has ? await s.call("printCheck", [], LONG) : { ok: null, note: "check needs bridge 1.10 (this app has no JS3D.printCheck)" };
+      }
+      if (kind) result.file = await save(out, await s.call("export", [kind, {}], LONG));
+      if (result.check && result.check.ok === false) result.exitCode = 3; // read by main, never printed
+      return result;
+    };
   },
   async shot([project, out], flags) {
     if (!project || !out) throw new Usage("shot needs a project file and a .png output file");
@@ -89,14 +132,17 @@ async function main() {
   process.once("SIGTERM", stop);
   try {
     const result = await work(session);
+    const code = (result && result.exitCode) || 0;
+    if (code) delete result.exitCode;
     console.log(JSON.stringify(result === undefined ? null : result));
-    return 0;
+    return code;
   } finally {
     await session.close().catch(() => {});
   }
 }
 
 main().then(process.exit, (e) => {
+  if (e instanceof BuildFail) console.log(JSON.stringify({ ok: false, step: e.step, call: e.call, error: e.error }));
   if (stopping) { console.error("jumpstart: stopped"); process.exit(130); }
   console.error("jumpstart: " + ((e && e.message) || e) + (e instanceof Usage ? "\nRun jumpstart --help for the commands." : ""));
   process.exit(e instanceof Usage ? 2 : 1);

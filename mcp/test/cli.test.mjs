@@ -98,7 +98,7 @@ test("bad usage exits 2 or 1 with a message on stderr and nothing on stdout", ()
 test("--help prints the usage on stdout and exits 0", () => {
   const r = cli("--help");
   assert.equal(r.status, 0);
-  for (const c of ["run", "export", "shot", "status"]) assert.match(r.stdout, new RegExp("jumpstart " + c));
+  for (const c of ["run", "export", "build", "shot", "status"]) assert.match(r.stdout, new RegExp("jumpstart " + c));
 });
 
 test("Ctrl-C stops quietly with exit code 130 and no browser is left", async () => {
@@ -115,4 +115,110 @@ test("Ctrl-C stops quietly with exit code 130 and no browser is left", async () 
   assert.equal(out, "");
   assert.ok(err.trim().split("\n").length <= 5, "stderr should be a few lines:\n" + err);
   assert.doesNotMatch(err, /has been closed/);
+});
+
+// ---- jumpstart build
+const recipe = (steps) => ({ jumpstart: "recipe", version: 1, steps });
+const writeJson = async (name, v) => { const f = join(dir, name); await writeFile(f, JSON.stringify(v)); return f; };
+
+test("build: a recipe with $refs uses earlier results and prints the bodies", async () => {
+  const f = await writeJson("refs.json", recipe([
+    { call: "add", args: ["box", { size: [20, 10, 5] }], as: "a" },
+    { call: "add", args: ["cylinder", { size: [6, 6, 12], at: [30, 0, 0] }], as: "b" },
+    { call: "group", args: [["$a", "$b"]], as: "g" },
+    { call: "rename", args: ["$g", "Pair"] },
+    { call: "setParam", args: ["W", "12"] },
+  ]));
+  const r = cli("build", f);
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.ok, true);
+  const pair = out.bodies.find((b) => b.name === "Pair");
+  assert.ok(pair && pair.volume > 0 && pair.bbox);
+});
+
+test("build: a refused call stops before any browser starts, naming step and call", async () => {
+  const f = await writeJson("refused.json", recipe([{ call: "add", args: ["box"] }, { call: "run", args: ["return 1"] }]));
+  const r = cli("build", f);
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /step 2 \(run\): recipes cannot use run/);
+  assert.doesNotMatch(r.stderr, /headless browser ready/);
+});
+
+test("build: a failing step exits 1 with the bridge's message and a JSON error on stdout", async () => {
+  const f = await writeJson("failing.json", recipe([{ call: "add", args: ["box"] }, { call: "add", args: ["nonsense-kind"] }]));
+  const r = cli("build", f);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /step 2 \(add\): .*nonsense-kind/);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual([out.ok, out.step, out.call], [false, 2, "add"]);
+  assert.match(out.error, /nonsense-kind/);
+});
+
+test("build: an unknown call lists the real ones", async () => {
+  const f = await writeJson("unknown.json", recipe([{ call: "add", args: ["box"] }, { call: "filet", args: [] }]));
+  const r = cli("build", f);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /step 2: unknown call "filet"; calls: .*\badd\b/);
+  assert.doesNotMatch(r.stderr, /\binvoke\b/);
+  assert.equal(JSON.parse(r.stdout).step, 2);
+});
+
+test("build: a project file with --export stl writes a valid STL next to it by default", async () => {
+  const proj = join(dir, "hole-copy.json");
+  await writeFile(proj, await readFile(PROJECT));
+  const r = cli("build", proj, "--export", "stl");
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.ok, true);
+  assert.ok(out.bodies.length > 0);
+  assert.equal(out.file.path, join(dir, "hole-copy.stl"));
+  const bytes = await readFile(out.file.path);
+  assert.equal(out.file.bytes, bytes.length);
+  const triangles = bytes.readUInt32LE(80);
+  assert.ok(triangles > 0);
+  assert.equal(bytes.length, 84 + 50 * triangles);
+});
+
+test("build: --out names the file; a recipe can export too", async () => {
+  const f = await writeJson("tiny.json", recipe([{ call: "add", args: ["box", { size: [10, 10, 10] }] }]));
+  const to = join(dir, "sub", "tiny-out.stl");
+  const r = cli("build", f, "--export", "stl", "--out", to);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).file.path, to);
+  assert.ok((await readFile(to)).length > 84);
+});
+
+test("build: bad usage exits 2", async () => {
+  const f = await writeJson("usage.json", recipe([]));
+  for (const [args, message] of [[["build"], /design file/], [["build", f, "--export", "doc"], /--export must be/], [["build", f, "--out", "x.stl"], /--out needs --export/], [["build", f, "b"], /takes 1 argument/]]) {
+    const r = cli(...args);
+    assert.equal(r.status, 2, args.join(" "));
+    assert.match(r.stderr, message);
+  }
+});
+
+test("build: a recipe over 2000 steps or a file over 5 MB is refused", async () => {
+  const many = await writeJson("many.json", recipe(Array.from({ length: 2001 }, () => ({ call: "list" }))));
+  assert.match(cli("build", many).stderr, /at most 2000 steps/);
+  const big = join(dir, "big.json");
+  await writeFile(big, JSON.stringify(recipe([])) + " ".repeat(5 * 1024 * 1024));
+  const r = cli("build", big);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /larger than 5 MB/);
+});
+
+test("build --check: says so when the app has no printCheck, exit 3 when it reports problems", async (t) => {
+  const f = await writeJson("check.json", recipe([{ call: "add", args: ["box", { size: [10, 10, 10] }] }]));
+  const r = cli("build", f, "--check");
+  const out = JSON.parse(r.stdout);
+  if (out.check && out.check.ok === null) return t.skip("printCheck is not on main yet (bridge 1.10): " + out.check.note);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(out.check.ok, true);
+  // a lone sphere floating above the bed has no problem the check would call an error; a wall thinner than the nozzle does
+  const thin = await writeJson("thin.json", recipe([{ call: "add", args: ["box", { size: [40, 40, 0.05] }] }]));
+  const bad = cli("build", thin, "--check");
+  assert.equal(bad.status, 3, bad.stderr);
+  assert.equal(JSON.parse(bad.stdout).check.ok, false);
 });

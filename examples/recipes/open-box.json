@@ -1,0 +1,11 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "steps": [
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Base", "shapes": [{ "type": "rect", "center": [0, 0], "size": [60, 40] }] }], "as": "base" },
+    { "call": "extrude", "args": [{ "sketch": "$base.sketch", "dist": 25, "name": "Open box" }], "as": "box" },
+    { "call": "shell", "args": ["$box.body", { "th": 2, "open": "top" }] },
+    { "call": "fillet", "args": ["$box.body", "edges of top and (>X or <X or >Y or <Y)", 1] },
+    { "call": "hole", "args": ["$box.body", { "face": "bottom", "points": [[-22, -12, 0], [22, -12, 0], [-22, 12, 0], [22, 12, 0]], "size": "M3" }] }
+  ]
+}
