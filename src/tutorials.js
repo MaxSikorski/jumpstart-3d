@@ -291,6 +291,7 @@ export function initTutorials(app) {
     const tut = TUTORIALS.find((t) => t.id === id);
     if (!tut) return;
     close(true);
+    app.onLessonStart && app.onLessonStart(tut); // jumpstart-3d: Simple mode. a lesson that points at top-bar buttons Simple moved into More runs in Original
     const prog = resume ? lsGet("p." + id) : null;
     if (tut.mode === "plan") {
       // Floor Planner projects happen in the planner (in Architect); the design isn't touched
@@ -319,6 +320,7 @@ export function initTutorials(app) {
     if (panel) panel.remove();
     panel = null;
     if (cur && !quiet) lsSet("active", null);
+    if (cur) app.onLessonEnd && app.onLessonEnd(); // jumpstart-3d: Simple mode. back to Simple after a lesson that ran in Original
     cur = null;
   }
   // ticks the current step (and any earlier ones) off when the design shows they're done

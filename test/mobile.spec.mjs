@@ -1,5 +1,5 @@
 // The phone first-part budget (J2, outcome 2 judge). A first-time visitor on a 375 px touch phone (Pixel 7 profile) over a simulated
-// 4G link (9 Mbit/s down, 1.5 Mbit/s up, 150 ms), served with gzip like GitHub Pages (test/serve.mjs ... gzip). From the first load it
+// 4G link (9 Mbit/s down, 1.5 Mbit/s up, 150 ms), served with gzip like GitHub Pages (test/serve.mjs ... gzip). From the first load it closes the one-time Try Simple card,
 // taps a box, a cylinder hole, types the hole's size, pans with two fingers, turns on Multi-select, taps the box, groups and exports an STL.
 // The page's internals are read only to wait and to choose where a finger goes, never to act. Every run prints a `mobile-budget:` line.
 // The budgets are about 2x a MacBook's numbers (bytes: +5 %, they do not vary with the machine). If a CI runner fails only on a time budget,
@@ -50,6 +50,10 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
 
     await page.goto(baseURL, { waitUntil: "commit" });
     await page.waitForFunction(() => window.__t && window.__t.usable, null, { timeout: 60_000, polling: 20 });
+
+    // the one-time "Try Simple" card (src/simplemode.js) covers the top of the small view; a first-time visitor closes it
+    await page.locator("#try-simple-close").tap();
+    await expect(page.locator("#try-simple")).toHaveCount(0);
 
     // tapped while the engine is still loading
     await page.locator('#shapes .tile[data-kind="box"]').tap();

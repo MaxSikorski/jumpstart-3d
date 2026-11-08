@@ -11,6 +11,7 @@ import { initRemote } from "./remote.js"; // jumpstart-3d: remote
 import { triangleCodes, paintAttrs, PAINT_NS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 import { texturedMesh, textureSig } from "./scene.js";
 import { packMesh, unpackMesh } from "./meshpack.js";
+import { openBodyDrawing } from "./bodydrawing.js"; // jumpstart-3d: body drawing
 
 const LS_PREF = "workplane.pref.v1";
 
@@ -833,6 +834,12 @@ export function initProjects(app) {
   // One export waits at a time: a later click replaces the format (latest wins); the Selected / All choice is kept from the click.
   let pendingExport = null;
   const buildingNow = () => app.scene.busy() || app.kernel.inflight || app.kernel.queue.size;
+  // jumpstart-3d: body drawing
+  function exportBodyDrawing() {
+    const bodies = exportBodies();
+    if (!bodies.length) { app.toast("Nothing to draw yet."); return; }
+    openBodyDrawing(app, { bodies, name: exportName() });
+  }
   async function exportWhenBuilt(a) {
     const was = pendingExport;
     pendingExport = { a, scope: exportScope };
@@ -842,7 +849,7 @@ export function initProjects(app) {
     const { a: act, scope } = pendingExport; pendingExport = null;
     exportScope = scope;
     // jumpstart-3d: send to slicer
-    ({ slicer: sendToSlicer, stl: exportSTL, obj: exportOBJ, "3mf": export3MF, glb: exportGLB, step: exportSTEP })[act]();
+    ({ slicer: sendToSlicer, stl: exportSTL, obj: exportOBJ, "3mf": export3MF, glb: exportGLB, step: exportSTEP, bodydxf: exportBodyDrawing })[act](); // jumpstart-3d: body drawing
   }
   // end jumpstart-3d
   menu.addEventListener("click", async (e) => { // jumpstart-3d: async, for the export wait
@@ -850,13 +857,14 @@ export function initProjects(app) {
     if (!a) return;
     menu.hidden = true;
     // jumpstart-3d: send to slicer
-    if (["slicer", "stl", "obj", "3mf", "glb", "step"].includes(a) && (pendingExport || buildingNow())) { await exportWhenBuilt(a); return; } // jumpstart-3d: export waits for a rebuild
+    if (["slicer", "stl", "obj", "3mf", "glb", "step", "bodydxf"].includes(a) && (pendingExport || buildingNow())) { await exportWhenBuilt(a); return; } // jumpstart-3d: export waits for a rebuild
     if (a === "slicer") sendToSlicer(); // jumpstart-3d: send to slicer
     if (a === "stl") exportSTL();
     if (a === "obj") exportOBJ();
     if (a === "3mf") export3MF();
     if (a === "glb") exportGLB(); // jumpstart-3d: glTF export
     if (a === "step") exportSTEP();
+    if (a === "bodydxf") exportBodyDrawing(); // jumpstart-3d: body drawing
     if (a === "dxf") app.advanced.exportSketchesDXF(null);
     if (a === "json") exportJSON();
     if (a === "import") $("file-import").click();
@@ -875,7 +883,7 @@ export function initProjects(app) {
   return {
     // a finished render (PNG) goes through the same save path as models
     async saveImage(filename, blob) { await offerModel(filename, new Uint8Array(await blob.arrayBuffer())); },
-    async saveModel(filename, bytes) { await offerModel(filename, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)); },
+    async saveModel(filename, bytes) { return offerModel(filename, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)); }, // jumpstart-3d: body drawing (false when nothing was saved)
     // jumpstart-3d: report. a copy of the open design for attaching to a bug report: like exportJSON but not a save (no version bump)
     saveCopy(filename) {
       const json = JSON.stringify({ app: "jumpstart-3d", version: 1, doc: store.doc }, null, 1);

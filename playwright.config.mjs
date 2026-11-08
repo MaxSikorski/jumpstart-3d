@@ -3,7 +3,7 @@
 // npm test            both builds
 // npm run test:site   docs/ only        npm run test:single   dist/ only
 // npm run test:update re-records test/golden.json after an intended geometry change
-// npm run test:mobile the phone budget only (test/mobile.spec.mjs: its own project, with a gzip server on port + 2)
+// npm run test:mobile the phone budget and Simple switch (a phone project with a gzip server on port + 2)
 // JS3D_CROSS=1 adds the Firefox and WebKit projects (site-firefox, single-firefox, site-webkit, single-webkit); the nightly workflow sets it,
 // and the browsers need `npx playwright install firefox webkit`. They are left out otherwise, so `npm test` stays Chromium only.
 // PLAYWRIGHT_JSON_OUTPUT_NAME=<file> also writes a JSON report there (the nightly workflow reads it to list the failing specs).
@@ -49,7 +49,7 @@ export default defineConfig({
       : []),
     {
       name: "mobile", // port base + 2: 8766 is the single-file preview in .claude/launch.json
-      testMatch: MOBILE,
+      testMatch: [MOBILE, /simple-switch\.spec\.mjs/],
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 667 }, screen: { width: 375, height: 667 }, baseURL: `http://127.0.0.1:${base + 2}/` },
     },
   ],

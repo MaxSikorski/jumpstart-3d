@@ -61,6 +61,7 @@ import { initPerfPanel } from "./perfpanel.js"; // jumpstart-3d: perf panel
 // jumpstart-3d: insert supplier parts
 import { initInsertPart } from "./insertpart.js";
 import { initDropImport } from "./dropimport.js"; // jumpstart-3d: drop import
+import { initSimpleMode } from "./simplemode.js"; // jumpstart-3d: Simple | Original switch
 
 /* global __WASM_PARTS__ */
 const WASM_PARTS = typeof __WASM_PARTS__ !== "undefined" ? __WASM_PARTS__ : [{ url: "occt.wasm.gz", gz: true }];
@@ -353,6 +354,7 @@ app.voxel = initVoxel(app);
   $("btn-full").onclick = () => app.toggleFullscreen();
   $("btn-about").onclick = () => app.showAbout();
   loadPrefs();
+  app.simple = initSimpleMode(app); // jumpstart-3d: Simple | Original switch (after the prefs, before the design opens)
   vp.onContext = (e) => app.contextMenu && app.contextMenu(e);
   // Tablet & Pencil mode: a two-finger tap undoes, a three-finger tap redoes
   vp.onFingerTap = (n) => { if (n === 2) app.undo(); else if (n >= 3) app.redo(); };
@@ -625,7 +627,7 @@ app.setSketchStyle = function (patch, quiet) {
 // Layouts: where the tool bars sit. Default (top), Simplified (big labelled buttons on top), Clean
 // (an icon rail on the left), Classic CAD (a labelled palette on the right) and Tablet (big tools at
 // the bottom). Only CSS changes (html[data-layout]); every tool is the same in each.
-const LAYOUTS = { default: "Default", simple: "Simplified", clean: "Clean", classic: "Classic CAD", tablet: "Tablet" };
+const LAYOUTS = { default: "Default", simple: "Big buttons", clean: "Clean", classic: "Classic CAD", tablet: "Tablet" }; // jumpstart-3d: his "Simplified" layout reads "Big buttons" beside our Simple | Original switch
 app.layoutPref = "default";
 app.setLayout = function (name, quiet) {
   if (!LAYOUTS[name]) name = "default";
@@ -969,7 +971,7 @@ app.showAbout = function () {
         ["Pattern on a path:", "Put the object on the path (on when the object is away from the path) moves it to the nearer end of the path, and the copies run along the whole line, like beads on a string. Go the other way starts from the far end. Turn it off to keep the object where it is, with every copy the same distance from the path."],
       ]),
       sec("New in version 2.8.1.4", [
-        ["Layouts:", "five ways to arrange the tools, in the theme menu (◐) under Layout: Default (tools across the top), Simplified (bigger buttons with names), Clean (a slim column of icons on the left; hover for names), Classic CAD (a labelled tool palette down the right side) and Tablet (big tools along the bottom, near your thumbs). Every tool is in every layout, and the choice is remembered on this computer."],
+        ["Layouts:", "five ways to arrange the tools, in the theme menu (◐) under Layout: Default (tools across the top), Big buttons (bigger buttons with names), Clean (a slim column of icons on the left; hover for names), Classic CAD (a labelled tool palette down the right side) and Tablet (big tools along the bottom, near your thumbs). Every tool is in every layout, and the choice is remembered on this computer."], // jumpstart-3d: his "Simplified" layout reads "Big buttons" in our build
         ["Save downloads a file:", "Save (or Ctrl+S) now also downloads the project file (.json) to your Downloads, so work isn't lost when a Chromebook clears the browser at sign-out. Open it again with Open/Export → Open a project file. Turn it off in Open/Export → Download a file on every Save. The Floor Planner's 💾 Save also downloads its plan file (turn it off in 📂 My plans)."],
         ["Pinned Constraints:", "while sketching in Advanced, Pin (next to Constraints on the toolbar) puts every constraint button on the workspace as a small palette. Drag it by its title bar to wherever you like, switch between names and icons only (⤡), and ✕ to put it away. It stays pinned, where you left it, for your next sketches."],
       ]),

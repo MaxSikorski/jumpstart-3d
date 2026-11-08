@@ -229,7 +229,7 @@ async function openPage(w, cfg = {}) {
     const page = await openOnce(w, cfg);
     if (cfg.dieEarly || cfg.refuse || (await page.evaluate(() => window.__app.projects._store.kind)) === "idb") return page;
     await page.close({ runBeforeUnload: false }).catch(() => {});
-    w.tokens = [];
+    keepMarkers(w);
     test.info().annotations.push({ type: "chaos note", description: `IndexedDB did not open within the app's 3 s (attempt ${attempt}); page opened again` });
     if (attempt === 5) throw new Error("IndexedDB took longer than the app waits for it, five pages in a row: the machine is too busy for this test");
   }
@@ -276,6 +276,8 @@ async function runUntilKill(w, page, plan) {
   w.tokens = [w.prevToken, w.token].filter(Boolean); // the page died at an unknown point: of the marker it removed and the one it wrote, the browser may have kept either
   return outcome;
 }
+// After a page is closed or killed, the next one must still find a marker: of the one it removed and the one it wrote, the browser may have kept either. A lost one means the runner dropped the storage (StorageLost, retried), not the app.
+const keepMarkers = (w) => { w.tokens = [w.prevToken, w.token].filter(Boolean); };
 const closeClean = (page) => page.close().catch(() => {});
 // close as a person does, unload handlers run. page.close({ runBeforeUnload: true }) returns BEFORE they have run (Playwright docs), so a step
 // after it could overtake the closing tab's rescue copy; wait for the page to be gone.
@@ -296,7 +298,7 @@ function scenario(title, fn, { onlySite = false } = {}) {
         const note = `${title} [${info.project.name}] attempt ${attempt}/3: ${e.message}`;
         console.log("storage-lost: " + note);
         info.annotations.push({ type: "storage-lost", description: note });
-        if (attempt === 3) test.skip(true, "the browser lost its storage three times in a row");
+        if (attempt === 3) { if (buildOf(info) === "site") throw new Error("storage lost three times in a row on the site build (http), which must never happen: " + e.message); test.skip(true, "the browser lost its storage three times in a row (the Linux runner file:// bug)"); }
       } finally {
         await w.context.close().catch(() => {});
         for (const d of w.dirs) rmSync(d, { recursive: true, force: true });
@@ -419,7 +421,7 @@ scenario("IndexedDB refusing writes (quota exceeded): the saved design stays who
   await page.click(".modal-back .xbtn");
   // closing the tab keeps the edit as a rescue copy in localStorage
   await closeUnloading(page);
-  w.tokens = [];
+  keepMarkers(w);
   // the next visit still has no room: the saved design is whole and the rescue copy waits
   page = await openPage(w, { failWrites: true });
   expectWhole(w, await readAll(page), "still refusing writes, after the tab was closed");
@@ -427,7 +429,7 @@ scenario("IndexedDB refusing writes (quota exceeded): the saved design stays who
   expect(rescue.length, "one rescue copy").toBe(1);
   expect(sig(JSON.parse(JSON.parse(rescue[0]).doc)), "the edit waits in the rescue copy").toBe(w.known.get(A).get(big.n));
   await page.close();
-  w.tokens = [];
+  keepMarkers(w);
   // room again: the next visit applies the rescue copy
   page = await openPage(w);
   const stored = (await readAll(page)).items.find((i) => i.entry.id === A);
@@ -492,7 +494,7 @@ scenario("reload or close at seeded moments after an edit: the edit is there aft
     const edit = step(w, A, "soon", pick(r, [1, 40]));
     await page.evaluate(({ doc }) => { window.__store.update((d) => { d.name = doc.name; d.bodies = doc.bodies; }, "Edit"); }, edit); // left to the autosave
     await page.waitForTimeout(delays[i]);
-    if (i % 3 === 2) { await closeUnloading(page); w.tokens = []; page = await openPage(w); }
+    if (i % 3 === 2) { await closeUnloading(page); keepMarkers(w); page = await openPage(w); }
     else await reloadPage(w, page);
     const snap = await readAll(page);
     const it = snap.items.find((x) => x.entry.id === A);
@@ -612,7 +614,7 @@ scenario("a rescue copy made while the tab's own save was in flight does not lea
   const rescue = { id: A, doc: JSON.stringify({ ...JSON.parse(stored.doc), _updated: stored.entry.updated + 1000 }), entry: { ...stored.entry, updated: stored.entry.updated + 1000, thumb: null }, base: first.entry.updated };
   await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [RESCUE, rescue]);
   await closeClean(page);
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w);
   const snap = await readAll(page);
   expect(snap.items.map((i) => i.entry.name), "one design, no extra copy").toEqual([v2.doc.name]);
@@ -642,7 +644,7 @@ scenario("beforeunload queues the rescue write in IndexedDB before it returns, w
   const queued = seen.puts.find((p) => p.store === "meta" && String(p.key).startsWith(RESCUE + "."));
   expect(queued, `the rescue put was queued inside the handler (saw ${JSON.stringify(seen.puts)})`).toBeTruthy();
   await closeUnloading(page);
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w);
   const snap = await readAll(page);
   const it = snap.items.find((x) => x.entry.id === A);
@@ -713,7 +715,7 @@ scenario("site data cleared with a folder copy: every design comes back from the
   await page.evaluate(drive, { plan: [a3] });
   await page.close({ runBeforeUnload: false });
   await clearSiteData(w);
-  w.tokens = [];
+  w.tokens = []; // the wipe above is deliberate: the marker is gone on purpose
   page = await openPage(w, { folder: true });
   expect((await readAll(page)).items.filter((i) => w.known.has(i.entry.id)), "site data really is gone").toEqual([]);
   // the folder's files, handed to Restore from a folder… as a user's picker would
@@ -750,7 +752,7 @@ scenario("killed in the middle of writing a folder copy: every file in the folde
     const killed = await Promise.race([hit.then(() => true), new Promise((res) => setTimeout(() => res(false), 15_000))]);
     console.log(`chaos folder round ${round}: file write #${at} -> ${killed ? "killed at " + w.killWhy : "not reached"}`);
     await page.close({ runBeforeUnload: false }).catch(() => {});
-    w.tokens = [];
+    keepMarkers(w);
     page = await openPage(w, { folder: true });
     // a new name is created empty before it is written, so a kill can leave an empty file next to the old whole one; a file with some content must be whole
     const raw = Object.entries(await readFolder(page)).filter(([n]) => /-t_chaos_\w+\.json$/.test(n));
@@ -791,7 +793,7 @@ scenario("site data cleared between two backups: every design in either backup c
   const second = await backup();
   await page.close();
   await clearSiteData(w);
-  w.tokens = [];
+  w.tokens = []; // the wipe above is deliberate: the marker is gone on purpose
   page = await openPage(w);
   expect((await readAll(page)).items.filter((i) => w.known.has(i.entry.id))).toEqual([]);
   for (const f of [first, second]) {
@@ -875,7 +877,7 @@ scenario("one tab saving and reloading never makes a copy", async (w) => {
   await reloadPage(w, page);
   await page.evaluate(drive, { plan: [step(w, D, "now", 5), step(w, D, "soon", 5)] });
   await closeUnloading(page);
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w);
   await page.evaluate(drive, { plan: [step(w, D, "now", 5)] });
   const snap = await readAll(page);
@@ -894,7 +896,7 @@ scenario("two tabs closed at once with unsaved edits to one design: both edits a
   await editOnly(pa, ea);
   await editOnly(pb, eb);
   await Promise.all([closeUnloading(pa), closeUnloading(pb)]); // before either autosave runs
-  w.tokens = [];
+  keepMarkers(w);
   const page = await openPage(w);
   const snap = await readAll(page);
   expect(holds(snap, D, ea.n).length, "the edit of the tab that was closed first").toBe(1);
@@ -916,7 +918,7 @@ scenario("a tab closed with unsaved edits while another tab saved the design mea
   const b = step(w, D, "now", 5);
   await pb.evaluate(drive, { plan: [b] });
   await closeClean(pb);
-  w.tokens = [];
+  keepMarkers(w);
   const page = await openPage(w);
   const snap = await readAll(page);
   expect(holds(snap, D, b.n).length, "tab B's save is still the design").toBe(1);
@@ -949,7 +951,7 @@ scenario("a second unload with localStorage full: the newest edit is the one tha
   await unload();
   await page.waitForTimeout(150);
   await page.close({ runBeforeUnload: false });
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w);
   const snap = await readAll(page);
   expect(holds(snap, A, e2.n, 40).length, "the second edit").toBe(1);
@@ -969,7 +971,7 @@ scenario("two old-format rescue copies, the older in localStorage and the newer 
     await new Promise((res) => { const r = indexedDB.open("jumpstart3d-projects"); r.onsuccess = () => { const tx = r.result.transaction("meta", "readwrite"); tx.objectStore("meta").put(newer, key); tx.oncomplete = () => { r.result.close(); res(); }; }; });
   }, [RESCUE, rescue(e1, 1000), rescue(e2, 2000)]);
   await page.close({ runBeforeUnload: false });
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w);
   const snap = await readAll(page);
   expect(holds(snap, D, e1.n).length, "the older copy").toBe(1);
@@ -986,7 +988,7 @@ scenario("a tab's unsaved edit made in the same millisecond as its last save is 
   const e = step(w, D, "soon", 5);
   await editOnly(page, e);
   await closeUnloading(page);
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w);
   const snap = await readAll(page);
   expect(holds(snap, D, e.n).length, "the edit").toBe(1);
@@ -1090,7 +1092,7 @@ scenario("on the older storage: the tab closing only writes a rescue copy, and t
   expect(seen.name, "the stored design is untouched").not.toBe(e.doc.name);
   expect(seen.rescues).toBe(1);
   await page.close({ runBeforeUnload: false });
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w, { refuse: true });
   const snap = await readAll(page);
   expect(snap.items.find((i) => i.entry.id === D).entry.name, "replayed at the start").toBe(e.doc.name);
@@ -1144,7 +1146,7 @@ scenario("on the older storage, closing the tab with no room for a second copy o
   await editOnly(page, e);
   await fillStorage(page, 6000); // room to replace the design by its next version, not to hold another copy of it
   await closeUnloading(page);
-  w.tokens = [];
+  keepMarkers(w);
   page = await openPage(w, { refuse: true });
   const it = (await readAll(page)).items.find((i) => i.entry.id === D);
   expect(it && sig(JSON.parse(it.doc)), "the edit made just before the close is stored").toBe(w.known.get(D).get(e.n));
@@ -1161,9 +1163,9 @@ for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: t
     await editOnly(pa, step(w, D, "soon", 5));
     expect(await pb.evaluate(async (id) => { const s = window.__app.projects._store; await s.ready; return s.del(id); }, D), "deleted in the other tab").toBe(true);
     await closeUnloading(pa);
-    w.tokens = [];
+    keepMarkers(w);
     await pb.close({ runBeforeUnload: false });
-    w.tokens = [];
+    keepMarkers(w);
     const page = await openPage(w, cfg);
     const snap = await readAll(page);
     expect(snap.items.filter((i) => i.entry.id === D || content(JSON.parse(i.doc)).includes(`|${D}|`)), "the deleted design stays deleted").toEqual([]);
@@ -1186,9 +1188,9 @@ for (const [label, cfg] of [["IndexedDB", {}], ["the older storage", { refuse: t
     const e = step(w, D, "soon", 5);
     await editOnly(pa, e);
     await closeUnloading(pa);
-    w.tokens = [];
+    keepMarkers(w);
     await pb.close({ runBeforeUnload: false });
-    w.tokens = [];
+    keepMarkers(w);
     const page = await openPage(w, cfg);
     const snap = await readAll(page);
     expect(holds(snap, D, e.n).length, "the later edit is stored").toBe(1);

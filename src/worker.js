@@ -4,6 +4,7 @@ import { gunzip } from "./inflate.js";
 import { initKernel, buildBodies, exportMeshes, contactPairs, exportStep, clearCache, setAsset, errorText, fontsReady } from "./kernel.js";
 import { runCodeCad } from "./codecad-worker.js"; // jumpstart-3d: Code CAD
 import { startManifold, manifoldReady } from "./meshbool.js"; // jumpstart-3d: Manifold mesh booleans
+import { drawingViews } from "./kernel.js"; // jumpstart-3d: body drawing
 
 let ready = null;
 
@@ -60,13 +61,19 @@ self.onmessage = async (ev) => {
       await manifoldReady(); // jumpstart-3d: Manifold starts with the first imported mesh; a build waits for it (nothing when no mesh was imported)
       await fontsReady();
       // jumpstart-3d: scoped stage messages are independent of engine loading.
-      const res = buildBodies(msg.bodies, msg.quality || 1, { onProgress: (event) => self.postMessage({ type: "progress", req: msg.req, ...event }) });
+      const res = buildBodies(msg.bodies, msg.quality || 1, { perf: msg.perf, onProgress: (event) => self.postMessage({ type: "progress", req: msg.req, ...event }) }); // jumpstart-3d: perf panel
       const transfer = [];
       for (const r of res) if (r.ok) {
         const m = r.mesh;
         transfer.push(m.vertices.buffer, m.normals.buffer, m.triangles.buffer, m.lines.buffer);
       }
       self.postMessage({ type: "built", req: msg.req, results: res }, transfer);
+    // jumpstart-3d: body drawing
+    } else if (msg.type === "drawing") {
+      await ready; await manifoldReady(); await fontsReady();
+      const data = drawingViews(msg.bodies, msg.views, (view, i, n) => self.postMessage({ type: "drawingView", req: msg.req, view, i, n }));
+      self.postMessage({ type: "drawing", req: msg.req, data });
+    // jumpstart-3d: body drawing
     } else if (msg.type === "step") {
       await ready;
       await manifoldReady(); // jumpstart-3d: Manifold

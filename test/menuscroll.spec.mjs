@@ -46,7 +46,7 @@ test("short window: the theme menu stays inside the window and scrolls to its la
 });
 
 test("tall window: the theme menu fits without a scrollbar", async () => {
-  await page.setViewportSize({ width: 1280, height: 1400 });
+  await page.setViewportSize({ width: 1280, height: 1500 }); // 1500: the Look row (Simple | Original) made the menu about 40 px taller
   await openMenu();
   const m = await metrics();
   expect(m.scrollH).toBeLessThanOrEqual(m.clientH);
