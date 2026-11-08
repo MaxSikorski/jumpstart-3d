@@ -156,13 +156,12 @@ test("build: a failing step exits 1 with the bridge's message and a JSON error o
   assert.match(out.error, /nonsense-kind/);
 });
 
-test("build: an unknown call lists the real ones", async () => {
-  const f = await writeJson("unknown.json", recipe([{ call: "add", args: ["box"] }, { call: "fillet", args: [] }]));
+test("build: a call that is not on the recipe list is refused before the browser starts", async () => {
+  const f = await writeJson("unknown.json", recipe([{ call: "add", args: ["box"] }, { call: "filet", args: [] }]));
   const r = cli("build", f);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /step 2: unknown call "fillet"; calls: .*\badd\b/);
-  assert.doesNotMatch(r.stderr, /\binvoke\b/);
-  assert.equal(JSON.parse(r.stdout).step, 2);
+  assert.match(r.stderr, /step 2 \(filet\): call is not allowed in recipes/);
+  assert.doesNotMatch(r.stderr, /headless browser/);
 });
 
 test("build: a project file with --export stl writes a valid STL next to it by default", async () => {
@@ -216,11 +215,12 @@ test("build --check: says so when the app has no printCheck, exit 3 when it repo
   if (out.check && out.check.ok === null) return t.skip("printCheck is not on main yet (bridge 1.10): " + out.check.note);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(out.check.ok, true);
-  // a lone sphere floating above the bed has no problem the check would call an error; a wall thinner than the nozzle does
-  const thin = await writeJson("thin.json", recipe([{ call: "add", args: ["box", { size: [40, 40, 0.05] }] }]));
-  const bad = cli("build", thin, "--check");
+  const floating = await writeJson("floating.json", recipe([{ call: "add", args: ["box", { size: [10, 10, 10], at: [0, 0, 5] }] }]));
+  const bad = cli("build", floating, "--check");
   assert.equal(bad.status, 3, bad.stderr);
-  assert.equal(JSON.parse(bad.stdout).check.ok, false);
+  const badOut = JSON.parse(bad.stdout);
+  assert.equal(badOut.check.ok, false);
+  assert.ok(badOut.check.issues.some((i) => i.code === "floating"), JSON.stringify(badOut.check.issues));
 });
 
 test("build refuses input collisions and invalid calls before starting a browser", async () => {
@@ -235,4 +235,18 @@ test("build refuses input collisions and invalid calls before starting a browser
   assert.equal(refused.status, 1);
   assert.match(refused.stderr, /not allowed/);
   assert.doesNotMatch(refused.stderr, /headless browser/);
+});
+
+test("build: the open-box example recipe builds the enclosure, passes the print check and writes an STL", async () => {
+  const out = join(dir, "open-box.stl");
+  const r = cli("build", fileURLToPath(new URL("../../examples/recipes/open-box.json", import.meta.url)), "--export", "stl", "--out", out, "--check");
+  assert.equal(r.status, 0, r.stderr);
+  const res = JSON.parse(r.stdout);
+  assert.equal(res.bodies.length, 1);
+  assert.deepEqual(res.bodies[0].bbox, { min: [-30, -20, 0], max: [30, 20, 25] });
+  assert.ok(Math.abs(res.bodies[0].volume - 13516.83) <= 0.5, `volume ${res.bodies[0].volume}`);
+  assert.equal(res.check.ok, true, JSON.stringify(res.check.issues));
+  const stl = await readFile(out);
+  assert.equal(stl.length, 84 + 50 * stl.readUInt32LE(80));
+  assert.equal(res.file.bytes, stl.length);
 });
