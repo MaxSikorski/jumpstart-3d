@@ -112,7 +112,7 @@ test('restored thumbnails cannot fetch addresses and saved pictures round trip',
   const backup = { app: 'jumpstart-3d', backup: 1, designs: [{ entry: { id: other.id, name: other.name, thumb: hostile }, doc: other }] };
   await page.setInputFiles('#file-backup', { name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
   await expect.poll(() => page.evaluate(async id => (await window.__app.projects._store.list()).find(e => e.id === id)?.thumb, other.id)).toBeNull();
-  await page.click('#btn-projects');
+  if (!(await page.getByRole('dialog', { name: 'Your designs' }).count())) await page.click('#btn-projects'); // a restore already shows Your designs
   await expect(page.locator('.projgrid .pcard', { hasText: 'Restored guard' })).toHaveCount(1);
   expect(requests).toEqual([]);
 });
