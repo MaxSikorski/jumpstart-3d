@@ -10,6 +10,7 @@
 // Pictures are saved with the design (scaled to at most 1600 px). Videos stay while the page
 // is open: after reopening a design, add the video again (the fitting is remembered).
 import * as THREE from "three";
+import { isSafeMediaSrc, warnUnsafeMedia } from "./safeurl.js"; // jumpstart-3d: project pictures cannot fetch URLs
 import { store } from "./store.js";
 import { el, uid } from "./util.js";
 
@@ -68,10 +69,12 @@ export function initMedia(app) {
     return { kind: "missing", tex: missingTex, w: 2, h: 1 };
   }
   function entryFor(id, doc) {
+    const m = doc && doc.media && doc.media[id];
+    // jumpstart-3d: guard at use, including documents already saved locally.
+    if (!m) return missing();
+    if (m.src !== undefined && !isSafeMediaSrc(m.src, m.kind)) { warnUnsafeMedia(id); return missing(); }
     let e = reg.get(id);
     if (e) return e;
-    const m = doc && doc.media && doc.media[id];
-    if (!m) return null;
     if (m.kind === "image" && m.src) {
       const tex = new THREE.TextureLoader().load(m.src, (t) => { e.w = t.image.width; e.h = t.image.height; scene.refresh(); vp.request(); });
       tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
@@ -305,7 +308,9 @@ export function initMedia(app) {
     const row = el("div", { class: "media-lib" });
     for (const [id, m] of lib) {
       const t = el("button", { class: "media-thumb", title: (ids ? "Use " : "") + m.name, disabled: !ids, onclick: () => ids && store.update((d) => { for (const b of d.bodies) if (ids.includes(b.id)) b.media = fitFor(b, id, b.media); }, "Use media") });
-      if (m.kind === "image" && m.src) t.append(el("img", { src: m.src, alt: "" }));
+      // jumpstart-3d: thumbnails must obey the same rule as projection textures.
+      if (m.src !== undefined && !isSafeMediaSrc(m.src, m.kind)) warnUnsafeMedia(id);
+      if (isSafeMediaSrc(m.src, m.kind)) t.append(el("img", { src: m.src, alt: "" }));
       else t.append(el("span", { html: ICON }));
       t.append(el("span", { class: "nm" }, m.name || ""));
       row.append(t);

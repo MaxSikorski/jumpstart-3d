@@ -17,6 +17,11 @@ npm run test:mobile   the phone budget and Simple switch
 First time: `npm install`, then `npx playwright install chromium`. Set `JS3D_PORT` (default 8765) to serve the site build on another port, so two checkouts can run the tests at the same time. The same
 suite runs on GitHub Actions: the smoke and golden specs gate every pull request (`.github/workflows/test.yml`) and the rest runs nightly (`.github/workflows/nightly.yml`).
 
+| File | Coverage |
+|---|---|
+| `safeurl.test.mjs` | Allowed raster data, rejected addresses and kinds, document cleanup |
+| `mediasrc.spec.mjs` | Both builds: no project URL requests through load or direct use; embedded pictures still display |
+
 ## How CI runs it
 
 The merge gate (`.github/workflows/test.yml`) is small on purpose: it builds both outputs, then runs the smoke spec and the golden exports on each, and takes about 3 minutes, plus the specs a pull request adds or changes. Everything slower runs every night (see below). The full suite runs three ways:

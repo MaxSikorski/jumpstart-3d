@@ -2,6 +2,7 @@
 import { currentImportView, stepStallMessage, stageName } from "./stepprogress.js";
 // Advanced mode: Fusion-style ribbon, browser, timeline and feature commands.
 import * as THREE from "three";
+import { isSafeMediaSrc, warnUnsafeMedia } from "./safeurl.js"; // jumpstart-3d: project pictures cannot fetch URLs
 import { store, findBody, findSketch, nextSeq, IDENTITY, timeline, regionsFor, regionOwners, shapeGroup, userLoops, resolveNode, bodyKey, primName, pathChain, orderPath } from "./store.js";
 import { holdImport, importBusy } from "./dropimport.js"; // jumpstart-3d: insert supplier parts
 import { el, fmt, uid, round, clone, nextColor, fileAccept } from "./util.js";
@@ -3003,6 +3004,8 @@ export function initAdvanced(app) {
         retrace();
       };
       pic.onerror = () => { busy = false; app.toast("That picture couldn't be read for tracing.", "err"); };
+      // jumpstart-3d: tracing and puffing must not fetch project URLs.
+      if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(sketchId); pic.onerror(); return; }
       pic.src = im.src;
     }
     let tmr = 0;
@@ -3095,6 +3098,8 @@ export function initAdvanced(app) {
         img = g.getImageData(0, 0, W, H); busy = false; recut();
       };
       pic.onerror = () => { busy = false; app.toast("That picture couldn't be read.", "err"); };
+      // jumpstart-3d: tracing and puffing must not fetch project URLs.
+      if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(sketchId); pic.onerror(); return; }
       pic.src = im.src;
     }
     let tmr = 0;
