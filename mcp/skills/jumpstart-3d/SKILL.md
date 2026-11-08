@@ -7,6 +7,8 @@ description: "Build and edit 3D parts in JumpStart 3D through its MCP tools: Beg
 
 JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in it. The tool names start with a prefix your client adds; this text uses the short names (`status`, `add_shape`...).
 
+Before risky steps, use `checkpoint`; review with `diff_checkpoint` and use `rollback` on failure (one undo step).
+
 ## Facts to keep straight
 
 - Lengths are millimetres, angles degrees, positions `[x, y, z]` with z up.

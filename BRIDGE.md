@@ -134,6 +134,25 @@ check them.
 | `await JS3D.screenshot(opts)` → `Uint8Array` | A PNG of the 3D view, after waiting for `ready`. `opts.fit: true` frames everything shown first (ignoring the selection). `opts.width` (1 to 8192) makes the picture that many pixels wide with the same shape, drawn in the same step as the render; without it the picture is the size of the 3D view. |
 | `await JS3D.screenshotDataURL(opts)` → string | The same (`fit` and `width` too) as a `data:image/png;base64,...` string (also async). In a background tab the browser runs no animation frames; the camera move for `fit` is then jumped to its end. |
 
+### Checkpoints
+
+`JS3D.checkpoint(label?)` saves the whole document in page memory and returns
+`{id, label, bodies, at}`: a `c1`, `c2`, ... id, label (default empty), body count,
+and ISO time. `JS3D.checkpoints()` lists this metadata. Only the latest 20 are
+kept; reloading the page forgets them. Returned metadata cannot edit a snapshot.
+
+`JS3D.diff(fromId, toId?)` returns readable lines comparing a checkpoint to now,
+or to another checkpoint: bodies, features and their types, sketches, parameter
+expressions, translation deltas in mm, colors, holes and visibility. Identical
+designs return `No changes.`.
+
+`JS3D.rollback(id)` restores the complete document as one undo step and returns
+the checkpoint metadata. It is synchronous; call `ready()` before inspecting
+geometry. Undo restores the newer state. The usual edit guards apply, including
+`leave Chisel mode first`. A checkpoint from another design cannot be restored;
+its metadata remains listed until eviction. Missing ids report the retained ids.
+Checkpoint before risky edits, inspect the diff, and roll back on failure.
+
 ### Files
 
 | Call | What it does |

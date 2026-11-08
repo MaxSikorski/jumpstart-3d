@@ -538,3 +538,11 @@ face coverage and mesh closure. Browser export coverage is authored but must be 
 separately; no Playwright run was authorized during implementation.
 
 - `simple-collapse.spec.mjs`: Simple panel handles, viewport resizing, whole-plate restoration across reload, Home framing, keyboard shortcut, Original visibility and horizontal overflow on desktop and mobile.
+
+### Checkpoint tests
+
+| File | Coverage |
+| --- | --- |
+| `checkpoint.spec.mjs` | Checkpoint, diff, rollback and undo, Chisel/design guards and retention on both builds |
+| `designdiff.test.mjs` | Pure summaries, snapshot isolation and FIFO eviction in Node |
+| `../mcp/test/checkpoint.test.mjs` | Tool arguments, forwarding and matching chat descriptions |

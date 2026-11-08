@@ -95,6 +95,10 @@ tool("bind_size", "Ties one size of a basic shape (key \"w\", \"d\", \"h\"...) t
 
 tool("undo", "Undoes the last edit. Returns its label, or null when there is nothing to undo.", {}, (_, s) => call(s, "undo"));
 tool("redo", "Redoes the last undone edit. Returns its label, or null.", {}, (_, s) => call(s, "redo"));
+tool("checkpoint", "Remembers the whole design in page memory before a risky step. Returns id, label, body count and time. Keeps the latest 20 checkpoints.", { label: z.string().optional() }, ({ label }, s) => call(s, "checkpoint", label));
+tool("list_checkpoints", "Lists retained checkpoints: id, label, body count and time. Checkpoints last only for this page.", {}, (_, s) => call(s, "checkpoints"));
+tool("diff_checkpoint", "Summarizes changes from a checkpoint to the current design, or to another checkpoint when toId is given.", { fromId: z.string(), toId: z.string().optional() }, ({ fromId, toId }, s) => call(s, "diff", fromId, toId));
+tool("rollback", "Restores a checkpoint as one undo step; undo brings the newer design back. Refuses in Chisel mode or when the checkpoint belongs to another design.", { id: z.string() }, ({ id }, s) => call(s, "rollback", id));
 tool("select_bodies", "Selects bodies in the view (an empty list clears the selection).", { ids: z.array(z.string()) }, ({ ids }, s) => call(s, "select", ids));
 tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, (_, s) => call(s, "fit"));
 tool("set_mode", "Switches the app between Beginner, Advanced and Architect (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet. Arch mode hides the shapes: switch back to beginner or advanced before editing shapes or taking a screenshot of them.", { mode: z.enum(["beginner", "advanced", "arch"]) }, ({ mode }, s) => call(s, "setMode", mode));

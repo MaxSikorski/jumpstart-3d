@@ -32,6 +32,7 @@ import { VERSION } from "./version.js";
 import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
+import { historyCalls } from "./bridgehistory.js";
 import { uid } from "./util.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -193,7 +194,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.8", // jumpstart-3d: spring
+    version: "1.12", // jumpstart-3d: checkpoints
     appVersion: VERSION,
     internals: { app, store },
 
@@ -483,6 +484,7 @@ export function initBridge(app) {
     },
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
+  Object.assign(api, historyCalls({ store, snapshot, edit }));
   api.delete = api.remove;
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers
