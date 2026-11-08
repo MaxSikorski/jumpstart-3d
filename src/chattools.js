@@ -1,4 +1,4 @@
-// jumpstart-3d: chat tools. The same 54 tools the MCP server offers (mcp/tools.mjs), described to a model
+// jumpstart-3d: chat tools. The same 61 tools the MCP server offers (mcp/tools.mjs), described to a model
 // and run straight against window.JS3D (see BRIDGE.md). Three rules:
 //  1. Names and descriptions are copied from mcp/tools.mjs; mcp/test/chat.test.mjs fails if they drift.
 //     Seven differ on purpose (no server, no file paths): status, screenshot, export_file, export_drawing, save_project, load_project, run_script.
