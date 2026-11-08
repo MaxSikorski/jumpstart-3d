@@ -22,6 +22,9 @@ const size = () => z.union([z.array(z.number()).length(3), z.record(z.string(), 
   .describe("Shape size in mm: [w, d, h] or an object such as {w, d, h}. Other kinds have other keys (see list_kinds for each kind's defaults).");
 const exportKind = z.enum(["stl", "obj", "3mf", "glb", "step", "json"]);
 
+const MATERIALS = ["pla", "plaplus", "petg", "abs", "asa", "nylon", "pc", "cfpla", "cfnylon", "peek", "tpu"]; // fea.js FILAMENTS keys (inspect.test.mjs checks)
+const target = (point, body, face, near) => point ?? (body === undefined ? undefined : face !== undefined ? { body, face } : near ? { body, near } : body);
+
 export const where = (p) => resolve(p.startsWith("~/") ? join(homedir(), p.slice(2)) : p); // relative paths are relative to the folder the server was started in
 export async function save(path, bytes) {
   const file = where(path);
@@ -41,6 +44,29 @@ tool("wait_ready", "Waits until the geometry engine has built every shape (volum
 tool("list_kinds", "Lists the 20 shape kinds add_shape accepts, each with its default size (mm).", {}, (_, s) => call(s, "kinds"));
 tool("list_bodies", "Lists the design's top-level bodies: id, name, kind, hole, hidden, color, position, bounding box (mm), volume (mm3) and any build error. bbox and volume are null until built (see wait_ready).", {}, (_, s) => call(s, "list"));
 tool("get_body", "One body in full: the list_bodies entry plus its definition (node) and its 16-number matrix.", { id: z.string() }, ({ id }, s) => call(s, "get", id));
+
+tool("inspect_bodies", "Measures bodies: for each, its bounding box (min, max) and size [x, y, z] in mm, volume (mm3, from the exact solid), surface area (mm2, from the mesh, within about 0.5%), the number of separate solids, and its weight in grams for a material (default pla; density in g/cm3 overrides it), plus the totals. The weight is for a solid part (100% infill); a slicer's estimate is lower. Leave ids out for every shown solid (holes and hidden bodies are left out). Waits for the shapes to build.",
+  { ids: ids().optional(), material: z.enum(MATERIALS).optional().describe("Default pla"), density: z.number().optional().describe("g/cm3, 0.1 to 25; overrides material") },
+  ({ ids, material, density }, s) => call(s, "inspect", ids, { material, density }));
+tool("measure", "Measures the distance between a and b. Give each as a point (a_point [x, y, z]), a body (a_body), or one face of a body (a_body with a_face, a face number, or a_near, a point the face is nearest to); the same for b. Two bodies: the exact shortest distance between their surfaces (0 when they touch or overlap). Two flat parallel faces: the exact distance between their planes, such as a wall's thickness. Two flat faces also give the angle between them (0 to 90 degrees). Anything else is measured on the display mesh (exact false). Returns {distance, exact, kind}, the closest points from and to where known, and delta [dx, dy, dz] for two points.",
+  { a_point: vec3().optional(), a_body: z.string().optional(), a_face: z.number().int().min(0).optional(), a_near: vec3().optional(),
+    b_point: vec3().optional(), b_body: z.string().optional(), b_face: z.number().int().min(0).optional(), b_near: vec3().optional() },
+  (x, s) => call(s, "measure", target(x.a_point, x.a_body, x.a_face, x.a_near), target(x.b_point, x.b_body, x.b_face, x.b_near)));
+tool("check_print", "Checks whether the design is ready to print and returns {ok, summary, issues, bodies, ignored}. Problems (ok false): a part floats above the plate or goes below it, reaches outside the plate, is taller than the printer allows, or did not build. Warnings: undersides leaning out more than angle degrees from upright (default 45; area in mm2; they need supports or a turn), and a part touching the plate with less than a tenth of its footprint. printer: generic (256 x 256 mm, no height limit), a1, x1, p1s, mk4, mini, ender3, u1, or none (no plate); default the plate chosen in the app's Settings, Printer plate. Holes and hidden bodies are ignored; ids limits the check to some bodies. Wall thickness is not checked.",
+  { ids: ids().optional(), printer: z.string().optional(), angle: z.number().optional().describe("Degrees from upright, 10 to 80") },
+  ({ ids, printer, angle }, s) => call(s, "printCheck", { ids, printer, angle }));
+tool("check_collisions", "Finds bodies that overlap, touch, or sit closer than gap mm (default 0) and returns {pairs, checked, skipped}. Each pair has a, b, aName, bName, distance (mm, 0 when touching or overlapping), state (overlap, touch or near) and overlap, the shared volume in mm3. Distances come from the exact solids. Leave ids out to check every shown solid; at most 50 bodies. Use it to check that the parts of an assembly do not collide, or that a print-in-place gap is really there.",
+  { ids: ids().optional(), gap: z.number().optional().describe("mm, 0 to 50. Default 0") },
+  ({ ids, gap }, s) => callLong(s, "collisions", { ids, gap }));
+tool("section_view", "Cuts the design with a plane and returns the outlines of the cut: for each body its loops (each with area in mm2, perimeter, hole true for an inner outline, and its 2D extents min and max) and its net cut area. Give axis (x, y or z) and at (mm along that axis), or origin [x, y, z] and normal [x, y, z]. 2D coordinates run along the result's plane.u and plane.v from plane.origin. outline true adds every loop's points. picture true also returns a PNG of the 3D view with the part on the camera's side cut away (width default 800). Holes and hidden bodies are left out; ids limits it to some bodies. The design is not changed.",
+  { axis: z.enum(["x", "y", "z"]).optional(), at: z.number().optional(), origin: vec3().optional(), normal: vec3().optional(), ids: ids().optional(),
+    outline: z.boolean().optional(), picture: z.boolean().optional(), width: z.number().int().min(1).max(8192).optional() },
+  async ({ axis, at, origin, normal, ids, outline, picture, width }, s) => {
+    const r = await callLong(s, "section", axis ? { axis, at } : { origin, normal }, { ids, points: !!outline, picture: !!picture, width });
+    if (!r.dataURL) return r;
+    const { dataURL, ...rest } = r;
+    return raw([{ type: "text", text: JSON.stringify(rest) }, { type: "image", data: dataURL.split(",")[1], mimeType: "image/png" }]);
+  });
 
 tool("add_shape", "Adds a basic shape and returns its id. The shape's footprint is centred on `at` [x, y] with its base at z. Set hole: true to make a cutter that group_bodies can subtract from another body.",
   { kind: z.string().describe("box, cylinder, sphere, cone, ... (see list_kinds)"), size: size().optional(), at: vec3().optional().describe("Where to put it, mm. Default [0, 0, 0]"), hole: z.boolean().optional(), color: z.string().optional().describe('"#rrggbb"'), name: z.string().optional() },

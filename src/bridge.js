@@ -26,6 +26,7 @@
 //   View       select(ids), fit(), setMode("beginner"|"advanced"|"arch"), screenshot({fit, width}), screenshotDataURL({fit, width})
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
 import { VERSION } from "./version.js";
@@ -33,6 +34,7 @@ import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
 import { uid } from "./util.js";
+import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
@@ -193,7 +195,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.8", // jumpstart-3d: spring
+    version: "1.10", // jumpstart-3d: inspect calls (9.1 is 1.9)
     appVersion: VERSION,
     internals: { app, store },
 
@@ -484,6 +486,7 @@ export function initBridge(app) {
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
   api.delete = api.remove;
+  Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers
   // its calls one at a time; it retries every few seconds while on. The "Connect to AI agent" menu row is the user's switch,

@@ -171,6 +171,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `wait_ready` | Waits until every shape is built. Call it after edits, before reading sizes |
 | `list_kinds` | The 20 shape kinds and their default sizes |
 | `list_bodies`, `get_body` | Read bodies: place, box, volume, errors; one in full |
+| `inspect_bodies`, `measure`, `check_print`, `check_collisions`, `section_view` | Check your work without a picture: size, volume, area, weight; distances and wall thickness; Ready to print on a chosen printer; parts that collide; the outline and area of a cut (with an optional picture) |
 | `add_shape`, `remove_bodies`, `duplicate_bodies` | Make, delete, copy shapes |
 | `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
 | `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
@@ -192,6 +193,8 @@ Typical loop: `add_shape` (a block), `add_shape` with `hole: true` (a cylinder),
 `screenshot` to look, `export_file` at the end.
 
 ## What an agent can and cannot do
+
+An agent can check its work with `inspect_bodies`, `check_print`, `check_collisions` and `section_view`.
 
 It can do what the calls above can: Beginner shapes (20 kinds), groups, scale, parameters, undo, look at the view, and read and
 write files you name in `export_file`, `save_project` and `load_project`. Sketches, extrudes, fillets and the other Advanced
