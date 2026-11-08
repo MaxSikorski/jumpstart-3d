@@ -10,7 +10,7 @@ const design = (id, src) => newDoc('Media guard', 'beginner', {
 
 test('project media never fetches an address; embedded pictures display', async ({ page }, info) => {
   const requests = [], warnings = [];
-  page.on('request', r => { if (r.url().includes('media-source.example.test')) requests.push(r.url()); });
+  page.on('request', r => { if (new URL(r.url()).hostname === 'media-source.example.test') requests.push(r.url()); });
   page.on('console', m => { if (m.type() === 'warning') warnings.push(m.text()); });
   // Abort if a regression occurs: the request event still records the attempt.
   await page.route('**media-source.example.test/**', r => r.abort());
@@ -18,7 +18,7 @@ test('project media never fetches an address; embedded pictures display', async 
   await page.evaluate(d => window.JS3D.load(d), design('unsafe', hostile));
   expect(await page.evaluate(() => window.__store.doc.media.unsafe)).toBeUndefined();
   expect(warnings.some(s => s.includes('unsafe'))).toBe(true);
-  expect(warnings.some(s => s.includes(hostile))).toBe(false);
+  expect(warnings.filter(s => s.split(hostile).length > 1)).toEqual([]); // the warning names the media id, never the address
   expect(await page.evaluate(() => window.__app.media.entryFor('unsafe', window.__store.doc).kind)).toBe('missing');
 
   // Bypass load cleanup to exercise use sites (old storage, preview, edits).
@@ -50,7 +50,7 @@ const sketch = src => ({ id: 's1', name: 'Sketch', seq: 1, hidden: false,
 
 test('sketch rendering, tracing and puffing reject addresses and retain placement', async ({ page }, info) => {
   const requests = [];
-  page.on('request', r => { if (r.url().includes('media-source.example.test')) requests.push(r.url()); });
+  page.on('request', r => { if (new URL(r.url()).hostname === 'media-source.example.test') requests.push(r.url()); });
   await page.route('**media-source.example.test/**', r => r.abort());
   await boot(page, info);
   const doc = newDoc('Sketch guard', 'advanced', { sketches: [sketch(hostile)] });
@@ -68,7 +68,7 @@ test('sketch rendering, tracing and puffing reject addresses and retain placemen
 
 for (const mode of ['beginner', 'advanced']) test(`${mode} rejects CSS URLs in body colors`, async ({ page }, info) => {
   const requests = [];
-  page.on('request', r => { if (r.url().includes('media-source.example.test')) requests.push(r.url()); });
+  page.on('request', r => { if (new URL(r.url()).hostname === 'media-source.example.test') requests.push(r.url()); });
   await page.route('**media-source.example.test/**', r => r.abort());
   await boot(page, info);
   const doc = design('image', 'data:image/png;base64,AA==');
@@ -97,7 +97,7 @@ test('sketch picture survives save and reload and draws', async ({ page }, info)
 
 test('restored thumbnails cannot fetch addresses and saved pictures round trip', async ({ page }, info) => {
   const requests = [];
-  page.on('request', r => { if (r.url().includes('media-source.example.test')) requests.push(r.url()); });
+  page.on('request', r => { if (new URL(r.url()).hostname === 'media-source.example.test') requests.push(r.url()); });
   await page.route('**media-source.example.test/**', r => r.abort());
   await boot(page, info);
   const picture = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = c.height = 2; c.getContext('2d').fillRect(0, 0, 2, 2); return c.toDataURL('image/png'); });
