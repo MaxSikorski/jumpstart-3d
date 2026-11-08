@@ -52,6 +52,7 @@ export async function driveCase({ browser, url, build, fixture, case: c, provide
       context = created; return created;
     }));
     await boot(context.addInitScript(({ providerUrl, model }) => {
+      localStorage.setItem("jumpstart.face", "original");
       localStorage.setItem("jumpstart.chisel.intro", "1");
       localStorage.setItem("jumpstart.meshdetail", "normal");
       localStorage.setItem("jumpstart.chat", JSON.stringify({ provider: "ollama", remember: false, scripts: false,

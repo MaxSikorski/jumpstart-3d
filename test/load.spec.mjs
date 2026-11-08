@@ -11,6 +11,8 @@ import { serve } from "../mcp/serve.mjs";
 import { helperLists } from "../tools/helper-files.mjs";
 import { watchErrors, buildOf, quarantine } from "./helpers.mjs";
 
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {} }); });
+
 const HELPER_COUNT = helperLists().precache.length; // the helper files the service worker saves at install (tools/helper-files.mjs "precache"); "on-use" ones (the Floor Planner) are kept only once fetched
 const NOT_SINGLE = "the single file embeds the engine";
 const SITE_ONLY = "the install manifest is part of the site build";
@@ -132,7 +134,7 @@ test("a second visit loads from the service worker and works offline", async ({ 
     context = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
     const page = await context.newPage();
     const errors = watchErrors(page);
-    await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+    await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch (e) {} });
     await page.goto(server.url);
     await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
     const version = (await page.evaluate(() => fetch("sw.js").then((r) => r.text()))).match(/const VERSION = "([0-9a-f]{10})"/)[1];
@@ -183,7 +185,7 @@ const cacheState = (page) => page.evaluate(async () => {
 const installOldSite = async (live, browser, server) => {
   const context = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
   const page = await context.newPage();
-  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+  await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch (e) {} });
   await page.goto(server.url);
   await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
   await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 30_000 }).toBe("activated");
