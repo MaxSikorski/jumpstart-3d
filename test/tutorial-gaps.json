@@ -36,6 +36,8 @@
     ],
     "top bar": [
       "btn-chat",
+      "face-original",
+      "face-simple",
       "mode-arch"
     ],
     "top bar menus": [

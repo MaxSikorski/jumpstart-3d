@@ -1,4 +1,4 @@
-// jumpstart-3d: chat tools. The same tools the MCP server offers (mcp/tools.mjs), described to a model
+// jumpstart-3d: chat tools. The same 54 tools the MCP server offers (mcp/tools.mjs), described to a model
 // and run straight against window.JS3D (see BRIDGE.md). Three rules:
 //  1. Names and descriptions are copied from mcp/tools.mjs; mcp/test/chat.test.mjs fails if they drift.
 //     Six differ on purpose (no server, no file paths): status, screenshot, export_file, save_project, load_project, run_script.
@@ -26,6 +26,10 @@ const tool = (name, description, properties, required, run) =>
   ({ name, description, parameters: { type: "object", properties, ...(required.length ? { required } : {}) }, run });
 
 const safeName = (s) => String(s || "").replace(/[\\/:*?"<>|]/g, "").trim();
+
+const SEL_FACE = "A face selector: top, bottom, front (-y), back, left, right, >z <z >x ... (the farthest), |z (parallel), #z (perpendicular), +z -z (facing), plane, cylinder, hole, face N, combined with and, or, not and parentheses";
+const SEL_EDGE = "An edge selector: edges of <face selector>, >z <z (the farthest), |z (parallel lines), #z (perpendicular lines), line, circle, edge N, combined with and, or, not and parentheses. Example: edges of top and (>x or <x or >y or <y)";
+const profiles = () => ({ type: "array", items: { type: "array", items: { type: "number" } }, description: "Points [x, y] in the sketch, one inside each profile to use" });
 
 export const TOOLS = [
   tool("status", "Says the app version, the open design's name and mode, and how many bodies it has.", {}, [],
@@ -89,6 +93,34 @@ export const TOOLS = [
     { ids: ids(), name: str("Name for the group"), op: { type: "string", enum: ["cut", "intersect"], description: "Leave out to join" } },
     ["ids"], ({ ids, name, op }) => J().group(ids, { name, op })),
   tool("ungroup_body", "Splits a group back into its parts and returns their ids.", { id: str("A group id") }, ["id"], ({ id }) => J().ungroup(id)),
+  tool("list_faces", "Lists a body's faces with their index, type (plane, cylinder...), centre, normal, area and edge count, in world mm. select narrows the list with a face selector (top, >z, |z, hole, ...). Indices change after every edit; selectors do not.",
+    { id: str("A body id"), select: str(SEL_FACE) }, ["id"], ({ id, select }) => J().faces(id, select || undefined)),
+  tool("list_edges", "Lists a body's edges with their index, type (line, circle...), ends, middle, direction, length and the faces they join, in world mm. select narrows the list with an edge selector (edges of top, |z, circle, ...). Indices change after every edit; selectors do not.",
+    { id: str("A body id"), select: str(SEL_EDGE) }, ["id"], ({ id, select }) => J().edges(id, select || undefined)),
+  tool("add_sketch", "Adds a sketch of fully dimensioned shapes and returns {sketch, plane, shapes, profiles, dims}. On a world plane (XY, XZ front, YZ right; offset mm along its normal) or on one flat face of a body (body and face). Shapes: {type: \"rect\", center: [x, y], size: [w, h]}, {type: \"roundrect\", center, size, radius}, {type: \"circle\", center, diameter}, {type: \"slot\", center, length, width, angle: 0 or 90}, {type: \"polygon\", center, sides, diameter}, {type: \"polyline\", points: [[x, y], ...], closed}, {type: \"line\", from, to, construction}. Sizes may be parameter expressions such as \"W/2\". Coordinates are the sketch's own x, y: world x, y on XY and on a face looking up; x, z on XZ; y, z on YZ. Then extrude or revolve it.",
+    { plane: { type: "string", enum: ["XY","XZ","YZ"], description: "A world plane. Default XY" }, offset: num("Plane only: mm along the plane's normal (XY: +z, XZ: -y, YZ: +x)"), body: str("With face: sketch on a flat face of this body"), face: str(SEL_FACE),
+      shapes: { type: "array", items: { type: "object" }, description: "A list of shape objects, as in the tool description" }, name: str("Name for the sketch") },
+    ["shapes"], ({ plane, offset, body, face, shapes, name }) => J().sketch({ on: body !== undefined || face !== undefined ? { plane, offset, body, face } : { plane: plane ?? "XY", offset }, shapes, name })),
+  tool("extrude", "Extrudes a sketch's closed profiles by dist mm along the sketch's normal (negative goes the other way, into a face it was drawn on). op new (default) makes a body and returns {body}; op join adds to body, op cut cuts body and returns {body, feature}; through: true (cut only) cuts right through. mode sym splits dist both ways, two takes dist2 the other way. profiles: points [x, y] inside the profiles to use (default: the outer shapes and every second nesting level, so a rectangle with a circle in it gives the ring, and a circle in a circle in a rectangle gives the ring and the inner disc).",
+    { sketch: str("A sketch id from add_sketch"), dist: num("Distance in mm along the sketch normal; not 0. Leave out with through"), through: bool("Cut right through the body (op cut only)"), mode: { type: "string", enum: ["one","sym","two"], description: "Default one" }, dist2: num("Mode two: the distance the other way, mm"),
+      op: { type: "string", enum: ["new","join","cut"], description: "Default new" }, body: str("The body to join to or cut (op join or cut)"), profiles: profiles(), name: str("Name of the new body (op new)") },
+    ["sketch"], (a) => J().extrude({ sketch: a.sketch, dist: a.dist, through: a.through, mode: a.mode, dist2: a.dist2, op: a.op, body: a.body, profiles: given(a.profiles), name: a.name })),
+  tool("revolve", "Turns a sketch's closed profiles about an axis: X, Y or Z through the world origin (it must lie in the sketch's plane) or the id of a line in the sketch (see add_sketch shapes). angle in degrees, default 360. op, body, profiles and name as for extrude.",
+    { sketch: str("A sketch id from add_sketch"), axis: str("X, Y or Z, or the id of a line in the sketch"), angle: num("Degrees, default 360"), op: { type: "string", enum: ["new","join","cut"], description: "Default new" }, body: str("The body to join to or cut (op join or cut)"), profiles: profiles(), name: str("Name of the new body (op new)") },
+    ["sketch", "axis"], (a) => J().revolve({ sketch: a.sketch, axis: a.axis, angle: a.angle, op: a.op, body: a.body, profiles: given(a.profiles), name: a.name })),
+  tool("fillet_edges", "Rounds edges of a body with radius r mm and returns {body, feature, edges}. edges is an edge selector such as \"edges of top\" or \"|z\". A radius too large shows as the body's error in list_bodies, with the largest that fits.",
+    { id: str("A body id"), edges: str(SEL_EDGE), r: num("Radius in mm") }, ["id", "edges", "r"], ({ id, edges, r }) => J().fillet(id, edges, r)),
+  tool("chamfer_edges", "Bevels edges of a body by d mm and returns {body, feature, edges}. edges is an edge selector as for fillet_edges.",
+    { id: str("A body id"), edges: str(SEL_EDGE), d: num("Distance in mm") }, ["id", "edges", "d"], ({ id, edges, d }) => J().chamfer(id, edges, d)),
+  tool("shell_body", "Hollows a body to walls th mm thick and returns {body, feature, open}. open is a face selector for the faces to remove (such as \"top\" for an open box); leave it out for a closed hollow. dir in (default), out or both.",
+    { id: str("A body id"), th: num("Wall thickness, mm"), open: str(SEL_FACE), dir: { type: "string", enum: ["in","out","both"], description: "Default in" } }, ["id", "th"], ({ id, th, open, dir }) => J().shell(id, { th, open: open || undefined, dir })),
+  tool("add_holes", "Drills round holes into one flat face of a body at given points and returns {body, feature, holes}. face is a face selector that must give one flat face (bottom, top, ...); each point is [x, y, z] in the world, moved onto the face. size such as M3 sets the diameter (clearance), or the bore, sink or thread for kind cbore, csink or tapped. Leave depth out for a through hole.",
+    { id: str("A body id"), face: str(SEL_FACE), points: { type: "array", items: { type: "array", items: { type: "number" } }, description: "A list of [x, y, z] points in mm, in the world" }, kind: { type: "string", enum: ["simple","cbore","csink","tapped"], description: "Default simple" }, size: str("A screw size such as M3 or #8"), dia: num("Hole diameter, mm (when size is not given)"), depth: num("Depth, mm. Leave out for a through hole") },
+    ["id", "face", "points"], ({ id, face, points, kind, size, dia, depth }) => J().hole(id, { face, points: given(points), kind, size, dia, depth })),
+  tool("pattern_features", "Repeats features of one body (ids from add_holes, extrude cut or join...) and returns {body, feature, copies}. type rect: count copies spacing mm apart along axis (and count2 along axis2); type circle: count copies over angle degrees (default 360) about axis through center. features [\"shape\"] repeats the whole body.",
+    { id: str("A body id"), features: ids('Feature ids to repeat, or ["shape"] for the whole body'), type: { type: "string", enum: ["rect","circle"], description: "rect or circle" }, axis: { type: "string", enum: ["x","y","z"], description: "rect: the direction of the copies; circle: the axis they turn about" }, count: { type: "integer", description: "Number of copies in all, with the original (rect 1 to 200, circle 2 to 360)" }, spacing: num("rect: mm between copies along axis, not 0"),
+      axis2: { type: "string", enum: ["x","y","z"], description: "rect: second direction" }, count2: { type: "integer", description: "rect: number along axis2, default 1" }, spacing2: num("rect: mm between copies along axis2"), angle: num("circle: degrees the copies spread over, default 360"), center: vec3("circle: a point on the axis, [x, y, z] mm in the world. Default the origin") },
+    ["id", "features", "type", "axis", "count"], ({ id, features, type, axis, count, spacing, axis2, count2, spacing2, angle, center }) => J().pattern(id, { features, type, axis, count, spacing, axis2, count2, spacing2, angle, center: given(center) })),
 
   tool("list_params", "Lists the design's named parameters: name, expression, value (mm) and unit.", {}, [], () => J().params()),
   tool("set_param", "Adds or changes a named parameter. The expression can use numbers, other parameters and units (\"40\", \"w/2\", \"1in\"). Returns its value in mm.",

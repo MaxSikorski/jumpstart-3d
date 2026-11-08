@@ -30,6 +30,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
 | `badgelayout.js` | Constraint badges: where each sits on screen (`layoutBadges`) so none lands on another badge, a corner or a dimension label; pure maths, no DOM |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
+| `bridgecad.js` | The Advanced CAD calls of `JS3D` (sketch, extrude, revolve, fillet, chamfer, shell, hole, pattern, faces, edges): reads the built shape into a world-frame topology, writes the same sketches and features the Advanced dialogs write |
+| `cadselect.js` | Face and edge selectors (`top`, `>z`, `edges of top and (>x or <x)`, ...): the parser and evaluator, pure |
+| `cadsketch.js` | Sketch shapes (rect, roundrect, circle, slot, polygon, polyline, line) as points, entities, constraints and dimensions with no degrees of freedom left, and the default profile choice; pure |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
 | `loadui.js` | Engine-load note, splash, service-worker registration |
@@ -43,7 +46,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
-| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar's ⋯ More menu and the one-time Try Simple card |
+| `simpleabout.js` | Community About dialog, update check, help and support links |
+| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
@@ -56,6 +60,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
 | `bridgeinspect.js` | Inspect calls on JS3D |
 | `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
+| `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
 | `meshbool.js` | Joins, cuts and combines that involve an imported mesh run on Manifold (triangle-mesh engine, `third_party/manifold-3d/`) instead of OpenCascade. `startManifold()` / `manifoldReady()` load it (the worker starts it on a mesh asset; a failed or 15 s stuck start ends in a kept error and OpenCascade does the booleans); `kernel.js` calls it from marked blocks (`import` + `initMeshBool`, the top of `evalNode`, `buildBodies`, `clearCache`). `meshBody` draws a meshy body from a Manifold (`meshEngine: "manifold"`); `meshBrep` builds a B-rep from it on demand; a refusal runs today's OpenCascade code (`meshEngine: "occt-fallback"`). Corners of a moved operand go back to the decimal they were written as, through the matrix in doubles, to float32 once (so a moved mesh still meets a box set on its face); `simplify(1e-5)`, cavities kept with the solid around them, closed-by-position check, films dropped |

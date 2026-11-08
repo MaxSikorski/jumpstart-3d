@@ -50,7 +50,7 @@ GEOMETRY_SRC.add("src/occt-gz.wasm");
 const GEOMETRY_DIRS = ["third_party/replicad/", "third_party/replicad-opencascadejs/", "third_party/manifold-3d/", "third_party/opentype.js/", "src/fontsub/"];
 const BOOT = new Set(["src/app.js", "src/index.html", "build.mjs", "package.json", "package-lock.json", "playwright.config.mjs", "size-budget.json", "test/serve.mjs"]);
 // Files the MCP tests read that are not under mcp/ (mcp/test/*.mjs is also scanned for ../../ paths, so a new one is found without editing this list).
-const MCP_FILES = new Set(["src/bridge.js", "README.md", "src/chattools.js", "package.json", "src/app.js", "tools/bridge-demo.js", "test/projects/advanced-hole.json"]);
+const MCP_FILES = new Set(["src/bridge.js", "src/bridgecad.js", "README.md", "src/chattools.js", "package.json", "src/app.js", "tools/bridge-demo.js", "test/projects/advanced-hole.json"]);
 const MCP_DIRS = ["mcp/", "skills/", ".claude-plugin/"];
 const DOC_DIRS = ["LICENSES/", ".github/ISSUE_TEMPLATE/"];
 const DOC_FILES = new Set(["LICENSE", ".github/PULL_REQUEST_TEMPLATE.md", ".github/FUNDING.yml"]);
@@ -64,6 +64,7 @@ export const ALIAS = [
   [/^src\/rotationui\.js$/, ["rotation-access"]],
   [/^src\/printsim\.js$/, ["printerpreview", "paint3mf"]],
   [/^src\/chat(?:providers|tools)\.js$/, ["chat"]],
+  [/^src\/(?:bridgecad|cadselect|cadsketch)\.js$/, ["bridgecad"]],
   [/^src\/recovery\.js$/, ["storage-chaos"]],
   [/^src\/(?:arch(?:flood|land|plan|weather)?|cam(?:core|worker)?)\.js$/, ["upstream25"]],
   [/^src\/(?:carve|sdfshell)\.js$/, ["upstream277"]],
