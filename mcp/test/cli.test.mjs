@@ -157,10 +157,10 @@ test("build: a failing step exits 1 with the bridge's message and a JSON error o
 });
 
 test("build: an unknown call lists the real ones", async () => {
-  const f = await writeJson("unknown.json", recipe([{ call: "add", args: ["box"] }, { call: "filet", args: [] }]));
+  const f = await writeJson("unknown.json", recipe([{ call: "add", args: ["box"] }, { call: "fillet", args: [] }]));
   const r = cli("build", f);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /step 2: unknown call "filet"; calls: .*\badd\b/);
+  assert.match(r.stderr, /step 2: unknown call "fillet"; calls: .*\badd\b/);
   assert.doesNotMatch(r.stderr, /\binvoke\b/);
   assert.equal(JSON.parse(r.stdout).step, 2);
 });
@@ -221,4 +221,18 @@ test("build --check: says so when the app has no printCheck, exit 3 when it repo
   const bad = cli("build", thin, "--check");
   assert.equal(bad.status, 3, bad.stderr);
   assert.equal(JSON.parse(bad.stdout).check.ok, false);
+});
+
+test("build refuses input collisions and invalid calls before starting a browser", async () => {
+  const f = await writeJson("collision.json", recipe([]));
+  const before = await readFile(f, "utf8");
+  const collision = cli("build", f, "--export", "json", "--out", f);
+  assert.equal(collision.status, 1);
+  assert.match(collision.stderr, /the output would overwrite .*; give --out/);
+  assert.equal(await readFile(f, "utf8"), before);
+  const bad = await writeJson("disallowed.json", recipe([{ call: "filet" }]));
+  const refused = cli("build", bad);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /not allowed/);
+  assert.doesNotMatch(refused.stderr, /headless browser/);
 });

@@ -44,3 +44,25 @@ test("checkRecipe refuses code and bad steps, naming the step and call", () => {
   assert.throws(() => checkRecipe(r(...Array.from({ length: MAX_STEPS + 1 }, () => ({ call: "list" })))), /at most 2000 steps/);
   assert.doesNotThrow(() => checkRecipe(r(...Array.from({ length: MAX_STEPS }, () => ({ call: "list" })))));
 });
+
+test("literal dollars, safe names, allowlist, versions and check outcomes", async () => {
+  const { ALLOWED, checkOutcome, versionAtLeast } = await import("../recipe.mjs");
+  const vars = Object.create(null); vars.__proto__ = { id: "safe" };
+  assert.equal(substitute("$__proto__", vars), "safe");
+  assert.equal(substitute("$$box", vars), "$box");
+  assert.equal(substitute("$$$box", vars), "$$box");
+  const recipe = (call, extra = {}) => ({ version: 1, steps: [{ call, ...extra }] });
+  for (const call of ALLOWED) assert.doesNotThrow(() => checkRecipe(recipe(call)));
+  for (const call of ["invoke", "run", "codeCad", "connect", "disconnect", "load", "newDesign"]) assert.throws(() => checkRecipe(recipe(call)), /recipes cannot use/);
+  assert.throws(() => checkRecipe(recipe("filet")), /not allowed/);
+  assert.throws(() => checkRecipe(recipe("bad\u001bcall")), /plain name/);
+  assert.throws(() => checkRecipe(recipe("add", { as: "1x" })), /plain name/);
+  assert.throws(() => checkRecipe({ ...recipe("add"), needs: "1.x" }), /major.minor/);
+  assert.equal(versionAtLeast("1.10", "1.9"), true);
+  assert.equal(versionAtLeast("1.8", "1.9"), false);
+  assert.equal(versionAtLeast("2.0", "1.9"), true);
+  assert.equal(versionAtLeast(undefined, "1.9"), false);
+  assert.deepEqual(checkOutcome({ check: { ok: false } }), { exitCode: 3 });
+  assert.deepEqual(checkOutcome({ check: { ok: true } }), { exitCode: 0 });
+  assert.deepEqual(checkOutcome({}), { exitCode: 0 });
+});

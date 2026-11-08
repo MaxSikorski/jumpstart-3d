@@ -1,6 +1,7 @@
 {
   "jumpstart": "recipe",
   "version": 1,
+  "needs": "1.9",
   "steps": [
     { "call": "sketch", "args": [{ "on": "XY", "name": "Base", "shapes": [{ "type": "rect", "center": [0, 0], "size": [60, 40] }] }], "as": "base" },
     { "call": "extrude", "args": [{ "sketch": "$base.sketch", "dist": 25, "name": "Open box" }], "as": "box" },

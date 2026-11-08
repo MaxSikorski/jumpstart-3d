@@ -207,13 +207,13 @@ server. It prints a JSON result on stdout; progress and errors go to stderr. Exi
 ```
 jumpstart run <script.js> [--app <url|file|dir>]         run a script with JS3D in scope; prints what it returns
 jumpstart export <project.json> <out.stl|obj|3mf|glb|step>   open a project, write the export, print the path and size
-jumpstart build <design.json> [--export stl|obj|3mf|glb|step|json] [--out <file>] [--check]
+jumpstart build <design.json> [--export stl|obj|3mf|glb|step|json] [--out <file>] [--check] [--timeout <minutes>]
                                                          build a project file or a recipe, optionally check it and export it
 jumpstart shot <project.json> <out.png> [--width N]      a picture of the 3D view (800 pixels wide by default)
 jumpstart status [--app <url|file|dir>]                  start the app and print app version, JS3D version, design, body count
 ```
 
-`--app` is the same as `JS3D_APP` above.
+`--app` is the same as `JS3D_APP` above. Without an explicit app or local `docs/`, the CLI opens the public site over the network.
 
 **`jumpstart build`** makes a part with no browser window and no agent. The design file is either a project file (as Save writes it, or a bare
 design) or a **recipe**, a list of bridge calls kept as data:
@@ -226,14 +226,14 @@ design) or a **recipe**, a list of bridge calls kept as data:
 
 Steps run in order through the same `JS3D.invoke` the tools use. A string that is exactly `"$name"` anywhere in a step's `args` is replaced by the
 result of the earlier step saved with `"as": "name"`: its `id` if the result is an object with one, else the result itself; `"$name.key"` is a field
-(for example `"$box.body"`). Recipes are data, not code: `run`, `codeCad`, `connect`, `disconnect`, `load` and `newDesign` are refused, with the step number
-named, before anything starts; at most 2000 steps, file at most 5 MB. A failing step stops the build with exit 1, prints `step 3 (fillet): <message>` on
-stderr and `{"ok":false,"step":3,"call":"fillet","error":"..."}` on stdout; an unknown call lists the real ones. A full example (an open box with a filleted rim and
+(for example `"$box.body"`). Use `"$$name"` for the literal `"$name"`. Saved names and call names must start with a letter or underscore and contain only letters, digits, and underscores. A recipe may include `"needs": "1.9"` to require a minimum bridge version, compared numerically by major and minor before its first step. Recipes only accept calls in the allowlist in `recipe.mjs`; `run`, `codeCad`, `connect`, `disconnect`, `load`, `newDesign` and `invoke` are refused, with the step number
+named, before anything starts; at most 2000 steps, file at most 5 MB, substituted arguments at most 1 MB per step, and at most 5000 bodies after each step. `--timeout <minutes>` sets the overall build deadline (default 30 minutes). A failing step stops the build with exit 1, prints `step 3 (fillet): <message>` on
+stderr and `{"ok":false,"step":3,"call":"fillet","error":"..."}` on stdout; an allowed call missing from the app lists the real ones. A full example (an open box with a filleted rim and
 M3 holes) is `examples/recipes/open-box.json`.
 
-After the steps it waits for the geometry and prints `{"ok":true,"bodies":[{id,name,bbox,volume}],"check"?,"file"?}`. `--check` adds the result of
+After the steps it waits for the geometry and prints `{"ok":true,"bodies":[{id,name,bbox,volume,error?}],"check"?,"file"?}`. Body errors are retained, named on stderr, and make `ok` false and the exit code 1. `--check` adds the result of
 `JS3D.printCheck()` (an app without it says `check needs bridge 1.10`); **exit code 3** means the check reported problems (`check.ok` is false). `--export`
-writes the file (default: the design file's name with the new extension, next to it; `--out` names it) and prints its path and size. For example `node mcp/cli.mjs run tools/bridge-demo.js` runs the scripting demo and prints its summary.
+writes the file (default: the design file's name with the new extension, next to it; JSON uses `<name>.project.json`; `--out` names it. An output resolving to the input is refused) and prints its path and size. For example `node mcp/cli.mjs run tools/bridge-demo.js` runs the scripting demo and prints its summary.
 
 ## Security
 
