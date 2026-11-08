@@ -529,7 +529,7 @@ function loadPrefs() {
   app.tabletPrevLayout = p.tabletPrevLayout || null;
   app.setTabletMode(!!p.tablet, true);
   // an iPad (or other tablet) that hasn't chosen yet: suggest Tablet & Pencil mode once
-  if (p.tablet === undefined && isTablet()) setTimeout(() => app.toast("On an iPad or tablet? Turn on Tablet & Pencil mode in the theme menu (◐): fingers move the view, the Apple Pencil draws and picks precisely."), 4000);
+  if (p.tablet === undefined && isTablet()) setTimeout(() => app.toast("On an iPad or tablet? Turn on Tablet & Pencil mode in the Customize menu: fingers move the view, the Apple Pencil draws and picks precisely."), 4000); // jumpstart-3d: Customize replaces the theme icon
   // realistic lighting starts off (faster); it stays on only for someone who turned it on themselves
   app.setLighting(p.lightOn === true, true);
   app.setAppearances(p.appear !== false, true);
@@ -603,10 +603,10 @@ function onSlow() {
     const next = PERF_ORDER[i + 1];
     try { localStorage.setItem(PERF_AUTO_KEY, next); } catch (e) {}
     app.setPerf("auto", true);
-    app.toast("Switched to " + PERF_NAMES[next] + " to keep things smooth. You can change it in the theme menu (◐).");
+    app.toast("Switched to " + PERF_NAMES[next] + " to keep things smooth. You can change it in the Customize menu."); // jumpstart-3d: Customize replaces the theme icon
   } else if (app.perfPref !== "auto" && i < 2 && !slowTold) {
     slowTold = true;
-    app.toast("Things look slow on this computer. Try " + (i === 0 ? "High or Normal" : "Normal") + " in the theme menu (◐): " + (i === 0 ? "they draw" : "it draws") + " less, and every tool still works.");
+    app.toast("Things look slow on this computer. Try " + (i === 0 ? "High or Normal" : "Normal") + " in the Customize menu: " + (i === 0 ? "they draw" : "it draws") + " less, and every tool still works."); // jumpstart-3d: Customize replaces the theme icon
   }
 }
 
@@ -640,7 +640,7 @@ app.setLayout = function (name, quiet) {
   requestAnimationFrame(() => { window.dispatchEvent(new Event("resize")); app.vp && app.vp.request(); });
   if (!quiet) {
     savePrefs();
-    app.toast(LAYOUTS[name] + " layout: " + ({ default: "tools across the top.", simple: "bigger buttons with names.", clean: "icons down the left side (hover for names).", classic: "a tool palette down the right side.", tablet: "big tools along the bottom." })[name] + " Change it any time in the theme menu (◐).");
+    app.toast(LAYOUTS[name] + " layout: " + ({ default: "tools across the top.", simple: "bigger buttons with names.", clean: "icons down the left side (hover for names).", classic: "a tool palette down the right side.", tablet: "big tools along the bottom." })[name] + " Change it any time in the Customize menu."); // jumpstart-3d: Customize replaces the theme icon
   }
 };
 
@@ -825,6 +825,8 @@ async function checkForUpdates(btn) {
   } finally { clearTimeout(timeout); btn.disabled = false; btn.textContent = "Check for updates"; }
 }
 
+app.checkForUpdates = checkForUpdates; // jumpstart-3d: Simple's About calls the same check
+
 // keyboard shortcuts sheet
 app.showAbout = function () {
   const sec = (title, items) => el("section", {}, el("h3", {}, title), el("ul", {}, ...items.map(([b, t]) => el("li", {}, el("b", {}, b), " " + t))));
@@ -839,7 +841,7 @@ app.showAbout = function () {
         el("button", { class: "btn", id: "ab-check", onclick: (e) => checkForUpdates(e.currentTarget) }, "Check for updates"),
         el("button", { class: "btn", id: "ab-report", onclick: () => { back.remove(); app.showReport(); } }, "Report a problem"), // jumpstart-3d: report
         el("button", { class: "btn", id: "ab-slow", onclick: () => app.showSlowHelp() }, "Slow bodies"),
-        el("button", { class: "btn", id: "ab-tablet", title: "For iPad and other tablets: the Apple Pencil draws and picks, fingers move the view. Also in the theme menu (◐) under Device.", onclick: (e) => { app.setTabletMode(!app.tabletOn); e.currentTarget.textContent = app.tabletOn ? "Tablet & Pencil mode: on" : "Tablet & Pencil mode: off"; } }, app.tabletOn ? "Tablet & Pencil mode: on" : "Tablet & Pencil mode: off"),
+        el("button", { class: "btn", id: "ab-tablet", title: "For iPad and other tablets: the Apple Pencil draws and picks, fingers move the view. Also in the Customize menu under Device.", onclick: (e) => { app.setTabletMode(!app.tabletOn); e.currentTarget.textContent = app.tabletOn ? "Tablet & Pencil mode: on" : "Tablet & Pencil mode: off"; } }, app.tabletOn ? "Tablet & Pencil mode: on" : "Tablet & Pencil mode: off"), // jumpstart-3d: Customize replaces the theme icon
         // jumpstart-3d: the main button goes to the community build; the author's site stays as a second link
         el("a", { class: "btn primary", id: "ab-community", href: "https://github.com/MaxSikorski/jumpstart-3d", target: "_blank", rel: "noopener" }, "Visit the community build"),
         // jumpstart-3d: support link (community build), at the top of About
@@ -940,11 +942,11 @@ app.showAbout = function () {
       sec("New in version 2.8.2.2", [
         ["Clearance picks bodies:", "click or tap bodies while Clearance is open to choose which ones to check (again to drop one), drag a box around several, or click them in the Browser. The chosen bodies stay highlighted."],
         ["Safari:", "the downloaded app also opens in older Safari on iPad and Mac (before 16.4). Built shapes saved in a project file or remembered by the browser are found again in any browser, Safari and Chrome alike."],
-        ["Tablet & Pencil mode:", "turn it on from the theme menu (◐) under Device, or the Tablet & Pencil mode button in About."],
+        ["Tablet & Pencil mode:", "turn it on from the Customize menu under Device, or the Tablet & Pencil mode button in About."], // jumpstart-3d: Customize replaces the theme icon
         ["Slow bodies show sooner:", "while a very slow body builds (many curved cuts or offset curved faces), it is shown see-through as it was a step or two earlier, usually within seconds, and the finished shape takes its place when it is ready. Save once it has built: the saved file carries the built shape, so it opens in seconds on any computer or iPad."],
       ]),
       sec("New in version 2.8.2.1", [
-        ["Tablet & Pencil mode:", "for iPad and other tablets, in the theme menu (◐) under Device. The Apple Pencil works like a precise mouse: tap to pick, draw sketch lines, drag handles and selection boxes, and on iPads with pencil hover, shapes light up as the pencil comes near. Fingers move the view: one finger orbits, two pan and pinch to zoom, and a tap still picks; a hand resting on the screen while you draw is ignored. A two-finger tap undoes, a three-finger tap redoes and a long press opens the right-click menu. Keys on the left of the view stand in for a keyboard: Undo, Redo, Shift (the next pick adds to the selection; tap twice to keep it on), Delete, Esc, OK and Fit. It uses the Tablet layout with bigger buttons, and turning it off brings back your layout. Tablets suggest it the first time."],
+        ["Tablet & Pencil mode:", "for iPad and other tablets, in the Customize menu under Device. The Apple Pencil works like a precise mouse: tap to pick, draw sketch lines, drag handles and selection boxes, and on iPads with pencil hover, shapes light up as the pencil comes near. Fingers move the view: one finger orbits, two pan and pinch to zoom, and a tap still picks; a hand resting on the screen while you draw is ignored. A two-finger tap undoes, a three-finger tap redoes and a long press opens the right-click menu. Keys on the left of the view stand in for a keyboard: Undo, Redo, Shift (the next pick adds to the selection; tap twice to keep it on), Delete, Esc, OK and Fit. It uses the Tablet layout with bigger buttons, and turning it off brings back your layout. Tablets suggest it the first time."], // jumpstart-3d: Customize replaces the theme icon
       ]),
       sec("New in version 2.8.2.0", [
         ["Step through the timeline:", "the Advanced timeline has ⏮ ◀ ▶ ▶ ⏭ buttons. Step back and forward to see the design as it was after any step (later steps are dimmed and the current one is outlined), click a step to jump to it, or press Play to watch the design being built step by step. Only the view changes: your design isn't touched, and opening a tool or exporting goes back to the finished design."],
@@ -971,7 +973,7 @@ app.showAbout = function () {
         ["Pattern on a path:", "Put the object on the path (on when the object is away from the path) moves it to the nearer end of the path, and the copies run along the whole line, like beads on a string. Go the other way starts from the far end. Turn it off to keep the object where it is, with every copy the same distance from the path."],
       ]),
       sec("New in version 2.8.1.4", [
-        ["Layouts:", "five ways to arrange the tools, in the theme menu (◐) under Layout: Default (tools across the top), Big buttons (bigger buttons with names), Clean (a slim column of icons on the left; hover for names), Classic CAD (a labelled tool palette down the right side) and Tablet (big tools along the bottom, near your thumbs). Every tool is in every layout, and the choice is remembered on this computer."], // jumpstart-3d: his "Simplified" layout reads "Big buttons" in our build
+        ["Layouts:", "five ways to arrange the tools, in the Customize menu under Layout: Default (tools across the top), Big buttons (bigger buttons with names), Clean (a slim column of icons on the left; hover for names), Classic CAD (a labelled tool palette down the right side) and Tablet (big tools along the bottom, near your thumbs). Every tool is in every layout, and the choice is remembered on this computer."], // jumpstart-3d: his "Simplified" layout reads "Big buttons" in our build
         ["Save downloads a file:", "Save (or Ctrl+S) now also downloads the project file (.json) to your Downloads, so work isn't lost when a Chromebook clears the browser at sign-out. Open it again with Open/Export → Open a project file. Turn it off in Open/Export → Download a file on every Save. The Floor Planner's 💾 Save also downloads its plan file (turn it off in 📂 My plans)."],
         ["Pinned Constraints:", "while sketching in Advanced, Pin (next to Constraints on the toolbar) puts every constraint button on the workspace as a small palette. Drag it by its title bar to wherever you like, switch between names and icons only (⤡), and ✕ to put it away. It stays pinned, where you left it, for your next sketches."],
       ]),
@@ -1032,7 +1034,7 @@ app.showAbout = function () {
         ["Roland MDX-50:", "CAM Studio has Roland MDX-50 profiles (with the 5-tool changer, and with the ZCL-50A rotary axis) and a Roland NC code post processor for MDX-series mills."],
       ]),
       sec("New in version 2.7.4", [
-        ["Sketch line style:", "choose how thick sketch lines are (Hairline, Thin, Medium, Thick or Extra thick) and their colour (the theme's own colour, or black, white, blue, red, green, orange, purple, yellow or cyan) in the theme menu (◐), under Sketch lines. It applies in Advanced, Beginner and Chisel and is remembered. The new default, Thin, is thinner than before."],
+        ["Sketch line style:", "choose how thick sketch lines are (Hairline, Thin, Medium, Thick or Extra thick) and their colour (the theme's own colour, or black, white, blue, red, green, orange, purple, yellow or cyan) in the Customize menu, under Sketch lines. It applies in Advanced, Beginner and Chisel and is remembered. The new default, Thin, is thinner than before."], // jumpstart-3d: Customize replaces the theme icon
         ["Shell → Hollow:", "the Shell tool now has two types. Openings removes the faces you click (an open box or cup); Hollow makes the whole model hollow inside, closed all round, with a 2 mm wall to start that you can change (quick picks 1, 2, 3 and 5 mm). Hollow works on the selected shapes, or click shapes to add them."],
         ["Shell and Fillet in Beginner:", "Beginner's toolbar has Fillet (click edges or a face, or Round all edges of the shape) and Shell (Hollow to start). The shape's panel lists its fillets and shells with Edit and Remove, plus Round edges and Make hollow buttons. Fillet and Chamfer in Advanced have the all-edges button too."],
         ["Hollow in Chisel:", "a new Hollow tool (in Easy and full Chisel) makes a sculpted model hollow inside with the wall thickness you choose."],
@@ -1156,9 +1158,9 @@ app.showAbout = function () {
       sec("Viewing", [
         ["Lighting:", "realistic shading and shadows (sun button), light, dark or high-contrast themes, orthographic view and the view cube."],
         ["Projection & animation:", "Projector (a second window that shows your objects on black, for a projector or second screen), Media (pictures and videos on objects: facing view, wrap around, all sides or ball), and Picture to 3D model (puffs a picture's subject up into a rounded, printable solid with the picture painted on), and in Chisel: ready-made characters (people, heads, animals, aliens), textures, a History strip, and the Puppet Animator (rig, pose, keyframes up to 10 seconds, an animation library, a virtual set with your own background, MP4 export)."],
-        ["Performance:", "Auto, Normal (slower computers), High (most laptops and Chromebooks) or Ultra (powerful computers, sharpest) in the theme menu (◐): lighter modes draw fewer pixels while the view moves and simpler shadows, with every tool and export unchanged. Auto picks a mode for the computer and steps down if things get slow."],
+        ["Performance:", "Auto, Normal (slower computers), High (most laptops and Chromebooks) or Ultra (powerful computers, sharpest) in the Customize menu: lighter modes draw fewer pixels while the view moves and simpler shadows, with every tool and export unchanged. Auto picks a mode for the computer and steps down if things get slow."], // jumpstart-3d: Customize replaces the theme icon
         ["Tutorials:", "fifty-one step-by-step projects (nineteen in Beginner, twenty in Advanced, twelve in Architect, marked Easy, Proficient, Advanced or Expert, 5-15 minutes each), from a name keychain and a rocket to a chess pawn, a wall hook, a box with a drawer and a candy jar with a screw-on lid. Each step shows which tool to use, how and when, with a short animation, and ticks itself off when it's done."], // jumpstart-3d: tutorials count
-        ["Mesh detail:", "Normal, Fine, Extra fine or a custom level up to 32× in the theme menu (◐): how finely curved surfaces are divided into triangles, in the view and in STL, OBJ and 3MF exports. STEP is exact at every level. The menu shows the triangle count of your design and estimates it for other levels; above 500,000 it asks first, because building can take minutes."],
+        ["Mesh detail:", "Normal, Fine, Extra fine or a custom level up to 32× in the Customize menu: how finely curved surfaces are divided into triangles, in the view and in STL, OBJ and 3MF exports. STEP is exact at every level. The menu shows the triangle count of your design and estimates it for other levels; above 500,000 it asks first, because building can take minutes."], // jumpstart-3d: Customize replaces the theme icon
         ["Help:", "press ? for every keyboard shortcut; right-click a shape for copy, paste, duplicate and delete."]]),
       // the author's credit from v1.93.8 stays in this community build (see NOTICE.md)
       el("p", { class: "ab-credit" }, "Created by J.Siwek"),

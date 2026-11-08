@@ -2,6 +2,7 @@
 const S = (body, extra = "") => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ${extra}>${body}</svg>`;
 
 export const ICON = {
+  customize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>`,
   sketch: S('<rect x="3" y="3" width="18" height="18" rx="1" stroke-dasharray="2 2"/><path d="M7 16 12 7l5 9z"/>'),
   extrude: S('<path d="M5 17h10l4-3H9z" fill="#c9d8f2"/><path d="M5 17V9h10v8M15 9l4-3v8M5 9l4-3h10"/><path d="M12 3v4M10.5 4.5 12 3l1.5 1.5" stroke="#1f4fa8"/>'),
   revolve: S('<ellipse cx="12" cy="17" rx="7" ry="3"/><path d="M5 17V9M19 17V9"/><ellipse cx="12" cy="9" rx="7" ry="3"/><path d="M12 3v18" stroke-dasharray="2 2" stroke="#1f4fa8"/>'),
