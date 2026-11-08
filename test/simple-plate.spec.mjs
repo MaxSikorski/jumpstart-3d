@@ -48,3 +48,35 @@ test("mobile layout fits", async ({ page }, info) => {
   const fit = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth, boxes: ["simple-rail", "viewport", "shapes"].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [r.left, r.right]; }) }));
   expect(fit.scroll).toBeLessThanOrEqual(fit.width); for (const [left, right] of fit.boxes) { expect(left).toBeGreaterThanOrEqual(0); expect(right).toBeLessThanOrEqual(fit.width); }
 });
+
+test("selected shape panel keeps the inspector and proxies", async ({ page }, info) => {
+  await page.evaluate(() => { const id = JS3D.add("box", { size: [20, 20, 20] }); JS3D.select([id]); });
+  await waitIdle(page);
+  const panel = page.locator("#simple-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.locator("#inspector")).toBeVisible();
+  if (info.project.name === "mobile") await page.click("#simple-sheet-handle");
+  await expect(panel.locator("#simple-ready")).toHaveAttribute("data-state", "ready", { timeout: 30000 });
+  for (const id of ["drop", "dup", "mirror", "shell", "fillet", "del"]) await expect(panel.locator(`[data-for="bb-${id}"]`)).toHaveCount(1);
+  await page.locator("#insp-w").fill("30"); await page.locator("#insp-w").press("Enter"); await waitIdle(page);
+  expect(await page.evaluate(() => window.__app.selected()[0].node.p.w)).toBe(30);
+  await page.locator("#insp-pos2").fill("5"); await page.locator("#insp-pos2").press("Enter"); await waitIdle(page);
+  await expect(panel.locator("#simple-ready")).toHaveAttribute("data-state", "fail", { timeout: 30000 });
+  await panel.locator('[data-for="bb-drop"]').click(); await waitIdle(page);
+  await expect(panel.locator("#simple-ready")).toHaveAttribute("data-state", "ready", { timeout: 30000 });
+  await panel.locator(".solidhole button").nth(1).click();
+  expect(await page.evaluate(() => window.__app.selected()[0].hole)).toBe(true);
+  await panel.locator('[data-for="bb-del"]').click(); await waitIdle(page);
+  expect(await page.evaluate(() => window.__store.doc.bodies.length)).toBe(0);
+  await page.evaluate(() => window.__app.setFace("original", true));
+  await expect(page.locator("#viewport > #inspector")).toHaveCount(1);
+});
+
+test("plate panel and sphere check", async ({ page }, info) => {
+  if (info.project.name !== "mobile") await expect(page.locator("#simple-panel")).toContainText("The plate");
+  await page.evaluate(() => { const id = JS3D.add("sphere", { size: [20, 20, 20] }); JS3D.select([id]); });
+  await waitIdle(page);
+  await expect(page.locator("#simple-panel")).toBeVisible();
+  if (info.project.name === "mobile") { await page.click("#simple-sheet-handle"); await expect(page.locator("#simple-sheet-handle")).toHaveAttribute("aria-expanded", "true"); }
+  await expect(page.locator("#simple-ready")).toHaveAttribute("data-state", "warn", { timeout: 30000 });
+});

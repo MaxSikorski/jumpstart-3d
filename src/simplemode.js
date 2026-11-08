@@ -1,3 +1,7 @@
+import * as THREE from "three";
+import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets.js";
+import { startJob } from "./overhang.js";
+import { worldBounds, fitsPlate, restsOnPlate, verdict } from "./printcheck.js";
 import { ICON } from "./icons.js";
 
 const TOOLS = {
@@ -106,7 +110,67 @@ function initPlate(app) {
     if (!moreButton.getClientRects().length) return null;
     return proxies.some((b) => b.closest("#simple-more")) ? moreButton : proxies.some((b) => b.closest("#simple-shapes")) ? shapeButton : null;
   }
-  sync(); return { sync, proxyFor, close };
+  const panel = document.createElement("aside"); panel.id = "simple-panel"; panel.setAttribute("aria-label", "Selected shape");
+  panel.innerHTML = '<button id="simple-sheet-handle" aria-expanded="false" aria-label="Expand selected shape panel">━━</button><div class="simple-panel-scroll"><div id="simple-inspector-slot"></div><div id="simple-plate-empty"><h2>The plate</h2><p>Pick a shape on the plate, or drag one in from the strip below.</p></div><div id="simple-actions"><div id="simple-multi" class="simple-grid"></div><h3>Quick fixes</h3><div id="simple-fixes" class="simple-grid"></div></div></div><div class="simple-print-footer"><div id="simple-ready" role="status" data-state="empty">Add a shape to check it.</div><button id="simple-print">Export STL for printing</button><button id="simple-export-more">Send to slicer (3MF) · more formats</button></div>';
+  work.append(panel);
+  for (const key of ["group", "align", "ungroup"]) $("simple-multi").append(proxy(key));
+  for (const key of ["drop", "dup", "mirror", "shell", "fillet", "del", "fillopen"]) $("simple-fixes").append(proxy(key));
+  panel.addEventListener("click", activate);
+  panel.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
+  $("simple-print").onclick = () => { if ($("menu-export").hidden) $("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]')?.click(); };
+  $("simple-export-more").onclick = () => $("btn-export").click();
+  $("simple-sheet-handle").onclick = () => { const expanded = panel.classList.toggle("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", expanded); };
+  const inspector = $("inspector"), oldParent = inspector.parentNode, oldNext = inspector.nextSibling;
+  const label = document.createElement("button"); label.id = "simple-plate-label"; label.onclick = () => app.plateView.open(); $("viewport").append(label);
+  const ready = $("simple-ready"); let timer, generation = 0;
+  function plateName() { const choice = getPlatePref().printer; return choice === "none" ? "No plate boundary" : choice === "generic" ? "256 × 256 mm" : (PRINTERS[choice]?.name || "256 × 256 mm"); }
+  function updateLabel() { const name = plateName(); label.textContent = getPlatePref().printer === "none" ? name : "Plate · " + name; }
+  function layout() {
+    const active = document.documentElement.dataset.face === "simple" && app.mode === "beginner";
+    if (active && inspector.parentNode !== $("simple-inspector-slot")) $("simple-inspector-slot").append(inspector);
+    else if (!active && inspector.parentNode !== oldParent) oldParent.insertBefore(inspector, oldNext);
+    const selected = app.selected(); panel.classList.toggle("has-selection", !!selected.length);
+    $("simple-plate-empty").hidden = !!selected.length; $("simple-actions").hidden = !selected.length;
+    $("simple-multi").hidden = selected.length < 2;
+    const ungroup = $("simple-multi").querySelector('[data-for="bb-ungroup"]'); ungroup.hidden = selected.length < 2 || $("bb-ungroup")?.disabled;
+    $("simple-fixes").querySelector('[data-for="bb-fillopen"]').hidden = !selected.some(b => b.node.t === "mesh" || b.node.t === "step");
+    if (!selected.length) { panel.classList.remove("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", "false"); }
+  }
+  function schedule() { generation++; clearTimeout(timer); if (document.documentElement.dataset.face !== "simple" || app.mode !== "beginner") return; ready.dataset.state = "checking"; ready.textContent = "Checking overhangs…"; const g = generation; timer = setTimeout(() => check(g), 250); }
+  function check(g) {
+    const selected = new Set(app.sel), views = [...app.scene.views].filter(([id,v]) => (!selected.size || selected.has(id)) && v.data && v.mesh && v.body && !v.body.hole && !v.body.cmdPreview && !v.body.cutPreview && !v.pending && v.group.visible && !app.scene.state.ghost.has(id));
+    if (!views.length) { ready.dataset.state = "empty"; ready.textContent = "Add a shape to check it."; return; }
+    const pref = getPlatePref(), dims = plateDims(pref.printer), jobs = []; let flat = null, fit = true, area = 0, large = false;
+    const matrix = new THREE.Matrix4(), local = new THREE.Matrix4();
+    for (const [,v] of views) {
+      const geo = v.mesh.geometry, pos = geo.getAttribute("position").array, indices = geo.getIndex()?.array;
+      if (!indices) continue;
+      local.compose(v.mesh.position, v.mesh.quaternion, v.mesh.scale); const m = matrix.multiplyMatrices(v.group.matrix, local).elements.slice();
+      const rest = restsOnPlate(pos, indices, m), bounds = worldBounds(v.data.vertices, v.group.matrix.elements), f = fitsPlate(bounds, dims);
+      if (rest.minZ > .05) flat = { type: "float", value: rest.minZ }; else if (rest.minZ < -.05) flat = { type: "below", value: -rest.minZ }; else if (rest.contactArea < 1 && !flat) flat = { type: "point" };
+      if (!f.ok && (fit === true || f.why === "size")) fit = f.why;
+      if (indices.length / 3 > 300000) large = true; else jobs.push(startJob(pos, indices, m, pref.angle));
+    }
+    function finish() {
+      const state = verdict({ flat: flat?.type, fit: fit === true, overhang: large ? "large" : area > 0 }); ready.dataset.state = state;
+      const heading = state === "ready" ? "✓ Ready to print" : state === "warn" ? "Check before printing" : "Not ready yet";
+      ready.replaceChildren(); const h = document.createElement("strong"); h.textContent = heading; ready.append(h);
+      const line = (text, action, buttonText) => { const p = document.createElement("p"); p.textContent = text; if (action) { const b = document.createElement("button"); b.textContent = buttonText; b.onclick = () => $(action)?.click(); p.append(" ", b); } ready.append(p); };
+      if (state === "ready") line(`Sits flat, ${dims ? `fits the ${plateName()} plate` : "no printer picked"}, 0 overhangs.`);
+      else {
+        if (flat) line(flat.type === "point" ? "Touches the plate only at a point or edge" : `${flat.type === "float" ? "Floats" : "Goes"} ${Number(flat.value.toFixed(2))} mm ${flat.type === "float" ? "above" : "below"} the plate`, flat.type === "float" && selected.size ? "bb-drop" : null, "Lay flat");
+        if (fit !== true) line(fit === "size" ? `Too big for the ${plateName()} plate` : "Reaches past the plate edge");
+        if (!dims) line("No printer picked");
+        if (large) line("Too detailed to check here — use Print check", "bb-printsim", "Details"); else if (area > 0) line(`${Math.round(area)} mm² leans more than ${pref.angle}° — needs supports`, "bb-printsim", "Details");
+      }
+    }
+    function step() { if (g !== generation) return; const job = jobs[0]; if (!job) { finish(); return; } if (job.step(8)) { area += job.result().area; jobs.shift(); } setTimeout(step, 0); } step();
+  }
+  const refresh = app.refreshUI; app.refreshUI = function (...args) { const result = refresh.apply(this, args); sync(); layout(); schedule(); return result; };
+  const sceneRefresh = app.onSceneRefresh; app.onSceneRefresh = function (...args) { sceneRefresh?.apply(this, args); layout(); schedule(); };
+  onPlatePref(() => { updateLabel(); schedule(); }); updateLabel();
+
+  sync(); return { sync, proxyFor, close, layout, schedule };
 }
 
 // jumpstart-3d: Simple | Original switch, its More menu and the first-visit card.
@@ -114,6 +178,40 @@ let hadPrefs = false;
 try { hadPrefs = localStorage.getItem("workplane.ui.v1") !== null; } catch (e) { /* storage may be unavailable */ }
 
 const CSS = `
+#simple-panel, #simple-plate-label { display: none; }
+html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 80px minmax(0, 1fr) 280px; }
+html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: flex; grid-column: 3; grid-row: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); color: var(--ink); border-left: 1px solid var(--line); }
+#simple-panel .simple-panel-scroll { overflow-y: auto; min-height: 0; flex: 1; }
+#simple-panel #inspector { position: static; width: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+#simple-panel #inspector .body { overflow: visible; }
+#simple-panel .solidhole button { min-height: 44px; }
+#simple-panel :is(#simple-actions, #simple-plate-empty) { margin: 12px; }
+#simple-panel #simple-ready { margin-bottom: 6px; font-size: 13px; }
+#simple-panel [hidden] { display: none !important; }
+#simple-panel h2 { font-size: 16px; } #simple-panel h3 { font-size: 14px; }
+#simple-panel p { font-size: 13px; }
+#simple-panel .simple-grid button { min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 6px; padding: 6px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+#simple-panel .simple-grid button:disabled { opacity: .45; }
+#simple-panel .simple-grid svg { width: 20px; height: 20px; flex: none; }
+#simple-ready { padding: 10px; border: 2px solid var(--line); border-radius: 8px; }
+#simple-ready[data-state="ready"] { border-color: #278351; background: color-mix(in srgb, var(--panel) 90%, #278351); } #simple-ready[data-state="warn"] { border-color: #b27600; background: color-mix(in srgb, var(--panel) 90%, #b27600); } #simple-ready[data-state="fail"] { border-color: var(--danger); background: color-mix(in srgb, var(--panel) 90%, var(--danger)); }
+#simple-ready p { margin: 7px 0 0; } #simple-ready button { color: var(--accent); background: transparent; border: 0; text-decoration: underline; cursor: pointer; }
+.simple-print-footer { padding: 10px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.simple-print-footer button { min-height: 44px; cursor: pointer; border-radius: 6px; font-weight: 600; }
+#simple-print { color: white; background: var(--accent-2); border: 0; } #simple-export-more { color: var(--ink); background: transparent; border: 0; }
+#simple-sheet-handle { display: none; }
+html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { display: block; position: absolute; top: 14px; left: 14px; z-index: 6; padding: 8px 12px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+#viewport:has(.try-simple) #simple-plate-label { display: none !important; }
+@media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 80px minmax(0, 1fr) 236px; } }
+@media (max-width: 640px) {
+ html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: absolute; z-index: 35; grid-column: 1 / -1; grid-row: 1; left: 0; right: 0; bottom: 58px; height: 40vh; max-height: calc(100% - 58px); border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.has-selection { display: flex; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { height: 80vh; }
+ #simple-sheet-handle { display: block; flex: none; min-height: 44px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+ #simple-panel:not(.expanded) .simple-print-footer { display: none; }
+}
+
 #simple-rail, .simple-panel { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
 html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; grid-row: 1; }
@@ -273,7 +371,7 @@ export function initSimpleMode(app) {
   let face;
   let card = null, lessonInOriginal = false;
   function apply(name) {
-    face = name; document.documentElement.dataset.face = face;
+    face = name; document.documentElement.dataset.face = face; plate.layout(); plate.schedule();
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
