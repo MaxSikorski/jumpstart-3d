@@ -26,13 +26,14 @@ test("the tools are listed, with the contract names", async () => {
   const names = tools.map((t) => t.name);
   for (const n of ["status", "wait_ready", "list_kinds", "list_bodies", "get_body", "add_shape", "add_fastener", "add_hole_pattern", "add_gear", "add_name_plate", "add_knurl", "remove_bodies", "duplicate_bodies", "move_bodies", "move_to", "rotate_bodies", "resize_shape",
     "scale_bodies", "set_hole", "set_color", "rename_body", "set_hidden", "group_bodies", "ungroup_body", "list_params", "set_param", "remove_param", "bind_size", "undo", "redo",
-    "select_bodies", "fit_view", "set_mode", "screenshot", "export_file", "save_project", "load_project", "new_design", "run_script"]) assert.ok(names.includes(n), "missing tool " + n);
+    "select_bodies", "fit_view", "set_mode", "screenshot", "export_file", "save_project", "load_project", "new_design", "run_script",
+    "list_faces", "list_edges", "add_sketch", "extrude", "revolve", "fillet_edges", "chamfer_edges", "shell_body", "add_holes", "pattern_features"]) assert.ok(names.includes(n), "missing tool " + n);
   assert.ok(tools.every((t) => t.description && t.description.length > 10), "every tool is described");
 });
 
 test("no tool's input schema has a $ref or a tuple (items array): Gemini-family clients and small local servers reject them", async () => {
   const { tools } = await s.client.listTools();
-  assert.ok(tools.length >= 39);
+  assert.ok(tools.length >= 49);
   for (const t of tools) {
     const json = JSON.stringify(t.inputSchema);
     assert.ok(!json.includes('"$ref"'), t.name + " has a $ref: " + json);

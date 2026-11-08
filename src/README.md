@@ -30,6 +30,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
 | `badgelayout.js` | Constraint badges: where each sits on screen (`layoutBadges`) so none lands on another badge, a corner or a dimension label; pure maths, no DOM |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
+| `bridgecad.js` | The Advanced CAD calls of `JS3D` (sketch, extrude, revolve, fillet, chamfer, shell, hole, pattern, faces, edges): reads the built shape into a world-frame topology, writes the same sketches and features the Advanced dialogs write |
+| `cadselect.js` | Face and edge selectors (`top`, `>z`, `edges of top and (>x or <x)`, ...): the parser and evaluator, pure |
+| `cadsketch.js` | Sketch shapes (rect, roundrect, circle, slot, polygon, polyline, line) as points, entities, constraints and dimensions with no degrees of freedom left, and the default profile choice; pure |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
 | `loadui.js` | Engine-load note, splash, service-worker registration |

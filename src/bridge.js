@@ -24,6 +24,7 @@
 //   Parameters setParam(name, expr, {unit}) -> value, removeParam(name) -> count, bind(id, key, expr|null)
 //   History    undo(), redo() -> label or null
 //   View       select(ids), fit(), setMode("beginner"|"advanced"|"arch"), screenshot({fit, width}), screenshotDataURL({fit, width})
+//   Advanced   sketch(...), extrude(...), revolve(...), fillet(id, edges, r), chamfer(id, edges, d), shell(id, {th, open, dir}), hole(id, {...}), pattern(id, {...}), faces(id, sel), edges(id, sel)
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
@@ -33,6 +34,7 @@ import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
 import { uid } from "./util.js";
+import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
@@ -193,7 +195,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.8", // jumpstart-3d: spring
+    version: "1.9", // jumpstart-3d: advanced CAD calls
     appVersion: VERSION,
     internals: { app, store },
 
@@ -484,6 +486,7 @@ export function initBridge(app) {
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
   api.delete = api.remove;
+  Object.assign(api, initBridgeCad(app, { edit, need, ready })); // jumpstart-3d: advanced CAD calls
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers
   // its calls one at a time; it retries every few seconds while on. The "Connect to AI agent" menu row is the user's switch,
