@@ -42,6 +42,7 @@ import { VERSION } from "./version.js";
 import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
+import { historyCalls } from "./bridgehistory.js";
 import { uid } from "./util.js";
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
 
@@ -85,8 +86,10 @@ export function initBridge(app) {
   };
   const isPlain = (b) => b.node.t === "prim" && !(b.node.mods && b.node.mods.length);
   // the design as data. The scene writes a cache, _key, onto each body in the live document; it is not part of the design.
-  const snapshot = () => {
-    const d = structuredClone(store.doc);
+  const snapshot = ({ shareAssets = false } = {}) => {
+    let d;
+    if (shareAssets) { const { assets, ...rest } = store.doc; d = structuredClone(rest); if (assets) d.assets = { ...assets }; } // asset entries are write-once, so checkpoints share them
+    else d = structuredClone(store.doc);
     d.bodies.forEach((b) => delete b._key);
     return d;
   };
@@ -204,7 +207,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.11", // jumpstart-3d: generator calls (9.1 is 1.9, 9.2 is 1.10)
+    version: "1.12", // jumpstart-3d: checkpoints
     appVersion: VERSION,
     internals: { app, store },
 
@@ -494,6 +497,7 @@ export function initBridge(app) {
     },
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
+  Object.assign(api, historyCalls({ store, snapshot, edit, app }));
   api.delete = api.remove;
   Object.assign(api, initBridgeCad(app, { edit, need, ready })); // jumpstart-3d: advanced CAD calls
 

@@ -1,4 +1,4 @@
-// jumpstart-3d: chat tools. The same 61 tools the MCP server offers (mcp/tools.mjs), described to a model
+// jumpstart-3d: chat tools. The same 65 tools the MCP server offers (mcp/tools.mjs), described to a model
 // and run straight against window.JS3D (see BRIDGE.md). Three rules:
 //  1. Names and descriptions are copied from mcp/tools.mjs; mcp/test/chat.test.mjs fails if they drift.
 //     Seven differ on purpose (no server, no file paths): status, screenshot, export_file, export_drawing, save_project, load_project, run_script.
@@ -145,6 +145,10 @@ export const TOOLS = [
 
   tool("undo", "Undoes the last edit. Returns its label, or null when there is nothing to undo.", {}, [], () => J().undo()),
   tool("redo", "Redoes the last undone edit. Returns its label, or null.", {}, [], () => J().redo()),
+  tool("checkpoint", "Remembers the whole design in page memory before a risky step. Returns id, label, body count and time. Keeps the latest 20 checkpoints.", { label: str("Optional checkpoint label") }, [], ({ label }) => J().checkpoint(label)),
+  tool("list_checkpoints", "Lists retained checkpoints: id, label, body count and time. Checkpoints last only for this page.", {}, [], () => J().checkpoints()),
+  tool("diff_checkpoint", "Summarizes changes from a checkpoint to the current design, or to another checkpoint when toId is given.", { fromId: str("Starting checkpoint id"), toId: str("Optional target checkpoint id; omit for now") }, ["fromId"], ({ fromId, toId }) => J().diff(fromId, toId)),
+  tool("rollback", "Restores a checkpoint as one undo step; undo brings the newer design back. Refuses in Chisel mode or when the checkpoint belongs to another design.", { id: str("Checkpoint id to restore") }, ["id"], ({ id }) => J().rollback(id)),
   tool("select_bodies", "Selects bodies in the view (an empty list clears the selection).", { ids: ids("A list of body ids; empty clears the selection") }, ["ids"], ({ ids }) => J().select(ids)),
   tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, [], () => J().fit()),
   tool("set_mode", "Switches the app between Beginner, Advanced and Architect (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet. Arch mode hides the shapes: switch back to beginner or advanced before editing shapes or taking a screenshot of them.", { mode: { type: "string", enum: ["beginner", "advanced", "arch"], description: "The mode" } }, ["mode"], ({ mode }) => J().setMode(mode)),

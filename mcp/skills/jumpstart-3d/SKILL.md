@@ -7,6 +7,8 @@ description: "Build and edit 3D parts in JumpStart 3D through its MCP tools: Beg
 
 JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in it. The tool names start with a prefix your client adds; this text uses the short names (`status`, `add_shape`...).
 
+Before risky steps, use `checkpoint`; review with `diff_checkpoint` and use `rollback` on failure (one undo step).
+
 ## Facts to keep straight
 
 - `inspect_bodies` gives size, volume, area and weight (default PLA); `measure` gives distances (two flat faces picked with `a_near`/`b_near` give a wall's thickness); `check_print` says whether the design prints as it sits (on the plate, fits the printer, overhangs); `check_collisions` finds parts that overlap or touch; `section_view` cuts the design and gives the outline areas.

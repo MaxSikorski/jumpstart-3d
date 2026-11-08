@@ -68,7 +68,7 @@ JS3D.get(id).volume;        // 24000
 
 | Call | Returns |
 |---|---|
-| `JS3D.version` | `"1.11"`. The last number goes up when calls are added; the first changes when a call changes shape. |
+| `JS3D.version` | `"1.12"`. The last number goes up when calls are added; the first changes when a call changes shape. |
 | `JS3D.appVersion` | The app's version, such as `"2.0"`. |
 | `JS3D.kinds()` | `[{ kind, defaults }]`: the 20 shape kinds `add` accepts and their default sizes (`box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, `arrow`). |
 | `JS3D.list()` | The top-level bodies: `[{ id, name, kind, hole, hidden, locked, color, position, bbox, volume, error, children? }]`. `kind` is the shape kind for a basic shape and `"group"`, `"extrude"`, `"revolve"`... for the rest. `bbox` is the world box `{ min: [x,y,z], max: [x,y,z] }` and `volume` is in mm³; both are `null` until built (and while an error is shown). `error` is the geometry engine's message or `null`. `children` is the number of parts in a group. |
@@ -303,6 +303,33 @@ through the 2 mm floor take 4 x pi x 1.7^2 x 2 = 72.63. Total **13516.83 mm3**; 
 | `await JS3D.screenshot(opts)` → `Uint8Array` | A PNG of the 3D view, after waiting for `ready`. `opts.fit: true` frames everything shown first (ignoring the selection). `opts.width` (1 to 8192) makes the picture that many pixels wide with the same shape, drawn in the same step as the render; without it the picture is the size of the 3D view. |
 | `await JS3D.screenshotDataURL(opts)` → string | The same (`fit` and `width` too) as a `data:image/png;base64,...` string (also async). In a background tab the browser runs no animation frames; the camera move for `fit` is then jumped to its end. |
 
+### Checkpoints
+
+`JS3D.checkpoint(label?)` saves the whole document in page memory and returns
+`{id, label, bodies, at}`: a `c1`, `c2`, ... id, label (default empty), body count,
+and ISO time. `JS3D.checkpoints()` lists this metadata. Only the latest 20 are
+kept; checkpoints live in page memory only, so a reload loses them. Labels are
+at most 200 characters. Checkpoint is refused in Chisel mode (`leave Chisel mode
+first`) like other calls. Returned metadata cannot edit a snapshot.
+
+`JS3D.diff(fromId, toId?)` returns readable lines comparing a checkpoint to now,
+or to another checkpoint of the same design: bodies, features and their types, sketches, parameter
+expressions, translation deltas in mm, colors, holes and visibility, and
+added, removed or changed assets and media by id. Large other parts of the
+document only say `Design <key> changed`. Output is at most 200 lines and 20 KB,
+values are cut at 200 characters, and a long diff ends `...and N more changes`.
+Identical designs return `No changes.`.
+
+`JS3D.rollback(id)` restores the complete document as one undo step and returns
+the checkpoint metadata. It is synchronous; call `ready()` before inspecting
+geometry. Undo restores the newer state. Rollback keeps the current mode, is refused in the
+3D Print Sim (`undo is off in the 3D Print Sim`), and overwrites a newer copy of
+the design that was reloaded from another tab (undo in this tab brings it back).
+The usual edit guards apply, including
+`leave Chisel mode first`. A checkpoint from another design cannot be restored;
+its metadata remains listed until eviction. Missing ids report the retained ids.
+Checkpoint before risky edits, inspect the diff, and roll back on failure.
+
 ### Files
 
 | Call | What it does |
@@ -371,7 +398,7 @@ This adds no `code_cad` MCP tool (`run_script` can reach `JS3D.codeCad`), set-up
 
 Nothing connects unless asked: the page makes no connection until `connect` is called or the **Connect to AI agent** row in the theme menu (◐) is turned on. That row is remembered in this browser (`jumpstart.agent`, "on" or "off", off by default) and connects to the default address when the page loads. There is no web address parameter.
 
-The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.11","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
+The link, in text frames of JSON: the page sends `{"hello":"jumpstart-3d","version":"1.12","app":"2.0","url":<page address>}` once it is open. The server sends `{"id":1,"call":"add","args":["box",{"size":[40,30,20]}]}`; the page answers `{"id":1,"result":...}` or `{"id":1,"error":"message"}`. Calls run one at a time, in the order they arrive. A `Uint8Array` result is `{"$bytes": base64}`. The server accepts one page at a time: a second page that says hello is closed with code 4001, and the page then switches its link off and does not retry (the remembered setting stays on). Recent Chrome and Edge ask before the website may reach a program on this computer ("local network access"); allow it. The single file is not asked.
 
 ### The whole loop for an agent
 

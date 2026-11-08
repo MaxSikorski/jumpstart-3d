@@ -279,3 +279,10 @@ jumpstart status [--app <url|file|dir>]                  start the app and print
 `cli` runs the command line. `plugin` checks that the plugin files agree with each other, that the skill at the repository root (`skills/jumpstart-3d/SKILL.md`) is byte-identical to `mcp/skills/jumpstart-3d/SKILL.md`, and that the one-line setup prompt is the same everywhere it appears. `install` copies this folder to a scratch place,
 runs `npm ci --ignore-scripts` there as Claude Code does, and starts the copy's server (it needs the npm registry or a warm npm cache).
 The page-side half (the link, the menu row, `JS3D.run`, screenshot width) is `test/agent.spec.mjs`, run by `npm test`.
+
+### Checkpoints
+
+Use `checkpoint` before risky edits, `list_checkpoints` to find retained ids,
+`diff_checkpoint` (`fromId`, optional `toId`) to review changes, and `rollback`
+(`id`) on failure. Snapshots live only in the page (latest 20). Rollback is one
+undo step and refuses checkpoints belonging to another design.
