@@ -115,3 +115,17 @@ test("validation texts", () => {
   bad([{ type: "polygon", sides: 65, diameter: 5 }], "shapes[0].sides must be a whole number from 3 to 64");
   assert.doesNotThrow(() => buildShapes(Array(100).fill({ type: "circle", diameter: 1 })));
 });
+
+test("sketch limits include the shared origin point and entity", () => {
+  const polyline = (count) => ({ type: "polyline", points: Array.from({ length: count }, (_, i) => [i + 1, i % 2]) });
+  const shapes = Array.from({ length: 10 }, () => polyline(200));
+  assert.throws(() => buildShapes(shapes), /this sketch would have 2001 points/);
+  shapes[9] = polyline(199);
+  const built = buildShapes(shapes);
+  assert.equal(built.pts.length, 2000);
+  assert.equal(built.ents.length, 2000);
+  const atOrigin = Array.from({ length: 10 }, () => ({ type: "polyline", points: Array.from({ length: 200 }, (_, i) => [i, i % 2]) }));
+  const originBuilt = buildShapes(atOrigin);
+  assert.equal(originBuilt.pts.length, 2000);
+  assert.equal(originBuilt.ents.length, 2000);
+});

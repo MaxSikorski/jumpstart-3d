@@ -50,12 +50,15 @@ class Sketch {
 // `<what> "<text>" does not give a usable number`). Returns { pts, ents, cons, shapes: [{ type, ents, center? }] }.
 export function buildShapes(shapes, num = plainNum) {
   if (!Array.isArray(shapes) || shapes.length < 1 || shapes.length > 200) throw new Error("shapes must be a list of 1 to 200 shapes");
-  let points = 0, entities = 0;
+  let points = 0, entities = 0, needsOrigin = false;
   for (const s of shapes) {
     const m = Array.isArray(s?.points) ? s.points.length : 0, n = Number.isInteger(s?.sides) ? s.sides : 0;
     const [p, e] = { rect: [5, 6], roundrect: [13, 10], circle: [1, 1], slot: [7, 6], polygon: [n + 1, n + 1], polyline: [m, s?.closed === false ? m - 1 : m], line: [2, 1] }[Object.hasOwn(KEYS, s?.type) ? s.type : "line"];
     points += p; entities += e;
+    const anchor = s?.type === "line" ? s.from : s?.type === "polyline" ? s.points?.[0] : s?.center ?? [0, 0];
+    if (isPair(anchor) && (!tiny(anchor[0]) || !tiny(anchor[1]))) needsOrigin = true;
   }
+  if (needsOrigin) { points++; entities++; }
   if (points > MAX_SKETCH || entities > MAX_SKETCH) throw new Error(`this sketch would have ${Math.max(points, entities)} ${points >= entities ? "points" : "entities"}; the most is ${MAX_SKETCH} per call — split it into several sketches`);
   const S = new Sketch(), out = [];
   shapes.forEach((s, i) => {
