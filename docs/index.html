@@ -1621,8 +1621,11 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
     <button class="tb-btn" id="btn-redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
     <div class="menu-wrap">
-      <button class="tb-btn" id="btn-theme" aria-haspopup="true" title="Theme, performance and mesh detail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
+      <!-- jumpstart-3d: Customize replaces the theme icon -->
+      <button class="tb-btn" id="btn-theme" aria-haspopup="true" aria-label="Customize" title="Customize: look, layout, printer, performance, AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
       <div class="menu" id="menu-theme" role="menu" hidden>
+        <!-- jumpstart-3d: Customize menu groups -->
+        <div class="menu-head">Look &amp; layout</div>
         <button data-theme="system" role="menuitemradio">Match my device</button>
         <button data-theme="light" role="menuitemradio">Light</button>
         <button data-theme="dark" role="menuitemradio">Dark</button>
@@ -1636,6 +1639,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <button data-layout="tablet" role="menuitemradio" title="Big, touch-sized tools along the bottom, near your thumbs">Tablet <small>tools at the bottom</small></button>
         <div class="menu-note">Only where the tools sit changes; every tool is in every layout.</div>
         <hr>
+        <div class="menu-head">View &amp; device</div>
         <div class="menu-head">Device</div>
         <button data-device="tablet" role="menuitemcheckbox" aria-checked="false" title="For iPad and other tablets: big touch targets, the Apple Pencil draws and picks precisely, fingers move the view, and keys on screen">Tablet &amp; Pencil mode <small>iPad, Apple Pencil</small></button>
         <div class="menu-note">Pencil: click, draw and drag precisely. One finger orbits, two pan and zoom. Two-finger tap undoes, three-finger tap redoes, a long press opens the menu.</div>
@@ -1652,6 +1656,11 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <div class="sk-colors" id="sk-colors" role="group" aria-label="Sketch line colour"></div>
         <div class="menu-note">How sketch lines look in Advanced, Beginner and Chisel. Thinner lines make small profiles easier to pick.</div>
         <hr>
+        <div class="menu-head">Printing</div>
+        <!-- jumpstart-3d: printer plate -->
+        <div class="menu-head">Printer</div>
+        <button id="btn-plate" role="menuitem" title="Pick your printer's build area and show steep undersides in red">Printer plate… <small>build area, overhangs</small></button>
+        <hr>
         <div class="menu-head">Mesh detail</div>
         <button data-detail="normal" role="menuitemradio" title="The quickest to build">Normal <small>1× · quickest</small></button>
         <button data-detail="fine" role="menuitemradio" title="Smoother curves in the view and in STL, OBJ and 3MF exports">Fine <small>2× · smoother curves</small></button>
@@ -1661,15 +1670,12 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
           <label class="mc-row" title="Type the triangle count you want for the whole design and press Enter"><span>Triangles</span><input type="number" id="detail-tris" min="1" step="1" inputmode="numeric"><small id="detail-est"></small></label>
         </div>
         <div class="menu-note">Applies to the view and to STL, OBJ and 3MF exports. STEP is exact at every level. Above 500,000 triangles you are asked first; very fine levels can take many minutes to build.</div>
-        <!-- jumpstart-3d: printer plate -->
-        <hr>
-        <div class="menu-head">Printer</div>
-        <button id="btn-plate" role="menuitem" title="Pick your printer's build area and show steep undersides in red">Printer plate… <small>build area, overhangs</small></button>
         <!-- jumpstart-3d: agent link -->
         <hr>
         <div class="menu-head">AI agent</div>
         <button data-agent role="menuitemcheckbox" aria-checked="false" title="Lets a program on this computer edit this design">Connect to AI agent <small></small></button>
         <div class="menu-note">Lets a program on this computer edit this design (see mcp/README.md). Off unless you turn it on. Setup for any agent: see mcp/AGENT-SETUP.md in the repository.</div>
+        <!-- jumpstart-3d: end Customize menu groups -->
       </div>
     </div>
     <!-- jumpstart-3d: chat -->
@@ -1758,7 +1764,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.9.8.2 · community build 33</p>
+    <p class="sp-ver" id="sp-ver">Version 2.9.8.2 · community build 34</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>

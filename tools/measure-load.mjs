@@ -31,6 +31,7 @@ for (let i = 0; i < runs; i++) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 880 }, serviceWorkers: "allow" });
   const page = await ctx.newPage();
   await page.addInitScript(() => {
+    try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {}
     window.__t = {};
     try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch {}
     document.addEventListener("DOMContentLoaded", () => { window.__t.dcl = performance.now(); });

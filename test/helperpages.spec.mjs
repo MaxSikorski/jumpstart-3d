@@ -11,7 +11,7 @@ import { watchErrors, boot, loadDoc, newDoc, body, prim, buildOf, quarantine } f
 
 const SITE_ONLY = "the single file has no site to fetch from";
 const box20 = () => newDoc("Box", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
-const skipIntro = (page) => page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+const skipIntro = (page) => page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch (e) {} });
 const helperFrame = (page) => page.frames().find((f) => f.parentFrame() === page.mainFrame());
 
 // opens each helper and waits until its page is running; closes it again
@@ -309,7 +309,7 @@ test("the wait limit counts time without data: a slow steady download finishes, 
   test.setTimeout(180_000);
   const site = await slowSite({ "/helpers/meshstep.html": { gap: 700 }, "/helpers/flexigen.html": { stallAfterFirst: true } });
   try {
-    await page.addInitScript(() => { window.__JS3D_HELPER_TIMEOUT_MS = 1200; try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+    await page.addInitScript(() => { window.__JS3D_HELPER_TIMEOUT_MS = 1200; try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch (e) {} });
     await page.goto(site.url);
     await page.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });
     // about 2.1 s in all, over the 1.2 s limit, but never 1.2 s without a piece

@@ -135,7 +135,7 @@ test("a plate with an opening, a flush box and a real click on Group: done on Ma
   try {
     const other = await ctx.newPage();
     const otherErrors = watchErrors(other);
-    await other.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+    await other.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch (e) {} });
     const frag = link.slice(link.indexOf("#") + 1);
     await other.goto(info0.project.use.baseURL + "#" + frag);
     await other.waitForFunction(() => window.__app && window.__app.kernel && window.__app.kernel.ready, null, { timeout: 90_000 });

@@ -5,28 +5,30 @@ import { boot, reload, waitIdle, watchErrors } from "./helpers.mjs";
 let errors;
 test.beforeEach(async ({ page }, info) => {
   errors = watchErrors(page);
-  if (info.project.name !== "mobile") await page.setViewportSize({ width: 1500, height: 880 }); // Original shows its switch from 1440 px (below that, Settings › Look)
+  if (info.project.name !== "mobile") await page.setViewportSize({ width: 1500, height: 880 }); // Give desktop tests room for labels.
 });
 test.afterEach(async () => { expect(errors, "console or page errors").toEqual([]); });
 
 const mobile = (info) => info.project.name === "mobile";
 const face = (page) => page.locator("html");
 const storedFace = (page) => page.evaluate(() => localStorage.getItem("jumpstart.face"));
-// From Original to Simple as a person does: the switch in the top bar, or on a phone (where Original keeps its whole view) Open/Export › Try Simple
-const toSimple = async (page, info) => {
-  if (!mobile(info)) return page.click("#face-simple");
-  await expect(page.locator("#face-simple")).toBeHidden();
-  await page.click("#btn-export");
-  await page.click("#face-menu-export");
-};
+const toSimple = async (page) => page.click("#face-simple");
 const ready = (page) => page.waitForFunction(() => window.__app?.projects?.started === true, null, { timeout: 90_000 });
 
-test("Original is the default", async ({ page }, info) => {
-  await boot(page, info);
+test("a new visitor starts in Simple with the one-time card", async ({ page }, info) => {
+  await boot(page, info, { face: false });
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
+  await expect(page.locator("#simple-rail")).toBeVisible();
+  await expect(page.locator("#try-simple")).toBeVisible();
+  await expect(page.locator("#try-simple")).toContainText("Prefer the full toolbar?");
+  expect(await page.evaluate(() => window.__app.trySimpleShown)).toBe(true);
+  expect(await storedFace(page)).toBeNull();
+  await page.click("#face-card-original");
   await expect(face(page)).toHaveAttribute("data-face", "original");
-  await expect(page.locator("#face-original")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#face-more")).toBeHidden();
-  if (!mobile(info)) await expect(page.locator("#btn-projects")).toBeVisible();
+  expect(await storedFace(page)).toBe("original");
+  await reload(page);
+  await ready(page);
+  await expect(face(page)).toHaveAttribute("data-face", "original");
   await expect(page.locator("#try-simple")).toHaveCount(0);
 });
 
@@ -55,35 +57,32 @@ test("switching keeps the design and persists the choice", async ({ page }, info
   await expect(page.locator("#btn-export .lbl")).toHaveText("Open/Export");
 });
 
-test("More opens the existing dialogs and supports keyboard navigation", async ({ page }, info) => {
-  await boot(page, info);
-  await toSimple(page, info);
-  const more = page.locator("#face-more"), menu = page.locator("#menu-face-more");
-  await more.click();
-  await expect(menu).toBeVisible();
-  await expect(more).toHaveAttribute("aria-expanded", "true");
-  await page.keyboard.press("Escape");
-  await expect(menu).toBeHidden();
-  await expect(more).toBeFocused();
-  await page.keyboard.press("Enter");
-  const items = menu.locator('[role="menuitem"]:visible');
-  await expect(items.first()).toBeFocused();
-  await page.keyboard.press("ArrowDown");
-  await expect(items.nth(1)).toBeFocused();
-  await menu.locator('[data-for="btn-projects"]').click();
-  const designs = page.getByRole("dialog", { name: "Your designs" });
-  await expect(designs).toBeVisible();
-  // Escape, not its Close button: on a 375 px phone his Designs dialog puts Close outside the screen
-  await page.keyboard.press("Escape");
-  await expect(designs).toBeHidden();
-  await more.click();
-  await menu.locator('[data-for="btn-theme"]').click();
-  const theme = page.locator("#menu-theme");
-  await expect(theme).toBeVisible();
-  const box = await theme.boundingBox();
-  expect(box).not.toBeNull();
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+test("About shows community information and checks for updates", async ({ page }, info) => {
+  await boot(page, info); await toSimple(page);
+  await page.route("https://api.github.com/repos/MaxSikorski/jumpstart-3d/releases/latest", route => route.fulfill({ json: { tag_name: "v9-community.999" } }));
+  await page.click("#face-more");
+  const dialog = page.getByRole("dialog", { name: "JumpStart 3D Community Build" });
+  await expect(dialog).toBeVisible(); await expect(dialog).toContainText(/Version .+ · build \d+/); await expect(dialog).not.toContainText("Siwek");
+  await dialog.locator("#sa-check").click(); await expect(dialog.locator("#ab-upmsg")).toContainText("Build 999 is available");
+  for (const [label, href] of [["One-time", "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08"], ["Monthly", "https://buy.stripe.com/7sYcN479Q71p44l1cB0gw09"], ["GitHub Sponsors", "https://github.com/sponsors/MaxSikorski"]]) {
+    const link = dialog.getByRole("link", { name: label }); await expect(link).toHaveAttribute("href", href); await expect(link).toHaveAttribute("rel", /noopener/);
+  }
+  await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(page.locator("#face-more")).toBeFocused();
+});
+
+test("Customize and the More App group are available in Simple", async ({ page }, info) => {
+  await boot(page, info); await expect(page.locator("#btn-theme")).toHaveAttribute("title", "Customize: look, layout, printer, performance, AI");
+  if (!mobile(info)) await expect(page.locator("#btn-theme .lbl")).toBeHidden();
+  await toSimple(page); await expect(page.locator("#btn-theme")).toBeVisible();
+  if (!mobile(info)) await expect(page.locator("#btn-theme .lbl")).toBeVisible();
+  await page.click("#btn-theme"); await expect(page.locator(".simple-layout-note")).toBeVisible(); await expect(page.locator('[data-layout="simple"]')).toBeHidden(); await page.click("#btn-theme");
+  await page.click("#sr-more");
+  for (const id of ["btn-projects", "btn-chat", "mode-chisel", "mode-arch", "btn-about"]) await expect(page.locator('#simple-more [data-for="' + id + '"]')).toBeVisible();
+  for (const id of ["btn-chat", "mode-chisel", "mode-arch", "btn-about"]) {
+    await page.evaluate(id => { window.__proxyHit = false; document.getElementById(id).addEventListener("click", e => { window.__proxyHit = true; e.stopImmediatePropagation(); }, { capture: true, once: true }); }, id);
+    await page.locator('#simple-more [data-for="' + id + '"]').click(); expect(await page.evaluate(() => window.__proxyHit)).toBe(true); await page.click("#sr-more");
+  }
+  await page.click('#simple-more [data-for="btn-projects"]'); await expect(page.getByRole("dialog", { name: "Your designs" })).toBeVisible();
 });
 
 test("query parameter chooses and stores a face, then is removed", async ({ page }, info) => {
@@ -101,42 +100,40 @@ test("query parameter chooses and stores a face, then is removed", async ({ page
   expect(await page.evaluate(() => ({ search: location.search, hash: location.hash }))).toEqual({ search: "?keep=1", hash: "#kept" });
 });
 
-test("Not now dismisses the first-run card permanently", async ({ page }, info) => {
+test("Keep Simple stores the choice and dismisses the card", async ({ page }, info) => {
   await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toBeVisible();
-  expect(await page.evaluate(() => window.__app.trySimpleShown)).toBe(true);
-  await page.click(mobile(info) ? "#try-simple-close" : "#try-simple-no"); // a phone shows only × (same as Not now)
+  await page.click("#face-card-keep");
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
+  expect(await storedFace(page)).toBe("simple");
+  await reload(page);
+  await ready(page);
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
   await expect(page.locator("#try-simple")).toHaveCount(0);
-  expect(await storedFace(page)).toBe("original");
+});
+
+test("closing the card stores Simple", async ({ page }, info) => {
+  await boot(page, info, { face: false });
+  await page.click("#try-simple-close");
+  expect(await storedFace(page)).toBe("simple");
   await reload(page);
   await ready(page);
   await expect(page.locator("#try-simple")).toHaveCount(0);
 });
 
-test("the switch dismisses the first-run card", async ({ page }, info) => {
-  await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toBeVisible();
-  await toSimple(page, info);
-  await expect(page.locator("#try-simple")).toHaveCount(0);
-  await expect(face(page)).toHaveAttribute("data-face", "simple");
-  await reload(page);
-  await ready(page);
-  await expect(page.locator("#try-simple")).toHaveCount(0);
-});
-
-test("Try Simple selects Simple", async ({ page }, info) => {
-  await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toBeVisible();
-  await page.click("#try-simple-yes");
-  await expect(face(page)).toHaveAttribute("data-face", "simple");
-  await expect(page.locator("#try-simple")).toHaveCount(0);
-});
-
-test("existing preferences suppress the first-run card", async ({ page }, info) => {
+test("existing preferences still show the first-run card", async ({ page }, info) => {
   await page.addInitScript(() => { try { localStorage.setItem("workplane.ui.v1", "{}"); } catch (e) {} });
   await boot(page, info, { face: false });
-  await expect(page.locator("#try-simple")).toHaveCount(0);
+  await expect(page.locator("#try-simple")).toBeVisible();
+  await expect(face(page)).toHaveAttribute("data-face", "simple");
+});
+
+test("a fresh visitor can choose Original by query", async ({ page }, info) => {
+  const base = info.project.use.baseURL;
+  await page.goto(base + (base.includes("?") ? "&" : "?") + "face=original");
+  await ready(page);
   await expect(face(page)).toHaveAttribute("data-face", "original");
+  expect(await storedFace(page)).toBe("original");
+  await expect(page.locator("#try-simple")).toHaveCount(0);
 });
 
 test("the existing layout is called Big buttons", async ({ page }, info) => {
@@ -178,27 +175,44 @@ test("the switch never puts the Original top bar on a second row; Settings › L
   test.skip(mobile(info), "phones give the switch its own row by design");
   await boot(page, info);
   const oneRow = () => page.evaluate(() => document.querySelector(".topbar").offsetHeight < 50);
-  for (const [width, shown] of [[2200, true], [1920, true], [1600, true], [1440, true], [1366, false], [1280, false], [1024, false]]) {
+  for (const width of [2200, 1920, 1600, 1440, 1366, 1280, 1024]) {
     await page.setViewportSize({ width, height: 880 });
     await expect.poll(oneRow, { message: `Original at ${width}px is one row` }).toBe(true);
-    if (shown) await expect(page.locator("#face-simple"), `the way to Simple shows at ${width}px`).toBeVisible();
-    else await expect(page.locator("#face-simple"), `no room for the switch at ${width}px`).toBeHidden();
+    await expect(page.locator("#face-simple"), `the switch shows at ${width}px`).toBeVisible();
+    // below 1120 px Original shows only the Simple half (the way back); Autosave, Keyboard shortcuts and Full screen move into Customize › Workspace
+    if (width >= 1120) await expect(page.locator("#face-original")).toBeVisible(); else await expect(page.locator("#face-original")).toBeHidden();
+    if (width < 1440) { await expect(page.locator(".topbar #btn-autosave")).toBeHidden(); await page.click("#btn-theme"); await expect(page.locator("#cz-autosave")).toBeVisible(); await page.click("#btn-theme"); await expect(page.locator("#menu-theme")).toBeHidden(); }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
+  for (const width of [640, 820]) { // narrow tablets: the pill gets its own short row; the rest of the bar is one row
+    await page.setViewportSize({ width, height: 880 });
+    await expect(page.locator("#face-simple")).toBeVisible(); await expect(page.locator("#face-original")).toBeVisible();
+    expect(await page.evaluate(() => document.querySelector(".topbar").offsetHeight)).toBeLessThan(80);
+  }
+  await page.setViewportSize({ width: 1024, height: 880 });
   await page.click("#btn-theme");
   await page.click("#face-menu-simple");
   await expect(face(page)).toHaveAttribute("data-face", "simple");
   await expect(page.locator("#face-original")).toBeVisible();
   await expect.poll(oneRow, { message: "Simple at 1024px is one row" }).toBe(true);
-  await page.click("#face-more");
-  await page.click('#menu-face-more [data-for="btn-theme"]');
+  await page.click("#btn-theme");
   await expect(page.locator("#face-menu-simple")).toHaveAttribute("aria-checked", "true");
   await page.click("#face-menu-original");
   await expect(face(page)).toHaveAttribute("data-face", "original");
 });
 
-test("closing the Try Simple card leaves focus on the switch or Settings, not the page", async ({ page }, info) => {
+test("phone switch has its own row in Original", async ({ page }, info) => {
+  test.skip(!mobile(info)); await boot(page, info);
+  for (const width of [375, 390]) {
+    await page.setViewportSize({ width, height: 667 });
+    await expect(page.locator("#face-simple")).toBeVisible(); await expect(page.locator("#face-original")).toBeVisible();
+    expect(await page.evaluate(() => { const bar = document.querySelector(".topbar"), pill = document.querySelector(".faceswitch"); return pill.getBoundingClientRect().top > document.querySelector("#btn-save").getBoundingClientRect().top && bar.scrollWidth <= innerWidth; })).toBe(true);
+  }
+});
+
+test("closing the face card leaves focus on the switch or Settings, not the page", async ({ page }, info) => {
   await boot(page, info, { face: false });
-  await page.locator(mobile(info) ? "#try-simple-close" : "#try-simple-no").focus();
+  await page.locator(mobile(info) ? "#try-simple-close" : "#face-card-keep").focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#try-simple")).toHaveCount(0);
   expect(await page.evaluate(() => document.activeElement.id)).toMatch(/^(face-simple|face-original|btn-theme|btn-export)$/);
@@ -234,7 +248,7 @@ test("in Simple every lesson can point at its top-bar buttons, and Simple comes 
     if (r.face === "original") switched.push(id);
     await page.evaluate(() => window.__app.setMode("beginner"));
   }
-  if (!mobile(info)) expect(switched).toEqual(expect.arrayContaining(["c-overhang", "c3-clay-pebble", "c4-top-bar"]));
+  if (!mobile(info)) expect(switched).toEqual(expect.arrayContaining(["c3-clay-pebble", "c4-top-bar"]));
   console.log(`[${info.project.name}] ${switched.length} of ${lessons.length} lessons ran in Original: ${switched.join(", ")}`);
   if (!mobile(info)) expect(switched.length, "most lessons stay in Simple").toBeLessThan(lessons.length / 2);
 });
