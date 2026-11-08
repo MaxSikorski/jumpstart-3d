@@ -139,16 +139,24 @@ check them.
 `JS3D.checkpoint(label?)` saves the whole document in page memory and returns
 `{id, label, bodies, at}`: a `c1`, `c2`, ... id, label (default empty), body count,
 and ISO time. `JS3D.checkpoints()` lists this metadata. Only the latest 20 are
-kept; reloading the page forgets them. Returned metadata cannot edit a snapshot.
+kept; checkpoints live in page memory only, so a reload loses them. Labels are
+at most 200 characters. Checkpoint is refused in Chisel mode (`leave Chisel mode
+first`) like other calls. Returned metadata cannot edit a snapshot.
 
 `JS3D.diff(fromId, toId?)` returns readable lines comparing a checkpoint to now,
-or to another checkpoint: bodies, features and their types, sketches, parameter
-expressions, translation deltas in mm, colors, holes and visibility. Identical
-designs return `No changes.`.
+or to another checkpoint of the same design: bodies, features and their types, sketches, parameter
+expressions, translation deltas in mm, colors, holes and visibility, and
+added, removed or changed assets and media by id. Large other parts of the
+document only say `Design <key> changed`. Output is at most 200 lines and 20 KB,
+values are cut at 200 characters, and a long diff ends `...and N more changes`.
+Identical designs return `No changes.`.
 
 `JS3D.rollback(id)` restores the complete document as one undo step and returns
 the checkpoint metadata. It is synchronous; call `ready()` before inspecting
-geometry. Undo restores the newer state. The usual edit guards apply, including
+geometry. Undo restores the newer state. Rollback keeps the current mode, is refused in the
+3D Print Sim (`undo is off in the 3D Print Sim`), and overwrites a newer copy of
+the design that was reloaded from another tab (undo in this tab brings it back).
+The usual edit guards apply, including
 `leave Chisel mode first`. A checkpoint from another design cannot be restored;
 its metadata remains listed until eviction. Missing ids report the retained ids.
 Checkpoint before risky edits, inspect the diff, and roll back on failure.

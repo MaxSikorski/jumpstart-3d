@@ -75,8 +75,10 @@ export function initBridge(app) {
   };
   const isPlain = (b) => b.node.t === "prim" && !(b.node.mods && b.node.mods.length);
   // the design as data. The scene writes a cache, _key, onto each body in the live document; it is not part of the design.
-  const snapshot = () => {
-    const d = structuredClone(store.doc);
+  const snapshot = ({ shareAssets = false } = {}) => {
+    let d;
+    if (shareAssets) { const { assets, ...rest } = store.doc; d = structuredClone(rest); if (assets) d.assets = { ...assets }; } // asset entries are write-once, so checkpoints share them
+    else d = structuredClone(store.doc);
     d.bodies.forEach((b) => delete b._key);
     return d;
   };
@@ -484,7 +486,7 @@ export function initBridge(app) {
     },
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
-  Object.assign(api, historyCalls({ store, snapshot, edit }));
+  Object.assign(api, historyCalls({ store, snapshot, edit, app }));
   api.delete = api.remove;
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers

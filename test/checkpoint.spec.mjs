@@ -50,3 +50,17 @@ test("retention and detached metadata",async()=>{
   expect(out.list).toHaveLength(20); expect(out.list[0].label).toBe("");
   expect(out.missing).toContain(`no checkpoint "${out.first}"; checkpoints:`);
 });
+
+test("rollback keeps the current mode and refuses in the print sim; checkpoint refuses in Chisel",async()=>{
+  const out=await page.evaluate(async()=>{
+    await JS3D.newDesign("beginner"); const app=JS3D.internals.app, store=JS3D.internals.store;
+    const c=JS3D.checkpoint("m"); let chisel,sim,label;
+    try{JS3D.checkpoint("x".repeat(201));}catch(e){label=e.message;}
+    store.update((d)=>{d.mode="advanced";},"mode"); JS3D.rollback(c.id); const mode=store.doc.mode;
+    app.simLock=true; const depth=store.undoStack.length; try{JS3D.rollback(c.id);}catch(e){sim=e.message;} const same=store.undoStack.length===depth; app.simLock=false;
+    app.setMode("chisel"); try{JS3D.checkpoint();}catch(e){chisel=e.message;} app.setMode("advanced");
+    return {mode,sim,same,chisel,label};
+  });
+  expect(out.mode).toBe("advanced"); expect(out.sim).toBe("undo is off in the 3D Print Sim"); expect(out.same).toBe(true);
+  expect(out.chisel).toBe("leave Chisel mode first"); expect(out.label).toContain("200 characters");
+});

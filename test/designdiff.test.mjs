@@ -66,3 +66,39 @@ test("wrong design and edit guard refuse without a mutation", () => {
   assert.throws(()=>api.rollback(c.id),{message:"checkpoint c1 belongs to another design; checkpoints are kept per design"});
   block(); assert.throws(()=>api.rollback(c.id),/leave Chisel mode first/); assert.equal(store.undo.length,0);
 });
+
+test("assets and media are summarized per id without stringifying data", () => {
+  const a=doc(), b=doc(); a.assets={old:{kind:"step",name:"Old",data:"x".repeat(2048)},same:{kind:"mesh",name:"S",data:"abc"},chg:{kind:"mesh",name:"C",data:"aa"}};
+  b.assets={same:a.assets.same,chg:{kind:"mesh",name:"C",data:"aaaa"},fresh:{kind:"mesh",name:"Chip",data:"y".repeat(4096)}}; b.media={m1:{kind:"image",name:"Pic",data:"z"}};
+  const out=designDiff(a,b);
+  assert.match(out,/Asset added: fresh \(mesh, Chip, 4 KB\)/); assert.match(out,/Asset removed: old \(step, Old, 2 KB\)/);
+  assert.match(out,/Asset changed: chg/); assert.match(out,/Media added: m1/); assert.doesNotMatch(out,/Asset \w+: same/);
+  assert.ok(!out.includes("yyyy")); assert.ok(!out.includes("xxxx"));
+});
+test("other large keys only report that they changed", () => {
+  const a=doc(), b=doc(); a.cosforge={big:"q".repeat(5000)}; b.cosforge={big:"r".repeat(5000)}; a.planes=[1]; b.planes=[2];
+  const out=designDiff(a,b); assert.match(out,/^Design cosforge changed\.$/m); assert.match(out,/^Design planes changed\.$/m); assert.ok(out.length<100);
+});
+test("output is capped by lines, bytes and value length", () => {
+  const a=doc(), b=doc(); for(let i=0;i<500;i++) b.bodies.push({id:"b"+i,name:"B"+i});
+  const out=designDiff(a,b).split("\n"); assert.equal(out.length,201); assert.equal(out.at(-1),"...and 300 more changes");
+  const c=doc(), d=doc(); for(let i=0;i<100;i++) d.bodies.push({id:"b"+i,name:"N".repeat(500)});
+  const text=designDiff(c,d); assert.ok(text.length<=20*1024+60); assert.match(text,/more changes$/);
+  const e=doc(), f=doc(); e.bodies.push(body()); f.bodies.push(body()); f.bodies[0].node.mods[0].note="L".repeat(5000); f.bodies[0].node.mods[0].r=9;
+  const fx=designDiff(e,f); assert.ok(fx.length<500); assert.match(fx,/feature changed: fillet \(f1\): /); assert.match(fx,/r: 2 -> 9/); assert.match(fx,/note: \(none\) -> "L+\.\.\./);
+});
+test("checkpoint refuses in Chisel, caps labels, diff refuses another design", () => {
+  const {api,store,block}=harness(); assert.throws(()=>api.checkpoint("x".repeat(201)),/200 characters/); api.checkpoint("x".repeat(200));
+  const c=api.checkpoint(); store.doc.id="d2"; assert.throws(()=>api.diff(c.id),/belongs to another design/); assert.throws(()=>api.diff("c1",c.id),/belongs to another design/);
+  store.doc.id="d1"; block(); assert.throws(()=>api.checkpoint(),/leave Chisel mode first/);
+});
+test("rollback keeps current mode, refuses in sim, skips __proto__, shares assets map entries", () => {
+  const store={doc:{...doc(),mode:"beginner",assets:{a:{kind:"mesh",name:"A",data:"d"}}}, undo:[], update(fn,l){const n=structuredClone(this.doc);fn(n);this.undo.push(l);this.doc=n;}};
+  let sim=false; const api=historyCalls({store,snapshot:()=>structuredClone(store.doc),edit(){},app:{get simLock(){return sim;}}});
+  const c=api.checkpoint(); store.doc.mode="advanced"; store.doc.assets.b={kind:"mesh",name:"B",data:"e"};
+  sim=true; assert.throws(()=>api.rollback(c.id),{message:"undo is off in the 3D Print Sim"}); assert.equal(store.undo.length,0);
+  sim=false; api.rollback(c.id); assert.equal(store.doc.mode,"advanced"); assert.deepEqual(Object.keys(store.doc.assets),["a"]);
+  Object.defineProperty(store.doc,"__proto__",{value:{polluted:1},enumerable:true,configurable:true,writable:true}); api.checkpoint();
+  store.doc.bodies.push(body()); api.rollback("c2");
+  assert.equal(Object.getPrototypeOf(store.doc),Object.prototype); assert.equal(store.doc.polluted,undefined); assert.equal(({}).polluted,undefined);
+});
