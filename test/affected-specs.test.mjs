@@ -24,7 +24,7 @@ after(() => rmSync(scratch, { recursive: true, force: true }));
 const rel = (...parts) => parts.join("/");
 const imp = (...parts) => `import "${rel(...parts)}";\n`;
 const BUTTONS = '<header>\n<button id="btn-old">Old</button>\n<button class="tb" id="btn-second">Second</button>\n</header>\n<style>button { cursor: pointer; }</style>\n';
-const ALIAS_SPECS = ["fine-rotate", "rotation-access", "printerpreview", "paint3mf", "chat", "storage", "storage-chaos", "backup", "restorefolder", "upstream25", "upstream277"];
+const ALIAS_SPECS = ["bridgegen", "bridgecad", "fine-rotate", "rotation-access", "printerpreview", "paint3mf", "chat", "storage", "storage-chaos", "backup", "restorefolder", "upstream25", "upstream277"];
 const BASE = {
   ".gitignore": "ignored/\ntest/ignored.spec.mjs\n",
   "README.md": "# readme\n", "BRIDGE.md": "# bridge\n", "NOTICE.md": "# notice\n", "LICENSES/MIT.txt": "mit\n", "LICENSES/OFL-1.1-fonts.txt": "ofl\n", "LICENSE": "license\n",
@@ -34,6 +34,7 @@ const BASE = {
   "src/advanced.js": "//\n", "src/beginner.js": "//\n", "src/simulate.js": "//\n",
   "src/combinesplit.js": "//\n", "src/kernel.js": "//\n", "src/worker.js": "//\n", "src/gears.js": "//\n", "src/fasteners.js": "//\n", "src/pivot.js": "//\n", "src/bridge.js": "//\n",
   "src/store.js": "//\n", "src/scene.js": "//\n", "src/version.js": "//\n", "src/sw.js": "//\n", "src/orphan.js": "//\n", "src/tutorial_data.js": "//\n", "src/tutorials.js": "//\n",
+  "src/genopts.js": "//\n", "src/bridgegen.js": "//\n",
   "src/fineturn.js": "//\n", "src/rotationui.js": "//\n", "src/printsim.js": "//\n", "src/chatproviders.js": "//\n", "src/chattools.js": "//\n", "src/recovery.js": "//\n",
   "src/arch.js": "//\n", "src/archplan.js": "//\n", "src/cam.js": "//\n", "src/camcore.js": "//\n", "src/projects.js": "//\n", "src/projstore.js": "//\n",
   "src/fontsub/sans.ttf": "font\n", "src/occt-gz.wasm": "wasm\n",
@@ -353,11 +354,14 @@ test("the reasons shown are the first three that name the spec, the fallback las
 // ---- module aliases -------------------------------------------------------------------------------------------------------------------------------------
 
 const ALIAS_CASES = [
+  ["src/genopts.js", ["bridgegen"]],
   ["src/fineturn.js", ["fine-rotate"]],
   ["src/rotationui.js", ["rotation-access"]],
   ["src/printsim.js", ["printerpreview", "paint3mf"]],
   ["src/chatproviders.js", ["chat"]],
   ["src/chattools.js", ["chat"]], // also an MCP file (see above)
+  ["src/cadselect.js", ["bridgecad"]],
+  ["src/cadsketch.js", ["bridgecad"]],
   ["src/recovery.js", ["storage-chaos"]],
   ["src/arch.js", ["upstream25"]],
   ["src/archplan.js", ["upstream25"]],

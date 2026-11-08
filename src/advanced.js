@@ -2,6 +2,7 @@
 import { currentImportView, stepStallMessage, stageName } from "./stepprogress.js";
 // Advanced mode: Fusion-style ribbon, browser, timeline and feature commands.
 import * as THREE from "three";
+import { isSafeMediaSrc, warnUnsafeMedia } from "./safeurl.js"; // jumpstart-3d: project pictures cannot fetch URLs
 import { store, findBody, findSketch, nextSeq, IDENTITY, timeline, regionsFor, regionOwners, shapeGroup, userLoops, resolveNode, bodyKey, primName, pathChain, orderPath } from "./store.js";
 import { holdImport, importBusy } from "./dropimport.js"; // jumpstart-3d: insert supplier parts
 import { el, fmt, uid, round, clone, nextColor, fileAccept } from "./util.js";
@@ -72,7 +73,7 @@ export function initAdvanced(app) {
   function baseOf(bodyId) {
     const b = findBody(store.doc, bodyId);
     if (!b) return null;
-    const key = bodyKey(resolveNode(b.node, store.doc));
+    const key = bodyKey(resolveNode(b.node, store.doc)) + (app.kernel.quality > 1 ? "@q" + app.kernel.quality : ""); // jumpstart-3d: the scene caches finer meshes under @q<n>
     const r = app.kernel.get(key);
     return r && r.ok ? { body: b, data: r.mesh, m: M4(b.m) } : null;
   }
@@ -3003,6 +3004,8 @@ export function initAdvanced(app) {
         retrace();
       };
       pic.onerror = () => { busy = false; app.toast("That picture couldn't be read for tracing.", "err"); };
+      // jumpstart-3d: tracing and puffing must not fetch project URLs.
+      if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(sketchId); pic.onerror(); return; }
       pic.src = im.src;
     }
     let tmr = 0;
@@ -3095,6 +3098,8 @@ export function initAdvanced(app) {
         img = g.getImageData(0, 0, W, H); busy = false; recut();
       };
       pic.onerror = () => { busy = false; app.toast("That picture couldn't be read.", "err"); };
+      // jumpstart-3d: tracing and puffing must not fetch project URLs.
+      if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(sketchId); pic.onerror(); return; }
       pic.src = im.src;
     }
     let tmr = 0;
@@ -7556,7 +7561,7 @@ export function initAdvanced(app) {
     const bodyRow = (b, sub) => {
       const eye = el("button", { class: "eye", title: b.hidden ? "Show" : "Hide", "aria-label": b.hidden ? "Show " + b.name : "Hide " + b.name, html: b.hidden ? ICON.eyeOff : ICON.eye, onclick: (e) => { e.stopPropagation(); store.update((d) => { findBody(d, b.id).hidden = !b.hidden; }, b.hidden ? "Show body" : "Hide body"); } });
       const n = el("div", { class: "node" + (app.sel.includes(b.id) ? " sel" : ""), title: b.name }, eye,
-        el("span", { class: "swatch", style: { background: b.hole ? "repeating-linear-gradient(135deg,#c2c9d1 0 2px,#fff 2px 4px)" : b.color } }),
+        el("span", { class: "swatch", style: b.hole ? { background: "repeating-linear-gradient(135deg,#c2c9d1 0 2px,#fff 2px 4px)" } : { backgroundColor: b.color } }),
         el("span", { class: "nm" }, b.name + (b.hole ? " (hole)" : "")),
         scene.errors.has(b.id) ? el("span", { class: "err-dot", title: scene.errors.get(b.id) }) : null,
         el("button", { class: "eye lockbtn" + (b.locked ? " on" : ""), title: b.locked ? "Unlock" : "Lock", "aria-label": (b.locked ? "Unlock " : "Lock ") + b.name, "aria-pressed": !!b.locked, html: ICON[b.locked ? "lock" : "unlock"], onclick: (e) => { e.stopPropagation(); toggleLock([b.id]); } }));
@@ -8042,7 +8047,7 @@ export function initAdvanced(app) {
     showBuildErrors,
     paramRows, // jumpstart-3d: parameters
     fastener: () => fastenerCmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners (one dialog: J.Siwek's library)
-    holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
+    holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), addHoles: (spec) => holePattern.addAt(spec), // jumpstart-3d: hole pattern, JS3D.hole
     fillOpenings: () => fillOpen.cmd(), // jumpstart-3d: fill openings
     faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears

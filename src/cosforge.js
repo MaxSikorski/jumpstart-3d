@@ -1208,7 +1208,7 @@ export function initCosForge(app) {
       const r = pieceCache.get(genKey(p, VIEW_RES[st.detail] || 4) + JSON.stringify([p.fit, p.cuts, p.side]));
       const n = r ? r.pieces.length : "…";
       o.append(el("div", { class: "cf-item" + (p.id === ui.sel ? " on" : "") + (p.hidden ? " off" : ""), id: "cf-item-" + p.id },
-        el("span", { class: "cf-dot", style: { background: p.color } }),
+        el("span", { class: "cf-dot", style: { backgroundColor: p.color } }),
         el("button", { class: "cf-item-name", onclick: () => select(p.id), title: "Select " + p.name }, p.name, el("small", {}, (p.side === "both" ? "pair · " : p.side === "L" ? "left · " : p.side === "R" ? "right · " : "") + n + " piece" + (n === 1 ? "" : "s"))),
         el("button", { class: "ibtn cf-x", title: p.hidden ? "Show" : "Hide", onclick: () => { p.hidden = !p.hidden; refreshScene(); } }, p.hidden ? "○" : "●"),
         el("button", { class: "ibtn cf-x", title: "Duplicate", onclick: () => { const q = deserialize(serialize({ ...blank(), parts: [p] })).parts[0]; q.id = uid("cp"); q.name = p.name + " copy"; change("Duplicate", () => st.parts.push(q), { now: true }); ui.sel = q.id; } }, "⧉"),

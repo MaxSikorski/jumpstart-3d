@@ -1,14 +1,17 @@
 ---
 name: jumpstart-3d
-description: "Build and edit 3D parts in JumpStart 3D through its MCP tools: Beginner shapes, holes, groups, parameters, screenshots, STL/STEP/OBJ/3MF export. Use when the user asks for a part, bracket, box, enclosure or any 3D model, or for an edit to the design they have open in JumpStart 3D."
+description: "Build and edit 3D parts in JumpStart 3D through its MCP tools: Beginner shapes, Advanced sketches and features (extrude, fillet, shell, holes), groups, parameters, screenshots, STL/STEP/OBJ/3MF export. Use when the user asks for a part, bracket, box, enclosure or any 3D model, or for an edit to the design they have open in JumpStart 3D."
 ---
 
 # Driving JumpStart 3D
 
 JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in it. The tool names start with a prefix your client adds; this text uses the short names (`status`, `add_shape`...).
 
+Before risky steps, use `checkpoint`; review with `diff_checkpoint` and use `rollback` on failure (one undo step).
+
 ## Facts to keep straight
 
+- `inspect_bodies` gives size, volume, area and weight (default PLA); `measure` gives distances (two flat faces picked with `a_near`/`b_near` give a wall's thickness); `check_print` says whether the design prints as it sits (on the plate, fits the printer, overhangs); `check_collisions` finds parts that overlap or touch; `section_view` cuts the design and gives the outline areas.
 - Lengths are millimetres, angles degrees, positions `[x, y, z]` with z up.
 - `add_shape` puts the middle of the shape's footprint at `at` `[x, y]` and its base at `at` z. Default `[0, 0, 0]`.
 - Sizes are `{w, d, h}` (width x, depth y, height z) or `[w, d, h]`. `list_kinds` shows the 20 kinds and their size keys.
@@ -19,6 +22,10 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
 - `add_fastener` makes a whole bolt, nut, threaded rod or tap cutter with a real thread (metric M2.5 to M12, inch #6 to 1/2). A bolt's `length` is under the head. A tap cutter is a hole: put it inside a solid and `group_bodies` both, and it cuts a threaded hole. Threads take a few seconds to build, so call `wait_ready`. More than 150 thread turns is refused.
 - `add_hole_pattern` drills a grid, a staggered grid or a circle of round holes into one flat face of a body, as one Hole feature. `face` is the direction the face looks (`+z` is the top). Columns run along the face's longest straight edge (on a box top, the longer side), rows across it; `angle` and `start` are measured from that edge. Leave `pitch` out to spread the holes over the face; holes that would not fit inside the face and its `margin` are left out and counted in `dropped`. Plain, counterbore (`cbore`), countersink (`csink`) or `tapped`, with a `size` such as `M3`. `shape` `square`, `hex` or `slot` cuts that outline instead (`width`: the side, the width across flats or the slot's width; `length`: the slot's overall length) as one sketch and one Extrude cut, with the same layouts; stagger with a row pitch of 0.866 x the column pitch for a honeycomb. More than 200 plain holes or shapes (8 tapped) is refused. Call `wait_ready` after.
 - `add_gear` makes a spur gear, a helical gear (`angle` 5 to 30, `hand`; it meshes with one of the opposite hand on a parallel axis), a straight bevel gear or a rack from `module` (mm) and `teeth`. Two spur gears of one module mesh at centres `module × (teeth1 + teeth2) / 2` apart; when `teeth2` is even, turn the second by `180 / teeth2` degrees about its own centre with rotate_bodies. Call wait_ready after.
+- `add_gear_set` places gears that already mesh: a pair, rack and pinion, ring, planetary set (with motion-study joints), a 90 degree bevel pair or a helical pair.
+- `add_box_maker` makes a Box Maker set: open bins with compartments, or cases with drawers, tilt bins or doors, stacked and side by side.
+- `add_hardware` adds any Fasteners-library part (screws, nuts, washers, heat-set inserts, dowels); `add_spring` a compression spring.
+- `add_texture` (keys from `list_textures`) textures a body or some faces; mesh only, so STEP has no texture. `export_drawing` writes a DXF of Top, Front and Right.
 - `add_name_plate` makes a tag or name plate sized to one line of text: raised letters are a second body in their own colour (do not group_bodies them with the plate, that fuses them into one colour); cut letters are part of the plate. Call wait_ready after.
 - `add_knurl` makes a knurled knob or grip: a cylinder with straight V grooves and an optional round, hex or D bore. For a diamond pattern use the app's Texture. Call wait_ready after.
 
@@ -29,7 +36,7 @@ JumpStart 3D is a CAD app that runs in a browser. These tools edit a design in i
    - `headless`: your own invisible browser with a blank design.
    - `none`: nothing yet. Any other tool starts headless. If the user wants their open tab, tell them: theme menu (half-moon button), turn on "Connect to AI agent". Chrome may ask to allow "local network access" for the website; they must allow it.
 2. Build with `add_shape`, then `set_hole`, `move_bodies`, `resize_shape`, `group_bodies`.
-3. `wait_ready`, then `list_bodies` to check sizes and volumes. A body with an `error` did not build; read the message, fix it, or `undo`.
+3. `wait_ready`, then `inspect_bodies` (or `list_bodies`) to check sizes and volumes, and `check_print` before you call a part printable. A body with an `error` did not build; read the message, fix it, or `undo`.
 4. `screenshot` after every few edits and look at it. Do not trust the numbers alone. If your model cannot see images, pass `path` (a file name): the PNG is saved there and you get `{path, bytes, width}` as text, so the user can look at the file.
 5. At the end `export_file` and tell the user the full path. Use an absolute path; a relative one is relative to the folder the server was started in. Kinds: `stl`, `obj`, `3mf`, `glb`, `step`, `json` (the project file).
 
@@ -45,9 +52,20 @@ If a tool fails with "could not start the headless browser", tell the user to ru
 
 To cut one existing solid out of another instead: `group_bodies` with `"op": "cut"` subtracts every later id from the first.
 
+## Advanced parts: sketches, features, selectors
+
+For a part that is more than basic shapes (an enclosure, a bracket with fillets and holes), work in Advanced mode and build it like a person does:
+
+1. `new_design` with `mode: "advanced"` (only when the user wants a fresh design, never on their open tab unasked).
+2. `add_sketch` with shapes (`rect`, `roundrect`, `circle`, `slot`, `polygon`, `polyline`, `line`; sizes may be expressions such as `"W/2"`), then `extrude` (or `revolve`). Cut or join with `op`; `through: true` cuts right through.
+3. `list_faces` and `list_edges` to look: positions, normals, sizes, in world mm. Indices are valid only until the next edit.
+4. `shell_body`, `fillet_edges`, `chamfer_edges`, `add_holes`, `pattern_features`, then `wait_ready`, `list_bodies` (error? volume?) and `screenshot`.
+
+Faces and edges are picked with a selector, not an index: `top`, `bottom`, `front` (-y), `>z` (the highest), `|z` (parallel to z), `#z`, `hole`, `circle`, `edges of top`, joined with `and`, `or`, `not` and brackets. The outer rim of an open box: `edges of top and (>x or <x or >y or <y)`. A selector is resolved when you call; after a parameter change, look again with `list_faces` or `list_edges`. A fillet too large for the walls shows as the body's `error` in `list_bodies`: undo and use a smaller radius.
+
 ## What the tools cannot do
 
-Sketches, extrudes, revolves, fillets, chamfers and the other Advanced features have no tool. Use `run_script` for anything else: it runs JavaScript in the page with `JS3D` in scope and returns the value as JSON. Top-level `await` works; end with `return` to give a value back. It has the full power of the page, so use it for the design only. Full reference: BRIDGE.md in the JumpStart 3D repository (https://github.com/MaxSikorski/jumpstart-3d/blob/main/BRIDGE.md). The calls you will use most:
+Sweeps, lofts, mirrors, split, emboss, threads and construction planes have no tool. Use `run_script` for those and anything else: it runs JavaScript in the page with `JS3D` in scope and returns the value as JSON. Top-level `await` works; end with `return` to give a value back. It has the full power of the page, so use it for the design only. Full reference: BRIDGE.md in the JumpStart 3D repository (https://github.com/MaxSikorski/jumpstart-3d/blob/main/BRIDGE.md). The calls you will use most:
 
 ```js
 JS3D.add("box", { size: [40, 30, 20], at: [0, 0, 0], hole: false })   // returns an id
@@ -60,10 +78,11 @@ await JS3D.export("step")                                             // bytes; 
 await JS3D.load(jsonText)                                             // open a project file you wrote
 ```
 
-To get an Advanced design (sketches, features) in, write a project file by hand (format in BRIDGE.md Part 2) and open it with `load_project`.
+To get something no tool makes in, write a project file by hand (format in BRIDGE.md Part 2) and open it with `load_project`.
 
 ## Mistakes to avoid
 
+- Calling a part ready to print without `check_print`.
 - Reading `volume` before `wait_ready`.
 - Rotating or scaling before `wait_ready` (the tools throw while a body is still being built unless you pass `about`).
 - Calling `group_bodies` with a hole alone: a hole needs a solid to cut.

@@ -4,7 +4,7 @@ JumpStart 3D runs entirely in your browser. There is no server, no
 account and no data sent anywhere: your designs stay in your browser's
 storage or in files you save yourself. The only network requests the
 website makes are for its own files (the fonts are among them). The
-downloaded single file makes none.
+downloaded single file makes none. Project pictures accept only embedded PNG, JPEG, WebP or GIF data; project-supplied web and blob addresses are never loaded.
 
 ## What counts as a security problem here
 

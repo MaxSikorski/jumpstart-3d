@@ -62,7 +62,7 @@ function rackPoints(n, m, clear, base) {
 }
 
 // Checks a request and returns everything a gear needs, or throws a plain message.
-function resolve(spec) {
+export function resolve(spec) {
   spec = spec ?? {};
   const kind = spec.kind == null ? "spur" : spec.kind;
   if (!KINDS.some((k) => k[0] === kind)) throw new Error('kind must be "spur", "helical", "bevel" or "rack"');
@@ -138,7 +138,7 @@ function resolve(spec) {
 
 // Pushes the sketch(es) and the body into the design and returns the body. Sketches sit at the world origin and the body's matrix
 // carries the position, as for any Advanced body that has been moved.
-function gearBody(doc, r) {
+export function gearBody(doc, r) {
   // A gear has thousands of points and lines. Their IDs repeat in line endpoints and
   // region keys, so full random IDs make saved designs needlessly large. Keep the
   // usual region key (the sorted entity IDs), using short IDs unique in this design.

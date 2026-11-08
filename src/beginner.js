@@ -1072,7 +1072,7 @@ export function initBeginner(app) {
     const allHole = sel.every((b) => b.hole), noHole = sel.every((b) => !b.hole);
     const shColor = (sel.find((b) => !b.hole) || sel[0]).color;
     body.append(el("div", { class: "solidhole" },
-      el("button", { "aria-pressed": noHole, onclick: () => setHole(false) }, el("span", { class: "chip", style: { background: shColor } }), "Solid"),
+      el("button", { "aria-pressed": noHole, onclick: () => setHole(false) }, el("span", { class: "chip", style: { backgroundColor: shColor } }), "Solid"),
       el("button", { "aria-pressed": allHole, onclick: () => setHole(true) }, el("span", { class: "chip hole" }), "Hole")));
     if (!allHole) {
       const colors = el("div", { class: "colors" });

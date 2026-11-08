@@ -145,7 +145,7 @@ export function faceFrame(base, face, angle = 0) {
   };
 }
 
-function faceArea(data, face) {
+export function faceArea(data, face) {
   const [s, cnt] = data.faceGroups[face], T = data.triangles, V = data.vertices;
   let area = 0;
   for (let i = s; i + 2 < s + cnt; i += 3) {
@@ -462,6 +462,36 @@ export function initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickB
     return { id, holes: res.spots.length, dropped: res.dropped, sketch: built.sk.id };
   }
 
+  // used by JS3D.hole: one Hole feature at world points on one flat face, in one undo step. spec: { body, face (index), points: [[x, y, z]...],
+  // hole: a request as for resolveHole }. Returns { id, holes }.
+  function addAt(spec) {
+    spec = spec ?? {};
+    const body = findBody(store.doc, spec.body);
+    if (!body) throw new Error("no body " + spec.body);
+    if (body.hole) throw new Error(`${body.name} is marked as a hole; holes go into solid bodies`);
+    const base = baseOf(body.id), failure = app.scene.errors.get(body.id);
+    if (failure) throw new Error(`${body.name} has a build error: ${failure}`);
+    if (!base) throw new Error(body.hidden ? `${body.name} is hidden and has not been built; show it first` : `${body.name} has a build error: it could not be built`);
+    const h = resolveHole(spec.hole, T, store.doc.threadOffset || 0), [, max, noun] = LIMITS[h.kind];
+    const pts = spec.points;
+    if (!Array.isArray(pts) || !pts.length || !pts.every((p) => Array.isArray(p) && p.length === 3 && p.every(isNum))) throw new Error("points must be a list of [x, y, z] in mm");
+    if (pts.length > max) throw new Error(`Too many holes (${pts.length}; the most is ${max} for ${noun}).`);
+    const info = base.data.faceInfo[spec.face], n = unit(info.n), fr = faceFrame(base, spec.face, 0), R = outerR(h), inv = base.m.clone().invert();
+    const spots = pts.map((p, i) => {
+      const q = new THREE.Vector3(...p).applyMatrix4(inv).toArray();
+      const d = dot(n, sub(q, info.c)), local = q.map((v, k) => v - n[k] * d);
+      if (!fr.fitsCore([fr.toAB(local)], R)) throw new Error(`point ${i + 1} [${p.join(", ")}] is not on the face, or the hole there runs over its edge`);
+      return { p: local.map(r4), n: n.slice(), q: local };
+    });
+    for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) {
+      const gap = len(sub(spots[i].q, spots[j].q));
+      if (gap < 2 * R - 1e-9) throw new Error(`holes ${i + 1} and ${j + 1} overlap (centres ${r4(gap)} mm apart; each is ${r4(2 * R)} mm wide)`);
+    }
+    let id;
+    store.update((doc) => { id = pushMod(doc, body.id, h, spots); }, `Hole (${countText(spots.length, "round")})`);
+    return { id, holes: spots.length };
+  }
+
   function cmd() {
     const st = {
       pick: null, click: null, res: null, fr: null, check: {},
@@ -647,5 +677,5 @@ export function initHolePattern(app, { openCmd, commit, row, seg, pickbox, pickB
     openCmd(def);
   }
 
-  return { cmd, add };
+  return { cmd, add, addAt };
 }

@@ -10,6 +10,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
+| `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
 | `meshdetail.js` | Mesh detail menu: Normal, Fine, Extra fine, custom up to 32x |
 | `params.js` | Named parameters that drive sketch and feature sizes |
@@ -29,7 +30,11 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sketchmirror.js` | Sketch Mirror (M, Modify group): copies picked shapes across a line, the X or Y axis or the origin; `mirrorEnts` is the pure maths, the rest is the tool's clicks and panel box |
 | `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
 | `badgelayout.js` | Constraint badges: where each sits on screen (`layoutBadges`) so none lands on another badge, a corner or a dimension label; pure maths, no DOM |
+| `bridgehistory.js`, `designdiff.js` | Page-memory checkpoints, undoable restore and pure readable design diffs |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
+| `bridgecad.js` | The Advanced CAD calls of `JS3D` (sketch, extrude, revolve, fillet, chamfer, shell, hole, pattern, faces, edges): reads the built shape into a world-frame topology, writes the same sketches and features the Advanced dialogs write |
+| `cadselect.js` | Face and edge selectors (`top`, `>z`, `edges of top and (>x or <x)`, ...): the parser and evaluator, pure |
+| `cadsketch.js` | Sketch shapes (rect, roundrect, circle, slot, polygon, polyline, line) as points, entities, constraints and dimensions with no degrees of freedom left, and the default profile choice; pure |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
 | `loadui.js` | Engine-load note, splash, service-worker registration |
@@ -49,12 +54,16 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
 | `drawingclient.js` | Bodies as DXF drawing, the temporary worker (like `codecadclient.js`): a fresh engine per drawing with the design's imported files and fonts, terminated after the answer, on Cancel, or after 2 minutes, so the design's own worker never waits behind a drawing |
-| `bodydrawing.js` | Bodies as DXF drawing (Open/Export menu): the dialog (views, scale, mm or inches, overall sizes), refuses imported meshes by name, lays out Top above Front and Right beside it, adds the size lines and labels, writes the file with `dxf.js` `writeDXF` (marked blocks there: inch units, TEXT) |
+| `bodydrawing.js` | Bodies as DXF drawing (Open/Export menu): the dialog (views, scale, mm or inches, overall sizes), refuses imported meshes by name, lays out Top above Front and Right beside it, adds the size lines and labels, writes the file with `dxf.js` `writeDXF` (marked blocks there: inch units, TEXT); `drawBodies` is shared with `JS3D.drawing` |
+| `bridgegen.js` | JS3D generator calls: Box Maker sets, gear sets, library hardware, textures, DXF drawings, written as the dialogs write them |
+| `genopts.js` | Their option checks and bevel and helical pair placement, pure |
 | `sendslicer.js` | Send to slicer (Open/Export menu): the Export > 3MF bytes handed to the slicer: a download on a computer, the share sheet on a phone or tablet that can share files; a one-time tip on making .3mf open in OrcaSlicer, PrusaSlicer, Cura or Bambu Studio |
 | `importtoast.js` | Import units: a closed mesh of known units (3MF, OBJ and STL from 6 mm up) comes in at once; the note with its size, repairs and mm / cm / in buttons (one undo step); the dialog stays for open or non-manifold meshes and STL or OBJ under 6 mm; the note also has a CAD faces… shortcut to Mesh to STEP |
 | `stepload.js` | Checked STEP transfer, one fresh-reader healing retry, scoped build stages, Normal-only dense STEP angular policy; all face centers remain exact |
 | `stepprogress.js` | STEP import sessions, stage/elapsed panel, current-mesh completion checks and timeout formatting |
 | `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
+| `bridgeinspect.js` | Inspect calls on JS3D |
+| `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
