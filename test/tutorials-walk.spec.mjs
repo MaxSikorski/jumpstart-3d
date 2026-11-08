@@ -149,7 +149,9 @@ test("c4-top-bar: every button in the tour does something and the lesson stays a
   await startLesson("c4-top-bar", "beginner");
   await addTile("box", false, { w: 20, d: 20, h: 10 }); await ticks(1, "block"); await next();
   const auto = page.locator("#btn-autosave");
-  if ((await auto.textContent()).includes("Off")) await auto.click();
+  // below 1440 px Original keeps Autosave and Keyboard shortcuts in Customize › Workspace (room for the Simple | Original switch)
+  const top = async (id, cz) => { if (await page.locator("#" + id).isVisible()) return page.click("#" + id); await page.click("#btn-theme"); await page.click("#" + cz); };
+  if ((await auto.textContent()).includes("Off")) await top("btn-autosave", "cz-autosave");
   await expect(auto).toContainText("On"); await next();
   const sel0 = await page.evaluate(() => [...window.__app.sel]);
   expect(sel0.length, "the new block is selected").toBe(1);
@@ -163,7 +165,7 @@ test("c4-top-bar: every button in the tour does something and the lesson stays a
   await page.click("#mode-beginner"); await expect.poll(() => page.evaluate(() => window.__app.mode)).toBe("beginner");
   expect((await bodies(page)).length).toBe(1);
   await next();
-  await page.click("#btn-keys"); await expect(page.locator(".modal-back").first()).toBeVisible(); await page.keyboard.press("Escape");
+  await top("btn-keys", "cz-keys"); await expect(page.locator(".modal-back").first()).toBeVisible(); await page.keyboard.press("Escape");
   await expect(page.locator(".modal-back")).toHaveCount(0); // Escape itself must close it;
   await page.click("#btn-about"); await expect(page.locator(".modal", { hasText: "Created by J.Siwek" })).toBeVisible(); await page.keyboard.press("Escape");
   await expect(page.locator(".modal-back")).toHaveCount(0); // Escape itself must close it;
