@@ -2,11 +2,12 @@
 // jumpstart: run scripts and make files with JumpStart 3D from a terminal. Headless only: it starts its own invisible
 // browser through session.mjs, never the MCP server and never the WebSocket port, so it cannot touch a tab or a running server.
 // stdout carries the JSON result and nothing else; progress and errors go to stderr.
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { Session } from "./session.mjs";
 import { save, where } from "./tools.mjs";
 import { MAX_BYTES, checkRecipe, isRecipe, substitute, checkOutcome, versionAtLeast } from "./recipe.mjs";
+import { safe, sameFile } from "./cli-utils.mjs";
 
 const USAGE = `jumpstart: run scripts and make files with JumpStart 3D, in a headless browser.
 
@@ -35,8 +36,8 @@ const KINDS = new Set(["stl", "obj", "3mf", "glb", "step"]);
 const BUILD_KINDS = new Set([...KINDS, "json"]);
 const ARITY = { run: 1, export: 2, build: 1, shot: 2, status: 0 }; // how many arguments each command takes
 
-const safe = (s) => String(s).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 class Usage extends Error {} // bad usage: exit 2
+class BuildTimeout extends Error {}
 class BuildFail extends Error { // a recipe step failed: exit 1, with {ok:false, step, call, error} on stdout
   constructor(step, call, error, named = true) { super(`step ${step}${named ? ` (${call})` : ""}: ${error}`); this.step = step; this.call = call; this.error = error; }
 }
@@ -92,7 +93,8 @@ const COMMANDS = {
         const parent = await realpath(dirname(resolve(where(out)))).catch(() => dirname(resolve(where(out))));
         return join(parent, basename(out));
       });
-      if (inputReal === outputReal) throw new Error(`the output would overwrite ${file}; give --out`);
+      const outputStat = await stat(where(out)).catch((e) => { if (e.code !== "ENOENT") throw e; });
+      if (inputReal === outputReal || (outputStat && sameFile(await stat(path), outputStat))) throw new Error(`the output would overwrite ${file}; give --out`);
     }
     return async (s) => {
       if (recipe) {
@@ -162,8 +164,9 @@ async function main() {
   const stop = async () => { stopping = true; await session.close().catch(() => {}); process.exitCode = 130; };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  let expired = false;
   try {
-    let timer, expired = false;
+    let timer;
     const originalCall = session.call.bind(session);
     if (name === "build") session.call = async (...args) => {
       if (expired) throw new Error("build timed out");
@@ -173,19 +176,26 @@ async function main() {
     };
     const task = work(session);
     const wrapped = name === "build" ? await Promise.race([task, new Promise((_, reject) => {
-      timer = setTimeout(() => { expired = true; reject(new Error(`build timed out after ${flags.timeout ?? 30} minutes`)); }, (flags.timeout === undefined ? 30 : Number(flags.timeout)) * 60000);
+      timer = setTimeout(() => { expired = true; reject(new BuildTimeout(`build timed out after ${flags.timeout ?? 30} minutes`)); }, (flags.timeout === undefined ? 30 : Number(flags.timeout)) * 60000);
     })]).finally(() => clearTimeout(timer)) : await task;
     const result = name === "build" ? wrapped.data : wrapped;
     console.log(JSON.stringify(result === undefined ? null : result));
     return name === "build" ? wrapped.exitCode : 0;
   } finally {
-    await session.close().catch(() => {});
+    const closing = session.close().catch(() => {});
+    if (expired) {
+      let cleanupTimer;
+      await Promise.race([closing, new Promise((resolve) => { cleanupTimer = setTimeout(resolve, 10_000); })]);
+      clearTimeout(cleanupTimer);
+    } else await closing;
   }
 }
 
-main().then((code) => { process.exitCode = code; }, (e) => {
+main().then((code) => { if (!stopping) process.exitCode = code; }, (e) => {
   if (e instanceof BuildFail) console.log(JSON.stringify({ ok: false, step: e.step, call: e.call, error: e.error }));
   if (stopping) { console.error("jumpstart: stopped"); process.exitCode = 130; return; }
-  console.error("jumpstart: " + safe((e && e.message) || e) + (e instanceof Usage ? "\nRun jumpstart --help for the commands." : ""));
+  const message = "jumpstart: " + safe((e && e.message) || e) + (e instanceof Usage ? "\nRun jumpstart --help for the commands." : "");
+  if (e instanceof BuildTimeout) { process.stderr.write(message + "\n", () => process.exit(1)); return; }
+  console.error(message);
   process.exitCode = e instanceof Usage ? 2 : 1;
 });

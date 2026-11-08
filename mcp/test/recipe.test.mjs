@@ -2,6 +2,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_STEPS, checkRecipe, isRecipe, substitute } from "../recipe.mjs";
+import { safe, sameFile } from "../cli-utils.mjs";
+
+test("stderr escaping keeps user text on one line", () => {
+  assert.equal(safe("call\nnext\rreturn\ttab\x1b\x00\x7f"), "call\\nnext\\rreturn\\ttab\\u001b\\u0000\\u007f");
+  assert.equal(safe("plain text"), "plain text");
+});
+
+test("file identity requires matching device and inode", () => {
+  assert.equal(sameFile({ dev: 1, ino: 2 }, { dev: 1, ino: 2 }), true);
+  assert.equal(sameFile({ dev: 1, ino: 2 }, { dev: 2, ino: 2 }), false);
+  assert.equal(sameFile({ dev: 1, ino: 2 }, { dev: 1, ino: 3 }), false);
+});
 
 test("$name becomes the saved result's id, $name.key a field, anywhere in nested args", () => {
   const vars = { box: { id: "b1", body: "b9", n: 4 }, plain: 7, list: [1, 2] };
