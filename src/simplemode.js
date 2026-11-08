@@ -3,6 +3,7 @@ import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets
 import { startJob } from "./overhang.js";
 import { startPlateJob, fitsPlate, flatness, verdict } from "./printcheck.js";
 import { ICON } from "./icons.js";
+import { showSimpleAbout } from "./simpleabout.js";
 
 const TOOLS = {
   sketch: ["Sketch", "sketch"], import: ["Import", "import"], hole: ["Hole", "holeToggle"], group: ["Group", "group"], align: ["Align", "align"], fillet: ["Round edges", "fillet", "Fillet"], measure: ["Measure", "measure"],
@@ -48,6 +49,10 @@ function initPlate(app) {
   group(more, "Edit", ["dup", "del", "copy", "paste", "ungroup", "solid", "lock", "multi"]);
   group(more, "Print", ["drop", "printsim"]); group(more, "Surfaces", ["texture", "facepat", "fillopen"]); group(more, "Parts and makers", [...PARTS, ...MAKERS]);
   const other = group(more, "Other", []); other.hidden = true;
+  const appGroup = group(more, "App", []);
+  for (const [id, label, phone] of [["btn-projects", "Designs"], ["btn-autosave", "Autosave"], ["btn-chat", "AI chat"], ["btn-keys", "Keyboard shortcuts"], ["btn-full", "Full screen"], ["mode-chisel", "Chisel"], ["mode-arch", "Architect"], ["btn-about", "Original app info"], ["btn-tutorials", "Learn", true], ["mode-beginner", "Beginner", true], ["mode-advanced", "Advanced", true]]) {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.for = id; b.textContent = label; if (phone) b.className = "face-phone"; appGroup.querySelector(".simple-grid").append(b);
+  }
   const footer = document.createElement("button"); footer.id = "simple-original"; footer.type = "button"; footer.textContent = "Switch to Original →"; more.append(footer);
   const find = $("simple-find");
   function filter() {
@@ -312,6 +317,11 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { displa
 }
 
 #simple-rail, .simple-panel { display: none; }
+/* Advanced keeps its own tools, with More available for app actions. */
+html[data-face="simple"] #app[data-mode="advanced"] #simple-rail { display: flex; position: absolute; z-index: 40; left: 0; bottom: 8px; }
+html[data-face="simple"] #app[data-mode="advanced"] #simple-rail button:not(#sr-more) { display: none; }
+html[data-face="simple"] #app[data-mode="advanced"] #simple-more:not([hidden]) { display: block; position: absolute; z-index: 41; left: 55px; bottom: 8px; width: min(380px, calc(100% - 55px)); max-height: 70%; overflow: auto; box-sizing: border-box; padding: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; }
+@media (max-width: 640px) { html[data-face="simple"] #app[data-mode="advanced"] #simple-more:not([hidden]) { left: 0; bottom: 55px; width: 100%; } }
 html[data-face="simple"] #app[data-mode="beginner"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
 html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; grid-row: 1; }
 html[data-face="simple"] #app[data-mode="beginner"] > .work { grid-column: 1; grid-row: 2; }
@@ -350,17 +360,16 @@ html[data-face="simple"] #app[data-mode="beginner"] .simple-panel:not([hidden]) 
 .faceswitch button { border: 0; border-radius: 999px; background: transparent; color: #aeb9c6; padding: 5px 13px; font: 600 13px/1 var(--f-ui); cursor: pointer; }
 .faceswitch button[aria-pressed="true"] { background: #ffd66b; color: #1b1407; }
 :root[data-ui="contrast"] .faceswitch button[aria-pressed="true"] { background: var(--accent); color: #000; }
-.faceswitch button:focus-visible, #face-more:focus-visible, #menu-face-more button:focus-visible, .try-simple button:focus-visible { outline: 2px solid #ffd66b; outline-offset: 2px; }
+.faceswitch button:focus-visible, #face-more:focus-visible, .try-simple button:focus-visible { outline: 2px solid #ffd66b; outline-offset: 2px; }
 .face-more-wrap { display: none; position: relative; }
+#btn-theme .lbl, #face-more .lbl { display: none; }
 .menu .face-look { display: flex; align-items: center; gap: 6px; padding: 2px 4px 6px 0; border-bottom: 1px solid var(--line-2); margin-bottom: 4px; }
 .menu .face-look .menu-head { flex: 1; padding-top: 2px; }
 .menu .face-look button { width: auto; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; font-weight: 600; }
 .menu .face-look button[aria-checked="true"] { background: #ffd66b; border-color: #ffd66b; color: #1b1407; }
 .menu .face-look button[aria-checked="true"]::after { content: none; }
 :root[data-ui="contrast"] .menu .face-look button[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #000; }
-#menu-face-more { min-width: 250px; max-width: calc(100vw - 24px); }
-#menu-face-more .face-phone, #menu-face-more [hidden] { display: none; }
-html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-autosave, #btn-theme, #btn-chat, #btn-about, #btn-keys, #btn-full, #btn-projects, #mode-chisel, #mode-arch) { display: none; }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-autosave, #btn-chat, #btn-about, #btn-keys, #btn-full, #btn-projects, #mode-chisel, #mode-arch) { display: none; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .face-more-wrap { display: block; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-undo, #btn-redo) { display: inline-flex; }
@@ -371,33 +380,42 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 html[data-ui="contrast"][data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent); color: #000; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export .face-caret { width: 12px; height: 12px; }
 @media (min-width: 761px) {
-  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-tutorials, #btn-export) .lbl { display: inline; }
+  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-tutorials, #btn-export, #btn-theme, #face-more) .lbl { display: inline; }
 }
 @media (min-width: 861px) {
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar #btn-save .lbl { display: inline; }
 }
 @media (max-width: 1100px) { .faceswitch button { padding: 4px 9px; font-size: 12px; } }
-/* The full (Original) top bar has no room for the switch between phone and 1440 px wide: Settings › Look has it there. From 1440 px the Simple half fits, both halves from 2000 px */
-@media (min-width: 561px) and (max-width: 1439px) { html:not([data-face="simple"]) .faceswitch-row, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch-row { display: none; } }
-@media (min-width: 1440px) and (max-width: 1999px) {
-  html:not([data-face="simple"]) .faceswitch button[aria-pressed="true"], html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button[aria-pressed="true"] { display: none; }
-  html:not([data-face="simple"]) .faceswitch, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch { padding: 2px; }
-  html:not([data-face="simple"]) .faceswitch button, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button { padding: 4px 9px; font-size: 12px; color: #ffd66b; }
-  html:not([data-face="simple"]) .topbar, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .topbar { gap: 8px; }
+html:not([data-face="simple"]) .faceswitch button, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button { padding: 4px 9px; font-size: 12px; }
+@media (min-width: 561px) and (max-width: 1480px) { html:not([data-face="simple"]) .topbar, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .topbar { gap: 4px; } }
+@media (min-width: 561px) and (max-width: 1100px) { html:not([data-face="simple"]) .faceswitch button { padding: 4px 6px; } }
+@media (max-width: 560px) { .faceswitch-row { order: 99; flex-basis: 100%; display: flex; justify-content: center; padding-bottom: 4px; } }
+#simple-more .face-phone { display: none; }
+html[data-face="simple"] #menu-theme .simple-layout-note { display: block; }
+.simple-layout-note { display: none; }
+.face-workspace { display: none; }
+@media (max-width: 1439px) {
+  html:not([data-face="simple"]) #menu-theme .face-workspace { display: block; }
+  html:not([data-face="simple"]) .topbar :is(#btn-autosave, #btn-keys) { display: none; }
 }
-@media (max-width: 560px) {
-  .faceswitch-row { order: 99; flex-basis: 100%; display: flex; justify-content: center; padding-bottom: 4px; }
-  /* a phone in Original keeps all of J.Siwek's view: Simple is offered in the Open/Export menu instead */
-  html:not([data-face="simple"]) .faceswitch-row, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch-row { display: none; }
-  html:not([data-face="simple"]) #menu-export #face-menu-export { display: flex; }
+#menu-theme .face-workspace #cz-full { display: none; }
+@media (min-width: 871px) and (max-width: 1119px) {
+  html:not([data-face="simple"]) .topbar #btn-full { display: none; }
+  html:not([data-face="simple"]) #menu-theme .face-workspace #cz-full:not([hidden]) { display: block; }
+  html:not([data-face="simple"]) .faceswitch #face-original { display: none; }
+  html:not([data-face="simple"]) .faceswitch #face-simple { color: #ffd66b; }
 }
-#menu-export #face-menu-export { display: none; }
-/* Simple below 640 px: Learn and Beginner / Advanced move into More */
+/* narrow tablets in Original: the pill takes its own short row, as on phones */
+@media (min-width: 561px) and (max-width: 870px) {
+  html:not([data-face="simple"]) .faceswitch-row { order: 99; flex-basis: 100%; display: flex; justify-content: center; padding-bottom: 4px; }
+  html:not([data-face="simple"]) .faceswitch #face-original { display: inline-block; }
+}
+html[data-face="simple"] #menu-theme :is([data-layout], .layout-note) { display: none; }
 @media (max-width: 640px) {
-  #menu-face-more button.face-phone { display: flex; }
-  #menu-face-more hr.face-phone { display: block; }
+  #simple-more .face-phone:not([hidden]) { display: flex; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-tutorials, .modeswitch) { display: none; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
+  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) { min-width: 44px; min-height: 44px; justify-content: center; }
 }
 .try-simple { position: absolute; left: 14px; top: 14px; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
 .try-simple p { margin: 0 0 10px; }
@@ -424,44 +442,26 @@ export function initSimpleMode(app) {
   row.className = "faceswitch-row";
   row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
   document.querySelector("header.topbar .modeswitch").before(row);
-  const wrap = document.createElement("div");
-  wrap.className = "face-more-wrap";
-  wrap.innerHTML = `<button class="tb-btn" id="face-more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-face-more" title="More: designs, AI, settings, other studios" aria-label="More"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button><div class="menu" id="menu-face-more" role="menu" aria-label="More" hidden>
-    <button class="face-phone" role="menuitem" data-for="btn-tutorials">Learn</button><button class="face-phone" role="menuitem" data-for="mode-beginner">Beginner</button><button class="face-phone" role="menuitem" data-for="mode-advanced">Advanced</button><hr class="face-phone">
-    <button role="menuitem" data-for="btn-projects">Designs <small>your saved designs</small></button><button role="menuitem" data-for="btn-autosave">Autosave</button><button role="menuitem" data-for="btn-chat">AI chat</button><button role="menuitem" data-for="btn-theme">Settings: theme, layout, printer…</button><button role="menuitem" data-for="btn-keys">Keyboard shortcuts</button><button role="menuitem" data-for="btn-full">Full screen</button><button role="menuitem" data-for="btn-about">About JumpStart 3D</button><hr><div class="menu-head">Other studios</div><button role="menuitem" data-for="mode-chisel">Chisel <small>sculpt like clay</small></button><button role="menuitem" data-for="mode-arch">Architect <small>floor plans and buildings</small></button></div>`;
+  const wrap = document.createElement("div"); wrap.className = "face-more-wrap";
+  wrap.innerHTML = '<button class="tb-btn" id="face-more" title="About this build" aria-label="About this build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg><span class="lbl">About</span></button>';
   $("btn-export").closest(".menu-wrap").before(wrap);
-  // Look: Simple or Original, also in the Settings menu, for a full top bar with no room for the switch
-  $("menu-theme").insertAdjacentHTML("afterbegin", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false" title="Original: every button on the bar">Original</button></div>`);
-  $("btn-tutorials-menu").nextElementSibling.after(Object.assign(document.createElement("button"), { id: "face-menu-export", innerHTML: "Try Simple <small>fewer, bigger buttons</small>", title: "Simple: big tools on the left, your shape and a print check on the right; every other tool under More", onclick: () => { $("menu-export").hidden = true; setFace("simple"); } }));
+  const themeWrap = $("btn-theme").closest(".menu-wrap"), themePlace = document.createComment("Customize position"); themeWrap.before(themePlace);
+  const themeLabel = document.createElement("span"); themeLabel.className = "lbl"; themeLabel.textContent = "Customize"; $("btn-theme").append(themeLabel);
+  $("menu-theme").querySelector(".menu-head").insertAdjacentHTML("afterend", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false">Original</button></div>`);
+  // Original below 1440 px: the Simple | Original pill takes the room of Autosave and Keyboard shortcuts, which move into Customize
+  const workspace = document.createElement("div"); workspace.className = "face-workspace";
+  workspace.innerHTML = '<div class="menu-head">Workspace</div><button role="menuitem" id="cz-autosave" data-for="btn-autosave"></button><button role="menuitem" id="cz-keys" data-for="btn-keys">Keyboard shortcuts</button><button role="menuitem" id="cz-full" data-for="btn-full">Full screen</button><hr>';
+  $("menu-theme").querySelector(".face-look").after(workspace);
+  workspace.addEventListener("click", (e) => { const b = e.target.closest("[data-for]"); if (b) { $("menu-theme").hidden = true; $(b.dataset.for).click(); } });
+  $("btn-theme").addEventListener("click", () => { $("cz-autosave").textContent = $("btn-autosave").textContent; $("cz-full").hidden = $("btn-full").hidden; });
+  const layoutNote = $("menu-theme").querySelector('[data-layout="tablet"]').nextElementSibling; layoutNote.classList.add("layout-note");
+  const simpleNote = document.createElement("div"); simpleNote.className = "menu-note simple-layout-note"; simpleNote.textContent = "Layouts change Original's tool bars. Simple has its own."; layoutNote.after(simpleNote);
+  $("face-more").onclick = () => showSimpleAbout(app, $("face-more"));
   for (const name of ["simple", "original"]) $("face-menu-" + name).addEventListener("click", () => { $("menu-theme").hidden = true; setFace(name); });
-  const more = $("face-more"), menu = $("menu-face-more");
   const labels = [[document.querySelector("#btn-tutorials .lbl"), "Learn"], [document.querySelector("#btn-export .lbl"), "Print / Export"]].map(([el, simple]) => ({ el, simple, original: el.textContent }));
   const caret = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   caret.setAttribute("class", "face-caret"); caret.setAttribute("viewBox", "0 0 24 24"); caret.setAttribute("fill", "none"); caret.setAttribute("stroke", "currentColor"); caret.setAttribute("stroke-width", "2"); caret.setAttribute("aria-hidden", "true");
   caret.innerHTML = '<path d="m6 9 6 6 6-6"/>';
-  const close = () => { menu.hidden = true; more.setAttribute("aria-expanded", "false"); };
-  const items = () => [...menu.querySelectorAll('button[role="menuitem"]')].filter((b) => b.getClientRects().length);
-  function open() {
-    menu.querySelector('[data-for="btn-autosave"]').textContent = $("btn-autosave").textContent;
-    menu.querySelector('[data-for="btn-full"]').hidden = $("btn-full").hidden;
-    menu.hidden = false; more.setAttribute("aria-expanded", "true");
-  }
-  more.addEventListener("click", (e) => { if (menu.hidden) { open(); if (e.detail === 0) items()[0]?.focus(); } else close(); });
-  menu.addEventListener("click", (e) => { const item = e.target.closest("button[data-for]"); if (item) { close(); $(item.dataset.for).click(); } });
-  more.addEventListener("keydown", (e) => {
-    if (menu.hidden) return;
-    if (e.key === "Tab") close();
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); more.focus(); }
-  });
-  menu.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); more.focus(); return; }
-    if (e.key === "Tab") { close(); return; }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-    e.preventDefault(); e.stopPropagation(); const all = items(), at = all.indexOf(document.activeElement);
-    const next = e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : (at + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length;
-    all[next]?.focus();
-  });
-  window.addEventListener("pointerdown", (e) => { if (!wrap.contains(e.target)) close(); });
   // Enter and Space press our buttons; the app's own key handler must not also see them (it submits an open tool)
   for (const el of [row, wrap]) el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
   let stored = null;
@@ -470,7 +470,7 @@ export function initSimpleMode(app) {
   let face;
   let card = null, lessonInOriginal = false;
   function apply(name) {
-    face = name; document.documentElement.dataset.face = face; collapse.activate(face === "simple"); plate.layout(); plate.schedule();
+    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); plate.layout(); plate.schedule();
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
@@ -480,7 +480,7 @@ export function initSimpleMode(app) {
     if (name !== "simple" && name !== "original") return;
     apply(name);
     if (!lesson) { lessonInOriginal = false; try { localStorage.setItem("jumpstart.face", face); } catch (e) { /* storage may be unavailable */ } }
-    close(); plate.close(); if (card) { card.remove(); card = null; }
+    plate.close(); if (card) { card.remove(); card = null; }
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     if (!quiet) app.toast(face === "simple" ? "Simple: the main tools on the left, your shape on the right. Everything else is under More. Switch back any time." : "Original: JumpStart 3D's full top bar, every button where J.Siwek put it.");
   }
@@ -496,12 +496,12 @@ export function initSimpleMode(app) {
     card.innerHTML = '<p><b>Prefer the full toolbar?</b> You\'re in Simple: big tools on the left, your shape on the right.</p><div><button id="face-card-original" class="ts-yes">Switch to Original</button><button id="face-card-keep" class="ts-no">Keep Simple</button></div><button id="try-simple-close" class="ts-x" aria-label="Close">×</button>';
     card.addEventListener("click", (e) => {
       if (e.target.id === "face-card-original") setFace("original"); else if (e.target.id === "face-card-keep" || e.target.id === "try-simple-close") setFace("simple", true); else return;
-      [$("face-simple"), $("face-original"), $("btn-theme"), $("btn-export")].find((b) => b.getClientRects().length)?.focus(); // the card is gone: focus goes to the switch (or Settings, which has Look, or Open/Export on a phone), not to the page
+      [$("face-simple"), $("face-original"), $("btn-theme"), $("btn-export")].find((b) => b.getClientRects().length)?.focus(); // Return focus to a visible top-bar control.
     });
     $("viewport").append(card);
   }
   // A lesson whose steps point at top-bar buttons that Simple moved into More runs in Original, and Simple comes back when it ends (tutorials.js calls these)
-  const MOVED = ["btn-autosave", "btn-theme", "btn-chat", "btn-about", "btn-keys", "btn-full", "btn-projects", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
+  const MOVED = ["btn-autosave", "btn-chat", "btn-about", "btn-keys", "btn-full", "btn-projects", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
   const narrow = matchMedia("(max-width: 640px)");
   const moved = (q) => (narrow.matches ? [...MOVED, ...MOVED_NARROW] : MOVED).some((id) => new RegExp("#" + id + "(?![\\w-])").test(q));
   const needsOriginal = (tut) => tut.steps.some((st) => { const parts = ((st.show && st.show.sel) || "").split(",").map((q) => q.trim()).filter(Boolean); return parts.length && parts.every(moved); });
