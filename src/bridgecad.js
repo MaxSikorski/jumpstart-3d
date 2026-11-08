@@ -12,6 +12,7 @@ import { sketchDof } from "./constraints.js";
 import { faceArea } from "./holepattern.js";
 import { planeMatrix } from "./scene.js";
 import { parseSelector, selectItems } from "./cadselect.js";
+import { LIMITS } from "./sharelink.js";
 import { buildShapes, defaultProfiles, pickProfiles } from "./cadsketch.js";
 
 const r4 = (x) => Math.round(x * 1e4) / 1e4 || 0;
@@ -38,6 +39,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
       return { v: raw };
     }
     if (typeof raw !== "string" || !raw.trim()) throw new Error(`${name} must be ${what}`);
+    if (raw.length > 200) throw new Error(`${name} is too long; an expression can have at most 200 characters`);
     const v = evalExpr(raw, exprScope(store.doc), { unit: "mm", angle });
     if (!isFinite(v) || !ok(v)) throw new Error(`${name} "${raw}" does not give a usable number`);
     return { v, expr: raw };
@@ -48,7 +50,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
   const baseOf = (id) => {
     const b = findBody(store.doc, id);
     if (!b) return null;
-    const r = app.kernel.get(bodyKey(resolveNode(b.node, store.doc)));
+    const r = app.kernel.get(bodyKey(resolveNode(b.node, store.doc)) + (app.kernel.quality > 1 ? "@q" + app.kernel.quality : ""));
     return r && r.ok ? { body: b, data: r.mesh, m: M4(b.m) } : null;
   };
   // the built shape of a body, after waiting for the engine. solid: the call puts a feature on it
@@ -306,7 +308,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
     if (o.type !== "rect" && o.type !== "circle") throw new Error('type must be "rect" or "circle"');
     const circle = o.type === "circle", Bi = M4(body.m).invert(), mirrored = M4(body.m).determinant() < 0;
     const dirOf = (a, name) => {
-      const v = typeof a === "string" ? AXES[a.toLowerCase()] : Array.isArray(a) && a.length === 3 && a.every((x) => typeof x === "number" && isFinite(x)) ? a : null;
+      const v = typeof a === "string" ? (Object.hasOwn(AXES, a.toLowerCase()) ? AXES[a.toLowerCase()] : null) : Array.isArray(a) && a.length === 3 && a.every((x) => typeof x === "number" && isFinite(x)) ? a : null;
       if (!v || !(Math.hypot(...v) > 0)) throw new Error(`${name} must be "x", "y", "z" or [x, y, z]`);
       return new THREE.Vector3(...v).transformDirection(Bi).toArray().map((x) => r9(circle && mirrored ? -x : x));
     };
@@ -327,15 +329,16 @@ export function initBridgeCad(app, { edit, need, ready }) {
     } else {
       const n1 = count(o.count, "count", 1, 200), n2 = o.count2 === undefined ? { v: 1 } : count(o.count2, "count2", 1, 200), sym = o.both === undefined ? false : o.both;
       if (typeof sym !== "boolean") throw new Error("both must be true or false");
-      const s1 = n1.v > 1 || o.spacing !== undefined ? spacing(o.spacing, "spacing") : { v: 0 };
+      const s1 = n1.v > 1 ? spacing(o.spacing, "spacing") : o.spacing === undefined ? { v: 0 } : quantity(o.spacing, "spacing", ["a number of mm", () => true]);
       if (n2.v > 1 && o.axis2 === undefined) throw new Error("axis2 is needed when count2 is more than 1");
-      const s2 = n2.v > 1 || o.spacing2 !== undefined ? spacing(o.spacing2, "spacing2") : { v: 0 };
+      const s2 = n2.v > 1 ? spacing(o.spacing2, "spacing2") : o.spacing2 === undefined ? { v: 0 } : quantity(o.spacing2, "spacing2", ["a number of mm", () => true]);
       const ax1 = dirOf(o.axis, "axis");
       const other = o.axis2 ?? Object.keys(AXES).map((k) => [k, Math.abs(new THREE.Vector3(...AXES[k]).dot(new THREE.Vector3(...ax1)))]).sort((a, b) => a[1] - b[1])[0][0];
       Object.assign(props, { ax1, n1: n1.v, s1: s1.v, ax2: dirOf(other, "axis2"), n2: n2.v, s2: s2.v, sym });
       keep("n1", n1); keep("s1", s1); keep("n2", n2); keep("s2", s2);
       const span = (n) => (sym ? 2 * n - 1 : n);
       copies = Math.round(span(n1.v)) * Math.round(span(n2.v)) - 1;
+      if (copies + 1 > LIMITS.REPEAT_TOTAL) throw new Error(`this pattern would make ${copies} copies; the most is ${LIMITS.REPEAT_TOTAL - 1} (counting the original, ${LIMITS.REPEAT_TOTAL} in all)`);
       if (copies < 1) throw new Error("the pattern makes no copies; give count or count2 of 2 or more");
     }
     if (Object.keys(exprs).length) props.exprs = exprs;

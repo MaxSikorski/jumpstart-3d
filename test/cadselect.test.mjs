@@ -145,4 +145,8 @@ test('every error text', () => {
   bad('(top', 'missing ")" in "(top"');
   bad('edge 2', 'unexpected "edge" at character 0 in "edge 2"');
   bad('face 2', 'unexpected "face" at character 0 in "face 2"', 'edge');
+  bad('constructor', 'unknown word "constructor"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, plane, cylinder, cone, sphere, torus, other, hole, all, not, and, or, (, ), edges of, face N, edge N');
+  bad('toString', 'unknown word "tostring"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, plane, cylinder, cone, sphere, torus, other, hole, all, not, and, or, (, ), edges of, face N, edge N');
+  assert.equal(select(box, 'top' + ' or top'.repeat(60), 'face').length, 1);
+  bad('top' + ' or top'.repeat(72), 'a selector can be at most 500 characters; this one has 507');
 });

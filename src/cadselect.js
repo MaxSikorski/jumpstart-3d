@@ -4,6 +4,7 @@ const aliases = { top: [">", "z"], bottom: ["<", "z"], front: ["<", "y"], back: 
 
 export function parseSelector(text, kind) {
   text = String(text);
+  if (text.length > 500) throw Error(`a selector can be at most 500 characters; this one has ${text.length}`);
   const tokens = [...text.matchAll(/[a-zA-Z]+|-?\d+|[^\s]/g)].map(m => ({ value: m[0].toLowerCase(), raw: m[0], pos: m.index }));
   let i = 0;
   const peek = () => tokens[i]?.value;
@@ -43,7 +44,7 @@ export function parseSelector(text, kind) {
       if ((word === "+" || word === "-") && k === "edge") throw Error("+Z and -Z are for faces; for edges use |Z or >Z");
       return { op: word, axis, level: word === ">" || word === "<" ? index() : undefined };
     }
-    if (aliases[word]) { const [op, axis] = aliases[word]; return { op, axis, level: index() }; }
+    if (Object.hasOwn(aliases, word)) { const [op, axis] = aliases[word]; return { op, axis, level: index() }; }
     if (word === "all" || types[k].includes(word)) return { op: "type", type: word };
     const other = k === "face" ? "edge" : "face";
     if (types[other].includes(word)) throw Error(`"${word}" is ${other === "edge" ? "an" : "a"} ${other} type; ${k} types are ${types[k].join(", ")}`);

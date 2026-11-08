@@ -8,6 +8,7 @@ const KEYS = {
   rect: ["center", "size"], roundrect: ["center", "size", "radius"], circle: ["center", "diameter"], slot: ["center", "length", "width", "angle"],
   polygon: ["center", "sides", "diameter"], polyline: ["points", "closed"], line: ["from", "to", "construction"],
 };
+const MAX_SKETCH = 2000;
 const isNum = (x) => typeof x === "number" && isFinite(x);
 const isPair = (a) => Array.isArray(a) && a.length === 2 && a.every(isNum);
 const tiny = (x) => Math.abs(x) < 1e-9;
@@ -49,6 +50,13 @@ class Sketch {
 // `<what> "<text>" does not give a usable number`). Returns { pts, ents, cons, shapes: [{ type, ents, center? }] }.
 export function buildShapes(shapes, num = plainNum) {
   if (!Array.isArray(shapes) || shapes.length < 1 || shapes.length > 200) throw new Error("shapes must be a list of 1 to 200 shapes");
+  let points = 0, entities = 0;
+  for (const s of shapes) {
+    const m = Array.isArray(s?.points) ? s.points.length : 0, n = Number.isInteger(s?.sides) ? s.sides : 0;
+    const [p, e] = { rect: [5, 6], roundrect: [13, 10], circle: [1, 1], slot: [7, 6], polygon: [n + 1, n + 1], polyline: [m, s?.closed === false ? m - 1 : m], line: [2, 1] }[Object.hasOwn(KEYS, s?.type) ? s.type : "line"];
+    points += p; entities += e;
+  }
+  if (points > MAX_SKETCH || entities > MAX_SKETCH) throw new Error(`this sketch would have ${Math.max(points, entities)} ${points >= entities ? "points" : "entities"}; the most is ${MAX_SKETCH} per call — split it into several sketches`);
   const S = new Sketch(), out = [];
   shapes.forEach((s, i) => {
     const at = `shapes[${i}]`;

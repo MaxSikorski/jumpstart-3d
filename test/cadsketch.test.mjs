@@ -109,4 +109,9 @@ test("validation texts", () => {
   bad([{ type: "polyline", closed: false, points: [[0, 0], [1, 1], [1, 1]] }], "shapes[0] has a zero-length side at point 2");
   bad([{ type: "rect", size: [1, 1], corner: 2 }], 'shapes[0] has an unknown key "corner"; it takes center, size');
   bad([{ type: "rect", size: [1, 1], center: [1] }], "shapes[0].center must be [x, y] in mm (numbers; expressions are for sizes)");
+  const pl = { type: "polyline", points: Array.from({ length: 200 }, (_, i) => [i, (i * 7) % 5 + (i % 2) * 3]) };
+  bad(Array(200).fill(pl), "this sketch would have 40000 points; the most is 2000 per call — split it into several sketches");
+  bad(Array(200).fill({ type: "roundrect", size: [10, 10], radius: 2 }), "this sketch would have 2600 points; the most is 2000 per call — split it into several sketches");
+  bad([{ type: "polygon", sides: 65, diameter: 5 }], "shapes[0].sides must be a whole number from 3 to 64");
+  assert.doesNotThrow(() => buildShapes(Array(100).fill({ type: "circle", diameter: 1 })));
 });
