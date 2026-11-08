@@ -178,6 +178,11 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `add_gear` | A spur gear, a helical gear (`angle` 5 to 30°, `hand`; meshes with the opposite hand on a parallel axis), a straight bevel gear (meshes at 90° with a bevel gear of `mate` teeth) or a straight rack from a `module` (mm) and `teeth`, with involute teeth at 20°, a print clearance, and an optional `bore` (with a DIN 6885 `keyway` on spur gears). Spur 12 to 200 teeth, helical 12 to 30, bevel 12 to 90, rack 2 to 100. Takes a moment to build: call `wait_ready` |
 | `add_name_plate` | A name plate or tag sized to one line of `text` (at most 40 characters, bold fonts with English and Western European letters): a rounded or pill plate with an optional hanging hole or two screw holes, and the letters either `raised` as a second body in its own colour (keep it separate from the plate: grouping fuses the colours) or `cut` into the plate. Returns `{plate, textBody, size}`. Call `wait_ready` after |
 | `add_knurl` | A knurled knob or grip: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an optional `round`, `hex` or `d` bore. Grooves default to about one per mm of circumference (8 to 120) and the depth to a 90° V. Returns the id. Call `wait_ready` after |
+| `add_spring` | A compression spring of round wire, with open or flat ends |
+| `add_box_maker` | A Box Maker set: compartment bins or cases with drawers, tilt bins or doors |
+| `add_gear_set` | Already placed meshing gears: pair, rack, ring, planetary set, bevel pair or helical pair |
+| `add_hardware` | Any Fasteners-library screw, nut, washer, insert or dowel |
+| `list_textures`, `add_texture` | List surface patterns or apply one to a body or chosen faces; mesh exports only |
 | `list_faces`, `list_edges` | A body's faces or edges in world mm: index, type, centre, normal, size, the faces an edge joins. `select` takes a selector (`top`, `>z`, `|z`, `hole`, `edges of top`, ...); indices change after every edit, selectors do not |
 | `add_sketch` | A sketch of fully dimensioned `rect`, `roundrect`, `circle`, `slot`, `polygon`, `polyline` and `line` shapes (sizes may be expressions) on XY, XZ, YZ (with an `offset`) or one flat face of a body. Returns the sketch id, plane, profiles and named dimensions |
 | `extrude`, `revolve` | Push or turn a sketch's profiles into a new body, or join to or cut a body (`through` cuts right through) |
@@ -191,6 +196,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner, Advanced or Architect (`arch`) |
 | `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
 | `export_file` | Writes STL, OBJ, 3MF, GLB, STEP or the project `json` to a path and returns path and size |
+| `export_drawing` | Write a DXF drawing of Top, Front and Right views to a file, with optional size lines |
 | `save_project`, `load_project` | The design as project-file JSON (text, or a file); open one from text or a file |
 | `new_design` | Start an empty design |
 | `run_script` | Run JavaScript in the page with `JS3D` and `app` in scope; returns the value as JSON |
@@ -295,3 +301,10 @@ writes the file (default: the design file's name with the new extension, next to
 `cli` runs the command line. `plugin` checks that the plugin files agree with each other, that the skill at the repository root (`skills/jumpstart-3d/SKILL.md`) is byte-identical to `mcp/skills/jumpstart-3d/SKILL.md`, and that the one-line setup prompt is the same everywhere it appears. `install` copies this folder to a scratch place,
 runs `npm ci --ignore-scripts` there as Claude Code does, and starts the copy's server (it needs the npm registry or a warm npm cache).
 The page-side half (the link, the menu row, `JS3D.run`, screenshot width) is `test/agent.spec.mjs`, run by `npm test`.
+
+### Checkpoints
+
+Use `checkpoint` before risky edits, `list_checkpoints` to find retained ids,
+`diff_checkpoint` (`fromId`, optional `toId`) to review changes, and `rollback`
+(`id`) on failure. Snapshots live only in the page (latest 20). Rollback is one
+undo step and refuses checkpoints belonging to another design.

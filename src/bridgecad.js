@@ -30,6 +30,13 @@ const EDGE_TYPES = { LINE: "line", CIRCLE: "circle", ELLIPSE: "ellipse" };
 const LEN = ["a number of mm more than 0, or an expression", (v) => v > 0];
 const snap = (v) => v.toArray().map((q) => (Math.abs(q) < 1e-9 ? 0 : +q.toFixed(9)));
 
+export const baseOf = (app, id) => {
+  const b = findBody(store.doc, id);
+  if (!b) return null;
+  const r = app.kernel.get(bodyKey(resolveNode(b.node, store.doc)) + (app.kernel.quality > 1 ? "@q" + app.kernel.quality : ""));
+  return r && r.ok ? { body: b, data: r.mesh, m: M4(b.m) } : null;
+};
+
 export function initBridgeCad(app, { edit, need, ready }) {
   // a number or an expression: { v, expr? }. kind [description, test]; a failed test on a plain number says what is wanted, on an expression
   // that the text gives no usable number
@@ -47,12 +54,6 @@ export function initBridgeCad(app, { edit, need, ready }) {
   const withExpr = (owner, key, n) => { if (n.expr) (owner.exprs = owner.exprs || {})[key] = n.expr; };
   const loose = (raw, name) => quantity(raw, name, ["a number", () => true]);
 
-  const baseOf = (id) => {
-    const b = findBody(store.doc, id);
-    if (!b) return null;
-    const r = app.kernel.get(bodyKey(resolveNode(b.node, store.doc)) + (app.kernel.quality > 1 ? "@q" + app.kernel.quality : ""));
-    return r && r.ok ? { body: b, data: r.mesh, m: M4(b.m) } : null;
-  };
   // the built shape of a body, after waiting for the engine. solid: the call puts a feature on it
   async function target(id, solid = true) {
     edit();
@@ -61,7 +62,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
     await ready();
     const failure = app.scene.errors.get(id);
     if (failure) throw new Error(`${body.name} has a build error: ${failure}`);
-    const base = baseOf(id);
+    const base = baseOf(app, id);
     if (!base) throw new Error(body.hidden ? `${body.name} is hidden and has not been built; show it first` : `${body.name} could not be built`);
     return base;
   }
