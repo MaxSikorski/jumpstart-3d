@@ -31,6 +31,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `badgelayout.js` | Constraint badges: where each sits on screen (`layoutBadges`) so none lands on another badge, a corner or a dimension label; pure maths, no DOM |
 | `bridgehistory.js`, `designdiff.js` | Page-memory checkpoints, undoable restore and pure readable design diffs |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
+| `bridgecad.js` | The Advanced CAD calls of `JS3D` (sketch, extrude, revolve, fillet, chamfer, shell, hole, pattern, faces, edges): reads the built shape into a world-frame topology, writes the same sketches and features the Advanced dialogs write |
+| `cadselect.js` | Face and edge selectors (`top`, `>z`, `edges of top and (>x or <x)`, ...): the parser and evaluator, pure |
+| `cadsketch.js` | Sketch shapes (rect, roundrect, circle, slot, polygon, polyline, line) as points, entities, constraints and dimensions with no degrees of freedom left, and the default profile choice; pure |
 | `runscript.js` | Open/Export > Run script... |
 | `chat.js`, `chattools.js`, `chatproviders.js` | Chat inside the app: panel, tools, four model providers |
 | `loadui.js` | Engine-load note, splash, service-worker registration |
@@ -44,17 +47,22 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
-| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar's ⋯ More menu, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
+| `simpleabout.js` | Community About dialog, update check, help and support links |
+| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
 | `drawingclient.js` | Bodies as DXF drawing, the temporary worker (like `codecadclient.js`): a fresh engine per drawing with the design's imported files and fonts, terminated after the answer, on Cancel, or after 2 minutes, so the design's own worker never waits behind a drawing |
-| `bodydrawing.js` | Bodies as DXF drawing (Open/Export menu): the dialog (views, scale, mm or inches, overall sizes), refuses imported meshes by name, lays out Top above Front and Right beside it, adds the size lines and labels, writes the file with `dxf.js` `writeDXF` (marked blocks there: inch units, TEXT) |
+| `bodydrawing.js` | Bodies as DXF drawing (Open/Export menu): the dialog (views, scale, mm or inches, overall sizes), refuses imported meshes by name, lays out Top above Front and Right beside it, adds the size lines and labels, writes the file with `dxf.js` `writeDXF` (marked blocks there: inch units, TEXT); `drawBodies` is shared with `JS3D.drawing` |
+| `bridgegen.js` | JS3D generator calls: Box Maker sets, gear sets, library hardware, textures, DXF drawings, written as the dialogs write them |
+| `genopts.js` | Their option checks and bevel and helical pair placement, pure |
 | `sendslicer.js` | Send to slicer (Open/Export menu): the Export > 3MF bytes handed to the slicer: a download on a computer, the share sheet on a phone or tablet that can share files; a one-time tip on making .3mf open in OrcaSlicer, PrusaSlicer, Cura or Bambu Studio |
 | `importtoast.js` | Import units: a closed mesh of known units (3MF, OBJ and STL from 6 mm up) comes in at once; the note with its size, repairs and mm / cm / in buttons (one undo step); the dialog stays for open or non-manifold meshes and STL or OBJ under 6 mm; the note also has a CAD faces… shortcut to Mesh to STEP |
 | `stepload.js` | Checked STEP transfer, one fresh-reader healing retry, scoped build stages, Normal-only dense STEP angular policy; all face centers remain exact |
 | `stepprogress.js` | STEP import sessions, stage/elapsed panel, current-mesh completion checks and timeout formatting |
 | `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
+| `bridgeinspect.js` | Inspect calls on JS3D |
+| `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
