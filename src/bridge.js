@@ -7,6 +7,13 @@
 // Error("no body <id>"). Every edit is one undo step with a readable label, and leaves the selection alone.
 //
 //   Reading    version, appVersion, kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
+//   Generators boxMaker({style, w, d, h, units, across, cols, rows, ...}) -> {id, parts, cell, info}
+//              gearSet({type, module, teeth, teeth2, ...}) -> {id, parts, info}
+//              hardware({part, size, length, threads, clear, left, at, name}) -> id
+//              textures() -> [{key, name, category, size}], texture(id, {texture, faces, size, depth, ...}) -> {body, texture, faces}
+//              drawing({ids, views, scale, units, dims}) -> Uint8Array (DXF)
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
 //              fastener({type, size, length, clear, left, at, name}) -> id   a bolt, nut, threaded rod or tap cutter
@@ -27,15 +34,15 @@
 //   Advanced   sketch(...), extrude(...), revolve(...), fillet(id, edges, r), chamfer(id, edges, d), shell(id, {th, open, dir}), hole(id, {...}), pattern(id, {...}), faces(id, sel), edges(id, sel)
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
-//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
+import { initBridgeGen } from "./bridgegen.js"; // jumpstart-3d: generator calls
+import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 import { VERSION } from "./version.js";
 import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
 import { uid } from "./util.js";
-import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -197,7 +204,7 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.10", // jumpstart-3d: inspect calls (9.1 is 1.9)
+    version: "1.11", // jumpstart-3d: generator calls (9.1 is 1.9, 9.2 is 1.10)
     appVersion: VERSION,
     internals: { app, store },
 
@@ -488,7 +495,6 @@ export function initBridge(app) {
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
   api.delete = api.remove;
-  Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeCad(app, { edit, need, ready })); // jumpstart-3d: advanced CAD calls
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers
@@ -563,6 +569,8 @@ export function initBridge(app) {
   const row = document.querySelector("#menu-theme button[data-agent]");
   if (row) row.addEventListener("click", () => app.setAgent(!link.on));
 
+  Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
+  Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls
   window.JS3D = api;
   app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
 }

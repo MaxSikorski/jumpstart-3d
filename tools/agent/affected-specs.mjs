@@ -52,6 +52,7 @@ const BOOT = new Set(["src/app.js", "src/index.html", "build.mjs", "package.json
 // Files the MCP tests read that are not under mcp/ (mcp/test/*.mjs is also scanned for ../../ paths, so a new one is found without editing this list).
 const MCP_FILES = new Set(["src/bridge.js", "src/bridgecad.js", "README.md", "src/chattools.js", "package.json", "src/app.js", "tools/bridge-demo.js", "test/projects/advanced-hole.json"]);
 const MCP_DIRS = ["mcp/", "skills/", ".claude-plugin/"];
+for (const f of ["src/bridgegen.js", "src/genopts.js"]) MCP_FILES.add(f); // 9.3: mcp/test/gen.test.mjs drives them
 const DOC_DIRS = ["LICENSES/", ".github/ISSUE_TEMPLATE/"];
 const DOC_FILES = new Set(["LICENSE", ".github/PULL_REQUEST_TEMPLATE.md", ".github/FUNDING.yml"]);
 
@@ -60,6 +61,7 @@ const isBoot = (p) => BOOT.has(p) || /^src\/style[^/]*\.css$/.test(p) || /^LICEN
 
 // Modules whose spec carries another name than the module (the same-name rule cannot see these). Every spec named here must exist in test/ (the test checks it).
 export const ALIAS = [
+  [/^src\/genopts\.js$/, ["bridgegen"]],
   [/^src\/fineturn\.js$/, ["fine-rotate"]],
   [/^src\/rotationui\.js$/, ["rotation-access"]],
   [/^src\/printsim\.js$/, ["printerpreview", "paint3mf"]],

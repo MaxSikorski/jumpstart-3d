@@ -99,6 +99,29 @@ function hasMesh(root) {
   return false;
 }
 
+// jumpstart-3d: share the drawing work between the dialog and JS3D.drawing.
+async function drawingPreflight(bodies) {
+  const { resolveNode, store } = await import("./store.js");
+  const list = bodies.map((b) => ({ id: b.id, node: resolveNode(b.node, store.doc), m: b.m }));
+  const mesh = bodies.filter((b, i) => hasMesh(list[i].node)); // resolved, so a mirror of an imported mesh counts too
+  if (mesh.length) throw Object.assign(new Error(`Drawings need CAD bodies: ${mesh.map((b) => b.name).join(", ")} came from a mesh (STL/3MF/OBJ). Leave them out of the selection, or use Mesh to STEP first.`), { kind: "mesh" });
+  return list;
+}
+export async function drawBodies(app, bodies, { views, scale, dims, units }, hooks = {}) {
+  const list = await drawingPreflight(bodies);
+  const fonts = app.kernel.waitFor && list.map((b) => app.kernel.waitFor(b)).find(Boolean);
+  if (fonts) { hooks.onFonts?.(); await Promise.resolve(fonts).catch(() => {}); }
+  if (hooks.stop?.()) throw Object.assign(new Error("Cancelled."), { kind: "cancelled" });
+  hooks.onStart?.();
+  const job = runDrawingJob(app.kernel, { bodies: list, views }, hooks.onView);
+  hooks.onJob?.(job);
+  const data = await job.done;
+  if (hooks.stop?.()) throw Object.assign(new Error("Cancelled."), { kind: "cancelled" });
+  for (const v of views) data.views[v] = cleanCurves(data.views[v] || []);
+  if (!Object.values(data.views || {}).some((v) => v.length)) throw Object.assign(new Error("Nothing to draw."), { kind: "empty" });
+  return { text: drawingDXF(data.views, { scale, dims, units }), skipped: data.skipped || [] };
+}
+
 export function openBodyDrawing(app, { bodies, name }) {
   if (document.getElementById("body-drawing")) return;
   let saved = {}; try { saved = JSON.parse(localStorage.getItem("jumpstart.bodyDrawing") || "{}") || {}; } catch (e) {}
@@ -142,34 +165,26 @@ export function openBodyDrawing(app, { bodies, name }) {
     try { await exportNow(); } finally { busy = false; }
   });
   async function exportNow() {
-    const { resolveNode, store } = await import("./store.js");
-    const list = bodies.map((b) => ({ id: b.id, node: resolveNode(b.node, store.doc), m: b.m }));
-    const mesh = bodies.filter((b, i) => hasMesh(list[i].node)); // resolved, so a mirror of an imported mesh counts too
-    if (mesh.length) { app.toast(`Drawings need CAD bodies: ${mesh.map((b) => b.name).join(", ")} came from a mesh (STL/3MF/OBJ). Leave them out of the selection, or use Mesh to STEP first.`, "err"); return; }
     const views = names.filter((n) => checks[n].checked);
     if (!views.length) { app.toast("Choose at least one view.", "err"); return; }
     const options = { scale: +scale.value, dims: dims.checked, units: units.value };
+    try { await drawingPreflight(bodies); } catch (e) { app.toast(e.message, "err"); return; }
     try { localStorage.setItem("jumpstart.bodyDrawing", JSON.stringify({ ...Object.fromEntries(names.map((n) => [n, checks[n].checked])), ...options, scale: scale.value })); } catch (e) {}
     submit.disabled = true; state.textContent = "Preparing the views…";
     try {
-      const fonts = app.kernel.waitFor && list.map((b) => app.kernel.waitFor(b)).find(Boolean); // text in an extra font: its font file first
-      if (fonts) { state.textContent = "Loading fonts…"; await Promise.resolve(fonts).catch(() => {}); }
-      if (closed) return;
-      state.textContent = "Starting the geometry engine…";
-      const title = (n) => n[0].toUpperCase() + n.slice(1);
-      job = runDrawingJob(app.kernel, { bodies: list, views }, (v, i, n) => { state.textContent = `Preparing ${title(v)}, ${i + 1} of ${n}…`; });
-      let data;
-      try { data = await job.done; } catch (e) { if (closed) return; throw e; } finally { job = null; }
-      if (closed) return;
-      for (const v of views) data.views[v] = cleanCurves(data.views[v] || []);
-      if (data.skipped?.length) app.toast("Left out bodies: " + data.skipped.map((id) => bodies.find((b) => b.id === id)?.name || id).join(", ") + ".", "err");
-      if (!Object.values(data.views || {}).some((v) => v.length)) { app.toast("Nothing to draw.", "err"); return; }
-      const text = drawingDXF(data.views, options);
+      // jumpstart-3d: the dialog keeps its progress and cancellation UI.
+      const { text, skipped } = await drawBodies(app, bodies, { views, ...options }, {
+        onFonts: () => { state.textContent = "Loading fonts…"; },
+        onStart: () => { state.textContent = "Starting the geometry engine…"; },
+        onView: (v, i, n) => { state.textContent = `Preparing ${v[0].toUpperCase() + v.slice(1)}, ${i + 1} of ${n}…`; },
+        onJob: (j) => { job = j; }, stop: () => closed,
+      });
+      if (skipped.length) app.toast("Left out bodies: " + skipped.map((id) => bodies.find((b) => b.id === id)?.name || id).join(", ") + ".", "err");
       if (!(await app.projects.saveModel(name + " drawing.dxf", new TextEncoder().encode(text)))) return;
       app.toast(`Saved the drawing (${views.map((n) => n[0].toUpperCase() + n.slice(1)).join(", ")}) in ${units.value === "in" ? "inches" : "millimetres"}.`);
       close();
-    } catch (e) { app.toast("DXF drawing failed: " + (e.message || String(e)), "err"); }
-    finally { submit.disabled = false; state.textContent = ""; }
+    } catch (e) { if (closed) return; app.toast(e.kind === "mesh" || e.kind === "empty" ? e.message : "DXF drawing failed: " + (e.message || String(e)), "err"); }
+    finally { job = null; submit.disabled = false; state.textContent = ""; }
   }
   submit.focus();
 }

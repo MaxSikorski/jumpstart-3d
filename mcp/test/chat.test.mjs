@@ -1,16 +1,16 @@
 // The in-app chat (src/chattools.js) offers a model the same tools as this server. This test keeps the two lists from drifting:
-// same names in the same order, the same descriptions and parameter names, except for the six tools that differ on purpose
+// same names in the same order, the same descriptions and parameter names, except for the seven tools that differ on purpose
 // (no files or folders in a web page). It also checks that the chat's parameter schemas use only the plain JSON Schema that
 // small local models and every provider accept.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startServer } from "./helpers.mjs";
 
-const DIFFERENT = ["status", "screenshot", "export_file", "save_project", "load_project", "run_script"];
+const DIFFERENT = ["status", "screenshot", "export_file", "export_drawing", "save_project", "load_project", "run_script"];
 // what the chat adds to a tool the server also has
 const EXTRA = { rotate_bodies: ["axis_vector"], scale_bodies: ["k_xyz"] };
-// the parameter names of the six, spelled out
-const SIX = { status: [], screenshot: ["width", "fit"], export_file: ["kind", "ids", "name"], save_project: [], load_project: ["json"], run_script: ["code"] };
+// the parameter names of the seven, spelled out
+const SIX = { status: [], screenshot: ["width", "fit"], export_file: ["kind", "ids", "name"], export_drawing: ["ids", "views", "scale", "units", "dims", "name"], save_project: [], load_project: ["json"], run_script: ["code"] };
 
 let s, server, chat;
 before(async () => {
@@ -32,7 +32,7 @@ test("the chat has the same tools as the server, in the same order", () => {
   }
 });
 
-test("descriptions and parameters match, except for the six that differ on purpose", () => {
+test("descriptions and parameters match, except for the seven that differ on purpose", () => {
   for (const t of chat) {
     if (DIFFERENT.includes(t.name)) continue;
     const m = server.find((x) => x.name === t.name);
@@ -45,7 +45,7 @@ test("descriptions and parameters match, except for the six that differ on purpo
   }
 });
 
-test("the six that differ on purpose have exactly the documented parameters", () => {
+test("the seven that differ on purpose have exactly the documented parameters", () => {
   assert.deepEqual(DIFFERENT.slice().sort(), Object.keys(SIX).sort());
   for (const name of DIFFERENT) {
     const t = chat.find((x) => x.name === name);
