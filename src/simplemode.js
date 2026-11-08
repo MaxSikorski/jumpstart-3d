@@ -403,6 +403,7 @@ html[data-face="simple"] #menu-theme .simple-layout-note { display: block; }
   html:not([data-face="simple"]) .topbar #btn-full { display: none; }
   html:not([data-face="simple"]) #menu-theme .face-workspace #cz-full:not([hidden]) { display: block; }
   html:not([data-face="simple"]) .faceswitch #face-original { display: none; }
+  html:not([data-face="simple"]) .faceswitch #face-simple { color: #ffd66b; }
 }
 /* narrow tablets in Original: the pill takes its own short row, as on phones */
 @media (min-width: 561px) and (max-width: 870px) {

@@ -924,7 +924,7 @@ export const COMMUNITY_TUTORIALS = [
       { title: "See the other modes", tool: "Modes", icon: "select", show: { sel: "#mode-advanced" },
         how: ["Beside <b>Beginner</b> in the top bar are <b>Advanced</b> (sketches, features and exact controls), <b>Chisel</b> (sculpting) and <b>Architect</b> (buildings).", "Click <b>Advanced</b>: your block is still there. Click <b>Beginner</b> to come back."],
         when: "The modes are different toolbars on the same design, so you can move up when you need more." },
-      { title: "Help and shortcuts", tool: "Keyboard and About", icon: "text", show: { sel: "#btn-keys, #btn-about" },
+      { title: "Help and shortcuts", tool: "Keyboard and About", icon: "text", show: { sel: "#btn-keys, #cz-keys, #btn-about" },
         how: ["Click <b>Keyboard shortcuts</b> (the keyboard icon) to read the key list. Close it.", "Click <b>About</b> to see what the app can do and who made it. Close it."],
         when: "The key list saves time once you know the buttons." },
       { title: "Go full screen", tool: "Full screen", icon: "eye", show: { sel: "#btn-full" },
