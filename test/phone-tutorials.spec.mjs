@@ -281,6 +281,7 @@ test("phone 375 x 667: the c-hole-block lesson is finished by taps alone and dow
     expect(s5.join(" ")).not.toMatch(KEYBOARD_ONLY);
     await small();
     await tapEmpty(p);
+    await p.locator("#nav-fit").tap(); await p.waitForTimeout(700); // zoom in on the pieces, as a person would: the Simple | Original row (Original keeps it on phones) leaves the 10 mm cut small at 375 x 667
     await tapTool(p, "#bb-multi");
     await expect(p.locator("#bb-multi")).toHaveAttribute("aria-pressed", "true");
     await tapBody(p, cutId);
