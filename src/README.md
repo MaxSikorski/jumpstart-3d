@@ -29,6 +29,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `sketchmirror.js` | Sketch Mirror (M, Modify group): copies picked shapes across a line, the X or Y axis or the origin; `mirrorEnts` is the pure maths, the rest is the tool's clicks and panel box |
 | `sketchsolve.js` | Sketch solver: one least-squares solve over the whole sketch, the rank count of what is still free (`sketchDof`), and the plain-English clash words; `editVerdict` (refuse, keep with a note, or allow an old clash to stay); `constraints.js` re-exports it in one marked block |
 | `badgelayout.js` | Constraint badges: where each sits on screen (`layoutBadges`) so none lands on another badge, a corner or a dimension label; pure maths, no DOM |
+| `bridgehistory.js`, `designdiff.js` | Page-memory checkpoints, undoable restore and pure readable design diffs |
 | `bridge.js` | `window.JS3D`, the scripting API (see `BRIDGE.md`) |
 | `bridgecad.js` | The Advanced CAD calls of `JS3D` (sketch, extrude, revolve, fillet, chamfer, shell, hole, pattern, faces, edges): reads the built shape into a world-frame topology, writes the same sketches and features the Advanced dialogs write |
 | `cadselect.js` | Face and edge selectors (`top`, `>z`, `edges of top and (>x or <x)`, ...): the parser and evaluator, pure |
@@ -46,7 +47,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
-| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar's ⋯ More menu, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
+| `simpleabout.js` | Community About dialog, update check, help and support links |
+| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
@@ -59,6 +61,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `stepload.js` | Checked STEP transfer, one fresh-reader healing retry, scoped build stages, Normal-only dense STEP angular policy; all face centers remain exact |
 | `stepprogress.js` | STEP import sessions, stage/elapsed panel, current-mesh completion checks and timeout formatting |
 | `meshpreview.js` | Import preview: an imported mesh shows at once as a see-through "Preparing…" copy of the file's own triangles while the solid is built; display only, so every tool still sees an unbuilt body |
+| `bridgeinspect.js` | Inspect calls on JS3D |
+| `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
@@ -90,3 +94,13 @@ No markers. On a port, take his new version whole. Do not "tidy" these.
 node tools/upstream-merge.mjs --base <last source zip> --new <new source zip>
 ```
 It three-way merges each file (his old, our current, his new) in a new `upstream-<version>` worktree, never commits, and writes a plain-English report. Add `--dry-run` to look first. The source zips live on the `upstream-originals` GitHub release (latest: 2.5.1). After a merge: resolve conflicts around our markers, `node build.mjs`, `npm test`.
+
+
+### Public API contract
+
+| File | Purpose |
+| --- | --- |
+| `apicontract.js` | Dependency-free, deeply frozen bridge manifest; API_VERSION 1.13.0, supports/describe implementation. Describes existing calls without validating them at runtime. |
+
+Update the manifest, anchored BRIDGE.md entry and API changelog together when a call changes.
+Run `node tools/api-reference.mjs` to refresh generated indices/schema blocks; `--check` only compares bytes.

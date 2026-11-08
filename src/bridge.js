@@ -32,14 +32,18 @@
 //   Advanced   sketch(...), extrude(...), revolve(...), fillet(id, edges, r), chamfer(id, edges, d), shell(id, {th, open, dir}), hole(id, {...}), pattern(id, {...}), faces(id, sel), edges(id, sel)
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
+//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
+import { API_VERSION, discovery } from "./apicontract.js";
 import * as THREE from "three";
 import { initBridgeGen } from "./bridgegen.js"; // jumpstart-3d: generator calls
 import { VERSION } from "./version.js";
 import { store, findBody, nextSeq, primName } from "./store.js";
 import { makePrimBody, PRIM_DEFAULTS, groupBodies, ungroupBody, deleteBodies, duplicateBodies, transformBodies, setBodyProps, M4, arr } from "./ops.js";
 import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } from "./params.js";
+import { historyCalls } from "./bridgehistory.js";
 import { uid } from "./util.js";
+import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,8 +86,10 @@ export function initBridge(app) {
   };
   const isPlain = (b) => b.node.t === "prim" && !(b.node.mods && b.node.mods.length);
   // the design as data. The scene writes a cache, _key, onto each body in the live document; it is not part of the design.
-  const snapshot = () => {
-    const d = structuredClone(store.doc);
+  const snapshot = ({ shareAssets = false } = {}) => {
+    let d;
+    if (shareAssets) { const { assets, ...rest } = store.doc; d = structuredClone(rest); if (assets) d.assets = { ...assets }; } // asset entries are write-once
+    else d = structuredClone(store.doc);
     d.bodies.forEach((b) => delete b._key);
     return d;
   };
@@ -201,7 +207,8 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.11", // jumpstart-3d: generator calls (9.1 is 1.9, 9.2 is 1.10)
+    version: API_VERSION.split('.').slice(0, 2).join('.'),
+    apiVersion: API_VERSION,
     appVersion: VERSION,
     internals: { app, store },
 
@@ -491,7 +498,10 @@ export function initBridge(app) {
     },
     connection: () => ({ on: link.on, url: link.url, state: link.state }),
   };
+  Object.assign(api, historyCalls({ store, snapshot, edit, app }));
+  Object.assign(api, discovery(api, VERSION));
   api.delete = api.remove;
+  Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeCad(app, { edit, need, ready })); // jumpstart-3d: advanced CAD calls
 
   // jumpstart-3d: agent link. connect() opens a WebSocket to a tool server (mcp/server.mjs) on this computer and answers
@@ -525,7 +535,7 @@ export function initBridge(app) {
     s.onopen = () => {
       link.state = "connected";
       linkChanged();
-      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
+      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, apiVersion: API_VERSION, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
       setTimeout(() => { if (sock === s) app.toast("Connected to an AI agent."); }, 500); // the server may refuse right away (another tab has the link)
     };
     s.onmessage = (ev) => { queue = queue.then(() => answer(s, ev.data)); };

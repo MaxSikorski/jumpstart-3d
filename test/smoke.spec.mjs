@@ -1411,6 +1411,7 @@ test("without WebGL the loading screen says so instead of waiting forever", asyn
   const p = await browser.newPage();
   try {
     await p.addInitScript(() => {
+      try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {}
       const real = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = function (type, ...rest) { return /webgl/i.test(type) ? null : real.call(this, type, ...rest); };
     });
@@ -1424,6 +1425,7 @@ test("another error while the 3D view starts is not reported as missing WebGL", 
   const p = await browser.newPage();
   try {
     await p.addInitScript(() => {
+      try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {}
       const gl = window.WebGL2RenderingContext || window.WebGLRenderingContext;
       if (gl) gl.prototype.getExtension = function () { throw new TypeError("boom"); };
     });

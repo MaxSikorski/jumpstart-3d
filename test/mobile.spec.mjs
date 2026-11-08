@@ -1,6 +1,5 @@
-// The phone first-part budget (J2, outcome 2 judge). A first-time visitor on a 375 px touch phone (Pixel 7 profile) over a simulated
-// 4G link (9 Mbit/s down, 1.5 Mbit/s up, 150 ms), served with gzip like GitHub Pages (test/serve.mjs ... gzip). From the first load it closes the one-time Try Simple card,
-// taps a box, a cylinder hole, types the hole's size, pans with two fingers, turns on Multi-select, taps the box, groups and exports an STL.
+// The phone first-part budget (J2, outcome 2 judge). A visitor using Original on a 375 px touch phone (Pixel 7 profile) over a simulated
+// 4G link (9 Mbit/s down, 1.5 Mbit/s up, 150 ms), served with gzip like GitHub Pages (test/serve.mjs ... gzip). From the first load it taps a box, a cylinder hole, types the hole's size, pans with two fingers, turns on Multi-select, taps the box, groups and exports an STL.
 // The page's internals are read only to wait and to choose where a finger goes, never to act. Every run prints a `mobile-budget:` line.
 // The budgets are about 2x a MacBook's numbers (bytes: +5 %, they do not vary with the machine). If a CI runner fails only on a time budget,
 // set that budget to 1.5x the runner's number, rounded up to the next second, and say so in the changelog. A deliberate size change bumps the bytes.
@@ -34,8 +33,9 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
     // Warm the server's gzip cache for the four startup files before the clock starts: after a rebuild, a reused server compresses on the first request, and that must not land inside the timed navigation.
     for (const path of STARTUP) await context.request.get(baseURL + path.slice(1), { headers: { "accept-encoding": "gzip" } });
 
-    // The two page marks, in ms from the navigation's timeOrigin (as tools/measure-load.mjs, without its localStorage line: nothing is seeded).
+    // The two page marks, in ms from the navigation's timeOrigin (as tools/measure-load.mjs; Original is seeded for this walk).
     await page.addInitScript(() => {
+      try { if (localStorage.getItem("jumpstart.face") === null) localStorage.setItem("jumpstart.face", "original"); } catch {}
       window.__t = {};
       const poll = setInterval(() => {
         const n = performance.now(), t = window.__t, a = window.__app, l = document.getElementById("loading");
@@ -50,10 +50,6 @@ test("a first-time visitor on a phone gets from the first load to a downloaded S
 
     await page.goto(baseURL, { waitUntil: "commit" });
     await page.waitForFunction(() => window.__t && window.__t.usable, null, { timeout: 60_000, polling: 20 });
-
-    // the one-time "Try Simple" card (src/simplemode.js) covers the top of the small view; a first-time visitor closes it
-    await page.locator("#try-simple-close").tap();
-    await expect(page.locator("#try-simple")).toHaveCount(0);
 
     // tapped while the engine is still loading
     await page.locator('#shapes .tile[data-kind="box"]').tap();

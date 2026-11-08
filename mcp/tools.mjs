@@ -22,6 +22,9 @@ const size = () => z.union([z.array(z.number()).length(3), z.record(z.string(), 
   .describe("Shape size in mm: [w, d, h] or an object such as {w, d, h}. Other kinds have other keys (see list_kinds for each kind's defaults).");
 const exportKind = z.enum(["stl", "obj", "3mf", "glb", "step", "json"]);
 
+const MATERIALS = ["pla", "plaplus", "petg", "abs", "asa", "nylon", "pc", "cfpla", "cfnylon", "peek", "tpu"]; // fea.js FILAMENTS keys (inspect.test.mjs checks)
+const target = (point, body, face, near) => point ?? (body === undefined ? undefined : face !== undefined ? { body, face } : near ? { body, near } : body);
+
 export const where = (p) => resolve(p.startsWith("~/") ? join(homedir(), p.slice(2)) : p); // relative paths are relative to the folder the server was started in
 export async function save(path, bytes) {
   const file = where(path);
@@ -33,7 +36,7 @@ export async function save(path, bytes) {
 export const TOOLS = [];
 const tool = (name, description, shape, run) => TOOLS.push({ name, description, shape, run });
 
-tool("status", "Says how this server reaches JumpStart 3D (a connected browser tab, or a headless browser), the app version, the open design's name and mode, and how many bodies it has. Never starts a browser: with no page yet it explains how to get one.",
+tool("status", "MCP: Says how this server reaches JumpStart 3D (a connected browser tab, or a headless browser), the app version, the open design's name and mode, and how many bodies it has. Never starts a browser: with no page yet it explains how to get one. In-app chat: Says the app version, the open design's name and mode, and how many bodies it has.",
   {}, (_, s) => s.status());
 tool("wait_ready", "Waits until the geometry engine has built every shape (volumes and bounding boxes in list_bodies are empty until then). Call it after edits and before reading sizes.",
   { timeout_ms: z.number().int().positive().optional().describe("Give up after this many milliseconds (default 90000)") },
@@ -41,6 +44,29 @@ tool("wait_ready", "Waits until the geometry engine has built every shape (volum
 tool("list_kinds", "Lists the 20 shape kinds add_shape accepts, each with its default size (mm).", {}, (_, s) => call(s, "kinds"));
 tool("list_bodies", "Lists the design's top-level bodies: id, name, kind, hole, hidden, color, position, bounding box (mm), volume (mm3) and any build error. bbox and volume are null until built (see wait_ready).", {}, (_, s) => call(s, "list"));
 tool("get_body", "One body in full: the list_bodies entry plus its definition (node) and its 16-number matrix.", { id: z.string() }, ({ id }, s) => call(s, "get", id));
+
+tool("inspect_bodies", "Measures bodies: for each, its bounding box (min, max) and size [x, y, z] in mm, volume (mm3, from the exact solid), surface area (mm2, from the mesh, within about 0.5%), the number of separate solids, and its weight in grams for a material (default pla; density in g/cm3 overrides it), plus the totals. The weight is for a solid part (100% infill); a slicer's estimate is lower. Leave ids out for every shown solid (holes and hidden bodies are left out). Waits for the shapes to build.",
+  { ids: ids().optional(), material: z.enum(MATERIALS).optional().describe("Default pla"), density: z.number().optional().describe("g/cm3, 0.1 to 25; overrides material") },
+  ({ ids, material, density }, s) => call(s, "inspect", ids ?? [], { material, density }));
+tool("measure", "Measures the distance between a and b. Give each as a point (a_point [x, y, z]), a body (a_body), or one face of a body (a_body with a_face, a face number, or a_near, a point the face is nearest to); the same for b. Two bodies: the exact shortest distance between their surfaces (0 when they touch or overlap). Two flat parallel faces: the exact distance between their planes, such as a wall's thickness. Two flat faces also give the angle between them (0 to 90 degrees). Anything else is measured on the display mesh (exact false). Returns {distance, exact, kind}, the closest points from and to where known, and delta [dx, dy, dz] for two points.",
+  { a_point: vec3().optional(), a_body: z.string().optional(), a_face: z.number().int().min(0).optional(), a_near: vec3().optional(),
+    b_point: vec3().optional(), b_body: z.string().optional(), b_face: z.number().int().min(0).optional(), b_near: vec3().optional() },
+  (x, s) => call(s, "measure", target(x.a_point, x.a_body, x.a_face, x.a_near), target(x.b_point, x.b_body, x.b_face, x.b_near)));
+tool("check_print", "Checks whether the design is ready to print and returns {ok, summary, issues, bodies, ignored}. Problems (ok false): a part floats above the plate or goes below it, reaches outside the plate, is taller than the printer allows, or did not build. Warnings: undersides leaning out more than angle degrees from upright (default the angle saved in Settings, 45 at first; area in mm2; they need supports or a turn), and a part touching the plate with less than a tenth of its footprint. printer: generic (256 x 256 mm, no height limit), a1, x1, p1s, mk4, mini, ender3, u1, or none (no plate); default the plate chosen in the app's Settings, Printer plate. Holes and hidden bodies are ignored; ids limits the check to some bodies. Wall thickness is not checked.",
+  { ids: ids().optional(), printer: z.string().optional(), angle: z.number().optional().describe("Degrees from upright, 10 to 80") },
+  ({ ids, printer, angle }, s) => call(s, "printCheck", { ids, printer, angle }));
+tool("check_collisions", "Finds bodies that overlap, touch, or sit closer than gap mm (default 0) and returns {pairs, checked, skipped}. Each pair has a, b, aName, bName, distance (mm, 0 when touching or overlapping), state (overlap, touch or near) and overlap, the shared volume in mm3. Distances come from the exact solids. Leave ids out to check every shown solid; at most 50 bodies. Use it to check that the parts of an assembly do not collide, or that a print-in-place gap is really there.",
+  { ids: ids().optional(), gap: z.number().optional().describe("mm, 0 to 50. Default 0") },
+  ({ ids, gap }, s) => callLong(s, "collisions", { ids, gap }));
+tool("section_view", "Cuts the design with a plane and returns the outlines of the cut: for each body its loops (each with area in mm2, perimeter, hole true for an inner outline, and its 2D extents min and max) and its net cut area. Give axis (x, y or z) and at (mm along that axis), or origin [x, y, z] and normal [x, y, z]. 2D coordinates run along the result's plane.u and plane.v from plane.origin. outline true adds every loop's points. picture true also returns a PNG of the 3D view with the part on the camera's side cut away (width default 800). Holes and hidden bodies are left out; ids limits it to some bodies. The design is not changed.",
+  { axis: z.enum(["x", "y", "z"]).optional(), at: z.number().optional(), origin: vec3().optional(), normal: vec3().optional(), ids: ids().optional(),
+    outline: z.boolean().optional(), picture: z.boolean().optional(), width: z.number().int().min(1).max(8192).optional() },
+  async ({ axis, at, origin, normal, ids, outline, picture, width }, s) => {
+    const r = await callLong(s, "section", axis ? { axis, at } : { origin, normal }, { ids, points: !!outline, picture: !!picture, width });
+    if (!r.dataURL) return r;
+    const { dataURL, ...rest } = r;
+    return raw([{ type: "text", text: JSON.stringify(rest) }, { type: "image", data: dataURL.split(",")[1], mimeType: "image/png" }]);
+  });
 
 tool("add_shape", "Adds a basic shape and returns its id. The shape's footprint is centred on `at` [x, y] with its base at z. Set hole: true to make a cutter that group_bodies can subtract from another body.",
   { kind: z.string().describe("box, cylinder, sphere, cone, ... (see list_kinds)"), size: size().optional(), at: vec3().optional().describe("Where to put it, mm. Default [0, 0, 0]"), hole: z.boolean().optional(), color: z.string().optional().describe('"#rrggbb"'), name: z.string().optional() },
@@ -139,34 +165,38 @@ tool("bind_size", "Ties one size of a basic shape (key \"w\", \"d\", \"h\"...) t
 
 tool("undo", "Undoes the last edit. Returns its label, or null when there is nothing to undo.", {}, (_, s) => call(s, "undo"));
 tool("redo", "Redoes the last undone edit. Returns its label, or null.", {}, (_, s) => call(s, "redo"));
+tool("checkpoint", "Remembers the whole design in page memory before a risky step. Returns id, label, body count and time. Keeps the latest 20 checkpoints.", { label: z.string().optional() }, ({ label }, s) => call(s, "checkpoint", label));
+tool("list_checkpoints", "Lists retained checkpoints: id, label, body count and time. Checkpoints last only for this page.", {}, (_, s) => call(s, "checkpoints"));
+tool("diff_checkpoint", "Summarizes changes from a checkpoint to the current design, or to another checkpoint when toId is given.", { fromId: z.string(), toId: z.string().optional() }, ({ fromId, toId }, s) => call(s, "diff", fromId, toId));
+tool("rollback", "Restores a checkpoint as one undo step; undo brings the newer design back. Refuses in Chisel mode or when the checkpoint belongs to another design.", { id: z.string() }, ({ id }, s) => call(s, "rollback", id));
 tool("select_bodies", "Selects bodies in the view (an empty list clears the selection).", { ids: z.array(z.string()) }, ({ ids }, s) => call(s, "select", ids));
 tool("fit_view", "Frames the selection, or everything when nothing is selected.", {}, (_, s) => call(s, "fit"));
 tool("set_mode", "Switches the app between Beginner, Advanced and Architect (arch) mode. In arch mode the building is kept in the design, but no tool here edits walls or openings yet. Arch mode hides the shapes: switch back to beginner or advanced before editing shapes or taking a screenshot of them.", { mode: z.enum(["beginner", "advanced", "arch"]) }, ({ mode }, s) => call(s, "setMode", mode));
 
-tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels. Give `path` if your model cannot see images: the PNG is written there and you get {path, bytes, width} as text instead of the picture.",
+tool("screenshot", "A PNG picture of the 3D view, after waiting for the shapes to build. Look at it after every few edits. fit (default true) frames everything shown first; width (default 800) is in pixels. Give `path` if your model cannot see images: the PNG is written there and you get {path, bytes, width} as text instead of the picture. In chat there is no path argument; If this model cannot see images you get a one-line text note instead of the picture.",
   { width: z.number().int().min(1).max(8192).default(800), fit: z.boolean().default(true), path: z.string().optional().describe("Write the PNG to this file instead of returning the picture") },
   async ({ width, fit, path }, s) => {
     const png = await callLong(s, "screenshot", { fit, width });
     if (path) return { ...(await save(path, png)), width: png.readUInt32BE(16) }; // IHDR: the width follows the 8-byte signature and the chunk header
     return raw([{ type: "image", data: png.toString("base64"), mimeType: "image/png" }]);
   });
-tool("export_file", "Writes the design to a file on this computer and returns its path and size. kind: stl, obj, 3mf, glb (binary glTF), step, or json (the project file). Holes and hidden bodies are left out; ids limits it to some bodies. Relative paths are relative to the folder the server runs in.",
+tool("export_file", "MCP: Writes the design to a file on this computer and returns its path and size. kind: stl, obj, 3mf, glb (binary glTF), step, or json (the project file). Holes and hidden bodies are left out; ids limits it to some bodies. Relative paths are relative to the folder the server runs in. In-app chat: Offers the design as a file download in the user's browser (kind: stl, obj, 3mf, step, or json, the project file). Holes and hidden bodies are left out; ids limits it to some bodies. Returns the file name and size.",
   { kind: exportKind, path: z.string(), ids: ids().optional() }, async ({ kind, path, ids }, s) => save(path, await callLong(s, "export", kind, ids ? { ids } : {})));
-tool("export_drawing", "Writes a DXF drawing of bodies to a file on this computer and returns its path and size: flat views Top, Front and Right (views picks some), visible edges only, Top above Front and Right beside it, at scale (default 1, full size), in mm or in, with overall size lines when dims is true. Holes and hidden bodies are left out; ids limits it to some bodies. Bodies imported as meshes cannot be drawn. Relative paths are relative to the folder the server runs in.",
+tool("export_drawing", "MCP: Writes a DXF drawing of bodies to a file on this computer and returns its path and size: flat views Top, Front and Right (views picks some), visible edges only, Top above Front and Right beside it, at scale (default 1, full size), in mm or in, with overall size lines when dims is true. Holes and hidden bodies are left out; ids limits it to some bodies. Bodies imported as meshes cannot be drawn. Relative paths are relative to the folder the server runs in. In-app chat: Offers a DXF drawing of bodies as a file download in the user's browser: flat views Top, Front and Right (views picks some), visible edges only, at scale (default 1, full size), in mm or in, with overall size lines when dims is true. Holes and hidden bodies are left out; ids limits it to some bodies. Returns the file name and size.",
     { path: z.string(), ids: ids().optional(), views: z.array(z.enum(["top", "front", "right"])).min(1).optional(), scale: z.number().optional().describe("1 full size (default), 0.5 half, 2 twice; 0.01 to 100"), units: z.enum(["mm","in"]).optional(), dims: z.boolean().optional().describe("Add overall size lines. Default false") }, async ({ path, ids, views, scale, units, dims }, s) => save(path, await callLong(s, "drawing", { ids, views, scale, units, dims })));
-tool("save_project", "Returns the whole design as project-file JSON text (see BRIDGE.md), or writes it to `path` and returns the path and size.",
+tool("save_project", "MCP: Returns the whole design as project-file JSON text (see BRIDGE.md), or writes it to `path` and returns the path and size. In-app chat: Returns the whole design as project-file JSON text (see BRIDGE.md).",
   { path: z.string().optional() }, async ({ path }, s) => {
     const bytes = await callLong(s, "export", "json");
     return path ? save(path, bytes) : raw([{ type: "text", text: bytes.toString("utf8") }]);
   });
-tool("load_project", "Opens a project file in place of the open design (give `path` to a file, or `json` as text). The open design stays in the app's Your designs list.",
+tool("load_project", "MCP: Opens a project file in place of the open design (give `path` to a file, or `json` as text). The open design stays in the app's Your designs list. In-app chat: Opens a project file (its JSON text) in place of the open design. The open design stays in the app's Your designs list.",
   { path: z.string().optional(), json: z.string().optional() }, async ({ path, json }, s) => {
     if ((path === undefined) === (json === undefined)) throw new Error("give exactly one of path or json");
     await call(s, "load", path === undefined ? json : await readFile(where(path), "utf8"));
     return { loaded: true };
   });
 tool("new_design", "Starts an empty design (the previous one stays in the app's Your designs list).", { mode: z.enum(["beginner", "advanced"]).optional() }, async ({ mode }, s) => { await call(s, "newDesign", mode); return { ok: true }; });
-tool("run_script", "Runs JavaScript in the page with JS3D and app in scope (see BRIDGE.md) and returns the value as JSON. Top-level await works; end with return to give a value back, or make a plain script's last expression the value. Use it for anything the other tools do not cover. It has the full power of the page.",
+tool("run_script", "Runs JavaScript in the page with JS3D and app in scope (see BRIDGE.md) and returns the value as JSON. Top-level await works; end with return to give a value back, or make a plain script's last expression the value. Use it for anything the other tools do not cover. It has the full power of the page. In chat, this is only available when the user has ticked Allow scripts in the chat settings.",
   { code: z.string() }, ({ code }, s) => callLong(s, "run", code));
 
 function toResult(v) {
