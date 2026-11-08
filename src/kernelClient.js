@@ -76,10 +76,10 @@ export class KernelClient {
   }
   // jumpstart-3d: Code CAD. builds one node in the design's own worker, outside the scene, and answers with its result (or a failure after ms)
   // jumpstart-3d: inspect probes are keyed "inspect:..."; a late answer after a timeout is dropped too (settleProbes)
-  isProbeKey(key) { return this.probes.has(key) || key.startsWith("inspect:"); }
+  isProbeKey(key) { return key.startsWith("inspect:"); }
   probe(item, ms = 120000) {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => { this.probes.delete(item.key); this.queue.delete(item.key); this.meshes.delete(item.key); resolve({ ok: false, error: "The geometry engine did not answer in time." }); }, ms);
+      const timer = setTimeout(() => { this.probes.delete(item.key); this.queue.delete(item.key); if (item.key.startsWith("inspect:")) this.meshes.delete(item.key); resolve({ ok: false, error: "The geometry engine did not answer in time." }); }, ms);
       this.probes.set(item.key, (r) => { clearTimeout(timer); resolve(r); });
       this.request([{ ...item, pinned: true }]);
     });

@@ -194,3 +194,21 @@ test("section: pieces that meet end to end become one loop", () => {
   close(cut.loops[0].perimeter, 40);
   closeAll(cut.loops[0].min, [-5, -5]); closeAll(cut.loops[0].max, [5, 5]);
 });
+
+test("section: joins seams across rounded bucket boundaries", () => {
+  const segments = [
+    [[0.00049, 0], [10, 0]], [[10, 0], [10, 10]],
+    [[10, 10], [0.00049, 10]], [[0.00051, 10], [0.00051, 0]],
+  ];
+  const P = [], T = [];
+  for (const [a, b] of segments) {
+    const i = P.length / 3;
+    P.push(...a, 0, ...b, 0, ...a, 1);
+    T.push(i, i + 1, i + 2);
+  }
+  const p = G.planeBasis({ axis: "z", at: 0 });
+  const cut = G.sectionBody(P, T, I, p.origin, p.normal, p.u, p.v);
+  assert.equal(cut.loops.length, 1);
+  assert.equal(cut.loops[0].closed, true);
+  close(cut.area, 99.995, 0.0002);
+});

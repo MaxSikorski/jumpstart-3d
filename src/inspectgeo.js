@@ -39,13 +39,14 @@ export function sectionBody(P,T,m,o,n,u,v) {
  for(let i=0;i<T.length;i+=3){const q=[];for(let j=0;j<3;j++){let a=T[i+j],b=T[i+(j+1)%3];if((ds[a]>0)===(ds[b]>0))continue;if(ps[a].join(',')>ps[b].join(','))[a,b]=[b,a];const t=ds[a]/(ds[a]-ds[b]);q.push(ps[a].map((x,k)=>x+t*(ps[b][k]-x)));}if(q.length===2&&Math.hypot(...sub(q[0],q[1]))>1e-9){seg.push(q);if(seg.length>SECTION_MAX_SEGMENTS)throw Error(`the cut has more than ${SECTION_MAX_SEGMENTS} line segments; cut fewer or simpler bodies (pass ids)`);}}
  const key=p=>p.map(x=>x.toFixed(5)).join(','), adj=new Map(); seg.forEach((s,i)=>s.forEach(p=>{const k=key(p);if(!adj.has(k))adj.set(k,[]);adj.get(k).push(i);})); const used=new Set(), chains=[];
  for(let i=0;i<seg.length;i++){if(used.has(i))continue;used.add(i);const chain=[...seg[i]];while(true){const next=(adj.get(key(chain.at(-1)))||[]).find(x=>!used.has(x));if(next===undefined)break;used.add(next);const s=seg[next];chain.push(key(s[0])===key(chain.at(-1))?s[1]:s[0]);if(key(chain[0])===key(chain.at(-1)))break;}chains.push(chain);}
- const dist=(a,b)=>Math.hypot(...sub(a,b)), ek=p=>p.map(x=>Math.round(x*1e3)).join(','), ends=new Map(), alive=new Set(chains);
+ const dist=(a,b)=>Math.hypot(...sub(a,b)), bucket=p=>[Math.round(dot(sub(p,o),u)*1e3),Math.round(dot(sub(p,o),v)*1e3)], ek=p=>bucket(p).join(','), ends=new Map(), alive=new Set(chains);
  const touch=(c,f)=>{for(const p of [c[0],c.at(-1)]){const k=ek(p);if(!ends.has(k))ends.set(k,new Set());f(ends.get(k));}};
  for(const c of chains)touch(c,s=>s.add(c));
  const merged=[];
  for(const c0 of chains){if(!alive.has(c0))continue;alive.delete(c0);touch(c0,s=>s.delete(c0));let c=c0,flipped=false;
-  while(!(c.length>2&&ek(c[0])===ek(c.at(-1)))){const k=ek(c.at(-1)),o2=ends.get(k)?.values().next().value;
-   if(o2){alive.delete(o2);touch(o2,s=>s.delete(o2));if(ek(o2[0])!==k)o2.reverse();for(let i=1;i<o2.length;i++)c.push(o2[i]);flipped=false;}
+  while(!(c.length>2&&dist(c[0],c.at(-1))<1e-3)){const end=c.at(-1),[x,y]=bucket(end);let o2;
+   for(let dx=-1;dx<=1&&!o2;dx++)for(let dy=-1;dy<=1&&!o2;dy++)for(const candidate of ends.get(`${x+dx},${y+dy}`)||[])if(dist(end,candidate[0])<1e-3||dist(end,candidate.at(-1))<1e-3){o2=candidate;break;}
+   if(o2){alive.delete(o2);touch(o2,s=>s.delete(o2));if(dist(end,o2[0])>=1e-3)o2.reverse();for(let i=1;i<o2.length;i++)c.push(o2[i]);flipped=false;}
    else if(!flipped){c.reverse();flipped=true;}else break;}
   merged.push(c);}
  if(merged.length>SECTION_MAX_LOOPS)throw Error(`the cut has more than ${SECTION_MAX_LOOPS} separate outlines; cut fewer or simpler bodies (pass ids)`);
