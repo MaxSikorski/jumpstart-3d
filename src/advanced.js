@@ -73,7 +73,7 @@ export function initAdvanced(app) {
   function baseOf(bodyId) {
     const b = findBody(store.doc, bodyId);
     if (!b) return null;
-    const key = bodyKey(resolveNode(b.node, store.doc));
+    const key = bodyKey(resolveNode(b.node, store.doc)) + (app.kernel.quality > 1 ? "@q" + app.kernel.quality : ""); // jumpstart-3d: the scene caches finer meshes under @q<n>
     const r = app.kernel.get(key);
     return r && r.ok ? { body: b, data: r.mesh, m: M4(b.m) } : null;
   }
@@ -8047,7 +8047,7 @@ export function initAdvanced(app) {
     showBuildErrors,
     paramRows, // jumpstart-3d: parameters
     fastener: () => fastenerCmd(), addFastener: (spec) => fasteners.add(spec), // jumpstart-3d: fasteners (one dialog: J.Siwek's library)
-    holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), // jumpstart-3d: hole pattern
+    holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), addHoles: (spec) => holePattern.addAt(spec), // jumpstart-3d: hole pattern, JS3D.hole
     fillOpenings: () => fillOpen.cmd(), // jumpstart-3d: fill openings
     faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears

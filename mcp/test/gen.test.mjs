@@ -1,0 +1,30 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { startServer, call, data } from "./helpers.mjs";
+let s, dir;
+before(async () => { dir = await mkdtemp(join(tmpdir(), "js3d-gen-")); s = await startServer({ JS3D_MODE: "headless" }); });
+after(async () => { await s?.close(); await rm(dir, { recursive: true, force: true }); });
+test("generator tools are listed", async () => {
+  const names = (await s.client.listTools()).tools.map((t) => t.name);
+  for (const n of ["add_spring", "add_box_maker", "add_gear_set", "add_hardware", "list_textures", "add_texture", "export_drawing"]) assert.ok(names.includes(n), n);
+});
+test("generator calls build dialog parts, texture a body and write its DXF", { timeout: 240_000 }, async () => {
+  const invoke = async (name, args) => data(await call(s.client, name, args));
+  await invoke("new_design");
+  assert.equal(typeof await invoke("add_spring", {}), "string");
+  assert.equal((await invoke("add_box_maker", { style: "drawer" })).parts.length, 2);
+  assert.equal((await invoke("add_gear_set", { type: "rack" })).parts.length, 2);
+  assert.equal(typeof await invoke("add_hardware", { part: "washer", size: "M4" }), "string");
+  const bad = await call(s.client, "add_hardware", { part: "washer", size: "M4", length: 5 });
+  assert.equal(bad.isError, true); assert.match(bad.content[0].text, /length is not used for part "washer"/);
+  assert.ok((await invoke("list_textures")).length >= 100);
+  const box = await invoke("add_shape", { kind: "box", size: [40,30,20] });
+  assert.equal((await invoke("add_texture", { id: box, texture: "hex" })).faces, "all");
+  await invoke("wait_ready");
+  for (const b of await invoke("list_bodies")) assert.equal(b.error, null, b.name);
+  const out = await invoke("export_drawing", { path: join(dir, "d.dxf"), ids: [box] });
+  const bytes = await readFile(out.path); assert.equal(bytes.length, out.bytes); assert.ok(bytes.toString().startsWith("0\r\nSECTION"));
+});

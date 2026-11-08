@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 39 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 54 tools is a lot for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -171,12 +171,24 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `wait_ready` | Waits until every shape is built. Call it after edits, before reading sizes |
 | `list_kinds` | The 20 shape kinds and their default sizes |
 | `list_bodies`, `get_body` | Read bodies: place, box, volume, errors; one in full |
+| `inspect_bodies`, `measure`, `check_print`, `check_collisions`, `section_view` | Check your work without a picture: size, volume, area, weight; distances and wall thickness; Ready to print on a chosen printer; parts that collide; the outline and area of a cut (with an optional picture) |
 | `add_shape`, `remove_bodies`, `duplicate_bodies` | Make, delete, copy shapes |
 | `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
 | `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
 | `add_gear` | A spur gear, a helical gear (`angle` 5 to 30°, `hand`; meshes with the opposite hand on a parallel axis), a straight bevel gear (meshes at 90° with a bevel gear of `mate` teeth) or a straight rack from a `module` (mm) and `teeth`, with involute teeth at 20°, a print clearance, and an optional `bore` (with a DIN 6885 `keyway` on spur gears). Spur 12 to 200 teeth, helical 12 to 30, bevel 12 to 90, rack 2 to 100. Takes a moment to build: call `wait_ready` |
 | `add_name_plate` | A name plate or tag sized to one line of `text` (at most 40 characters, bold fonts with English and Western European letters): a rounded or pill plate with an optional hanging hole or two screw holes, and the letters either `raised` as a second body in its own colour (keep it separate from the plate: grouping fuses the colours) or `cut` into the plate. Returns `{plate, textBody, size}`. Call `wait_ready` after |
 | `add_knurl` | A knurled knob or grip: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an optional `round`, `hex` or `d` bore. Grooves default to about one per mm of circumference (8 to 120) and the depth to a 90° V. Returns the id. Call `wait_ready` after |
+| `add_spring` | A compression spring of round wire, with open or flat ends |
+| `add_box_maker` | A Box Maker set: compartment bins or cases with drawers, tilt bins or doors |
+| `add_gear_set` | Already placed meshing gears: pair, rack, ring, planetary set, bevel pair or helical pair |
+| `add_hardware` | Any Fasteners-library screw, nut, washer, insert or dowel |
+| `list_textures`, `add_texture` | List surface patterns or apply one to a body or chosen faces; mesh exports only |
+| `list_faces`, `list_edges` | A body's faces or edges in world mm: index, type, centre, normal, size, the faces an edge joins. `select` takes a selector (`top`, `>z`, `|z`, `hole`, `edges of top`, ...); indices change after every edit, selectors do not |
+| `add_sketch` | A sketch of fully dimensioned `rect`, `roundrect`, `circle`, `slot`, `polygon`, `polyline` and `line` shapes (sizes may be expressions) on XY, XZ, YZ (with an `offset`) or one flat face of a body. Returns the sketch id, plane, profiles and named dimensions |
+| `extrude`, `revolve` | Push or turn a sketch's profiles into a new body, or join to or cut a body (`through` cuts right through) |
+| `fillet_edges`, `chamfer_edges`, `shell_body` | Round or bevel the edges a selector picks (such as `edges of top`); hollow a body, with the `open` faces taken away |
+| `add_holes` | Round holes (plain, counterbore, countersink, tapped; `size` such as M3) at world points on one flat face, as one Hole feature |
+| `pattern_features` | Repeat holes or cuts of a body in a grid or around an axis, or the whole body |
 | `move_bodies`, `move_to`, `rotate_bodies`, `resize_shape`, `scale_bodies` | Place and size them |
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
@@ -184,19 +196,37 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner, Advanced or Architect (`arch`) |
 | `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
 | `export_file` | Writes STL, OBJ, 3MF, GLB, STEP or the project `json` to a path and returns path and size |
+| `export_drawing` | Write a DXF drawing of Top, Front and Right views to a file, with optional size lines |
 | `save_project`, `load_project` | The design as project-file JSON (text, or a file); open one from text or a file |
 | `new_design` | Start an empty design |
 | `run_script` | Run JavaScript in the page with `JS3D` and `app` in scope; returns the value as JSON |
 
 Typical loop: `add_shape` (a block), `add_shape` with `hole: true` (a cylinder), `group_bodies` to cut it, `wait_ready`,
-`screenshot` to look, `export_file` at the end.
+`screenshot` to look, `export_file` at the end. For an Advanced part: `new_design` (advanced), `add_sketch`, `extrude`, `list_faces` and
+`list_edges` to look, `shell_body`, `fillet_edges`, `add_holes`, `wait_ready`, `screenshot`. Faces and edges are picked with selectors such as
+`edges of top and (>x or <x or >y or <y)`, resolved when the tool is called (BRIDGE.md, Selectors).
+
+### The whole loop for an agent
+
+Call these MCP tools in order (use the id returned by `add_shape` as `id`):
+
+1. `new_design`: `{"mode":"advanced"}`; then `add_shape`: `{"kind":"box","size":[60,40,25],"at":[0,0,0]}`.
+2. `shell_body`: `{"id":id,"th":2,"open":"top"}`; then `fillet_edges`: `{"id":id,"edges":"edges of top and (>x or <x or >y or <y)","r":1}`.
+3. `add_holes`: `{"id":id,"face":"bottom","points":[[-22,-12,0],[22,-12,0],[-22,12,0],[22,12,0]],"size":"M3"}`. Leaving depth out makes the holes through.
+4. `inspect_bodies` with `{"material":"pla"}` should report bounds [-30,-20,0] to [30,20,25], volume about 13516.83 mm³ and weight about 16.76 g at 100% infill. `check_print` should have no problems (review any warnings); `check_collisions` should have no pairs. `section_view` with `{"axis":"z","at":10}` should report about 384 mm².
+5. `export_file` with `{"kind":"stl","path":"/path/to/enclosure.stl"}` writes the result.
+
+Check each tool result for an error before continuing. The headless end-to-end test is `mcp/test/proof.test.mjs`.
 
 ## What an agent can and cannot do
 
-It can do what the calls above can: Beginner shapes (20 kinds), groups, scale, parameters, undo, look at the view, and read and
-write files you name in `export_file`, `save_project` and `load_project`. Sketches, extrudes, fillets and the other Advanced
-features have no tool of their own; `run_script` reaches anything in the page, and `load_project` opens a project file written
-by hand (format in BRIDGE.md Part 2).
+An agent can check its work with `inspect_bodies`, `check_print`, `check_collisions` and `section_view`.
+
+It can do what the calls above can: Beginner shapes (20 kinds), groups, scale, parameters, Advanced sketches and features (extrude, revolve,
+fillet, chamfer, shell, holes, patterns, with faces and edges picked by selector), undo, look at the view, and read and write files you
+name in `export_file`, `save_project` and `load_project`. Sweeps, lofts, mirrors, split, emboss, threads, construction planes and
+other sketch constraints have no tool of their own; `run_script` reaches anything in the page, and `load_project` opens a project file
+written by hand (format in BRIDGE.md Part 2).
 
 ## Command line
 
@@ -249,3 +279,10 @@ jumpstart status [--app <url|file|dir>]                  start the app and print
 `cli` runs the command line. `plugin` checks that the plugin files agree with each other, that the skill at the repository root (`skills/jumpstart-3d/SKILL.md`) is byte-identical to `mcp/skills/jumpstart-3d/SKILL.md`, and that the one-line setup prompt is the same everywhere it appears. `install` copies this folder to a scratch place,
 runs `npm ci --ignore-scripts` there as Claude Code does, and starts the copy's server (it needs the npm registry or a warm npm cache).
 The page-side half (the link, the menu row, `JS3D.run`, screenshot width) is `test/agent.spec.mjs`, run by `npm test`.
+
+### Checkpoints
+
+Use `checkpoint` before risky edits, `list_checkpoints` to find retained ids,
+`diff_checkpoint` (`fromId`, optional `toId`) to review changes, and `rollback`
+(`id`) on failure. Snapshots live only in the page (latest 20). Rollback is one
+undo step and refuses checkpoints belonging to another design.
