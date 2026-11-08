@@ -154,3 +154,43 @@ test("Ready to print: nothing to print, and a body that did not build", () => {
   assert.equal(r.issues[0].text, "Box did not build: broken");
   assert.equal(r.summary, "Not ready to print: 1 problem, 0 warnings.");
 });
+
+test("mesh gap: faces whose closest points lie on edge interiors", () => {
+  const A = box(10, 2, 1), Bm = box(1, 10, 2), B = { ...Bm, m: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0.5,0,2,1] };
+  // A's top face (z = 1) against B's x = 0 face: perpendicular planes, 1 mm apart (B's underside is at z = 2)
+  const top = { ...A, t0: 4, t1: 6 }, side = { ...B, t0: 10, t1: 12 };
+  close(G.meshGap(top, side).distance, 1, 1e-6);
+  close(G.closestSegments([0,0,0], [10,0,0], [5,3,4], [5,3,-4]).distance, 3);
+  close(G.closestSegments([0,0,0], [1,0,0], [3,0,0], [4,0,0]).distance, 2);
+});
+
+test("Ready to print: a mirrored body still rests flat", () => {
+  const flipX = [-1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+  const r = G.checkPrint({ bodies: [body("Box", box(20, 10, 5), flipX)], bed: generic, angle: 45 });
+  assert.equal(r.bodies[0].contactArea, 200);
+  assert.deepEqual(r.issues, []);
+});
+
+test("Ready to print: a wire-only body is a plain error", () => {
+  const r = G.checkPrint({ bodies: [body("Ring", { P: [], T: [] }, I, { wire: true })], bed: generic, angle: 45 });
+  assert.equal(r.ok, false);
+  assert.equal(r.issues[0].code, "wire_only");
+  assert.match(r.issues[0].text, /^Ring is a wire-only shape/);
+});
+
+test("section: a cut with too many segments or outlines is refused", () => {
+  const p = G.planeBasis({ axis: "z", at: 0.5 });
+  const n = 2002;
+  const quads = [];
+  for (let i = 0; i < n; i++) quads.push(i * 3, i * 3 + 1, i * 3 + 2);
+  const Pbig = new Float32Array(n * 9), Tbig = new Uint32Array(quads);
+  for (let i = 0; i < n; i++) Pbig.set([i * 5, 0, 0, i * 5 + 1, 0, 0, i * 5, 1, 1], i * 9);
+  assert.throws(() => G.sectionBody(Pbig, Tbig, I, p.origin, p.normal, p.u, p.v), /more than 200000 line segments|more than 2000 separate outlines/);
+});
+
+test("section: pieces that meet end to end become one loop", () => {
+  const { P, T } = box(10, 10, 10), p = G.planeBasis({ axis: "z", at: 5 }), cut = G.sectionBody(P, T, I, p.origin, p.normal, p.u, p.v);
+  assert.equal(cut.loops.length, 1);
+  close(cut.loops[0].perimeter, 40);
+  closeAll(cut.loops[0].min, [-5, -5]); closeAll(cut.loops[0].max, [5, 5]);
+});

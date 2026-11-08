@@ -2,6 +2,7 @@
 // An open box with a cavity and four screw holes, built through the bridge; the numbers are worked out from the sizes.
 // Every call goes through guarded(), which fails when a call changes the undo stack or the selection.
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { boot, watchErrors } from "./helpers.mjs";
 
 const V = 60 * 40 * 25 - 56 * 36 * 23 - 4 * Math.PI * 1.7 ** 2 * 2; // 13559.366 mm3
@@ -306,4 +307,97 @@ test("hidden bodies are left out unless named", async () => {
   expect(r.hiddenDefault.bodies.map((x) => x.name)).toEqual(["Shown"]);
   expect(r.hiddenNamed.bodies[0]).toMatchObject({ name: "Later", hidden: true });
   expect(r.check.ignored).toEqual([{ id: r.b, name: "Later", why: "hidden" }]);
+});
+
+test("null ids mean every shown solid, as over the WebSocket", async () => {
+  const r = await run(async () => {
+    await openBox();
+    return { inspect: await guarded("inspect", null, {}), print: await guarded("printCheck", { ids: null }), cols: await guarded("collisions", { ids: null, gap: null }) };
+  });
+  expect(r.inspect.bodies).toHaveLength(1);
+  expect(r.print.ok).toBe(true);
+  expect(r.cols.checked).toBe(1);
+});
+
+test("a preview or a rolled-back design is refused, not mixed with the committed one", async () => {
+  const r = await run(async () => {
+    const id = await openBox();
+    __store.setPreview((d) => { d.bodies.find((b) => b.id === id).m[12] = 50; });
+    const preview = await failure("inspect");
+    const section = await failure("section", { axis: "z", at: 10 });
+    __store.setPreview(null);
+    const after = await guarded("inspect");
+    return { preview, section, size: after.bodies[0].size };
+  });
+  expect(r.preview).toBe("the design is showing a preview; finish or cancel it first");
+  expect(r.section).toBe(r.preview);
+  expect(r.size).toEqual([60, 40, 25]);
+});
+
+test("collisions: a gap of 0.005 mm is not reported when gap is 0, and is near when gap is 0.01", async () => {
+  const r = await run(async () => {
+    JS3D.newDesign("beginner");
+    JS3D.add("box", { size: [10, 10, 10], name: "A" });
+    JS3D.add("box", { size: [10, 10, 10], at: [0, 0, 10.005], name: "B" });
+    await JS3D.ready();
+    return { zero: await guarded("collisions"), wide: await guarded("collisions", { gap: 0.01 }) };
+  });
+  expect(r.zero.pairs).toEqual([]);
+  expect(r.wide.pairs).toHaveLength(1);
+  expect(r.wide.pairs[0].state).toBe("near");
+  const r2 = await run(async () => {
+    JS3D.newDesign("beginner");
+    JS3D.add("box", { size: [10, 10, 10], name: "A" });
+    JS3D.add("box", { size: [10, 10, 10], at: [0, 0, 10.02], name: "B" });
+    await JS3D.ready();
+    return { zero: await guarded("collisions"), wide: await guarded("collisions", { gap: 0.05 }) };
+  });
+  expect(r2.zero.pairs).toEqual([]);
+  expect(r2.wide.pairs[0].state).toBe("near");
+});
+
+test("measure: perpendicular faces on edges give the true gap", async () => {
+  const r = await run(async () => {
+    JS3D.newDesign("beginner");
+    const a = JS3D.add("box", { size: [10, 2, 1], name: "A" });
+    const b = JS3D.add("box", { size: [1, 10, 2], at: [0.5, 0, 2], name: "B" });
+    await JS3D.ready();
+    return guarded("measure", { body: a, near: [0, 0, 1] }, { body: b, near: [0, 0, 3] });
+  });
+  expect(r.kind).toBe("mesh");
+  expect(r.distance).toBeCloseTo(1, 3);
+});
+
+test("wire-only STEP bodies give plain answers", async () => {
+  const data = readFileSync(new URL("./fixtures/wire-circle.step", import.meta.url)).toString("base64");
+  const r = await run(async (data) => {
+    JS3D.newDesign("beginner");
+    JS3D.add("box", { size: [10, 10, 10], name: "Solid" });
+    const doc = JS3D.doc();
+    doc.assets = { wirecircle: { kind: "step", name: "Wire circle", data } };
+    doc.bodies.push({ id: "w1", name: "Ring", seq: 1, color: "#3b82c4", hole: false, hidden: false, m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "step", asset: "wirecircle", mods: [] } });
+    __store.load(doc);
+    await JS3D.ready();
+    return { inspect: await guarded("inspect", ["w1"]), check: await guarded("printCheck"), measure: await failure("measure", [0, 0, 0], { body: "w1", face: 0 }), point: await failure("measure", [0, 0, 0], "w1") };
+  }, data);
+  expect(r.inspect.bodies[0]).toMatchObject({ volume: 0, area: 0, bbox: null, error: null });
+  expect(r.inspect.bodies[0].note).toMatch(/wire-only/);
+  expect(r.check.issues.find((x) => x.code === "wire_only").text).toMatch(/^Ring is a wire-only shape/);
+  expect(r.measure).toMatch(/^Ring is a wire-only shape/);
+  expect(r.point).toMatch(/^Ring is a wire-only shape/);
+});
+
+test("section picture: always from Home, and the user's camera comes back", async () => {
+  const r = await run(async () => {
+    await openBox();
+    const vp = __app.vp;
+    __app.vp.setView("left");
+    vp.stepAnim(vp.anim.t0 + vp.anim.ms);
+    const before = { az: vp.view.az, el: vp.view.el, dist: vp.view.dist, target: vp.view.target.toArray() };
+    await guarded("section", { axis: "z", at: 10 }, { picture: true, width: 200 });
+    const after = { az: vp.view.az, el: vp.view.el, dist: vp.view.dist, target: vp.view.target.toArray() };
+    return { before, after, anim: !!vp.anim };
+  });
+  expect(r.after).toEqual(r.before);
+  expect(r.anim).toBe(false);
 });
