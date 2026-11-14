@@ -60,7 +60,7 @@ export const COMMUNITY_TUTORIALS = [
         when: "The arm sticks out 20 mm on each side with nothing under it. A printer cannot print in mid-air, so this is the part that needs thought.",
         check: (t) => t.prim("box").some((b) => t.near(b.node.p.w, 50, 1) && t.near(b.node.p.h, 6, 0.6) && t.box(b.id) && t.near(t.box(b.id).min.z, 30, 0.6)) },
       { title: "Pick your printer's plate", tool: "Customize → Printer plate…", icon: "appearance", show: { sel: "#btn-theme" },
-        how: ["Click the <b>Settings</b> button (the half-moon at the top right) and choose <b>Printer plate…</b>.", "Choose your printer from the list. The blue plate becomes that printer's real width and depth, and the line under the list tells you if a part reaches outside it.", "Click <b>Done</b>."],
+        how: ["Click <b>Customize</b> (the sliders button in the top bar) and choose <b>Printer plate…</b>.", "Choose your printer from the list. The blue plate becomes that printer's real width and depth, and the line under the list tells you if a part reaches outside it.", "Click <b>Done</b>."],
         when: "Your parts are never moved by this: it only shows where your printer can reach. Not on the list? Leave Generic." },
       { title: "Show the steep undersides", tool: "Customize → Printer plate…", icon: "eye", show: { sel: "#btn-theme" },
         how: ["Open <b>Printer plate…</b> again and tick <b>Show steep undersides in red</b>.", "Look at the underside of the arm from the side: it turns red.", "Drag <b>Maximum outward lean from upright</b>. 45° is the usual rule of thumb. The flat underside stays red at every setting."],

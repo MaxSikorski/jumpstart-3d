@@ -3,6 +3,7 @@
 // without a real model. The single build is opened from disk (origin null), so the mock sends CORS headers on everything.
 // Each test opens its own page: the chat reads its stored settings once, when the app starts.
 import { test, expect } from "@playwright/test";
+import { createServer } from "node:net";
 import { boot, reload, watchErrors } from "./helpers.mjs";
 import { startMock } from "./mockmodel.mjs";
 
@@ -18,12 +19,13 @@ test.afterEach(async () => {
   expect(real, "console or page errors").toEqual([]);
 });
 
-// open a fresh page with the chat settings already stored (null: store none, for the settings test)
-async function open(browser, info, settings) {
+// open a fresh page with the chat settings already stored (null: store none, for the settings test); before(page) runs before the app loads
+async function open(browser, info, settings, before) {
   netNoise = false;
   mock.reset();
   page = await browser.newPage();
   errors = watchErrors(page);
+  if (before) before(page);
   await page.addInitScript((s) => {
     try { localStorage.setItem("jumpstart.chisel.intro", "1"); if (s) localStorage.setItem("jumpstart.chat", JSON.stringify(s)); } catch (e) {}
   }, settings);
@@ -40,6 +42,11 @@ const summaries = () => page.locator("#chat-messages .chat-msg.tool > summary").
 const list = () => page.evaluate(async () => { await JS3D.ready(); return JS3D.list(); });
 const idOf = (r) => (typeof r === "string" ? r : r.id);
 const wireTools = (req) => req.body.tools.map((t) => t.name || t.function?.name);
+// a port nothing listens on: open one, note its number, close it
+const closedPort = () => new Promise((resolve) => { const s = createServer().listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
+// the one line for a local server that does not answer: not running, or refusing the page (a failed fetch cannot tell which)
+const FIX = { Ollama: "start Ollama there, or allow this page in OLLAMA_ORIGINS", "LM Studio": "start the LM Studio server there, or turn on Enable CORS in LM Studio" };
+const noModel = (hostPort, name, more = true) => `Can't reach a model at ${hostPort}: ${FIX[name]}${more ? " (More help)" : ""}.`;
 
 test("a block with a hole, over the Anthropic shape: five tool calls, an answer, and the right solid", async ({ browser }, info) => {
   test.setTimeout(180_000);
@@ -238,14 +245,85 @@ test("an empty reply shows a note, stores nothing, and the next message still wo
   expect(sent.map((m) => m.content)).toEqual(["hello?", "hello again"]);
 });
 
-test("a server that is not there: an error row and the Ollama hint, no shapes added", async ({ browser }, info) => {
-  await open(browser, info, stored("ollama", { url: "http://127.0.0.1:1", model: "x", vision: false }, { remember: false }));
+test("a server that is not there: one plain line first, the longer help folded under More help, no shapes added", async ({ browser }, info) => {
+  const port = await closedPort();
+  await open(browser, info, stored("ollama", { url: `http://localhost:${port}`, model: "x", vision: false }, { remember: false }));
   netNoise = true;
   await ask("make a box");
-  await expect(page.locator("#chat-messages .chat-msg.error")).toBeVisible();
-  await expect(page.locator("#chat-messages .chat-msg.hint")).toContainText("OLLAMA_ORIGINS");
   await done();
+  const rows = page.locator("#chat-messages > .chat-msg");
+  await expect(rows).toHaveCount(3); // what was asked, the one line, the folded help
+  await expect(rows.nth(1)).toHaveClass(/error/);
+  await expect(rows.nth(1)).toHaveText(noModel(`localhost:${port}`, "Ollama"));
+  await expect(page.locator("#chat-status")).toHaveText(noModel(`localhost:${port}`, "Ollama"));
+  const help = rows.nth(2);
+  expect(await help.evaluate((e) => e.tagName)).toBe("DETAILS");
+  await expect(help).toHaveClass(/hint/);
+  await expect(help.locator("summary")).toHaveText("More help");
+  expect(await help.evaluate((e) => e.open)).toBe(false);
+  await help.locator("summary").click();
+  await expect(help).toContainText("The browser said:");
+  await expect(help).toContainText("OLLAMA_ORIGINS");
   expect(await page.evaluate(() => JS3D.list().length)).toBe(0);
+});
+
+test("LM Studio on [::1] gets its own name in the one line", async ({ browser }, info) => {
+  await open(browser, info, stored("lmstudio", { url: "http://[::1]:1/v1", model: "x", vision: false }, { remember: false }));
+  netNoise = true;
+  await ask("make a box");
+  await done();
+  await expect(page.locator("#chat-messages > .chat-msg").nth(1)).toHaveText(noModel("[::1]:1", "LM Studio"));
+  await expect(page.locator("#chat-messages details.chat-msg.hint")).toContainText("Enable CORS");
+});
+
+test("Test connection asks only when clicked: Connected with a server that answers, the one plain line without one", async ({ browser }, info) => {
+  const port = await closedPort(), base = `http://localhost:${port}`;
+  const asked = [];
+  await open(browser, info, stored("ollama", { url: base, model: "", vision: false }, { remember: false }),
+    (p) => p.on("request", (r) => { if (r.url().startsWith(base)) asked.push(r.url()); }));
+  // the panel is open (open() clicked AI); open the settings too. Nothing has asked the server.
+  await page.click("#chat-settings > summary");
+  await expect(page.locator("#chat-test")).toBeVisible();
+  await expect(page.locator("#chat-test")).toHaveText("Test connection");
+  expect(asked).toEqual([]);
+  await page.route(base + "/api/tags", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ models: [{ name: "qwen3:8b" }, { name: "llama3.2" }, { name: "nomic-embed-text" }] }) }));
+  await page.click("#chat-test");
+  await expect(page.locator("#chat-test-result")).toHaveText("Connected: 3 models");
+  expect(asked).toEqual([base + "/api/tags"]);
+  // the server goes away: the same plain line a failed Send shows, and the conversation stays empty
+  await page.unroute(base + "/api/tags");
+  netNoise = true;
+  await page.click("#chat-test");
+  await expect(page.locator("#chat-test-result")).toHaveText(noModel(`localhost:${port}`, "Ollama", false)); // no More help next to it
+  await expect(page.locator("#chat-test")).toBeEnabled();
+  expect(asked).toEqual([base + "/api/tags", base + "/api/tags"]);
+  await expect(page.locator("#chat-messages > .chat-msg")).toHaveCount(0);
+  // editing the address clears the old answer
+  await page.fill("#chat-url", base + "/");
+  await expect(page.locator("#chat-test-result")).toHaveText("");
+});
+
+test("Test connection to a server that never answers: changing the address or key frees the button, and it gives up after 10 seconds", async ({ browser }, info) => {
+  const port = await closedPort(), base = `http://localhost:${port}`;
+  await open(browser, info, stored("ollama", { url: base, model: "", vision: false }, { remember: false }));
+  await page.click("#chat-settings > summary");
+  await page.route(base + "/api/tags", () => {}); // accepted, never answered
+  const result = page.locator("#chat-test-result"), button = page.locator("#chat-test");
+  await button.click();
+  await expect(result).toHaveText("Testing…");
+  await expect(button).toBeDisabled();
+  await page.fill("#chat-url", base + "/");
+  await expect(result).toHaveText("");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(button).toBeDisabled();
+  await page.fill("#chat-key", "k-new");
+  await expect(result).toHaveText("");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(result).toHaveText(`No answer from localhost:${port} within 10 seconds.`, { timeout: 15_000 });
+  await expect(button).toBeEnabled();
 });
 
 test("Stop ends the run at once: one shape, a Stopped note, the Send button back", async ({ browser }, info) => {
