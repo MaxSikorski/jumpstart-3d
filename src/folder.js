@@ -74,7 +74,7 @@ export function initFolder({ ps, toast, fileSafe }) {
   }
 
   async function write(dir, name, data) {
-    if (embedActive()) return;
+    if (embedActive()) throw Error("Folder copies are unavailable in the temporary workspace.");
     const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
     try { await w.write(data); await w.close(); } // the old file is replaced only on close
     catch (e) { try { await w.abort(); } catch (e2) {} throw e; }

@@ -42,18 +42,15 @@ test('scratch edits do not write designs and a different load closes the channel
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
   await page.evaluate(async () => { JS3D.add('box'); await __app.projects.saveNow(); });
   const before = await page.evaluate(() => __app.projects._store.list());
+  const normalKeys = await page.evaluate(() => Object.keys(localStorage));
   await openHost(page);
   await expect.poll(() => page.evaluate(() => messages.some(m => m.type === 'js3d-ready'))).toBe(true);
   const frame = page.frames().find(f => f.url().startsWith(app));
-  await frame.evaluate(() => {
-    window.__embedWrites = [];
-    const set = Storage.prototype.setItem, open = indexedDB.open.bind(indexedDB);
-    Storage.prototype.setItem = function (...a) { window.__embedWrites.push(['storage', a[0]]); return set.apply(this, a); };
-    indexedDB.open = function (...a) { window.__embedWrites.push(['database', a[0]]); return open(...a); };
-  });
+  expect(await frame.evaluate(() => JS3D.list())).toEqual([]);
+  expect(await frame.evaluate(keys => keys.filter(k => Object.hasOwn(localStorage, k)), normalKeys)).toEqual([]);
+  expect(await frame.evaluate(() => indexedDB === undefined)).toBe(true);
   expect((await call(page, 1, 'list')).result).toEqual([]);
   await call(page, 2, 'add', 'box'); await call(page, 3, 'ready');
-  expect(await frame.evaluate(() => window.__embedWrites)).toEqual([]);
   await frame.evaluate(() => { const doc = structuredClone(__store.doc); doc.id = 'different-design'; __store.load(doc); });
   await expect.poll(() => page.evaluate(() => messages.some(m => m.reason === 'design-changed'))).toBe(true);
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);

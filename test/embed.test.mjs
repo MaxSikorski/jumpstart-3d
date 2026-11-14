@@ -91,13 +91,42 @@ test('deadline reports an error and closes permanently', async () => {
   fire(); await tick(); assert.equal(sent[1].error, 'the call took longer than 10 minutes; reload the page to start again'); assert.equal(sent[2].reason, 'timeout'); assert.equal(ch.open, false); assert.ok(cleared);
   ch.receive({source:parent, origin, data:{type:'js3d-call', protocol:1, id:2, call:'add'}}); assert.equal(sent.length, 3);
 });
-test('settings overlay merges reads and keeps writes in memory', async () => {
-  const { storageOverlay } = await import('../src/embed.js');
-  const real = new Map([['a','old'],['b','two']]); const backing = {get length() {return real.size;}, key:i => [...real.keys()][i] ?? null, getItem:k => real.get(k) ?? null};
-  const s = storageOverlay(backing); s.setItem('a','new'); s.setItem('c',3); assert.equal(s.getItem('a'),'new'); assert.equal(real.get('a'),'old');
-  s.removeItem('b'); assert.equal(s.getItem('b'),null); assert.deepEqual(Array.from({length:s.length}, (_,i) => s.key(i)), ['a','c']);
-  s.clear(); assert.equal(s.length,0); assert.equal(s.getItem('a'),null); s.setItem('d','4'); assert.equal(s.getItem('d'),'4'); assert.equal(real.size,2);
-  assert.equal(storageOverlay({getItem(){throw Error();}, get length(){throw Error();}}).getItem('x'),null);
+test('storage isolation is empty and supports Storage property operations', async () => {
+  const { storageOverlay, installIsolation } = await import('../src/embed.js');
+  const real = new Map([['secret', 'saved']]);
+  const s = storageOverlay(real);
+  assert.equal(s.getItem('secret'), null); assert.equal(s.length, 0);
+  s.setItem('a', 3); s.b = false;
+  assert.equal(s.a, '3'); assert.equal(s.getItem('b'), 'false');
+  assert.deepEqual(Object.keys(s), ['a', 'b']);
+  const keys = []; for (const k in s) keys.push(k); assert.deepEqual(keys, ['a', 'b']);
+  assert.ok('a' in s); delete s.a; assert.ok(!('a' in s));
+  assert.equal(s.key(0), 'b'); s.removeItem('b'); s.x = 'x'; s.clear(); assert.equal(s.length, 0);
+  assert.equal(real.get('secret'), 'saved');
+  const target = {localStorage: real, sessionStorage: real, indexedDB: {}};
+  assert.equal(installIsolation(target), true); assert.equal(target.indexedDB, undefined);
+  assert.equal(target.localStorage.length, 0); assert.equal(target.sessionStorage.length, 0);
+  target.localStorage.x = 1; assert.equal(target.sessionStorage.x, undefined);
+  const blocked = {}; Object.defineProperty(blocked, 'indexedDB', {value: {}, configurable: false});
+  assert.equal(installIsolation(blocked), false);
+});
+test('closing a stuck call releases the edit guard and timer', async () => {
+  const { store } = bridge(); const { guardUpdates } = await import('../src/embed.js');
+  const scratch = store.doc.id, parent = {}; let cleared = false;
+  const ch = createChannel({api:{add: () => new Promise(() => {})}, allow:[origin], parent, post(){}, onCall:guardUpdates(store, id => id === scratch), setTimer:() => 42, clearTimer:id => { assert.equal(id, 42); cleared = true; }});
+  ch.start(); ch.receive({source:parent, origin, data:{type:'js3d-call', protocol:1, id:1, call:'add'}});
+  ch.close('stopped'); assert.ok(cleared);
+  store.load({...store.doc, id:'other'}); store.update(d => { d.name = 'works'; }); assert.equal(store.doc.name, 'works');
+});
+test('Chisel permits reading calls and refuses edits, including queued edits', async () => {
+  const parent = {}, sent = []; let chisel = true, edits = 0;
+  const ch = createChannel({api:{list:() => [], add:() => { edits++; }, setMode:() => { edits++; }}, allow:[origin], parent, post:m => sent.push(m), isChisel:() => chisel});
+  ch.start();
+  const send = (id, call, args = []) => ch.receive({source:parent, origin, data:{type:'js3d-call', protocol:1, id, call, args}});
+  send(1,'list'); await tick(); assert.deepEqual(sent.at(-1).result, []);
+  send(2,'setMode',['beginner']); await tick(); assert.equal(sent.at(-1).error, 'the person is using Chisel in this frame; try again after they leave it');
+  send(3,'add'); await tick(); assert.equal(edits, 0);
+  chisel = false; send(4,'add'); await tick(); assert.equal(edits, 1);
 });
 test('embedded mesh cache and folder mirror stay idle', async () => {
   const priorWindow = globalThis.window, priorLocation = globalThis.location, priorIDB = globalThis.indexedDB;
@@ -110,4 +139,19 @@ test('embedded mesh cache and folder mirror stay idle', async () => {
     const folder = initFolder({ps:{ready:Promise.resolve(), kind:'idb', getMeta(){reads++;}, setMeta(){writes++;}, onSwitch(){}}, toast(){}, fileSafe:s => s});
     await folder.now(); await folder.soon(); assert.equal(await folder.row(),null); assert.equal(reads,0); assert.equal(writes,0);
   } finally { globalThis.window = priorWindow; globalThis.location = priorLocation; globalThis.indexedDB = priorIDB; }
+});
+test('blocked isolation shows the warning and never starts a channel', async () => {
+  const oldWindow = globalThis.window, oldLocation = globalThis.location, oldDocument = globalThis.document;
+  const nodes = [], listeners = [];
+  const fakeWindow = {parent:{postMessage(){ throw Error('channel started'); }}, addEventListener:(...args) => listeners.push(args)};
+  Object.defineProperty(fakeWindow, 'indexedDB', {value:{}, configurable:false});
+  globalThis.window = fakeWindow;
+  globalThis.location = {protocol:'https:', search:'?embed=https%3A%2F%2Fschool.example', origin:'https://app.example', pathname:'/'};
+  globalThis.document = {createElement() { const n = {style:{}, setAttribute(){}, append(){}, addEventListener(){}}; nodes.push(n); return n; }, body:{append(){}}};
+  try {
+    const {startEmbed} = await import('../src/embed.js?blocked-isolation');
+    startEmbed({projects:{embedReady:Promise.resolve()}}, {});
+    assert.equal(nodes[1].textContent, 'This browser blocked the temporary workspace; open the full app instead.');
+    assert.equal(nodes[2].disabled, true); assert.deepEqual(listeners, []);
+  } finally { globalThis.window = oldWindow; globalThis.location = oldLocation; globalThis.document = oldDocument; }
 });

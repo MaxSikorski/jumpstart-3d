@@ -9,6 +9,7 @@
 // untrusted data: it is size-checked before it is decoded, decoded with bounds, and checked against explicit tables below. Anything
 // outside the tables ("Use a project file for this design") is refused, never trimmed or passed on to the CAD kernel. No eval, no
 // script, no address inside the data is ever fetched. The link is neither encrypted nor proof of who sent it.
+import { embedActive } from "./embed.js";
 import { el } from "./util.js";
 import { ICON } from "./icons.js";
 import { inflateRaw } from "./inflate.js";
@@ -879,6 +880,7 @@ export function initShareLink(app) {
 
   // ---- making a link
   async function showShare() {
+    if (embedActive()) return;
     const note = el("p", { class: "rp-note", id: "share-note", role: "status" }, "Making the link…");
     const field = el("input", { type: "text", id: "share-url", readonly: true, "aria-label": "Share link", onfocus: (e) => e.target.select() });
     const copyBtn = el("button", { class: "btn primary", id: "share-copy", disabled: true }, "Copy link");
@@ -916,6 +918,7 @@ export function initShareLink(app) {
   // ---- receiving a link
   function finish() { pending = null; while (after.length) { const f = after.shift(); try { f(); } catch (e) { /* a waiting task's own problem */ } } }
   async function offer() {
+    if (embedActive()) { finish(); return; }
     const frag = pending && pending.frag, mine = ++job;
     if (frag === undefined) return;
     let doc;

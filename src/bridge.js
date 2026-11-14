@@ -565,6 +565,7 @@ export function initBridge(app) {
   }
   // the setting: on = true/false, or null to read the remembered one. quiet: apply without saving or telling.
   app.setAgent = function (on, quiet) {
+    if (embedActive()) { app.toast("Open the full app to connect an AI agent."); return; }
     if (on == null) { try { on = localStorage.getItem(AGENT_KEY) === "on"; } catch (e) { on = false; } }
     if (on) api.connect(); else if (link.on) api.disconnect();
     if (quiet) return;
@@ -572,7 +573,7 @@ export function initBridge(app) {
     app.toast(on ? "Connect to AI agent: on. Looking for a program on this computer; if the browser asks about local network access, allow it." : "Connect to AI agent: off.");
   };
   const row = document.querySelector("#menu-theme button[data-agent]");
-  if (row) row.addEventListener("click", () => app.setAgent(!link.on));
+  if (row) row.addEventListener("click", () => { if (!embedActive()) app.setAgent(!link.on); });
 
   Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls

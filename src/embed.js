@@ -2,6 +2,7 @@
 import { store, newDoc } from "./store.js";
 
 const NAMES = Object.freeze("supports describe ready kinds list get doc save params mode selection add fastener holePattern gear namePlate knurl spring remove delete duplicate move moveTo rotate resize scale setHole setColor rename setHidden group ungroup setParam removeParam bind undo redo select fit setMode screenshot screenshotDataURL export newDesign sketch extrude revolve fillet chamfer shell hole pattern faces edges inspect measure printCheck collisions section boxMaker gearSet hardware textures texture drawing checkpoint checkpoints diff rollback".split(" "));
+const READ_CALLS = new Set("kinds list get doc save params mode selection ready supports describe textures checkpoints faces edges inspect measure printCheck collisions section screenshot screenshotDataURL export drawing diff".split(" "));
 const MAX_ARGS = 1024 * 1024, MAX_RESULT = 32 * 1024 * 1024;
 
 export function parseAllow(value, ownOrigin) {
@@ -40,16 +41,18 @@ function validate(args) {
   if (new TextEncoder().encode(JSON.stringify(args)).length > MAX_ARGS) throw Error("arguments are too big");
 }
 
-export function createChannel({ api, allow, parent, post, now = Date.now, onState = () => {}, onCall = () => () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createChannel({ api, allow, parent, post, now = Date.now, onState = () => {}, onCall = () => () => {}, setTimer = setTimeout, clearTimer = clearTimeout, isChisel = () => false }) {
   const calls = Object.fromEntries(NAMES.filter((n) => typeof api[n] === "function").map((n) => [n, api[n].bind(api)]));
   const ready = { type: "js3d-ready", protocol: 1, apiVersion: api.apiVersion ?? api.version, calls: Object.keys(calls) };
   let open = true, started = false, lastId = 0, lastHello = -Infinity, running = false;
-  let times = [], queue = [], activeOrigin = null;
+  let times = [], queue = [], activeOrigin = null, endActive = null, activeTimer = null;
   const send = (msg, origin) => { if (open) post(msg, origin); };
   const fail = (id, error, origin) => send({ type: "js3d-result", protocol: 1, id, error }, origin);
   function close(reason) {
     if (!open) return;
     open = false; queue = [];
+    if (endActive) { endActive(); endActive = null; }
+    if (activeTimer !== null) { clearTimer(activeTimer); activeTimer = null; }
     for (const origin of allow) post({ type: "js3d-closed", protocol: 1, reason }, origin);
     onState(reason);
   }
@@ -59,21 +62,29 @@ export function createChannel({ api, allow, parent, post, now = Date.now, onStat
     while (queue.length && open) {
       const { id, call, args, origin } = queue.shift();
       try {
+        if (isChisel() && !READ_CALLS.has(call)) throw Error("the person is using Chisel in this frame; try again after they leave it");
         const endCall = onCall();
+        endActive = endCall;
         let work;
-        try { work = Promise.resolve(calls[call](...args)).finally(endCall); work.catch(() => {}); }
-        catch (e) { endCall(); throw e; }
+        try { work = Promise.resolve(calls[call](...args)).finally(() => { if (endActive === endCall) { endCall(); endActive = null; } }); work.catch(() => {}); }
+        catch (e) { endCall(); endActive = null; throw e; }
         let timer;
-        const deadline = new Promise((_, reject) => { timer = setTimer(() => reject(Error("the call took longer than 10 minutes; reload the page to start again")), 600000); });
+        const deadline = new Promise((_, reject) => { activeTimer = timer = setTimer(() => reject(Error("the call took longer than 10 minutes; reload the page to start again")), 600000); });
         let result;
         try { result = await Promise.race([work, deadline]); }
         catch (e) { if (e.message === "the call took longer than 10 minutes; reload the page to start again") { fail(id, e.message, origin); close("timeout"); break; } throw e; }
-        finally { clearTimer(timer); }
+        finally { if (activeTimer === timer) { clearTimer(timer); activeTimer = null; } }
         if (!open) break;
         if (result === undefined) result = null;
-        if (result instanceof Uint8Array) result = result.slice();
-        const size = result instanceof Uint8Array ? result.byteLength : new TextEncoder().encode(JSON.stringify(result)).length;
+        let size;
+        if (result instanceof Uint8Array) size = result.byteLength;
+        else {
+          const json = JSON.stringify(result);
+          if (json.length > MAX_RESULT) throw Error("the result is too big to send");
+          size = new TextEncoder().encode(json).length;
+        }
         if (size > MAX_RESULT) throw Error("the result is too big to send");
+        if (result instanceof Uint8Array) result = result.slice();
         send({ type: "js3d-result", protocol: 1, id, result }, origin);
       } catch (e) { fail(id, String(e?.message || e), origin); }
     }
@@ -114,29 +125,37 @@ export function embedActive() {
   return typeof window !== "undefined" && window.parent !== window && /^(https?:)$/.test(location.protocol) && new URLSearchParams(location.search).has("embed");
 }
 
-export function storageOverlay(real) {
-  const values = new Map(), removed = new Set(); let cleared = false;
-  const keys = () => {
-    const all = [];
-    if (!cleared) try { for (let i = 0; i < real.length; i++) { const k = real.key(i); if (k !== null && !removed.has(k)) all.push(k); } } catch {}
-    for (const k of values.keys()) if (!all.includes(k)) all.push(k);
-    return all;
+export function storageOverlay() {
+  const values = new Map();
+  const methods = {
+    key(i) { return [...values.keys()][i] ?? null; },
+    getItem(k) { return values.get(String(k)) ?? null; },
+    setItem(k, v) { values.set(String(k), String(v)); },
+    removeItem(k) { values.delete(String(k)); },
+    clear() { values.clear(); },
   };
-  return {
-    get length() { return keys().length; },
-    key(i) { return keys()[i] ?? null; },
-    getItem(key) { key = String(key); if (values.has(key)) return values.get(key); if (cleared || removed.has(key)) return null; try { return real.getItem(key); } catch { return null; } },
-    setItem(key, value) { key = String(key); values.set(key, String(value)); removed.delete(key); },
-    removeItem(key) { key = String(key); values.delete(key); removed.add(key); },
-    clear() { values.clear(); removed.clear(); cleared = true; },
-  };
+  return new Proxy({}, {
+    get(_, key) { if (key === "length") return values.size; if (Object.hasOwn(methods, key)) return methods[key]; return values.get(key); },
+    set(_, key, value) { values.set(String(key), String(value)); return true; },
+    deleteProperty(_, key) { values.delete(key); return true; },
+    has(_, key) { return values.has(key) || key === "length" || Object.hasOwn(methods, key); },
+    ownKeys() { return [...values.keys()]; },
+    getOwnPropertyDescriptor(_, key) { if (values.has(key)) return { configurable: true, enumerable: true, writable: true, value: values.get(key) }; },
+  });
 }
 
-if (embedActive()) {
-  let real; try { real = window.localStorage; } catch {}
-  const overlay = storageOverlay(real);
-  Object.defineProperty(window, "localStorage", { configurable: true, get: () => overlay });
+export function installIsolation(target) {
+  try {
+    for (const name of ["localStorage", "sessionStorage"]) {
+      const storage = storageOverlay();
+      Object.defineProperty(target, name, { configurable: true, get: () => storage });
+    }
+    Object.defineProperty(target, "indexedDB", { configurable: true, get: () => undefined });
+    return true;
+  } catch { return false; }
 }
+
+const isolated = !embedActive() || installIsolation(window);
 
 // While a website's call runs, edits may only touch a temporary design (newDesign switches between them).
 export function guardUpdates(store, isScratch) {
@@ -155,13 +174,14 @@ export function startEmbed(app, api) {
   const onCall = guardUpdates(store, (id) => ids.has(id));
   app.embed = { isScratch: (id) => ids.has(id) };
   const bar = document.createElement("div"), status = document.createElement("span"), stop = document.createElement("button"), link = document.createElement("a");
-  bar.style.cssText = "position:fixed;bottom:8px;left:8px;z-index:10000;padding:8px 10px;background:#fff;color:#111;border:1px solid #555;border-radius:6px;box-shadow:0 2px 8px #0005;font:14px sans-serif;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+  bar.style.cssText = "position:fixed;bottom:36px;left:8px;z-index:10000;padding:8px 10px;background:#fff;color:#111;border:1px solid #555;border-radius:6px;box-shadow:0 2px 8px #0005;font:14px sans-serif;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
   status.setAttribute("aria-live", "polite");
   status.textContent = allow.length ? "Temporary design, not saved. Waiting for the website." : "Temporary design, not saved. The website did not give a valid address to allow.";
   stop.textContent = "Stop"; link.textContent = "Open the full app";
   link.href = location.origin + location.pathname; link.target = "_blank"; link.rel = "noopener noreferrer";
   bar.append(status, stop, link); document.body.append(bar);
-  const channel = createChannel({ api: { ...api, newDesign: (mode = "beginner") => { const doc = newDoc("Untitled", mode); ids.add(doc.id); app.projects.embedNew(doc); return api.ready(); } }, allow, onCall, parent: window.parent, post: (msg, origin) => window.parent.postMessage(msg, origin), onState: (state, origin) => { status.textContent = state === "controlled" ? `Temporary design, not saved. Controlled by ${origin}` : `Temporary design, not saved. Channel closed (${state}).`; if (state !== "controlled") stop.disabled = true; } });
+  if (!isolated) { status.textContent = "This browser blocked the temporary workspace; open the full app instead."; stop.disabled = true; return; }
+  const channel = createChannel({ isChisel: () => app.mode === "chisel", api: { ...api, newDesign: (mode = "beginner") => { const doc = newDoc("Untitled", mode); ids.add(doc.id); app.projects.embedNew(doc); return api.ready(); } }, allow, onCall, parent: window.parent, post: (msg, origin) => window.parent.postMessage(msg, origin), onState: (state, origin) => { status.textContent = state === "controlled" ? `Temporary design, not saved. Controlled by ${origin}` : `Temporary design, not saved. Channel closed (${state}).`; if (state !== "controlled") stop.disabled = true; } });
   stop.addEventListener("click", () => channel.close("stopped"));
   window.addEventListener("pagehide", () => channel.close("pagehide"));
   window.addEventListener("message", (event) => channel.receive(event));
