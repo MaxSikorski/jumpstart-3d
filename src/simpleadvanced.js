@@ -210,7 +210,10 @@ export function initSimpleAdvanced(app, plate, collapse) {
   for (const [id,via] of [['ad-hole-m','ad-features'],['ad-fastbtn'],['ad-ins-fast','ad-insert'],['ad-ins-hinge','ad-insert'],['ad-ins-gear','ad-insert'],['ps-r-litho']]) aliases.lastChild.append(button(id,id,'more',via));
   const other = section('Other','sadv-other');
   const titles = Object.fromEntries(groups.flatMap(([, items]) => items.map(([id,, , , title]) => [id, title]))); Object.assign(titles, {'ws-design':'Design: sketch, extrude, pattern and measure','ws-print':'3D Print Sim: orient, arrange, slice and G-code','ws-simulate':'Simulate: joint, motion, stress and voxel', 'ad-edge':'Round (fillet) or bevel (chamfer) edges; switch between them in More › Modify', 'ad-shell':'Shell: hollow out a body, leaving walls', 'ad-prims':'Primitives: shapes box cylinder'});
-  let previousSet = '', menuFromRail = null, ignoreClick = false;
+  let previousSet = '', menuFromRail = null, ignoreClick = false, lastRailFocus = null;
+  rail.addEventListener('focusin', e => { lastRailFocus = e.target.closest('button'); });
+  document.addEventListener('focusin', e => { if (!rail.contains(e.target)) lastRailFocus = null; });
+  document.addEventListener('pointerdown', e => { if (!rail.contains(e.target)) lastRailFocus = null; }, true);
   const proxyFor = plate.proxyFor;
   const canonical = {'ad-hole-m':'ad-hole', 'ad-fastbtn':'ad-fasteners', 'ad-ins-fast':'ad-fasteners', 'ad-ins-hinge':'ad-hinge', 'ad-ins-gear':'ad-gears', 'ps-r-litho':'simple-run-litho'};
   plate.proxyFor = id => proxyFor(canonical[id] || id);
@@ -241,16 +244,24 @@ export function initSimpleAdvanced(app, plate, collapse) {
     if (app.sketcher?.active && b.getAttribute('aria-pressed') === 'true' && !$(b.dataset.for)?.hasAttribute('aria-haspopup') && b.dataset.for !== 'sk-finish') { e.stopImmediatePropagation(); app.sketcher.setTool('select'); app.refreshUI(); return; }
     if (!$(b.dataset.for)?.hasAttribute('aria-haspopup')) return;
     if (ignoreClick) { ignoreClick = false; e.stopImmediatePropagation(); menuFromRail = null; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); b.focus(); return; }
-    // The delegated handler opens the original menu after this listener.
-    queueMicrotask(() => { const menu = $('ribbon-menu'); if (!menu) return; menuFromRail = b; const r = b.getBoundingClientRect(); if (matchMedia('(max-width: 640px)').matches) { menu.style.left = '0px'; menu.style.width = '100%'; menu.style.top = Math.max(0, rail.getBoundingClientRect().top - menu.offsetHeight) + 'px'; } else { menu.style.left = Math.min(r.right + 6, innerWidth - menu.offsetWidth) + 'px'; menu.style.top = Math.max(0, Math.min(r.top, innerHeight - menu.offsetHeight)) + 'px'; } });
+    // The delegated handler opens and places the original menu after this listener.
+    const observer = new MutationObserver(() => {
+      const menu = $('ribbon-menu'); if (!menu) return;
+      observer.disconnect(); menuFromRail = b;
+      const r = b.getBoundingClientRect();
+      if (matchMedia('(max-width: 640px)').matches) { menu.style.left = '0px'; menu.style.width = '100%'; menu.style.top = Math.max(0, rail.getBoundingClientRect().top - menu.offsetHeight) + 'px'; }
+      else { menu.style.left = Math.max(0, Math.min(r.right + 6, innerWidth - menu.offsetWidth)) + 'px'; menu.style.top = Math.max(0, Math.min(r.top, innerHeight - menu.offsetHeight)) + 'px'; }
+    });
+    observer.observe(document.body, {childList:true});
+    requestAnimationFrame(() => observer.disconnect());
   });
   window.addEventListener('keydown', e => { if (root.dataset.face !== 'simple' || e.key !== 'Escape' || !menuFromRail || !$('ribbon-menu')) return; e.preventDefault(); e.stopImmediatePropagation(); const target = menuFromRail; menuFromRail = null; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); target.focus(); }, true);
   function updateRail() {
     if (root.dataset.face !== 'simple') return;
     const set = app.sketcher?.active ? 'sketch' : app.mode === 'advanced' ? app.advanced.workspace : '';
-    const focused = sar.contains(document.activeElement); rail.dataset.set = set; rail.setAttribute('aria-label', ({design:'Design tools', sketch:'Sketch tools', print:'3D Print Sim tools', simulate:'Simulate tools'})[set] || 'Simple tools');
+    const focused = rail.contains(document.activeElement) || (document.activeElement === document.body && lastRailFocus && !lastRailFocus.getClientRects().length); rail.dataset.set = set; rail.setAttribute('aria-label', ({design:'Design tools', sketch:'Sketch tools', print:'3D Print Sim tools', simulate:'Simulate tools'})[set] || 'Simple tools');
     for (const b of sar.querySelectorAll('button')) b.hidden = b.dataset.set !== set;
-    if (focused && previousSet !== set) requestAnimationFrame(() => [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus()); previousSet = set;
+    if (focused && previousSet !== set) requestAnimationFrame(() => { if (document.activeElement !== document.body && !rail.contains(document.activeElement)) return; if (app.mode === 'beginner') plate.sync(); [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus(); }); previousSet = set;
     const note = $('sap-note'), noteText = $('sk-note')?.textContent || ''; note.hidden = set !== 'sketch'; if (note.textContent !== noteText) note.textContent = noteText;
     for (const b of [...sar.querySelectorAll('button'), ...more.querySelectorAll('.sadv-group button')]) {
       const original = $(b.dataset.for); if (original) {
