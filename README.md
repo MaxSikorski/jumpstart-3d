@@ -249,8 +249,8 @@ other edit.
 | OpenAI-style (OpenAI, OpenRouter, Groq, oMLX…) | `https://api.openai.com/v1` (change it for the others) | yes |
 | Anthropic | `https://api.anthropic.com/v1` | yes |
 
-Use **List models** to fill the model box from the server. Tick **Model can see images** if yours
-can. For a local model, pick one that supports tools; 9B or larger works best.
+Use **List models** to fill the model box from the server, and **Test connection** (under the address) to check
+that the server answers. Tick **Model can see images** if yours can. For a local model, pick one that supports tools; 9B or larger works best.
 
 ### Let a local model connect
 
@@ -266,12 +266,15 @@ A local model server has to allow the JumpStart 3D page to talk to it, once.
   `lms server start --cors`), then start the server.
 
 If Chrome asks whether the site may reach devices on your local network, allow it. Safari may block
-the website from reaching `localhost`; use the single file there.
+the website from reaching `localhost`; use the single file there. When a model server on your
+computer does not answer or refuses the page, the chat says so in one line ("Can't reach a model at
+localhost:11434: start Ollama there, or allow this page in OLLAMA_ORIGINS"); after a message or List
+models, these steps are under **More help** below that line.
 
 ### Chat keys and scripts
 
 Your key stays in this browser and is saved only if you tick **Remember key in this browser**.
-Nothing is sent until you press Send. **Allow scripts** is off unless you tick it: with it on, the
+Nothing is sent until you press Send, List models or Test connection. **Allow scripts** is off unless you tick it: with it on, the
 model can run any JavaScript in the page, the same trust as Open/Export › Run script….
 
 ## Use it with an AI agent
@@ -304,7 +307,7 @@ claude plugin install jumpstart-3d@maxsikorski
 ### Edit the design you have open
 
 For an agent to edit the JumpStart 3D design open in your browser, turn on **Connect to AI agent**
-in the Theme, performance and mesh detail menu (the half-moon button). It is off unless you turn it
+in the Customize menu (the sliders button in the top bar). It is off unless you turn it
 on. Without that, the agent works in its own invisible browser, which needs Chromium once:
 `npx playwright@1.62.1 install chromium`.
 
@@ -412,7 +415,7 @@ upstream version stays easy to merge.
 - Pre-painted 3MF: what you paint in the 3D Print Sim is written into the 3MF, so Orca and
   PrusaSlicer open it with the colours already on the model. Not yet tried in Orca, Snapmaker
   Orca or Bambu Studio themselves.
-- Mesh detail, in the Theme, performance and mesh detail menu: Normal, Fine, Extra fine, or a
+- Mesh detail, in the Customize menu: Normal, Fine, Extra fine, or a
   custom level up to 32×, for smoother curves in the view and in exports. It asks before building
   more than 500,000 triangles.
 
