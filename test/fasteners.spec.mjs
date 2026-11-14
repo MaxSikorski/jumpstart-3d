@@ -273,7 +273,7 @@ test("JS3D.fastener refuses bad input with plain messages and adds nothing", asy
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: 0.2 }))).toBe("clear must be a number from -1 to 0 (mm)");
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: -2 }))).toBe("clear must be a number from -1 to 0 (mm)");
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, left: "yes" }))).toBe("left must be true or false");
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, at: [1, 2] }))).toBe("at must be [x, y, z] in mm");
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, at: [1, 2] }))).toContain("at must be [x, y, z] in mm");
   // a name that is not text is made into text, as add does
   expect(await run(() => JS3D.list().length)).toBe(0);
   expect(await failure(() => JS3D.fastener({ type: "nut", size: "M3", name: 5 }))).toBeNull();

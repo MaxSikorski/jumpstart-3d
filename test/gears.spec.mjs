@@ -282,7 +282,7 @@ test("limits: 130 teeth warns, 150 teeth turned bevel is refused with Create off
     [{ module: 2, teeth: 20, at: [1, 2] }, "at must be [x, y, z] in mm"],
   ];
   for (const [spec, text] of bad) {
-    expect(await failure((s) => JS3D.gear(s), spec), JSON.stringify(spec)).toBe(text);
+    expect(await failure((s) => JS3D.gear(s), spec), JSON.stringify(spec)).toContain(text);
     expect(await counts(), JSON.stringify(spec)).toEqual(before);
   }
 });

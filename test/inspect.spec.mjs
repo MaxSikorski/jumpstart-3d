@@ -69,7 +69,7 @@ test("inspect: size, volume, area, weight, totals and errors", async () => {
   expect(r.wood).toBe('unknown material "wood"; valid materials: pla, plaplus, petg, abs, asa, nylon, pc, cfpla, cfnylon, peek, tpu');
   expect(r.d0).toBe("density must be a number of g/cm3 from 0.1 to 25");
   expect(r.d30).toBe("density must be a number of g/cm3 from 0.1 to 25");
-  expect(r.none).toBe("no body nope");
+  expect(r.none).toMatch(/^no body "nope"/);
 });
 
 test("printCheck: plate, overhang, bed and height", async () => {
@@ -191,7 +191,7 @@ test("measure: points, bodies, flat faces and the mesh", async () => {
   expect(r.faceBody).toMatchObject({ kind: "mesh", exact: false });
   expect(r.faceBody.distance).toBeGreaterThan(0);
   const target = "must be a point [x, y, z], a body id, or {body, face} or {body, near}";
-  expect(r.bad).toBe("no body nope");
+  expect(r.bad).toMatch(/^no body "nope"/);
   expect(r.nul).toBe("a " + target);
   expect(r.badPoint).toBe("a must be [x, y, z] in mm");
   expect(r.far).toMatch(/^face must be a whole number from 0 to \d+ \(Box has \d+ faces\)$/);
@@ -286,7 +286,7 @@ test("section picture: PNG, section view put back, Arch mode refused", async () 
   expect(r.head).toBe("data:image/png;base64,");
   expect(r.width).toBe(400);
   expect(r.afterPicture).toBeNull();
-  expect(r.badWidth).toBe("width must be a number of pixels between 1 and 8192");
+  expect(r.badWidth).toMatch(/^width must be a number of pixels between 1 and 8192/);
   expect(r.afterBad).toBeNull();
   expect(r.arch).toMatch(/^section pictures need Beginner or Advanced mode \(now \w+\)$/);
   expect(Math.abs(r.archArea - 384)).toBeLessThan(1e-3);

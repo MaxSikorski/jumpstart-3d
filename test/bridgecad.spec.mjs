@@ -74,7 +74,7 @@ test("faces and edges list the shape in world terms and refuse unknown picks", a
   expect(await failure((id) => JS3D.faces(id, 17), body)).toBe("Body 1 has no face 17 (it has 0 to 5)");
   expect(await failure((id) => JS3D.edges(id, 400), body)).toMatch(/^Body 1 has no edge 400 \(it has 0 to \d+; seams and smooth joins are not edges\)$/);
   expect(await failure((id) => JS3D.edges(id, "edges of"), body)).toMatch(/unknown word "edges"|unexpected/);
-  expect(await failure(() => JS3D.faces("nope"))).toBe("no body nope");
+  expect(await failure(() => JS3D.faces("nope"))).toMatch(/^no body "nope"/);
 });
 
 test("fillet the top edges and chamfer the vertical ones, with the volumes the maths gives", async () => {

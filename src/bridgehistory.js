@@ -1,4 +1,5 @@
 // Page-local agent checkpoints; the store owns undo and document notifications.
+import { show } from "./teach.js";
 import { designDiff } from "./designdiff.js";
 
 export function historyCalls({ store, snapshot, edit, app }) {
@@ -7,14 +8,14 @@ export function historyCalls({ store, snapshot, edit, app }) {
   const metadata = ({ id, label, bodies, at }) => ({ id, label, bodies, at });
   const find = (id) => {
     const saved = kept.find((c) => c.id === id);
-    if (!saved) throw new Error(`no checkpoint "${id}"; ${kept.length ? "checkpoints: " + kept.map((c) => c.id).join(", ") : "none yet: call checkpoint first"}`);
+    if (!saved) throw new Error(`no checkpoint ${show(id)}. Call JS3D.checkpoints() to see checkpoint ids.`);
     return saved;
   };
   return {
     checkpoint(label = "") {
       edit();
-      if (typeof label !== "string") throw new Error("checkpoint label must be a string");
-      if (label.length > 200) throw new Error("checkpoint label must be 200 characters or fewer");
+      if (typeof label !== "string") throw new Error(`checkpoint label must be a string, got ${show(label)}. Try "before edits".`);
+      if (label.length > 200) throw new Error(`checkpoint label must be 200 characters or fewer, got ${show(label)}. Use a shorter label.`);
       const doc = snapshot({ shareAssets: true });
       const saved = { id: "c" + ++serial, label, bodies: doc.bodies.length, at: new Date().toISOString(), doc };
       kept.push(saved);
@@ -24,14 +25,14 @@ export function historyCalls({ store, snapshot, edit, app }) {
     checkpoints: () => kept.map(metadata),
     diff(fromId, toId) {
       const from = find(fromId), to = toId === undefined ? null : find(toId);
-      for (const [id, c] of [[fromId, from], [toId, to]]) if (c && c.doc.id !== store.doc.id) throw new Error(`checkpoint ${id} belongs to another design; checkpoints are kept per design`);
+      for (const [id, c] of [[fromId, from], [toId, to]]) if (c && c.doc.id !== store.doc.id) throw new Error(`checkpoint ${show(id)} belongs to another design; checkpoints are kept per design. Call JS3D.checkpoints() and pick one from this design.`);
       return designDiff(from.doc, to ? to.doc : snapshot({ shareAssets: true }));
     },
     rollback(id) {
       edit();
       const saved = find(id);
-      if (saved.doc.id !== store.doc.id) throw new Error(`checkpoint ${id} belongs to another design; checkpoints are kept per design`);
-      if (app && app.simLock) throw new Error("undo is off in the 3D Print Sim");
+      if (saved.doc.id !== store.doc.id) throw new Error(`checkpoint ${show(id)} belongs to another design; checkpoints are kept per design. Call JS3D.checkpoints() and pick one from this design.`);
+      if (app && app.simLock) throw new Error("undo is off in the 3D Print Sim. Close the 3D Print Sim and retry.");
       const { assets, ...rest } = saved.doc, copy = structuredClone(rest);
       store.update((doc) => {
         const mode = doc.mode;

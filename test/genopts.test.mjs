@@ -4,7 +4,7 @@ import { boxOptions, gearSetOptions, pairMatrix, textureOptions, drawingOptions,
 import { BIN_DEFAULTS, binSet } from "../src/bins.js";
 import { GEAR_DEFAULTS } from "../src/gearlib.js";
 import { LIB } from "../src/texture.js";
-const fails = (fn, arg, message) => assert.throws(() => fn(arg), { message });
+const fails = (fn, arg, message) => assert.throws(() => fn(arg), error => error.message.startsWith(message));
 test("Box Maker defaults and door print layout", () => {
   const b = boxOptions({}); assert.deepEqual(b, { o: BIN_DEFAULTS, at: [0, 0, 0], name: null });
   assert.equal(binSet(b.o).parts.length, 1);

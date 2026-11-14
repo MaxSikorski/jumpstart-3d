@@ -1,4 +1,5 @@
 // jumpstart-3d: pure generator option checks and pair placement (IMPROVEMENT_PLAN 9.3).
+import { show } from "./teach.js";
 import { BIN_DEFAULTS } from "./bins.js";
 import { GEAR_DEFAULTS } from "./gearlib.js";
 import { LIB, TEXTURE_DEFAULTS } from "./texture.js";
@@ -6,23 +7,23 @@ import { LIB, TEXTURE_DEFAULTS } from "./texture.js";
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const given = (v) => v !== undefined && v !== null;
 const quoteOr = (a) => a.length === 1 ? `"${a[0]}"` : a.slice(0, -1).map((v) => `"${v}"`).join(", ") + ` or "${a.at(-1)}"`;
-function only(o, keys) { for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option "${k}"; options: ${keys.join(", ")}`); }
+function only(o, keys) { for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option "${k}"; options: ${keys.join(", ")}. Remove or correct that option.`); }
 function num(o, k, lo, hi, unit = "mm") {
   if (!given(o[k])) return;
-  if (!isNum(o[k]) || o[k] < lo || o[k] > hi) throw new Error(`${k} must be a number from ${lo} to ${hi}${unit ? ` (${unit})` : ""}`);
+  if (!isNum(o[k]) || o[k] < lo || o[k] > hi) throw new Error(`${k} must be a number from ${lo} to ${hi}${unit ? ` (${unit})` : ""}, got ${show(o[k])}. Try ${lo}.`);
   return o[k];
 }
-function int(o, k, lo, hi) { if (given(o[k]) && (!Number.isInteger(o[k]) || o[k] < lo || o[k] > hi)) throw new Error(`${k} must be a whole number from ${lo} to ${hi}`); }
-function pick(o, k, list) { if (given(o[k]) && !list.includes(o[k])) throw new Error(`${k} must be ${quoteOr(list)}`); }
-function flag(o, k) { if (given(o[k]) && typeof o[k] !== "boolean") throw new Error(`${k} must be true or false`); }
+function int(o, k, lo, hi) { if (given(o[k]) && (!Number.isInteger(o[k]) || o[k] < lo || o[k] > hi)) throw new Error(`${k} must be a whole number from ${lo} to ${hi}, got ${show(o[k])}. Try ${lo}.`); }
+function pick(o, k, list) { if (given(o[k]) && !list.includes(o[k])) throw new Error(`${k} must be ${quoteOr(list)}, got ${show(o[k])}. Try ${show(list[0])}.`); }
+function flag(o, k) { if (given(o[k]) && typeof o[k] !== "boolean") throw new Error(`${k} must be true or false, got ${show(o[k])}. Try true.`); }
 export function at3(v) {
   if (!given(v)) return [0, 0, 0];
-  if (!Array.isArray(v) || v.length !== 3 || !Array.from(v).every(isNum)) throw new Error("at must be [x, y, z] in mm");
+  if (!Array.isArray(v) || v.length !== 3 || !Array.from(v).every(isNum)) throw new Error(`at must be [x, y, z] in mm, got ${show(v)}. Try [0, 0, 0].`);
   return v.slice();
 }
 export function generatorName(v) {
   const name = v == null ? "" : String(v).trim();
-  if (name.length > 256) throw new Error("name can have at most 256 characters");
+  if (name.length > 256) throw new Error(`name can have at most 256 characters, got ${show(v)}. Use a shorter name.`);
   return name || null;
 }
 const r6 = (x) => Math.round(x * 1e6) / 1e6;
@@ -74,7 +75,7 @@ export function gearSetOptions(opts = {}) {
   }
   for (const [k, lo, hi] of [["teeth", 6, 300], ["teeth2", 6, 400], ["sunTeeth", 8, 200], ["planetTeeth", 8, 200], ["planets", 2, 6]]) int(opts, k, lo, hi);
   num(opts, "backlash", 0, 1); num(opts, "rackLength", 0, 2000); num(opts, "rackHeight", 2, 100);
-  if (given(opts.pressureAngle) && ![14.5, 20, 25].includes(opts.pressureAngle)) throw new Error("pressureAngle must be 14.5, 20 or 25 (degrees)");
+  if (given(opts.pressureAngle) && ![14.5, 20, 25].includes(opts.pressureAngle)) throw new Error(`pressureAngle must be 14.5, 20 or 25 (degrees), got ${show(opts.pressureAngle)}. Try 20.`);
   pick(opts, "boreShape", ["round", "d", "hex", "key"]); flag(opts, "joints");
   const z = opts.teeth ?? 20, z2 = opts.teeth2 ?? 40, zs = opts.sunTeeth ?? 18, bore = opts.bore ?? 0;
   if (type === "ring" && z2 - z < 8) throw new Error("a ring gear needs at least 8 more teeth than its pinion (teeth2 at least teeth + 8)");
@@ -100,13 +101,13 @@ export function textureOptions(opts = {}) {
   pick(opts, "dir", ["raise", "engrave", "both"]); pick(opts, "mapping", ["auto", "planar", "cylindrical", "triplanar"]);
   flag(opts, "invert"); flag(opts, "once");
   const faces = opts.faces ?? "all", valid = (v) => typeof v === "string" ? v.trim().length > 0 : Number.isInteger(v) && v >= 0;
-  if (!(Array.isArray(faces) ? faces.length > 0 && Array.from(faces).every(valid) : valid(faces))) throw new Error('faces must be "all", a face selector such as "top", a face index or a list of indices');
+  if (!(Array.isArray(faces) ? faces.length > 0 && Array.from(faces).every(valid) : valid(faces))) throw new Error(`faces must be "all", a face selector such as "top", a face index or a list of indices, got ${show(faces)}. Try "top".`);
   return { layer: { tex, size: opts.size ?? (item.size || TEXTURE_DEFAULTS.size), depth: opts.depth ?? 0.6, dir: opts.dir ?? "raise", rot: opts.rotation ?? 0, mapping: opts.mapping ?? "auto", falloff: opts.edgeBlend ?? 0, invert: opts.invert ?? false, once: opts.once ?? false }, faces };
 }
 export function drawingOptions(opts = {}) {
   only(opts, ["ids", "views", "scale", "units", "dims"]);
   const names = ["top", "front", "right"], views = opts.views ?? names;
-  if (!Array.isArray(views) || !views.length || new Set(views).size !== views.length || Array.from(views).some((v) => !names.includes(v))) throw new Error('views must be a list of "top", "front" and "right"');
+  if (!Array.isArray(views) || !views.length || new Set(views).size !== views.length || Array.from(views).some((v) => !names.includes(v))) throw new Error(`views must be a list of "top", "front" and "right", got ${show(views)}. Try ["top"].`);
   num(opts, "scale", 0.01, 100, "1 is full size"); pick(opts, "units", ["mm", "in"]); flag(opts, "dims");
   return { ids: opts.ids, views: names.filter((v) => views.includes(v)), scale: opts.scale ?? 1, units: opts.units ?? "mm", dims: opts.dims ?? false };
 }

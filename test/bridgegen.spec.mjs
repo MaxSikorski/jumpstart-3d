@@ -61,7 +61,7 @@ test("stacked doors keep dialog names, ownership, placement and one undo", async
 test("invalid bin dimensions do not change bodies or undo", async () => {
   await fresh(); const before = await undoCount();
   expect(await failure(() => JS3D.boxMaker({ w: 20, cols: 20 }))).toMatch(/The compartments are too small/);
-  expect(await failure(() => JS3D.boxMaker({ w: 5 }))).toBe("w must be a number from 10 to 1000 (mm)");
+  expect(await failure(() => JS3D.boxMaker({ w: 5 }))).toContain("w must be a number from 10 to 1000 (mm)");
   expect(await run(() => JS3D.list())).toHaveLength(0); expect(await undoCount()).toBe(before);
 });
 test("library gear sets store placed bodies and linked motion joints", async () => {

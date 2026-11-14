@@ -158,7 +158,7 @@ test("bad input: each bridge error text, and nothing is added", async () => {
     [{ at: [0, 0] }, "at must be [x, y, z] in mm"],
   ];
   for (const [spec, text] of bad) {
-    expect(await failure((s) => JS3D.knurl(s), spec), JSON.stringify(spec)).toBe(text);
+    expect(await failure((s) => JS3D.knurl(s), spec), JSON.stringify(spec)).toContain(text);
     expect(await counts(), JSON.stringify(spec)).toEqual(before);
   }
 });

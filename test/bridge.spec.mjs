@@ -60,8 +60,8 @@ test("add and the other calls refuse bad input with plain messages", async () =>
   expect(await failure(() => JS3D.add("box", { size: { height: 5 } }))).toMatch(/box has no size "height"/);
   expect(await failure(() => JS3D.add("box", { at: [1, 2] }))).toMatch(/at must be \[x, y, z\]/);
   expect(await failure(() => JS3D.add("box", { color: "red" }))).toMatch(/#rrggbb/);
-  expect(await failure(() => JS3D.move("nope", [1, 0, 0]))).toBe("no body nope");
-  expect(await failure(() => JS3D.get("nope"))).toBe("no body nope");
+  expect(await failure(() => JS3D.move("nope", [1, 0, 0]))).toMatch(/^no body "nope"/);
+  expect(await failure(() => JS3D.get("nope"))).toMatch(/^no body "nope"/);
   expect(await run(() => __store.doc.bodies.length)).toBe(0);
   const id = await run(() => JS3D.add("box"));
   expect(await failure((id) => JS3D.ungroup(id), id)).toMatch(/is not a group/);
@@ -117,7 +117,7 @@ test("resize changes a plain shape; scale works on anything and keeps its centre
   const other = await run(() => JS3D.add("cylinder", { size: { w: 10, d: 10, h: 30 }, at: [0, 0, 0] }));
   await run((o) => JS3D.setHole(o, true), other);
   const g = await run(([a, b]) => JS3D.group([a, b]), [id, other]);
-  expect(await failure((g) => JS3D.resize(g, { w: 5 }), g)).toBe("resize works on plain shapes; use scale");
+  expect(await failure((g) => JS3D.resize(g, { w: 5 }), g)).toMatch(/^resize works on plain shapes/);
   const v1 = await volumeOf(g);
   const before = (await run((g) => JS3D.get(g), g)).bbox;
   await run((g) => JS3D.scale(g, 2), g);
@@ -213,7 +213,7 @@ test("remove, duplicate, rename, setColor and setHidden", async () => {
 
   expect(await run((b) => JS3D.remove(b), b)).toBe(1);
   expect(await run(() => JS3D.list().map((e) => e.id))).toEqual([a, copy]);
-  expect(await failure((b) => JS3D.remove(b), b)).toBe("no body " + b);
+  expect(await failure((b) => JS3D.remove(b), b)).toContain(`no body "${b}"`);
   expect(await run(() => JS3D.undo())).toBe("Delete");
 });
 
@@ -234,8 +234,8 @@ test("parameters: a bound size follows the parameter; bad input leaves the desig
   expect(await failure(() => JS3D.setParam("1x", "5"))).toMatch(/starting with a letter/);
   expect(await failure(() => JS3D.setParam("d1", "5"))).toMatch(/dimension name/);
   expect(await failure(() => JS3D.setParam("mm", "5"))).toMatch(/is a unit/);
-  expect(await failure(() => JS3D.setParam("w", "nonsense +"))).toBe("expression did not evaluate");
-  expect(await failure(() => JS3D.setParam("v", "w * nothing"))).toBe("expression did not evaluate");
+  expect(await failure(() => JS3D.setParam("w", "nonsense +"))).toMatch(/^expression did not evaluate/);
+  expect(await failure(() => JS3D.setParam("v", "w * nothing"))).toMatch(/^expression did not evaluate/);
   expect(await failure((id) => JS3D.bind(id, "w", "nothing"), id)).toMatch(/did not evaluate to a usable size/);
   expect(await failure((id) => JS3D.bind(id, "q", "5"), id)).toMatch(/box has no size "q"/);
   expect(await run(() => JS3D.params())).toEqual([{ name: "w", expr: "40", value: 40, unit: "mm" }]);
@@ -245,7 +245,7 @@ test("parameters: a bound size follows the parameter; bad input leaves the desig
   expect(await run(() => JS3D.setParam("half", "w / 2"))).toBe(20);
   expect(await run(() => JS3D.removeParam("w"))).toBe(1);
   expect((await run((id) => JS3D.get(id), id)).node.exprs).toBeUndefined();
-  expect(await failure(() => JS3D.removeParam("w"))).toBe("no parameter w");
+  expect(await failure(() => JS3D.removeParam("w"))).toMatch(/^no parameter "w"/);
   expect(await volumeOf(id)).toBeCloseTo(24000, 1);
 });
 
@@ -340,7 +340,7 @@ test("export: each kind gives the right bytes, matching the Export menu", async 
   expect(stlTriangles(one)).toBeGreaterThan(0);
   expect(await failure((id) => JS3D.export("stl", { ids: [id] }), ids.h)).toMatch(/nothing to export/); // a hole on its own
   expect(await failure(() => JS3D.export("dxf"))).toMatch(/kind must be/);
-  expect(await failure(() => JS3D.export("stl", { ids: ["nope"] }))).toBe("no body nope");
+  expect(await failure(() => JS3D.export("stl", { ids: ["nope"] }))).toMatch(/^no body "nope"/);
 
   await fresh();
   expect(await failure(() => JS3D.export("stl"))).toMatch(/nothing to export/);
@@ -377,7 +377,7 @@ test("save and load: the design comes back the same", async () => {
   expect(await run(() => __store.doc.id)).toBe(oldId);
 
   for (const bad of ["garbage", "null", "{}", '{"bodies": []}', 42, { doc: { bodies: {} } }]) {
-    expect(await failure((x) => JS3D.load(x), bad), String(bad)).toBe("not a JumpStart 3D project");
+    expect(await failure((x) => JS3D.load(x), bad), String(bad)).toMatch(/^not a JumpStart 3D project/);
   }
   // a body that would break the view is refused too (these load and crash the 3D view without the check)
   const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node = { t: "prim", kind: "box", p: { w: 5, d: 5, h: 5 }, mods: [] };
