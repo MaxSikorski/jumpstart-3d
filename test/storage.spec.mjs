@@ -546,6 +546,8 @@ test("the crash recovery button says what it is; the design is saved with it off
   // with it off, an edit is still saved: the status line says so
   await page.evaluate((b) => window.__store.update((d) => { d.bodies.push(b); }, "Edit"), body("b1", "Box", box(20, 20, 20)));
   await expect(page.locator("#savestate")).toHaveText("Saved in this browser");
+  const id = await page.evaluate(() => window.__store.doc.id);
+  await expect.poll(async () => { const s = await rawRead(page, "docs", id); return !!s && JSON.parse(s).bodies.some((x) => x.id === "b1"); }, { message: "the edit is in IndexedDB with crash recovery off" }).toBe(true);
   await b.click();
   await expect(b).toHaveText("Crash recovery: On");
   await expect(b).toHaveAttribute("aria-pressed", "true");
