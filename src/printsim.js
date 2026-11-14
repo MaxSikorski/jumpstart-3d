@@ -1055,6 +1055,7 @@ export function initPrintSim(app, X) {
   // a filament, paint or printer change: plate area, plan, legend, panel
   // jumpstart-3d: painted 3MF. The filaments and paint live in the design (doc.printPaint, see paint3mf.js), so the 3MF export and a reopened design have them
   const mirrorPaint = () => {
+    if (EXT.size) return false; // jumpstart-3d: painted 3MF. The colour lithophane plate is not the design: its filaments never replace the design's
     const ids = store.doc.bodies.filter((b) => !b.hole && st.slotOf.has(b.id)).map((b) => b.id);
     const pp = packPaint(st, ids, (id) => scene.views.get(id)?.data?.faceGroups?.length ?? 0);
     const same = JSON.stringify(pp) === JSON.stringify(store.doc.printPaint ?? null);
@@ -2198,6 +2199,7 @@ export function initPrintSim(app, X) {
   }
   function clearExternal() {
     EXT.clear(); st.extName = ""; st.inst = []; st.osel.clear(); st.slotOf = new Map(); st.slots = [];
+    unpackPaint(store.doc.printPaint, st); // jumpstart-3d: painted 3MF. Back to my design gives the design its own filaments and paint again
     stopAnim(); st.ids = targetIds(); st.refit = true; buildPlate(); rebuild(); renderPanel();
   }
   return { open, teardown, st, loadExternal, clearExternal, hasExternal: () => EXT.size > 0, autoOrient, turnObj, scaleObj, dupObj, delObj, arrange, resetAll, selectKey: (k, add) => { selectKey(k, add); drawSel(); renderPanel(); }, world: () => W, setView, layFace, rotate, togglePlay, exportGcode, gcodeOptions, setIds: (ids) => { st.ids = ids; stopAnim(); st.refit = true; rebuild(); } };

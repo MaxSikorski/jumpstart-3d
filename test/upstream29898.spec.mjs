@@ -86,7 +86,7 @@ test("Layerscape opens, makes a puzzle and adds its parts to the design", async 
 test("Helmet Maker adds a solid helmet", async () => {
   test.setTimeout(180_000);
   await loadDoc(page, empty("Helmet", "beginner"));
-  await page.click("#bb-helmet");
+  await run(() => window.__app.cosforge.open({ mode: "helmet" })); // Simulate → Helmet Maker in Advanced, Workshop → Helmet Maker in Simple
   await expect.poll(() => run(() => !!window.__app.cosforge._t()?.ready()), { timeout: 90_000 }).toBe(true);
   await page.click("#cf-step-export");
   await page.click("#cf-x-design");
@@ -175,6 +175,31 @@ test("Color Lithophane exports a multi-object 3MF from an uploaded picture", asy
   await page.click("#cl-close");
 });
 
+// ours: the design keeps its painted filaments (doc.printPaint) while the lithophane plate is in the sim and after Back to my design
+test("the colour lithophane plate never replaces the design's painted filaments", async () => {
+  test.setTimeout(180_000);
+  const paint = { slots: ["#ff0000", "#00aa00"], of: { bx: 1 } };
+  const doc = newDoc("Painted", "advanced", { bodies: [body("bx", "Painted box", prim("box", { w: 30, d: 30, h: 10 }))] });
+  doc.printPaint = paint;
+  await loadDoc(page, doc);
+  await checkedBodies();
+  await page.click("#ws-print"); await page.click("#ps-r-litho");
+  const png = await run(() => { const c = document.createElement("canvas"); c.width = c.height = 32; const g = c.getContext("2d"); g.fillStyle = "#c33"; g.fillRect(0, 0, 32, 32); return c.toDataURL().split(",")[1]; });
+  await page.locator("#cl-file").setInputFiles({ name: "red.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect.poll(() => run(() => window.__app.colorLitho._ui()?.st.name), { timeout: 30_000 }).toBe("red");
+  await page.click("#cl-sim");
+  await expect.poll(() => run(() => window.__app.advanced.printSim.hasExternal()), { timeout: 60_000 }).toBe(true);
+  // a design change while the plate is loaded must not write the plate's filaments into the design
+  await run(() => window.__store.update((d) => { d.name = "Painted 2"; }, "rename"));
+  expect(await run(() => window.__store.doc.printPaint)).toEqual(paint);
+  await page.click("#ps-ext-back");
+  await expect.poll(() => run(() => window.__app.advanced.printSim.hasExternal())).toBe(false);
+  expect(await run(() => window.__app.advanced.printSim.st.slots.map((q) => q.color))).toEqual(paint.slots);
+  await run(() => window.__store.update((d) => { d.name = "Painted 3"; }, "rename"));
+  expect(await run(() => window.__store.doc.printPaint)).toEqual(paint);
+  await run(() => window.__app.advanced.cancel());
+});
+
 test("laser SVG and DXF contain cut geometry for a plate with a hole", async () => {
   test.setTimeout(180_000);
   const hole = { id: "h", seq: 2, t: "hole", kind: "simple", dia: 8, through: true, depth: 10, tapped: false, pitch: 0, clear: 0, tip: false, at: [{ p: [0, 0, 3], n: [0, 0, 1] }] };
@@ -199,4 +224,28 @@ test("finishing a sketch line returns to Select", async () => {
   expect(before).toBeGreaterThan(0);
   await run(() => window.__app.sketcher.click({ p: [40, 40] }, null));
   expect(await run(() => window.__app.sketcher.sketch.ents.filter((e) => e.t === "line").length)).toBe(before);
+});
+
+// ours: Simple's More reaches his new tools (Workshop group) and his new Layerscape maker, and Find a tool finds them
+test("Simple's More reaches Layerscape, Rib, Keyhole slot, Jig Maker, Helmet Maker, Colour lithophane and laser files", async () => {
+  test.setTimeout(120_000);
+  await loadDoc(page, newDoc("Simple tools", "beginner", { bodies: [body("pl", "Plate", prim("box", { w: 60, d: 40, h: 3 }))] }));
+  await checkedBodies();
+  await run(() => window.__app.setFace("simple", true));
+  try {
+    await page.click("#sr-more");
+    const more = page.locator("#simple-more");
+    for (const label of ["Layerscape", "Rib", "Keyhole slot", "Jig Maker", "Helmet Maker", "Colour lithophane", "Laser cut file"]) await expect(more.locator("button[data-for]", { hasText: label }).first()).toBeVisible();
+    await page.fill("#simple-find", "jig");
+    await expect(more.locator("button[data-for]:visible")).toHaveText(["Jig Maker"]);
+    await more.locator("button[data-for]", { hasText: "Jig Maker" }).click();
+    await expect.poll(() => run(() => window.__app.command?.title || "")).toBe("Jig Maker");
+    await run(() => window.__app.advanced.cancel());
+    await page.click("#sr-more"); await page.fill("#simple-find", "");
+    await run(() => window.__app.select(["pl"]));
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), more.locator("button[data-for]", { hasText: "Laser cut file" }).click()]);
+    expect(dl.suggestedFilename()).toMatch(/laser\.svg$/);
+  } finally {
+    await run(() => window.__app.setFace("original", true));
+  }
 });
