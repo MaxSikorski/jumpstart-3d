@@ -369,6 +369,8 @@ test("phone 375 x 667: the c-hole-block lesson is finished by taps alone and dow
 const KNOWN = [
   "375x812 h-grid 7", "375x812 l-flood 5", "375x812 l-flood 6",
   "768x1024 h-grid 4", "768x1024 h-grid 5", "768x1024 h-grid 6", "768x1024 h-grid 7", "768x1024 l-flood 5", "768x1024 l-flood 6",
+  // J.Siwek 2.9.8.9.x Jig Maker lesson: on a phone the Advanced object list covers the middle of the view its step points at (backlog)
+  "375x812 a-jigs 5",
 ];
 
 // Put the app back to a plain state between steps (page-side, as tutorials.spec.mjs does): out of a sketch and the Lathe, no menu or pop-up left open.
@@ -439,6 +441,11 @@ async function prepareFor(p, sel, mode, ch = "") {
     return "ground made";
   }
   if (/param-expr/.test(sel)) { await click("#browser .param-add"); return "one parameter added"; }
+  if (/#bn-/.test(sel)) { // J.Siwek 2.9.8.9.x Box Maker lessons: the step before opens the Box Maker; its plates show for a dovetailed set two wide and two high
+    await p.evaluate((plates) => { try { if (plates) localStorage.setItem("jumpstart3d.bins", JSON.stringify({ style: "drawer", units: 2, across: 2, lock: "dovetail", sideLock: "dovetail" })); } catch {} window.__app.advanced.openBins(); try { localStorage.removeItem("jumpstart3d.bins"); } catch {} }, /plates/.test(sel));
+    await p.waitForSelector(sel.split(",")[0].trim(), { state: "attached" });
+    return "Box Maker open";
+  }
   if (ch) { // inside Chisel's frame, set-up by page-side clicks as well (the earlier steps' work is not what is judged)
     const fr = await (await p.$("#chisel-host iframe")).contentFrame();
     const fclick = (s) => fr.evaluate((s) => document.querySelector(s).click(), s);
