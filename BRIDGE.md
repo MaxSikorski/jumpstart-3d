@@ -288,7 +288,7 @@ The same function as `remove` (in fact `JS3D.delete === JS3D.remove`): deleting 
 - **Since:** 1.0 · synchronous · one undo step ("Delete")
 
 <a id="api-duplicate"></a>
-#### `JS3D.duplicate(ids, [offset]) -> array`
+#### `JS3D.duplicate(ids, [offset]) -> string[]`
 Copies bodies. A copy keeps everything the original has (sizes, features, colour, hole and hidden flags, group parts) and gets a new id, a new place in the stack and a new name with the next free number ("Base 3" when "Base 1" and "Base 2" exist).
 - **Arguments:** `ids`: one body id or an array of ids. `offset`: `[dx, dy, dz]` in mm, the copy's shift along the world axes; default `[0, 0, 0]`, which puts the copy exactly on the original.
 - **Returns:** an array of the new ids, in the order of `ids`.
@@ -387,7 +387,7 @@ Combines two or more bodies into one new body: solids are joined and holes are c
 - **Since:** 1.0 · synchronous · one undo step ("Group")
 
 <a id="api-ungroup"></a>
-#### `JS3D.ungroup(id) -> array`
+#### `JS3D.ungroup(id) -> string[]`
 Splits a group back into its parts, as new bodies in the same places, and removes the group. The way back from `group`.
 - **Arguments:** `id`: one group id.
 - **Returns:** an array of the new part ids.
@@ -544,7 +544,7 @@ Opens the link to an AI tool server on this computer (`mcp/server.mjs`), answers
 - **Arguments:** `url`: the server's address, default `"ws://127.0.0.1:8822"`. It must start `ws://` or `wss://`.
 - **Returns:** `undefined` at once; `connection()` then reports `"waiting"`, and `"connected"` once the server is there. When the socket opens, the page sends `{"hello":"jumpstart-3d","version":"1.13","apiVersion":"1.13.0","app":"2.9.8.2","url":<the page's address>}` (a design link's `#` part is never sent), then `{"id":n,"result":...}` or `{"id":n,"error":"..."}` for each call it receives.
 - **Errors:** throws `url must be a ws:// or wss:// address` for anything else, and nothing changes. A browser that will not let the page reach this computer (Safari on an https page) says so once and keeps retrying. A second page asking for the same server is refused by the server: that page then switches its link off and stops retrying, though the remembered setting stays on, so a reload can take the link later.
-- **Example:** `JS3D.connect(); JS3D.connection().state;   // "waiting", or "connected" when the server is running`
+- **Example:** `JS3D.connect(); JS3D.connection().state;   // "waiting" at first; "connected" a moment later if a tool server is running`
 - **Since:** 1.1 · synchronous · no undo step; opens a socket and shows its state in the theme menu
 
 <a id="api-disconnect"></a>
@@ -669,7 +669,7 @@ Measures bodies and estimates their weight from density.
 - **Since:** 1.10 · async: waits for the geometry engine to settle · does not change the design
 
 <a id="api-measure"></a>
-#### `JS3D.measure(a, b) -> Promise<object>`
+#### `JS3D.measure(a, b) -> Promise<{a, b, distance, exact, kind, from?, to?, delta?, angle?}>`
 Measures a distance between points, bodies or faces.
 - **Arguments:** Each of `a` and `b` is a world point `[x,y,z]` in mm, a body id, `{body, face}` with a zero-based face index, or `{body, near}` with a world point that chooses the nearest face. Explicit bodies may be hidden or holes if built.
 - **Returns:** `a` and `b` echo targets: a point has `point`; a body has `body`, `name`; a face adds `face`, surface `type`, world `center`, optional `normal`, and `nearDistance` in mm when chosen by proximity. `distance` is mm, `exact` indicates the method, and `kind` is `point-point`, `body-body`, `planes` or `mesh`. Point-point also has world `from`, `to`, `delta`; mesh results have closest `from`, `to`. Two faces with normals also have `angle`, the unsigned acute angle from 0 to 90 degrees, and `parallel`; parallel planes use exact plane distance. Mesh distances are approximations.
@@ -678,7 +678,7 @@ Measures a distance between points, bodies or faces.
 - **Since:** 1.10 · async: waits for the geometry engine to settle and, for two bodies, its contact calculation · does not change the design
 
 <a id="api-printCheck"></a>
-#### `JS3D.printCheck({ids, printer, angle}) -> Promise<object>`
+#### `JS3D.printCheck({ids, printer, angle}) -> Promise<{ok, summary, issues, bodies, ignored}>`
 Checks the shown bodies against the plate and common printing problems.
 - **Arguments:** `ids` is one id or an array; omitted, null or empty checks all bodies, ignoring hidden and hole bodies. `printer` defaults to the saved plate choice (initially `"generic"`); use `"none"`, `"generic"`, or any 3D Print Sim printer id, including `a1`, `x1`, `p1s`, `mk4`, `mini`, `ender3`, `u1`. Generic is 256 × 256 mm with no height limit; none has no boundary. `angle` is the overhang threshold in degrees, 10–80, default the saved preference (initially 45).
 - **Returns:** `ok` is false if any error exists; `summary` is readable text; `issues` has `level`, `code`, body `id`, `name`, and `text` (id and name can be null). Codes include `empty`, `wire_only`, `build_error`, `floating`, `below_plate`, `outside_bed`, `too_tall`, `overhang`, `small_contact`. `bodies` has successful `id`, `name`, world `bbox`, `minZ`, `contactArea`, `overhangArea`, `overhangTriangles`, `fits` (null without a bed). Areas are mm². `printer`, `bed` (`{w,d,h}` in mm or null), `angle`, and `ignored` (`id`, `name`, `why`: `hole` or `hidden`) describe the check.
@@ -696,7 +696,7 @@ Finds touching, overlapping or nearby bodies.
 - **Since:** 1.10 · async: waits for the geometry engine to settle, find contacts and probe overlaps · does not change the design
 
 <a id="api-section"></a>
-#### `JS3D.section(plane, {ids, points, picture, width}) -> Promise<object>`
+#### `JS3D.section(plane, {ids, points, picture, width}) -> Promise<{plane, shifted, area, bodies, dataURL?}>`
 Measures cross sections through bodies and can capture a section picture.
 - **Arguments:** `plane` is `{axis: "x"|"y"|"z", at}` in world mm or `{origin, normal}` with world three-number vectors; normal must be nonzero. `ids` is one id or an array, defaulting when omitted, null or empty to shown solid bodies; explicit ids can include built hidden or hole bodies. `points` includes loop points when truthy, default false. `picture` requests a PNG data URL when truthy, default false, in Beginner or Advanced mode; `width` is picture width in pixels from 1 to 8192, default 800.
 - **Returns:** `plane` is `{origin, normal, u, v}` with normalized directions; `shifted` is 0 or 0.0001 mm along the normal to avoid vertices on the plane; `area` is total mm². `bodies` contains intersected `id`, `name`, `area`, and `loops`; each loop has `area` mm², `perimeter` mm, `hole`, `closed`, 2D `min`, `max`, and optionally `points` in the plane's mm coordinates. At most 5000 points are included; `truncated: true` indicates omitted loops' points. `skipped` has `id`, `name`, `error`. With a picture, `dataURL` is the PNG.
