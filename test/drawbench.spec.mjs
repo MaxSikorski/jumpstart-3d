@@ -1,59 +1,29 @@
 // The drawing bench's scorer in the real app, on both builds (test/drawbench/README.md): every reference part scores 100 %
-// against its own truth file, every other correct build passes, every wrong part fails exactly the checks its case lists,
-// a turned and moved copy still scores 100 % and is left exactly as it was, and a part left as a mesh fails the gate.
-// No AI and no key: recipes and project files only.
+// against its own truth file, every other correct build passes, a turned and moved copy still scores 100 % and is left
+// exactly as it was, and a part left as a mesh fails the gate. The wrong parts are in drawbench-wrong.spec.mjs (two files,
+// so the merge gate runs them as parallel jobs). No AI and no key: recipes and project files only.
 import { test, expect } from "@playwright/test";
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { boot, watchErrors } from "./helpers.mjs";
-import { expectWrong, loadCase } from "./drawbench/score.mjs";
-import { buildTruth, scoreDesign, scoreOpenDesign } from "./drawbench/measure.mjs";
+import { expectWrong } from "./drawbench/score.mjs";
+import { scoreDesign, scoreOpenDesign } from "./drawbench/measure.mjs";
+import { caseIds, failing, openCase, recipeOf } from "./drawbench/page.mjs";
 
-const CASES = fileURLToPath(new URL("./drawbench/cases/", import.meta.url));
-const ids = (await readdir(CASES, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
-const recipeOf = async (dir, name) => JSON.parse(await readFile(join(dir, name), "utf8"));
+// No trace: each scoring makes hundreds of calls, and a picture per call in the trace slows the file down several times.
+// The bench's window size (mcp/session.mjs) keeps the 3D view cheap to redraw after each rebuild.
+test.use({ trace: "off", viewport: { width: 1000, height: 700 } });
 
-// JS3D.invoke in the page, as mcp/session.mjs calls it: bytes come back as {"$bytes": base64}
-const callIn = (page) => async (name, args = []) => {
-  const r = await page.evaluate(async ([n, a]) => {
-    try { return { ok: (await window.JS3D.invoke(n, a)) ?? null }; } catch (e) { return { err: (e && e.message) || String(e) }; }
-  }, [name, args]);
-  if (r.err !== undefined) throw new Error(`${name}: ${r.err}`);
-  const v = r.ok;
-  return v && typeof v === "object" && typeof v.$bytes === "string" && Object.keys(v).length === 1 ? Buffer.from(v.$bytes, "base64") : v;
-};
-const failing = (result) => result.checks.filter((c) => c.status !== "pass").map((c) => `${c.id} (${c.status}): ${c.note}`);
-
-async function start(page, info, id) {
-  const errors = watchErrors(page);
-  await boot(page, info);
-  const loaded = await loadCase(join(CASES, id)), call = callIn(page);
-  const truthBuild = await buildTruth(call, await recipeOf(loaded.dir, "truth.recipe.json"));
-  return { ...loaded, call, truthBuild, errors };
-}
-
-for (const id of ids) {
-  test(`${id}: the reference part scores 100 %, other builds pass and each wrong part fails exactly as listed`, async ({ page }, info) => {
+for (const id of caseIds) {
+  test(`${id}: the reference part scores 100 % and every other correct build passes`, async ({ page }, info) => {
     test.setTimeout(600_000);
-    const { kase, truth, dir, call, truthBuild, errors } = await start(page, info, id);
-    const own = (await scoreDesign(call, { kase, truth, truthBuild, design: { recipe: await recipeOf(dir, "truth.recipe.json") } })).result;
+    const { kase, truth, dir, call, truthBuild, errors } = await openCase(page, info, id);
+    const own = (await scoreDesign(call, { kase, truth, truthBuild, design: await recipeOf(dir, "truth.recipe.json") })).result;
     expect(failing(own)).toEqual([]);
     expect(own.score.percent).toBe(100);
     expect(own.pass).toBe(true);
     for (const o of kase.other ?? []) {
-      const result = (await scoreDesign(call, { kase, truth, truthBuild, design: { recipe: await recipeOf(dir, o.recipe) } })).result;
+      const result = (await scoreDesign(call, { kase, truth, truthBuild, design: await recipeOf(dir, o.recipe) })).result;
       const verdict = expectWrong(result, o.fails);
       expect({ other: o.recipe, unexpected: verdict.unexpected, missing: verdict.missing }, failing(result).join("\n")).toEqual({ other: o.recipe, unexpected: [], missing: [] });
       expect(result.pass).toBe(true);
-    }
-    for (const w of kase.wrong) {
-      const result = (await scoreDesign(call, { kase, truth, truthBuild, design: { recipe: await recipeOf(dir, w.recipe) } })).result;
-      const verdict = expectWrong(result, w.fails);
-      expect({ wrong: w.recipe, unexpected: verdict.unexpected, missing: verdict.missing }, failing(result).join("\n")).toEqual({ wrong: w.recipe, unexpected: [], missing: [] });
-      expect(verdict.ok).toBe(true);
-      expect(result.score.percent).toBeLessThan(100);
-      if (w.fails.some((f) => result.checks.find((c) => c.id === f).gating)) expect(result.pass).toBe(false);
     }
     expect(errors).toEqual([]);
   });
@@ -61,7 +31,7 @@ for (const id of ids) {
 
 test("a turned and moved copy of the L-bracket still scores 100 %, on a turn other than the first, and is left as it was", async ({ page }, info) => {
   test.setTimeout(600_000);
-  const { kase, truth, call, truthBuild, errors } = await start(page, info, "l-bracket");
+  const { kase, truth, call, truthBuild, errors } = await openCase(page, info, "l-bracket");
   const saved = await call("save");
   // a quarter turn about x (y becomes z) and a move: the upright now lies flat and the base stands up
   saved.doc.bodies[0].m = [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 12, -7, 30, 1];
@@ -79,7 +49,7 @@ test("a turned and moved copy of the L-bracket still scores 100 %, on a turn oth
 
 test("a part left as a mesh fails the gate and nothing else is scored", async ({ page }, info) => {
   test.setTimeout(600_000);
-  const { kase, truth, call, truthBuild, errors } = await start(page, info, "plate-holes");
+  const { kase, truth, call, truthBuild, errors } = await openCase(page, info, "plate-holes");
   // buildTruth leaves the reference plate open: its STL, packed the way the app stores an imported mesh
   // (two counts, then float positions, then indices), becomes the only body of a new design
   const stl = await call("export", ["stl", {}]), saved = await call("save");

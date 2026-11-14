@@ -104,3 +104,23 @@ test("a blind hole in two half faces is blind: its floor has two arc edges but f
   const edges = [half(5, [20, 10], 4, 2, 0, [2, 3]), half(6, [20, 10], 10, 2, 0, [1, 3]), half(7, [20, 10], 4, 2, 180, [2, 4]), half(8, [20, 10], 10, 2, 180, [1, 4])];
   assert.deepEqual(round(findHoles(faces, edges)).map(({ from, to, through, open }) => ({ from, to, through, open })), [{ from: 4, to: 10, through: false, open: [0, 0, 1] }]);
 });
+
+test("a chamfer at each mouth leaves a through hole; a drill point closes a blind one", () => {
+  const cone = (index, z, edgeCount) => ({ index, type: "cone", center: [0, 0, z], area: 5, edgeCount });
+  const chamfered = { faces: [plane(0, [20, 0, 0], [0, 0, -1], 5), plane(1, [20, 0, 20], [0, 0, 1], 5), cylinder(2, [0, 0, 10], 1, [0, 0, 1], 19.6), cone(3, 0.1, 2), cone(4, 19.9, 2)],
+    edges: [ring(5, [0, 0], 0.2, 1, [2, 3]), ring(6, [0, 0], 19.8, 1, [2, 4]), ring(7, [0, 0], 0, 1.2, [0, 3]), ring(8, [0, 0], 20, 1.2, [1, 4])] };
+  assert.deepEqual(round(findHoles(chamfered.faces, chamfered.edges)).map(({ from, to, through }) => ({ from, to, through })), [{ from: 0.2, to: 19.8, through: true }]);
+  const drilled = { faces: [plane(1, [20, 0, 20], [0, 0, 1], 5), cylinder(2, [0, 0, 15], 3, [0, 0, 1], 10), cone(3, 9, 1)],
+    edges: [ring(5, [0, 0], 10, 3, [2, 3]), ring(6, [0, 0], 20, 3, [1, 2])] };
+  assert.deepEqual(round(findHoles(drilled.faces, drilled.edges)).map(({ through, open }) => ({ through, open })), [{ through: false, open: [0, 0, 1] }]);
+});
+
+test("a long bore in three faces with smooth joins is one hole, though the middle face's area is the mesh's (a little low)", () => {
+  const faces = [plane(0, [20, 0, 0], [0, 0, -1], 5), plane(1, [20, 0, 100], [0, 0, 1], 5),
+    cylinder(2, [0, 0, 10], 6, [0, 0, 1], 20), cylinder(3, [0, 0, 50], 6, [0, 0, -1], 60, 0.9995), cylinder(4, [0, 0, 90], 6, [0, 0, 1], 20)];
+  const edges = [ring(5, [0, 0], 0, 6, [0, 2]), ring(6, [0, 0], 100, 6, [1, 4])];
+  for (const order of [faces, [...faces].reverse()]) {
+    assert.deepEqual(round(findHoles(order, edges)).map(({ from, to, dia, through, segments }) => ({ from, to, dia, through, segments: segments.length })),
+      [{ from: 0, to: 100, dia: 12, through: true, segments: 1 }]);
+  }
+});

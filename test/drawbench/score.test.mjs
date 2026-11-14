@@ -164,3 +164,19 @@ test("other correct builds: validated, listed in the summary, and only editable 
     await assert.rejects(loadCase(join(dir, "plate")), /missing file other-centred\.recipe\.json/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("an enlargement inside a hole is not a counterbore, and a blind counterbored hole must open on the stated side", () => {
+  const t = truth(), p = part();
+  t.checks[1] = { ...holes, id: "cb", count: 1, at: [[40, 25]], dia: 6.6, cbore: { dia: 11, depth: 6.5 }, opens: "+z" };
+  p.holes = [{ axis: [0, 0, 1], point: [40, 25, 0], from: 0, to: 20, dia: 6.6, through: true, open: null,
+    segments: [{ dia: 6.6, from: 0, to: 13 }, { dia: 11, from: 13, to: 19.5 }, { dia: 6.6, from: 19.5, to: 20 }] }];
+  assert.match(byId(check(p, t), "cb").note, /the Ø11 bore of the Ø6\.6 hole at \[40, 25\] is inside the hole, not a counterbore at its opening/);
+  t.checks[1] = { id: "bcb", kind: "holes", dia: 5, count: 1, axis: "z", through: false, depth: 10, at: [[40, 25]], cbore: { dia: 10, depth: 5 }, opens: "+z", tol: 0.1 };
+  const blind = (open, segments) => ({ axis: [0, 0, 1], point: [40, 25, 0], from: 0, to: 10, dia: 5, through: false, open, segments });
+  p.holes = [blind([0, 0, -1], [{ dia: 5, from: 0, to: 5 }, { dia: 10, from: 5, to: 10 }])];
+  assert.match(byId(check(p, t), "bcb").note, /opens on the wrong side \(expected \+z\)/);
+  p.holes = [blind([0, 0, 1], [{ dia: 10, from: 0, to: 5 }, { dia: 5, from: 5, to: 10 }])];
+  assert.match(byId(check(p, t), "bcb").note, /the counterbore of the Ø5 hole at \[40, 25\] is at its closed end/);
+  p.holes = [blind([0, 0, 1], [{ dia: 5, from: 0, to: 5 }, { dia: 10, from: 5, to: 10 }])];
+  assert.equal(byId(check(p, t), "bcb").status, "pass");
+});

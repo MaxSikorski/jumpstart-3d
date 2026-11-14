@@ -21,6 +21,7 @@ Exit codes: 0 every scored design behaved as expected (or the given design passe
 | `score.mjs` | Pure scoring maths, no browser: case checks, tolerances, the 24 turns, hole matching, the score. Node-tested. |
 | `measure.mjs` | Talks to the app through `JS3D.invoke` calls only (inspect, faces, edges, measure, collisions, params, save, load): builds parts, measures them, runs the scorer. |
 | `bench.mjs` | The `npm run drawing-bench` command. |
+| `page.mjs` | What the two Playwright specs (`test/drawbench.spec.mjs`, `test/drawbench-wrong.spec.mjs`) share. |
 | `draw.mjs` | Makes `drawing.png` for each case: the app's own flat views (`JS3D.drawing`) plus the case's dimension lines. |
 | `cases/<id>/` | One reference part: `case.json`, `truth.json`, `truth.recipe.json`, `drawing.png`, `wrong-*.recipe.json`, `other-*.recipe.json`. |
 | `cases/SOURCES.md` | Who made each file, where it came from, its licence. Every case needs a line. |
@@ -119,8 +120,10 @@ gets), and measures it with the app's own calls. It never reads a spec the AI wr
 
 Holes are found from faces: hole-wall cylinders are grouped by axis line, so a counterbore and its bore are one hole, and a
 bore that comes in several faces is one hole. A hole end is closed when the face beyond its end circle is a floor (a flat
-face whose outside points into the hole), a cone (a drill point) or a sphere. A hole open at both ends is through, open at
-one end blind; a cavity closed at both ends is not a hole. Truth centres are matched to built holes one to one.
+face whose outside points into the hole) or a cone or sphere that ends in a point (a drill point; a cone with an edge at
+each end is a chamfer at the mouth). A hole open at both ends is through, open at
+one end blind; a cavity closed at both ends is not a hole. Truth centres are matched to built holes one to one. A counterbore must reach an end of its hole (an enlargement inside
+the hole is not one), at the open end of a blind hole.
 Exact values are used where the app has them (cylinder radii, distances between flat faces, solid volume); the box is the
 mesh's box (within about 0.02 mm on round parts).
 

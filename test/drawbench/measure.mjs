@@ -52,7 +52,8 @@ function circleCentre(e) {
 
 // Holes from JS3D.faces and JS3D.edges of one body: hole-wall cylinders grouped by axis line into stacks (a counterbore
 // and its bore are one hole). A stack end is closed when the face beyond its end circle is a floor (a flat face whose
-// outside points into the hole), a cone or a sphere; a stack closed at both ends is a sealed cavity, not a hole.
+// outside points into the hole) or a cone or sphere that ends in a point (a drill point; a cone with an edge at each end
+// is a chamfer at the mouth); a stack closed at both ends is a sealed cavity, not a hole.
 export function findHoles(faces, edges) {
   const byIndex = new Map(faces.map((f) => [f.index, f]));
   const circlesOf = new Map();
@@ -61,13 +62,14 @@ export function findHoles(faces, edges) {
     const axis = unit(f.axis), circles = (circlesOf.get(f.index) || []).map((e) => ({ e, c: circleCentre(e) }));
     const point = circles[0]?.c ?? f.center, mid = dot(f.center, axis), at = circles.map(({ c }) => dot(c, axis));
     if (at.length && Math.max(...at) - Math.min(...at) < 0.01) at.push(2 * mid - at[0]);
-    if (!at.length) { const half = f.area / (2 * Math.PI * f.radius) / 2; at.push(mid - half, mid + half); }
-    return { f, axis, point, dia: 2 * f.radius, from: Math.min(...at), to: Math.max(...at), circles };
+    let slack = 0.01;
+    if (!at.length) { const half = f.area / (2 * Math.PI * f.radius) / 2; at.push(mid - half, mid + half); slack += 0.02 * half; } // the area is the mesh's, a little low
+    return { f, axis, point, dia: 2 * f.radius, from: Math.min(...at), to: Math.max(...at), circles, slack };
   });
   const groups = [];
   for (const p of pieces) {
     const touching = groups.filter((q) => q.some((o) => Math.abs(dot(o.axis, p.axis)) >= PARALLEL && offAxis(p.point, o.point, o.axis) < 0.01 &&
-      p.from <= o.to + 0.01 && o.from <= p.to + 0.01));
+      p.from <= o.to + o.slack + p.slack && o.from <= p.to + o.slack + p.slack));
     for (const q of touching) groups.splice(groups.indexOf(q), 1); // a piece may join stacks met earlier in another order
     groups.push([p, ...touching.flat()]);
   }
@@ -75,13 +77,13 @@ export function findHoles(faces, edges) {
   for (const g of groups) {
     const axis = g[0].axis, segments = [];
     for (const p of [...g].sort((a, b) => a.from - b.from)) {
-      const s = segments.find((x) => Math.abs(x.dia - p.dia) < 1e-6 && p.from <= x.to + 0.01 && x.from <= p.to + 0.01);
-      if (s) { s.from = Math.min(s.from, p.from); s.to = Math.max(s.to, p.to); s.area += p.f.area; }
-      else segments.push({ dia: p.dia, from: p.from, to: p.to, area: p.f.area });
+      const s = segments.find((x) => Math.abs(x.dia - p.dia) < 1e-6 && p.from <= x.to + x.slack + p.slack && x.from <= p.to + x.slack + p.slack);
+      if (s) { s.from = Math.min(s.from, p.from); s.to = Math.max(s.to, p.to); s.area += p.f.area; s.slack = Math.max(s.slack, p.slack); }
+      else segments.push({ dia: p.dia, from: p.from, to: p.to, area: p.f.area, slack: p.slack });
     }
     if (segments.some((s) => s.area < FULL_TURN * Math.PI * s.dia * (s.to - s.from))) continue; // part of a cylinder: a slot end, a fillet
     const from = Math.min(...segments.map((s) => s.from)), to = Math.max(...segments.map((s) => s.to));
-    const closes = (f, inward) => !!f && (f.type === "cone" || f.type === "sphere" ||
+    const closes = (f, inward) => !!f && (((f.type === "cone" || f.type === "sphere") && f.edgeCount <= 1) ||
       (f.type === "plane" && (f.normal ? dot(f.normal, inward) > 0.5 : f.edgeCount === 1)));
     const end = (at, inward) => {
       const beyond = g.flatMap((p) => p.circles.filter(({ c }) => Math.abs(dot(c, axis) - at) < 0.01).map(({ e }) => e.faces.find((fi) => fi !== p.f.index)));
@@ -182,13 +184,15 @@ const mm = (v) => v.map((x) => +x.toFixed(2)).join(" × ");
 // Editable checks on the kept turn: change a named size, save, reload, measure the box, then put the design back.
 async function editableChecks(call, { kase, truth, part, pose, original }) {
   const sizeCheck = sizeTolOf(truth), params = await call("params"), text = JSON.stringify(original), out = [];
+  let changed = false; // the design is as saved until the first change
   try {
     for (const item of kase.editable) {
       const found = params.filter((p) => Math.abs(p.value - item.param) <= 0.001);
       if (!found.length) { out.push({ id: item.id, status: "fail", measured: null, note: `no named size is ${item.param} mm` }); continue; }
       let result;
       for (const p of found) {
-        await call("load", [text]);
+        if (changed) await call("load", [text]);
+        changed = true;
         try {
           await call("setParam", [p.name, String(item.to)]);
           await call("load", [JSON.stringify(await call("save"))]);
@@ -205,8 +209,10 @@ async function editableChecks(call, { kase, truth, part, pose, original }) {
       out.push(result);
     }
   } finally {
-    await call("load", [text, { keepId: true }]);
-    await call("ready");
+    if (changed) {
+      await call("load", [text, { keepId: true }]);
+      await call("ready");
+    }
   }
   return out;
 }

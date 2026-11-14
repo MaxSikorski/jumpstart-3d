@@ -169,17 +169,18 @@ function holesCheck(c, part, r, truthSize) {
   const opens = c.opens && multiply(r, ["x", "y", "z"].map((a) => (a === c.opens[1] ? (c.opens[0] === "+" ? 1 : -1) : 0)));
   for (const { h, at } of selected) {
     const where = at ? ` at [${at.join(", ")}]` : "";
-    if (opens && !c.cbore && h.through === false && !note && (!opening(h) || dot(opening(h), opens) < 0.99)) note = `the Ø${c.dia} hole${where} opens on the wrong side (expected ${c.opens})`;
+    if (opens && h.through === false && !note && (!opening(h) || dot(opening(h), opens) < 0.99)) note = `the Ø${c.dia} hole${where} opens on the wrong side (expected ${c.opens})`;
     if (h.through !== c.through && !note) note = `the Ø${c.dia} hole${where} is ${h.through === null ? "of unknown depth" : h.through ? "through" : "blind"}, expected ${c.through ? "through" : "blind"}`;
     if (c.depth !== undefined && !within(h.to - h.from, c.depth, tolOf(c.tol, c.depth)) && !note) note = `hole depth ${round(h.to - h.from)} mm, expected ${c.depth} mm`;
     if (c.cbore) {
       const s = [...h.segments].sort((a, b) => b.dia - a.dia)[0];
       const plain = h.segments.length < 2;
       if ((plain || !within(s.dia, c.cbore.dia, tolOf(c.tol, c.cbore.dia)) || !within(s.to - s.from, c.cbore.depth, tolOf(c.tol, c.cbore.depth))) && !note) note = `${plain ? "no counterbore" : `counterbore Ø${round(s.dia)} × ${round(s.to - s.from)}`}, expected Ø${c.cbore.dia} × ${c.cbore.depth}`;
-      if (opens && !plain && !note) {
-        const at = Math.abs(s.from - h.from) < 0.01 ? -1 : 1; // the counterbore sits at the hole's low or high end along its axis
-        if (dot(h.axis.map((v) => v * at), opens) < 0.99) note = `the counterbore of the Ø${c.dia} hole${where} is on the wrong side (expected ${c.opens})`;
-      }
+      const atLow = Math.abs(s.from - h.from) < 0.01, atHigh = Math.abs(s.to - h.to) < 0.01;
+      const side = h.axis.map((v) => v * (atHigh ? 1 : -1)); // the counterbore's end of the hole, as a direction
+      if (!plain && !note && !atLow && !atHigh) note = `the Ø${round(s.dia)} bore of the Ø${c.dia} hole${where} is inside the hole, not a counterbore at its opening`;
+      if (!plain && !note && opening(h) && dot(side, opening(h)) < 0.99) note = `the counterbore of the Ø${c.dia} hole${where} is at its closed end`;
+      if (!plain && !note && opens && dot(side, opens) < 0.99) note = `the counterbore of the Ø${c.dia} hole${where} is on the wrong side (expected ${c.opens})`;
     } else if (h.segments.some((s) => !within(s.dia, c.dia, t)) && !note) note = `the Ø${c.dia} hole${where} has an unexpected bore diameter`;
   }
   return result(c.id, c.kind, note ? "fail" : "pass", c.count, measured, c.tol, note);
