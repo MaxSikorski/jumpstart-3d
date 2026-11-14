@@ -6,6 +6,7 @@
 // { handle, name, files: { <design id>: { file, updated } } }. A copy run compares the list of designs
 // with `files` and writes whatever is newer, so anything missed (permission lapsed, a failed write, the
 // tab closed) is caught up on the next run. Nothing here throws into the app or writes to the console.
+import { embedActive } from "./embed.js";
 import { el } from "./util.js";
 
 const KEY = "folder", MODE = { mode: "readwrite" }, QUIET = 5000;
@@ -48,6 +49,7 @@ export function initFolder({ ps, toast, fileSafe }) {
   };
 
   async function choose() {
+    if (embedActive()) return;
     let handle;
     try { handle = await window.showDirectoryPicker({ id: "jumpstart-3d", mode: "readwrite" }); }
     catch (e) { if (!e || e.name !== "AbortError") toast("That folder can't be used: " + ((e && e.message) || "the browser refused it"), "err"); return; }
@@ -72,6 +74,7 @@ export function initFolder({ ps, toast, fileSafe }) {
   }
 
   async function write(dir, name, data) {
+    if (embedActive()) return;
     const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
     try { await w.write(data); await w.close(); } // the old file is replaced only on close
     catch (e) { try { await w.abort(); } catch (e2) {} throw e; }
@@ -134,7 +137,7 @@ export function initFolder({ ps, toast, fileSafe }) {
 
   // The meta read is queued now, so it is the first thing in the store's chain. When IndexedDB was too slow
   // to wait for and answers later, the store tells us and the read is made again.
-  const load = () => Promise.all([ps.ready, ps.getMeta(KEY)]).then(([, rec]) => {
+  const load = () => embedActive() ? Promise.resolve() : Promise.all([ps.ready, ps.getMeta(KEY)]).then(([, rec]) => {
     supported = ps.kind === "idb" && typeof window.showDirectoryPicker === "function" && !!window.isSecureContext && !window.claude;
     if (supported && rec && rec.handle && rec.files) { record = rec; soon(); }
   }).catch(() => {});

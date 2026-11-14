@@ -890,7 +890,7 @@ export function initProjects(app) {
   renderSaveDl();
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving) && !(app.embed && app.embed.isScratch(store.doc.id))) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null, editedAt); } }); // jumpstart-3d: embed scratch
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving) && !(app.embed && app.embed.isScratch(store.doc.id))) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null, editedAt); } }); // jumpstart-3d: embed scratch; designs storage (putNow starts its writes before this returns; nothing is awaited)
 
   return {
     // a finished render (PNG) goes through the same save path as models

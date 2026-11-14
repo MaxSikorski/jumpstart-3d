@@ -19,19 +19,23 @@ test('site host controls a temporary design and Stop closes the channel', async 
   await expect.poll(() => page.evaluate(() => messages.find(m => m.type === 'js3d-ready'))).toBeTruthy();
   const ready = await page.evaluate(() => messages.find(m => m.type === 'js3d-ready'));
   expect(ready.calls).toContain('add');
-  const added = await call(page, 1, 'add', 'box', {size:{w:40,d:30,h:20}});
-  await call(page, 2, 'ready');
-  expect((await call(page, 3, 'get', added.result)).result.volume).toBeCloseTo(24000, 1);
-  for (const [i, name] of ['run','load','invoke','codeCad','connect'].entries()) expect((await call(page, 4+i, name)).error).toContain('not available');
-  const stl = await call(page, 9, 'export', 'stl');
+  const frameWindow = page.frames().find(f => f.url().startsWith(app));
+  await frameWindow.evaluate(() => window.postMessage({type:'js3d-call', protocol:1, id:100, call:'list'}, location.origin));
+  expect((await call(page, 1, 'setMode', 'arch')).error).toContain('mode');
+  expect(await page.evaluate(() => messages.some(m => m.id === 100))).toBe(false);
+  const added = await call(page, 2, 'add', 'box', {size:{w:40,d:30,h:20}});
+  await call(page, 3, 'ready');
+  expect((await call(page, 4, 'get', added.result)).result.volume).toBeCloseTo(24000, 1);
+  for (const [i, name] of ['run','load','invoke','codeCad','connect'].entries()) expect((await call(page, 5+i, name)).error).toContain('not available');
+  const stl = await call(page, 10, 'export', 'stl');
   expect(stl.result instanceof Object).toBe(true);
-  expect(await page.evaluate(() => { const b = messages.find(m => m.id === 9).result; return b instanceof Uint8Array && b.length > 84 && new DataView(b.buffer, b.byteOffset).getUint32(80, true) > 0; })).toBe(true);
-  await call(page, 10, 'screenshot');
-  expect(await page.evaluate(() => Array.from(messages.find(m => m.id === 10).result.slice(0, 8)))).toEqual([137,80,78,71,13,10,26,10]);
+  expect(await page.evaluate(() => { const b = messages.find(m => m.id === 10).result; return b instanceof Uint8Array && b.length > 84 && new DataView(b.buffer, b.byteOffset).getUint32(80, true) > 0; })).toBe(true);
+  await call(page, 11, 'screenshot');
+  expect(await page.evaluate(() => Array.from(messages.find(m => m.id === 11).result.slice(0, 8)))).toEqual([137,80,78,71,13,10,26,10]);
   const frame = page.frameLocator('iframe'); await frame.getByRole('button', {name:'Stop', exact:true}).click();
   await expect.poll(() => page.evaluate(() => messages.some(m => m.type === 'js3d-closed' && m.reason === 'stopped'))).toBe(true);
   await page.evaluate((app) => document.querySelector('iframe').contentWindow.postMessage({type:'js3d-call',protocol:1,id:20,call:'list'},app), app);
-  await page.waitForTimeout(300); expect(await page.evaluate(() => messages.some(m => m.id === 20))).toBe(false);
+  await page.waitForTimeout(500); expect(await page.evaluate(() => messages.some(m => m.id === 20))).toBe(false);
 });
 test('scratch edits do not write designs and a different load closes the channel', async ({page}, info) => {
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
@@ -49,7 +53,6 @@ test('scratch edits do not write designs and a different load closes the channel
   });
   expect((await call(page, 1, 'list')).result).toEqual([]);
   await call(page, 2, 'add', 'box'); await call(page, 3, 'ready');
-  await page.waitForTimeout(1500);
   expect(await frame.evaluate(() => window.__embedWrites)).toEqual([]);
   await frame.evaluate(() => { const doc = structuredClone(__store.doc); doc.id = 'different-design'; __store.load(doc); });
   await expect.poll(() => page.evaluate(() => messages.some(m => m.reason === 'design-changed'))).toBe(true);
@@ -59,7 +62,11 @@ test('scratch edits do not write designs and a different load closes the channel
 test('unlisted parent gets no reply', async ({page}, info) => {
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
   await openHost(page, `http://127.0.0.2:${port}`);
-  await page.waitForTimeout(3000); expect(await page.evaluate(() => messages.length)).toBe(0);
+  await expect(page.frameLocator('iframe').getByText('Temporary design, not saved', {exact:false})).toBeVisible();
+  const frame = page.frames().find(f => f.url().startsWith(app));
+  await frame.evaluate(() => window.postMessage({type:'js3d-call',protocol:1,id:1,call:'list'}, '*'));
+  await page.evaluate(app => document.querySelector('iframe').contentWindow.postMessage({type:'js3d-call',protocol:1,id:2,call:'list'}, app), app);
+  await page.waitForTimeout(500); expect(await page.evaluate(() => messages.length)).toBe(0);
 });
 test('top-level embed parameter does not activate', async ({page}, info) => {
   test.skip(buildOf(info) !== 'site', 'site only'); await page.goto(`${app}/?embed=${encodeURIComponent(host)}`);
@@ -70,6 +77,9 @@ test('single file embed parameter does not activate', async ({page}, info) => {
   await page.goto(info.project.use.baseURL + '?embed=https%3A%2F%2Fschool.example');
   await expect(page.getByText('Temporary design, not saved')).toHaveCount(0);
   await page.evaluate(() => { window.messages = []; addEventListener('message', e => messages.push(e.data)); const f = document.createElement('iframe'); f.src = location.href; document.body.append(f); });
-  await page.waitForTimeout(3000);
+  await page.locator('iframe').waitFor();
+  const frame = page.frames().find(f => f !== page.mainFrame());
+  await frame.waitForFunction(() => !!window.JS3D);
+  await page.waitForTimeout(500);
   expect(await page.evaluate(() => messages.some(m => m?.type === 'js3d-ready'))).toBe(false);
 });

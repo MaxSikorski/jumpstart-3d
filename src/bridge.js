@@ -579,7 +579,6 @@ export function initBridge(app) {
   window.JS3D = api;
   if (embedActive()) {
     if (app.projects) startEmbed(app, api);
-    else document.addEventListener("DOMContentLoaded", () => startEmbed(app, api), { once: true });
   }
   else app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
 }

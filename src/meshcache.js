@@ -2,9 +2,13 @@
 // instead of rebuilding every body in the geometry engine (a body with spiral cuts can take
 // minutes). Only bodies that took a while to build are kept; the newest 250 stay.
 // Every call fails quietly: without storage the app simply builds as before.
+// jumpstart-3d: embedded geometry never reaches persistent storage.
+import { embedActive } from "./embed.js";
 const DB = "jumpstart3d-meshes", STORE = "m", MAX = 250;
 let dbp = null;
 function open(version) {
+  // jumpstart-3d: embed cache
+  if (embedActive()) return Promise.resolve(null);
   if (dbp) return dbp;
   dbp = new Promise((resolve) => {
     try {
@@ -40,6 +44,8 @@ export function hashKey(version, key) {
   return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36) + ":" + s.length;
 }
 export async function diskGet(version, key) {
+  // jumpstart-3d: embed cache
+  if (embedActive()) return null;
   const db = await open(version);
   if (!db) return null;
   return new Promise((resolve) => {
@@ -57,6 +63,8 @@ export async function diskGet(version, key) {
   });
 }
 export async function diskPut(version, key, mesh, ms = 0) {
+  // jumpstart-3d: embed cache
+  if (embedActive()) return;
   const db = await open(version);
   if (!db) return;
   try {

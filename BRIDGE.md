@@ -426,7 +426,7 @@ Check each tool result for an error before continuing. The headless end-to-end t
 
 ## Embedding in another website
 
-A website can open JumpStart 3D in an iframe and control a temporary design. The design starts blank in Beginner mode and is not saved. The website cannot read or change the user's saved designs through this channel. Modern browsers also separate an embedded site's storage from the host's storage. The user can still open a design inside the frame; that closes the channel. The website can show its own copy of this open-source app, and clicks inside the frame are the user's own.
+A website can open JumpStart 3D in an iframe and control a temporary design. The design starts blank in Beginner mode and is not saved. The website cannot read or change the user's saved designs through this channel. Modern browsers also separate an embedded site's storage from the host's storage. The user can still open a design inside the frame; that closes the channel.
 
 ```html
 <iframe src="https://cad.example/?embed=https%3A%2F%2Fschool.example"
@@ -443,13 +443,19 @@ Replace both addresses with the app and host origins. The `embed` value accepts 
 - `allow-downloads` allows user-initiated downloads inside the app.
 - `referrerpolicy="no-referrer"` keeps the host page address out of the iframe request.
 
-The app sends `{type:"js3d-ready", protocol:1, apiVersion, calls}` to each allowed origin. A host can send `{type:"js3d-hello", protocol:1}` to request it again, at most once per second. Send `{type:"js3d-call", protocol:1, id, call, args}` and receive `{type:"js3d-result", protocol:1, id, result}` or the same message with `error` instead of `result`. IDs must be positive safe integers, strictly increasing. Undefined results become null; byte results are `Uint8Array` objects.
+The app sends `{type:"js3d-ready", protocol:1, apiVersion, calls}` to each allowed origin. A host can send `{type:"js3d-hello", protocol:1}` to request it again, at most once per second. Send `{type:"js3d-call", protocol:1, id, call, args}` and receive `{type:"js3d-result", protocol:1, id, result}` or the same message with `error` instead of `result`. IDs must be positive safe integers, strictly increasing. Undefined results become null; byte results are `Uint8Array` objects with their own tightly sized buffer.
 
-Calls run one at a time in arrival order. Up to 16 may wait; at most 30 calls per second are accepted. Arguments must be simple JSON-like values, at most 1 MiB and 32 levels deep, with no `__proto__`, `constructor`, or `prototype` keys. Results are limited to 32 MiB. If a result is too large, the edit itself has already happened. `export` returns bytes and does not download. `setMode` and `newDesign` accept only `beginner` and `advanced`; a new design remains temporary. `printCheck` defaults to the generic printer and 45 degrees.
+Calls run one at a time in arrival order. Up to 16 may wait; at most 30 calls per second are accepted. Arguments must be simple JSON-like values, at most 1 MiB, 100,000 values and 32 levels deep, with no `__proto__`, `constructor`, or `prototype` keys. Repeated object references and sparse arrays are refused; arrays may have at most 100,000 items. Results are limited to 32 MiB. If a result is too large, the edit itself has already happened. `export` returns bytes and does not download. `setMode` and `newDesign` accept only `beginner` and `advanced`; a new design remains temporary. `printCheck` defaults to the generic printer and 45 degrees.
 
 The ready message lists the available calls from: `supports`, `describe`, `ready`, `kinds`, `list`, `get`, `doc`, `save`, `params`, `mode`, `selection`, `add`, `fastener`, `holePattern`, `gear`, `namePlate`, `knurl`, `spring`, `remove`, `delete`, `duplicate`, `move`, `moveTo`, `rotate`, `resize`, `scale`, `setHole`, `setColor`, `rename`, `setHidden`, `group`, `ungroup`, `setParam`, `removeParam`, `bind`, `undo`, `redo`, `select`, `fit`, `setMode`, `screenshot`, `screenshotDataURL`, `export`, `newDesign`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `pattern`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `boxMaker`, `gearSet`, `hardware`, `textures`, `texture`, `drawing`, `checkpoint`, `checkpoints`, `diff`, `rollback`. Calls missing from this app version are unavailable. `run`, `codeCad`, `load`, `invoke`, `connect`, `disconnect`, `connection`, `internals`, `version`, `appVersion`, `apiVersion` and all other names are refused.
 
-Stop closes the channel until reload. Opening a different design also closes it. The app sends `{type:"js3d-closed", protocol:1, reason:"stopped"}` or `reason:"design-changed"`; calls that finish after closure get no reply.
+Stop, opening a different design, and leaving the page close the channel until reload. Each call has 10 minutes; if it takes longer, the app sends an error and closes the channel because the call may still be running. The app sends `{type:"js3d-closed", protocol:1, reason}` with `stopped`, `design-changed`, `pagehide`, or `timeout`. Calls that finish after closure get no reply.
+
+The frame reads existing settings, but settings changes stay in memory for this page, including `?face=`. It neither reads nor writes the persistent mesh cache and does not start or write folder copies.
+
+### What is not protected
+
+The frame reads the app’s saved display unit and export quality settings, which can affect call results. A website can ask the frame to build huge geometry, which may slow its own page; with site isolation the frame runs in its own process. A website can show its own copy of this open-source app, and clicks inside the frame are the user’s own.
 
 A complete host example (serve it from the allowed origin and change the app address):
 
