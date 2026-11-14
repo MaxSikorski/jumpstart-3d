@@ -186,7 +186,7 @@ test("textures use mesh detail and reject changes while waiting", async () => {
         if (change === "hole") JS3D.setHole(id, true); else JS3D.resize(id, { w: 35 });
         try { await p; return null; } catch (e) { return e.message; }
       }, change);
-      expect(result).toBe("Changing changed while the texture was being prepared; try again");
+      expect(result).toBe("\"Changing\" changed while the texture was being prepared; try again");
     }
   } finally { await run(() => { __app.setMeshDetail("normal", true, true); return JS3D.ready(); }); }
 });
