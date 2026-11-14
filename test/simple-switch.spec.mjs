@@ -303,10 +303,11 @@ test("Simple shows Your designs in the top bar after Save, in Beginner and Advan
   expect(await page.evaluate(() => document.querySelector(".topbar").offsetHeight)).toBeLessThan(50);
 });
 
-test("Simple's top bar stays one row at 1366 and 1920 with Designs in it", async ({ page }, info) => {
+test("Simple's top bar stays one row with Designs in it, from a 641 px tablet to 1920", async ({ page }, info) => {
   test.skip(mobile(info), "phones are checked separately");
   await boot(page, info); await toSimple(page);
-  for (const width of [1366, 1920]) {
+  // 820 to 861 px already took two rows before Designs joined the bar; a 768 px tablet did not, and a second row there moved the Lathe out from under its lesson
+  for (const width of [641, 700, 761, 768, 780, 800, 900, 960, 1366, 1920]) {
     await page.setViewportSize({ width, height: 880 });
     for (const mode of ["beginner", "advanced"]) {
       await page.evaluate((m) => window.__app.switchMode(m), mode);

@@ -473,7 +473,8 @@ html[data-face="simple"] #menu-theme :is([data-layout], .layout-note) { display:
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) { min-width: 44px; min-height: 44px; justify-content: center; }
 }
-@media (max-width: 400px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: none !important; } }
+@media (max-width: 400px), (min-width: 641px) and (max-width: 920px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: none !important; } } /* and from 641 to 920 px, where Designs would push Print / Export onto a second row (a 768 px tablet) */
+@media (min-width: 641px) and (max-width: 920px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar { padding-left: 6px; padding-right: 6px; } }
 .try-simple { position: absolute; left: 14px; bottom: 56px; top: auto; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
 .try-simple p { margin: 0 0 10px; }
 .try-simple button { font: 600 13px/1 var(--f-ui); cursor: pointer; border: 0; border-radius: 6px; padding: 7px 10px; }
