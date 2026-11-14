@@ -66,7 +66,7 @@ export function initBridge(app) {
   };
   const idList = (ids, allowEmpty) => {
     const list = [...new Set(Array.isArray(ids) ? ids : [ids])];
-    if (!list.length && !allowEmpty) throw new Error(`no body ids given: ids ${show(ids)} must contain at least one body id. Call JS3D.list() to see the body ids.`);
+    if (!list.length && !allowEmpty) throw new Error(`no body ids given, got ids ${show(ids)}. Call JS3D.list() to see the body ids.`);
     list.forEach(need);
     return list;
   };
@@ -83,7 +83,7 @@ export function initBridge(app) {
     if (app.command) app.command.cancel();
   };
   const bool = (v, what) => {
-    if (typeof v !== "boolean") throw new Error(`${what} must be true or false, got ${show(v)}. Use true or false.`);
+    if (typeof v !== "boolean") throw new Error(`${what} must be true or false, got ${show(v)}. Try true.`);
     return v;
   };
   const isPlain = (b) => b.node.t === "prim" && !(b.node.mods && b.node.mods.length);
@@ -101,15 +101,15 @@ export function initBridge(app) {
   function sizePatch(kind, size, base = PRIM_DEFAULTS[kind]) {
     if (size === undefined) return {};
     if (Array.isArray(size)) {
-      if (size.length !== 3 || !("w" in base)) throw new Error(`${kind} size must be {${Object.keys(base).join(", ")}}, got ${show(size)}. Use the listed size keys.`);
+      if (size.length !== 3 || !("w" in base)) throw new Error(`${kind} size must be {${Object.keys(base).join(", ")}}, got ${show(size)}. Call JS3D.kinds() to see defaults.`);
       size = { w: size[0], d: size[1], h: size[2] };
     }
-    if (typeof size !== "object" || size === null) throw new Error(`size must be {w, d, h} or [w, d, h], got ${show(size)}. Use an object of size values.`);
+    if (typeof size !== "object" || size === null) throw new Error(`size must be {w, d, h} or [w, d, h], got ${show(size)}. Call JS3D.kinds() to see size keys.`);
     const p = {};
     for (const [k, v] of Object.entries(size)) {
-      if (!(k in base)) throw new Error(`${kind} has no size ${show(k)}; it has: ${Object.keys(base).join(", ")}. Use one of those keys.`);
+      if (!(k in base)) throw new Error(`${kind} has no size ${show(k)}, got ${show(v)}; it has: ${Object.keys(base).join(", ")}. Call JS3D.kinds() to see defaults.`);
       if (typeof base[k] === "string") {
-        if (typeof v !== "string" || !v) throw new Error(`${k} must be a non-empty string, got ${show(v)}. Use a non-empty string.`);
+        if (typeof v !== "string" || !v) throw new Error(`${k} must be a non-empty string, got ${show(v)}. Try "text".`);
       } else if (INTEGER_KEYS.has(k)) {
         if (!Number.isInteger(v) || v < 3) throw new Error(`${k} must be a whole number of at least 3, got ${show(v)}. Try 3.`);
       } else {
@@ -145,7 +145,7 @@ export function initBridge(app) {
   // and guessing would make the result depend on timing.
   function centreOf(ids) {
     const boxes = ids.map((id) => {
-      if (!built(id)) throw new Error(`${need(id).name} is still being built; opts.about must be a point when the body is not ready. Wait with await JS3D.ready(), or pass opts.about.`);
+      if (!built(id)) throw new Error(`${need(id).name} is still being built or has a build error. Wait with await JS3D.ready() and check JS3D.list(), or pass opts.about.`);
       return app.scene.bodyTightBox(id);
     });
     return boxes.reduce((a, b) => a.union(b)).getCenter(new THREE.Vector3()).toArray();
@@ -223,7 +223,7 @@ export function initBridge(app) {
     // ----------------------------------------------------------- shapes
     add(kind, opts = {}) {
       edit();
-      if (!PRIM_DEFAULTS[kind]) throw new Error(`unknown kind ${show(kind)}; valid kinds: ${Object.keys(PRIM_DEFAULTS).join(", ")}. Call JS3D.kinds() to see their sizes.`);
+      if (!PRIM_DEFAULTS[kind]) throw new Error(`unknown kind ${show(kind)}; valid kinds: ${Object.keys(PRIM_DEFAULTS).join(", ")}. Call JS3D.kinds() for their sizes.`);
       const p = sizePatch(kind, opts.size);
       const at = vec3(opts.at ?? [0, 0, 0], "at");
       if (opts.color !== undefined && !COLOR.test(opts.color)) throw new Error(`color must look like "#rrggbb", got ${show(opts.color)}. Try "#ff0000".`);
@@ -260,7 +260,7 @@ export function initBridge(app) {
     moveTo(id, pos) {
       edit();
       need(id);
-      const [x, y, z] = vec3(pos, "position");
+      const [x, y, z] = vec3(pos, "pos");
       store.update((doc) => { const m = findBody(doc, id).m.slice(); m[12] = x; m[13] = y; m[14] = z; findBody(doc, id).m = m; }, "Move");
     },
     rotate(ids, axis, degrees, opts = {}) {
@@ -269,7 +269,7 @@ export function initBridge(app) {
       const a = new THREE.Vector3(...(typeof axis === "string" ? (Object.hasOwn(AXES, axis.toLowerCase()) ? AXES[axis.toLowerCase()] : [0, 0, 0]) : Array.isArray(axis) ? vec3(axis, "axis") : [0, 0, 0]));
       if (!a.lengthSq()) throw new Error(`axis must be "x", "y", "z" or a nonzero [x, y, z], got ${show(axis)}. Example: JS3D.rotate(id, "z", 45).`);
       if (typeof degrees !== "number" || !isFinite(degrees)) throw new Error(`degrees must be a finite number, got ${show(degrees)}. Example: JS3D.rotate(id, "z", 45).`);
-      const c = vec3(opts.about ?? centreOf(ids), "about");
+      const c = vec3(opts.about ?? centreOf(ids), "opts.about");
       const R = translation(c).multiply(new THREE.Matrix4().makeRotationAxis(a.normalize(), (degrees * Math.PI) / 180)).multiply(translation(c.map((x) => -x)));
       transformBodies(ids, R, "Rotate");
     },
@@ -291,7 +291,7 @@ export function initBridge(app) {
       ids = idList(ids);
       const kk = typeof k === "number" ? [k, k, k] : k;
       if (!Array.isArray(kk) || kk.length !== 3 || !kk.every((x) => typeof x === "number" && isFinite(x) && x > 0)) throw new Error(`k must be a positive number or [kx, ky, kz], got ${show(k)}. Try 2.`);
-      const about = new THREE.Vector3(...vec3(opts.about ?? centreOf(ids), "about"));
+      const about = new THREE.Vector3(...vec3(opts.about ?? centreOf(ids), "opts.about"));
       store.update((doc) => {
         for (const id of ids) {
           const b = findBody(doc, id);
@@ -332,7 +332,7 @@ export function initBridge(app) {
       if (ids.length < 2) throw new Error(`group needs at least two bodies, got ids ${show(ids)}. Call JS3D.list() to see the body ids.`);
       if (opts.op !== undefined && opts.op !== "intersect" && opts.op !== "cut") throw new Error(`op must be "intersect" or "cut" (leave it out to join), got ${show(opts.op)}. Remove op to join.`);
       const id = groupBodies(ids, { name: opts.name, op: opts.op, target: opts.op === "cut" ? ids[0] : undefined });
-      if (!id) throw new Error(`could not group those bodies: fewer than two ids in ${show(ids)} were found. Call JS3D.list() to see the body ids.`);
+      if (!id) throw new Error(`could not group those bodies: fewer than two ids in ${show(ids)} were found in the design. Call JS3D.list() and retry with two existing ids.`);
       return id;
     },
     ungroup(id) {
@@ -341,9 +341,9 @@ export function initBridge(app) {
       if (b.node.t !== "group") throw new Error(`body ${show(id)} is not a group. Call JS3D.list() to see body kinds.`);
       // ungroupBody would drop features other than a resize without a word
       const mods = b.node.mods || [];
-      if (mods.length && !(mods.length === 1 && mods[0].t === "scale")) throw new Error("this group has features (fillets, holes...); so it cannot be ungrouped. Remove its features with JS3D.undo() or in the Advanced tree first.");
+      if (mods.length && !(mods.length === 1 && mods[0].t === "scale")) throw new Error("this group has features (fillets, holes...) and cannot be ungrouped. Remove all its features with JS3D.undo() or delete them in the Advanced tree first.");
       const out = ungroupBody(id);
-      if (!out.length) throw new Error("this group was stretched at an angle, so it cannot be split back into shapes. Undo the stretch first.");
+      if (!out.length) throw new Error("this group was stretched at an angle, so it cannot be split back into shapes. Undo the scale with JS3D.undo() until the group can be ungrouped.");
       return out;
     },
 
@@ -353,10 +353,10 @@ export function initBridge(app) {
       edit();
       if (typeof name !== "string") throw new Error(`name must be a string, got ${show(name)}. Try "width".`);
       expr = String(expr).trim();
-      if (!expr) throw new Error(`expression is empty: expr ${show(expr)} must contain a number or formula. Try "10".`);
+      if (!expr) throw new Error(`expression is empty, got expr ${show(expr)}. Try "10".`);
       if (opts.unit !== undefined && opts.unit !== "in" && opts.unit !== "mm") throw new Error(`unit must be "mm" or "in", got ${show(opts.unit)}. Try "mm".`);
       const old = store.doc.params.find((p) => p.name.toLowerCase() === name.toLowerCase());
-      if (!old) { const why = paramNameOk(name, store.doc.params); if (why) throw new Error(`${why}: name ${show(name)} must be a valid, unique parameter name. Try a different name.`); }
+      if (!old) { const why = paramNameOk(name, store.doc.params); if (why) throw new Error(`${why.replace(`"${name}"`, show(name))} Got name ${show(name)}. Try "width".`); }
       let value, bad = false;
       store.update((doc) => {
         let p = old && doc.params.find((q) => q.id === old.id);
@@ -367,7 +367,7 @@ export function initBridge(app) {
         if (!isFinite(p.value)) { bad = true; return false; } // leaves the design and the history untouched
         value = p.value;
       }, old ? "Edit parameter" : "Add parameter");
-      if (bad) throw new Error(`expression did not evaluate: expr ${show(expr)} must give a finite number. Check the expression and parameter names.`);
+      if (bad) throw new Error(`expression did not evaluate to a finite number, got expr ${show(expr)}. Call JS3D.params() to check parameter names.`);
       return value;
     },
     removeParam(name) {
@@ -423,7 +423,7 @@ export function initBridge(app) {
       // like the Export menu with nothing selected: every shown solid (named bodies too: holes and hidden ones are left out)
       const bodies = (opts.ids ? idList(opts.ids).map(need) : store.doc.bodies).filter((b) => !b.hole && !b.hidden);
       const failed = bodies.find((b) => app.scene.errors.has(b.id));
-      if (failed) throw new Error(`"${failed.name}" has a build error (${withKernelHint(app.scene.errors.get(failed.id))}). Fix that body (see JS3D.list()) or leave it out with opts.ids, then export again.`);
+      if (failed) throw new Error(`"${failed.name}" has a build error (${withKernelHint(app.scene.errors.get(failed.id))}). Check JS3D.list() for it, then fix it or leave it out with opts.ids and export again.`);
       const items = bodies.length && (kind === "stl" || kind === "3mf") ? await app.projects.exportItems(bodies) : bodies;
       const bytes = bodies.length ? await app.projects[FILES[kind]](items) : null;
       if (!bytes) throw new Error("nothing to export: holes and hidden shapes are left out. Show a solid body and retry.");
@@ -462,7 +462,7 @@ export function initBridge(app) {
     // A script with top-level await or a trailing return does not parse as a plain script; it is run as the body
     // of an async function instead. The eval lives in a string so the bundler never sees a direct eval.
     async run(text) {
-      if (typeof text !== "string") throw new Error(`run needs the script as text, got ${show(text)}. Pass a string containing JavaScript.`);
+      if (typeof text !== "string") throw new Error(`run needs the script as text, got ${show(text)}. Try "return JS3D.list()".`);
       let began = false;
       const asScript = new AsyncFunction("JS3D", "app", "__src", "__began", "return eval('__began();\\n' + __src)");
       try {
@@ -477,7 +477,7 @@ export function initBridge(app) {
     // The one way a call arrives from outside: the tool server's WebSocket client and its headless page both use
     // this, so they cannot drift apart. A Uint8Array result becomes {"$bytes": base64}, because JSON has no bytes.
     async invoke(call, args = []) {
-      if (call === "invoke" || !Object.hasOwn(api, call) || typeof api[call] !== "function") throw new Error(`unknown call ${show(call)}; call must name a JS3D function other than invoke. Check the JS3D API reference.`);
+      if (call === "invoke" || !Object.hasOwn(api, call) || typeof api[call] !== "function") throw new Error(`unknown call ${show(call)}. Check BRIDGE.md for JS3D function names; invoke cannot call itself.`);
       if (!Array.isArray(args)) throw new Error(`args must be an array, got ${show(args)}. Pass an array such as [].`);
       const r = await api[call](...args);
       return r instanceof Uint8Array ? { $bytes: base64(r) } : r;

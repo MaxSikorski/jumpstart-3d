@@ -11,6 +11,7 @@ import { FASTENER_KINDS, sizesFor, sizeData, defaultLength, fastenerPart, partLo
 import { LIB } from "./texture.js";
 import { drawBodies } from "./bodydrawing.js";
 import { boxOptions, gearSetOptions, textureOptions, drawingOptions, at3, generatorName } from "./genopts.js";
+import { show } from "./teach.js";
 
 const T3 = (v) => arr(new THREE.Matrix4().makeTranslation(...v));
 export function initBridgeGen(app, { edit, need, idList, ready, api }) {
@@ -64,18 +65,18 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
   function hardware(opts = {}) {
     edit();
     const o = opts ?? {}, keys = "part size length threads clear left at name".split(" ");
-    for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option "${k}"; options: ${keys.join(", ")}`);
+    for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option "${k}"; options: ${keys.join(", ")}. Remove or correct that option.`);
     const kinds = FASTENER_KINDS.filter((k) => k.id !== "cutter"), kind = kinds.find((k) => k.id === o.part);
-    if (!kind) throw new Error(`part must be one of: ${kinds.map((k) => k.id).join(", ")}`);
+    if (!kind) throw new Error(`part must be one of: ${kinds.map((k) => k.id).join(", ")}, got ${show(o.part)}. Example: JS3D.hardware({ part: "hexbolt", size: "M3" }).`);
     const key = typeof o.size === "string" ? o.size.trim().replace(/^(\d+\/\d+)-/, '$1"-') : "", std = key.startsWith("M") ? "metric" : "inch";
-    if (!sizesFor(kind.id, std).includes(key) || (kind.metricOnly && std === "inch")) throw new Error(`unknown size "${o.size}" for part "${kind.id}"; sizes: ${[...sizesFor(kind.id, "metric"), ...(kind.metricOnly ? [] : sizesFor(kind.id, "inch"))].join(", ")}`);
-    if (o.length != null && !kind.len) throw new Error(`length is not used for part "${kind.id}"`);
-    if (o.length != null && (typeof o.length !== "number" || !Number.isFinite(o.length) || o.length < 1 || o.length > 300)) throw new Error("length must be a number from 1 to 300 (mm)");
+    if (!sizesFor(kind.id, std).includes(key) || (kind.metricOnly && std === "inch")) throw new Error(`unknown size ${show(o.size)} for part "${kind.id}"; sizes: ${[...sizesFor(kind.id, "metric"), ...(kind.metricOnly ? [] : sizesFor(kind.id, "inch"))].join(", ")}. Try one of those, for example "M3".`);
+    if (o.length != null && !kind.len) throw new Error(`length is not used for part "${kind.id}", got ${show(o.length)}. Leave length out for this part.`);
+    if (o.length != null && (typeof o.length !== "number" || !Number.isFinite(o.length) || o.length < 1 || o.length > 300)) throw new Error(`length must be a number from 1 to 300 (mm), got ${show(o.length)}. Try 12.`);
     const len = o.length ?? defaultLength(kind.id, std, key);
-    for (const k of ["threads", "left"]) if (o[k] != null && typeof o[k] !== "boolean") throw new Error(`${k} must be true or false`);
+    for (const k of ["threads", "left"]) if (o[k] != null && typeof o[k] !== "boolean") throw new Error(`${k} must be true or false, got ${show(o[k])}. Try true.`);
     const threads = o.threads ?? false, left = o.left ?? false;
-    if (threads && !kind.thread) throw new Error(`part "${kind.id}" has no thread`);
-    if (o.clear != null && (typeof o.clear !== "number" || !Number.isFinite(o.clear) || o.clear < -1 || o.clear > 0)) throw new Error("clear must be a number from -1 to 0 (mm)");
+    if (threads && !kind.thread) throw new Error(`part "${kind.id}" has no thread, got threads: ${show(o.threads)}. Leave threads out for this part.`);
+    if (o.clear != null && (typeof o.clear !== "number" || !Number.isFinite(o.clear) || o.clear < -1 || o.clear > 0)) throw new Error(`clear must be a number from -1 to 0 (mm), got ${show(o.clear)}. Try -0.2.`);
     const clear = o.clear ?? (store.doc.threadOffset || 0), at = at3(o.at), n = Math.round(len / sizeData(std, key).p);
     if (threads && kind.len && n > MAX_TURNS) throw new Error(tooMany(n));
     const name = generatorName(o.name), pt = fastenerPart(kind.id, std, key, len, { threads, clear, left }), id = uid("b");
@@ -86,7 +87,7 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
   async function texture(id, opts = {}) {
     edit();
     const b = need(id), { layer, faces } = textureOptions(opts ?? {});
-    if (b.hole) throw new Error(`${b.name} is marked as a hole; textures go on solid bodies`);
+    if (b.hole) throw new Error(`${b.name} is marked as a hole; textures go on solid bodies. JS3D.list() marks the holes with hole: true; pick a solid body.`);
     const checkLimit = (body) => { if ((body.textures || []).length >= 16) throw new Error(`${body.name} already has 16 textures; remove one in the Texture dialog first`); };
     checkLimit(b);
     const key = bodyKey(resolveNode(b.node, store.doc));
@@ -98,9 +99,9 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     };
     await ready();
     validate();
-    if (app.scene.errors.has(id)) throw new Error(`${b.name} has a build error: ${app.scene.errors.get(id)}`);
+    if (app.scene.errors.has(id)) throw new Error(`${b.name} has a build error: ${app.scene.errors.get(id)}. Fix the shape, then call JS3D.texture again.`);
     const r = baseOf(app, id);
-    if (!r) throw new Error(`${b.name} could not be built`);
+    if (!r) throw new Error(`${b.name} could not be built. Call JS3D.get(${show(id)}) to see its error and await JS3D.ready(), then try again.`);
     let stored = "all";
     if (faces !== "all") {
       const list = [], seen = new Set();
@@ -108,7 +109,7 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
         for (const face of await api.faces(id, selector)) if (!seen.has(face.index)) { seen.add(face.index); list.push(face); }
       }
       validate();
-      if (!list.length) throw new Error(`faces ${JSON.stringify(faces)} matches no face of ${b.name}`);
+      if (!list.length) throw new Error(`faces ${show(faces)} matches no face of ${b.name}. Call JS3D.faces(${show(id)}) to see the faces it has.`);
       stored = list.map(({ index }) => { const f = r.data.faceInfo[index]; return f.n ? { c: f.c, t: f.t, n: f.n } : { c: f.c, t: f.t }; });
     }
     const tid = uid("t");
@@ -119,11 +120,11 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     const d = drawingOptions(opts ?? {});
     await ready();
     const bodies = (d.ids !== undefined ? idList(d.ids).map(need) : store.doc.bodies).filter((b) => !b.hole && !b.hidden);
-    if (!bodies.length) throw new Error("nothing to draw: holes and hidden shapes are left out");
+    if (!bodies.length) throw new Error("nothing to draw: holes and hidden shapes are left out. Show a body with JS3D.setHidden(id, false), or pass opts.ids of solid ones.");
     const failed = bodies.find((b) => app.scene.errors.has(b.id));
     if (failed) throw new Error(`"${failed.name}" has a build error (${app.scene.errors.get(failed.id)}); fix it before drawing`);
     const { text, skipped } = await drawBodies(app, bodies, d);
-    if (skipped.length) throw new Error(`could not draw: ${skipped.map((id) => bodies.find((b) => b.id === id)?.name || id).join(", ")}`);
+    if (skipped.length) throw new Error(`could not draw: ${skipped.map((id) => bodies.find((b) => b.id === id)?.name || id).join(", ")}. Call JS3D.get(id) on those bodies and await JS3D.ready(), then try again.`);
     return new TextEncoder().encode(text);
   }
   return { boxMaker, gearSet, hardware, textures, texture, drawing };
