@@ -21,7 +21,6 @@
       "ad-sketch3d"
     ],
     "Beginner toolbar": [
-      "bb-bins",
       "bb-cosforge",
       "bb-extrude",
       "bb-facebox",
@@ -165,6 +164,18 @@
       "ar-porch",
       "ar-rail",
       "ar-stairs"
+    ],
+    "J.Siwek 2.9.8.3 to 2.9.8.9.8 (upstream29898.spec.mjs covers Layerscape, Helmet Maker, Colour Lithophane and laser files)": [
+      "bb-layerscape",
+      "sim-layerscape",
+      "sim-helmet",
+      "ps-r-litho",
+      "exp-laser-svg",
+      "exp-laser-dxf",
+      "ps-r-prepare",
+      "ps-r-preview",
+      "ps-r-slice",
+      "ps-r-arrange"
     ]
   }
 }
