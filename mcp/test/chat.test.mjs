@@ -32,6 +32,12 @@ test("the chat has the same tools as the server, in the same order", () => {
   }
 });
 
+test("tool descriptions are at most 600 characters", () => {
+  for (const [source, tools] of [["server", server], ["chat", chat]]) {
+    for (const t of tools) assert.ok(t.description.length <= 600, `${source}: ${t.name} has ${t.description.length} characters`);
+  }
+});
+
 test("descriptions and parameters match, except for the seven that differ on purpose", () => {
   for (const t of chat) {
     if (DIFFERENT.includes(t.name)) continue;
