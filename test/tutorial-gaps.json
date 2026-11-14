@@ -97,17 +97,6 @@
       "hole-tile:tube",
       "hole-tile:wedge"
     ],
-    "Advanced 3D print sim toolbar": [
-      "ps-r-auto",
-      "ps-r-gcode",
-      "ps-r-lay",
-      "ps-r-layers",
-      "ps-r-model",
-      "ps-r-play",
-      "ps-r-rx",
-      "ps-r-ry",
-      "ps-r-strength"
-    ],
     "Advanced simulate toolbar": [
       "sim-apply",
       "sim-bins",
@@ -169,13 +158,7 @@
       "bb-layerscape",
       "sim-layerscape",
       "sim-helmet",
-      "ps-r-litho",
-      "exp-laser-svg",
-      "exp-laser-dxf",
-      "ps-r-prepare",
-      "ps-r-preview",
-      "ps-r-slice",
-      "ps-r-arrange"
+      "ps-r-litho"
     ]
   }
 }

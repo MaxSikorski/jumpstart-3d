@@ -518,7 +518,7 @@ export function initTutorials(app) {
     spot = t;
     t.classList.add("tut-spot");
     { // jumpstart-3d: our phone and scrolling help (targets inside Chisel's frame are measured in page coordinates below)
-      try { if (t.closest(".bbar, #ribbon, .menu")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now), or an item low in an open menu that scrolls on a phone (Code CAD in Open/Export), scrolls into view before the pop-up points at it
+      try { if (t.closest(".bbar, #ribbon, .menu, #simple-more, #simple-shapes")) t.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} // jumpstart-3d: a toolbar button past the right edge (Beginner has a CosForge button now), or an item low in an open menu that scrolls on a phone (Code CAD in Open/Export) or in Simple's More panel (Laser cut file), scrolls into view before the pop-up points at it
       // jumpstart-3d: phone and tablet lessons: a target inside a box that scrolls (the right panel's fields, the lesson's own name boxes) is scrolled into that box's view, and Show me never points at something the lesson panel covers
       const box = t.closest("#tut-panel, .float .body");
       if (box && (loud || box.id !== "tut-panel")) { const b = box.getBoundingClientRect(), q = t.getBoundingClientRect(); if (q.top < b.top || q.bottom > b.bottom) box.scrollTop += q.top - b.top - Math.max(0, (b.height - q.height) / 2); }
