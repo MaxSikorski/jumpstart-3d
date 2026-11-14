@@ -210,7 +210,7 @@ export function initSimpleAdvanced(app, plate, collapse) {
   for (const [id,via] of [['ad-hole-m','ad-features'],['ad-fastbtn'],['ad-ins-fast','ad-insert'],['ad-ins-hinge','ad-insert'],['ad-ins-gear','ad-insert'],['ps-r-litho']]) aliases.lastChild.append(button(id,id,'more',via));
   const other = section('Other','sadv-other');
   const titles = Object.fromEntries(groups.flatMap(([, items]) => items.map(([id,, , , title]) => [id, title]))); Object.assign(titles, {'ws-design':'Design: sketch, extrude, pattern and measure','ws-print':'3D Print Sim: orient, arrange, slice and G-code','ws-simulate':'Simulate: joint, motion, stress and voxel', 'ad-edge':'Round (fillet) or bevel (chamfer) edges; switch between them in More › Modify', 'ad-shell':'Shell: hollow out a body, leaving walls', 'ad-prims':'Primitives: shapes box cylinder'});
-  let previousSet = '', menuFromRail = null, ignoreClick = false, lastRailFocus = null;
+  let previousSet = '', menuFromRail = null, ignoreClick = false, lastRailFocus = null, restoreSketchFocus = false;
   rail.addEventListener('focusin', e => { lastRailFocus = e.target.closest('button'); });
   document.addEventListener('focusin', e => { if (!rail.contains(e.target)) lastRailFocus = null; });
   document.addEventListener('pointerdown', e => { if (!rail.contains(e.target)) lastRailFocus = null; }, true);
@@ -241,6 +241,10 @@ export function initSimpleAdvanced(app, plate, collapse) {
   window.addEventListener('pointerdown', e => { if (root.dataset.face === 'simple' && e.target.closest?.('#sar button') === menuFromRail && menuFromRail && $('ribbon-menu')) { ignoreClick = true; e.stopPropagation(); } }, true);
   sar.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
+    if (root.dataset.face === 'simple' && app.mode === 'beginner' && app.sketcher?.active && ['sk-finish','sk-extrude'].includes(b.dataset.for)) {
+      restoreSketchFocus = true;
+      queueMicrotask(() => { restoreSketchFocus = false; });
+    }
     if (app.sketcher?.active && b.getAttribute('aria-pressed') === 'true' && !$(b.dataset.for)?.hasAttribute('aria-haspopup') && b.dataset.for !== 'sk-finish') { e.stopImmediatePropagation(); app.sketcher.setTool('select'); app.refreshUI(); return; }
     if (!$(b.dataset.for)?.hasAttribute('aria-haspopup')) return;
     if (ignoreClick) { ignoreClick = false; e.stopImmediatePropagation(); menuFromRail = null; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); b.focus(); return; }
@@ -261,7 +265,7 @@ export function initSimpleAdvanced(app, plate, collapse) {
     const set = app.sketcher?.active ? 'sketch' : app.mode === 'advanced' ? app.advanced.workspace : '';
     const focused = rail.contains(document.activeElement) || (document.activeElement === document.body && lastRailFocus && !lastRailFocus.getClientRects().length); rail.dataset.set = set; rail.setAttribute('aria-label', ({design:'Design tools', sketch:'Sketch tools', print:'3D Print Sim tools', simulate:'Simulate tools'})[set] || 'Simple tools');
     for (const b of sar.querySelectorAll('button')) b.hidden = b.dataset.set !== set;
-    if (focused && previousSet !== set) requestAnimationFrame(() => { if (document.activeElement !== document.body && !rail.contains(document.activeElement)) return; if (app.mode === 'beginner') plate.sync(); [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus(); }); previousSet = set;
+    if (focused && previousSet !== set) requestAnimationFrame(() => { if (document.querySelector('.modal-back') || (document.activeElement !== document.body && !rail.contains(document.activeElement))) return; if (app.mode === 'beginner') plate.sync(); [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus(); }); previousSet = set;
     const note = $('sap-note'), noteText = $('sk-note')?.textContent || ''; note.hidden = set !== 'sketch'; if (note.textContent !== noteText) note.textContent = noteText;
     for (const b of [...sar.querySelectorAll('button'), ...more.querySelectorAll('.sadv-group button')]) {
       const original = $(b.dataset.for); if (original) {
@@ -288,7 +292,17 @@ export function initSimpleAdvanced(app, plate, collapse) {
     if (count > timelineCount && timeline.parentNode === slot && !timeline.querySelector('.tl-now') && matchMedia('(min-width: 641px)').matches) slot.scrollTop = slot.scrollHeight;
     timelineCount = count; update();
   }).observe(timeline, { childList: true });
-  const refresh = app.refreshUI; app.refreshUI = function (...args) { const result = refresh.apply(this, args); update(); return result; };
+  const refresh = app.refreshUI; app.refreshUI = function (...args) {
+    const result = refresh.apply(this, args); update();
+    if (restoreSketchFocus && !app.sketcher?.active) {
+      restoreSketchFocus = false;
+      const focus = document.activeElement;
+      if (root.dataset.face === 'simple' && app.mode === 'beginner' && !document.querySelector('.modal-back') && !focus?.closest?.('#cmd, input, textarea, select, [contenteditable]:not([contenteditable="false"])') && (!focus || focus === document.body || !focus.getClientRects().length)) {
+        [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus();
+      }
+    }
+    return result;
+  };
   const layout = plate.layout; plate.layout = (...args) => { const result = layout(...args); update(); return result; };
   const workspace = app.advanced.setWorkspace; app.advanced.setWorkspace = function (...args) { const result = workspace.apply(this, args); update(); return result; };
   const reveal = collapse.reveal; collapse.reveal = function (el) {

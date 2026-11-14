@@ -202,7 +202,7 @@ test('Beginner sketch uses the sketch rail and restores Beginner tools', async (
   await page.click('#sar-sk-rect'); await canvasPoint(page,-20,-10); await canvasPoint(page,20,10);
   await expect.poll(() => page.evaluate(() => window.__app.sketcher.sketch.ents.length)).toBe(4);
   await page.locator('#sar-sk-finish').focus(); await page.keyboard.press('Enter'); await expect(page.locator('#sr-sketch')).toBeVisible();
-  await expect(page.locator('#sr-sketch')).toBeFocused();
+  await expect(page.locator('#sr-shapes')).toBeFocused();
 });
 
 test('phone shows six rail tools and More, with Pattern and Measure in More', async ({ page }, info) => {
