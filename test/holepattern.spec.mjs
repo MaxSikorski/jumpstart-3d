@@ -2,7 +2,7 @@
 // round holes on a flat face and write them as ONE Hole feature. Volumes are checked in bands (the exact values are in test/golden.json).
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, newDoc, body, prim, exportBytes, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, exportBytes } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -279,7 +279,7 @@ test("guards: a warning at 110 holes, a refusal at 225 (Create off), tapped hole
   expect(await bad({ face: "+z", layout: { type: "circle", count: 1, radius: 5 }, hole: { dia: 3 } })).toBe("count must be a whole number from 2 to 200");
   expect(await bad({ face: "+z", layout: { type: "circle", count: 4, radius: 0 }, hole: { dia: 3 } })).toBe("radius must be a positive number of mm");
   expect(await bad({ face: "+z", layout: { type: "circle", count: 4, radius: 5, center: [1, 2] }, hole: { dia: 3 } })).toBe("center must be [x, y, z] in mm");
-  expect(await failure(() => JS3D.holePattern({ body: "nope" }))).toBe("no body nope");
+  expect(await failure(() => JS3D.holePattern({ body: "nope" }))).toMatch(/^no body "nope"/);
   // a sphere has no flat face, and a body marked as a hole takes no holes
   const sphere = await run(() => JS3D.add("sphere", { size: [20, 20, 20] }));
   expect(await failure(async (sid) => { await JS3D.holePattern({ body: sid, face: "+z", layout: { type: "grid", cols: 1, rows: 1 }, hole: { dia: 3 } }); }, sphere)).toMatch(/ has no flat face facing \+z$/);
@@ -409,9 +409,7 @@ test("Phase 3 step 2b: a hex is sized across flats, with a flat facing along the
   expect(Math.abs(top.y - 3.464)).toBeLessThan(1e-3);
 });
 
-// quarantined: in Firefox a double-click on a timeline item does not open its edit dialog (app bug candidate, see the PR notes)
-test("Phase 3 step 2b: moving a point in the sketch keeps the cut; double-clicking Extrude cut shows every profile", async ({}, info) => {
-  quarantine(info, ["site-firefox", "single-firefox"], "double-click on a timeline item does not open its dialog in Firefox");
+test("Phase 3 step 2b: moving a point in the sketch keeps the cut; double-clicking Extrude cut shows every profile", async () => {
   await cutShape([100, 60, 10], { face: "+z", layout: { type: "grid", cols: 4, rows: 1, pitch: 15 }, hole: { shape: "square", width: 6 } });
   await run(() => {
     __store.update((doc) => {

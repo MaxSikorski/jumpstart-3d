@@ -153,7 +153,7 @@ test("a bad call is a tool error with the page's message, and the server carries
   assert.match(r.content[0].text, /unknown kind "teapot"; valid kinds: box/);
   const r2 = await call(s.client, "get_body", { id: "nope" });
   assert.equal(r2.isError, true);
-  assert.equal(r2.content[0].text, "no body nope");
+  assert.match(r2.content[0].text, /^no body "nope"/);
   const r3 = await call(s.client, "set_color", { ids: "x" }); // missing input: the SDK refuses it
   assert.equal(r3.isError, true);
   assert.equal(data(await call(s.client, "list_bodies")).length, 1);

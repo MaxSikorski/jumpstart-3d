@@ -8,7 +8,7 @@ const tp = new URL("../third_party/", import.meta.url).href;
 registerHooks({
   resolve(spec, ctx, next) {
     if (spec === "three") return { url: tp + "three/build/three.module.js", shortCircuit: true };
-    if (spec === "opentype.js") return { url: "data:text/javascript,export default {parse(){throw new Error('no fonts in node')}};", shortCircuit: true };
+    if (spec === "opentype.js") return { url: tp + "opentype.js/dist/opentype.module.js", format: "module", shortCircuit: true };
     return next(spec, ctx);
   },
 });

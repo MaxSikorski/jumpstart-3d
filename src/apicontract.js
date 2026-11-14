@@ -1,4 +1,4 @@
-export const API_VERSION = "1.13.0";
+export const API_VERSION = "1.13.1";
 export const API_COMPAT = API_VERSION.split(".").slice(0, 2).join(".");
 
 const call = (name, area, since, async, signature) => Object.freeze({ name, area, since, async, signature, docs: "BRIDGE.md#api-" + name });

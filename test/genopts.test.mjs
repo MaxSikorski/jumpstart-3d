@@ -4,7 +4,7 @@ import { boxOptions, gearSetOptions, pairMatrix, textureOptions, drawingOptions,
 import { BIN_DEFAULTS, binSet } from "../src/bins.js";
 import { GEAR_DEFAULTS } from "../src/gearlib.js";
 import { LIB } from "../src/texture.js";
-const fails = (fn, arg, message) => assert.throws(() => fn(arg), { message });
+const fails = (fn, arg, message) => assert.throws(() => fn(arg), error => error.message.startsWith(message));
 test("Box Maker defaults and door print layout", () => {
   const b = boxOptions({}); assert.deepEqual(b, { o: BIN_DEFAULTS, at: [0, 0, 0], name: null });
   assert.equal(binSet(b.o).parts.length, 1);
@@ -41,7 +41,7 @@ test("Bevel pitch circles and cone tips meet; even gears show a gap", () => {
 test("Texture defaults, library tile sizes and selectors", () => {
   assert.deepEqual(textureOptions({}), { layer: { tex: "knurl", size: 4, depth: 0.6, dir: "raise", rot: 0, mapping: "auto", falloff: 0, invert: false, once: false }, faces: "all" });
   assert.equal(textureOptions({ texture: "oak" }).layer.size, 20);
-  fails(textureOptions, { texture: "nope" }, `unknown texture "nope"; list_textures (JS3D.textures()) gives the ${LIB.length} keys`);
+  fails(textureOptions, { texture: "nope" }, `unknown texture "nope"; there are ${LIB.length} texture keys. Call JS3D.textures() (list_textures over MCP) and use one of its keys.`);
   for (const faces of [[], 1.5, {}, "", -1]) fails(textureOptions, { faces }, 'faces must be "all", a face selector such as "top", a face index or a list of indices');
   for (const faces of ["top", 0, [0, 3], ["top", 1]]) assert.deepEqual(textureOptions({ faces }).faces, faces);
 });
@@ -67,4 +67,10 @@ test("case minima, planetary assembly and every gear bore clamp", () => {
   fails(gearSetOptions, { type: "planet", sunTeeth: 19 }, "these teeth cannot be assembled with 3 planets: sun + ring teeth (62) must divide by the number of planets");
   fails(gearSetOptions, { type: "planet", sunTeeth: 8, planetTeeth: 200, planets: 4 }, "neighbouring planets need more than 0.5 mm clearance between their teeth");
   assert.equal(gearSetOptions({ type: "planet" }).o.nPlanets, 3);
+});
+
+test('long option keys and object texture keys have bounded messages', () => {
+  assert.throws(() => boxOptions({ ['x'.repeat(1000)]: 1 }), e => e.message.length < 300 && e.message.includes('options: style'));
+  assert.throws(() => textureOptions({ texture: { key: 'oak' } }), e => e.message.includes('{"key":"oak"}') && e.message.length < 300);
+  assert.throws(() => gearSetOptions({ type: 'bevel', angle: 20 }), /Remove "angle"/);
 });
