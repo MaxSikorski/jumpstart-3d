@@ -2,4 +2,4 @@
 // Change it here for each release (and in index.html's splash, which shows before the app loads).
 export const VERSION = "2.9.8.9.8";
 // jumpstart-3d: community build number, bumped by /ship.
-export const BUILD = 35;
+export const BUILD = 36;
