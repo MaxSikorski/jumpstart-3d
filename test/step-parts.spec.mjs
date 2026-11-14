@@ -7,7 +7,7 @@
 //   step-2-touching-cubes.step  two 10 mm cubes that touch face to face
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, newDoc, body, prim, IDENTITY, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, IDENTITY } from "./helpers.mjs";
 
 let page, errors, info0;
 test.describe.configure({ mode: "serial" });
@@ -318,10 +318,7 @@ test("the split never costs an unrelated undo step when the history is full", as
   expect(await page.evaluate(() => ({ n: window.__store.undoStack.length, first: window.__store.undoStack[0].label, last: window.__store.undoStack[window.__store.undoStack.length - 1].label }))).toEqual({ n: 120, first: "Edit 0", last: "Import full" });
 });
 
-// quarantined: a double-click on a timeline item opens nothing in Firefox: each click selects the body and draws the timeline again, and Firefox
-// sends no dblclick when the element under the pointer was replaced. A real Firefox bug in the timeline (advanced.js), written up for after the upstream port
-test("the timeline names an import part and explains it; the body keeps its volume", async ({}, info) => {
-  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: a double-click on a timeline item opens nothing (each click redraws the timeline)");
+test("the timeline names an import part and explains it; the body keeps its volume", async () => {
   await fresh("advanced");
   await importFile("three parts.step", fixture("step-assembly-3-parts.step"));
   await whenBuilt(3);
