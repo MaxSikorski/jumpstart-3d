@@ -768,7 +768,7 @@ export function initBeginner(app) {
   function dotTitle(on) {
     if (on === dotTooltip) return;
     dotTooltip = on;
-    if (on) vp.canvas.title = "Alt-drag (or press and hold) to move the pivot"; else vp.canvas.removeAttribute("title");
+    if (on) vp.canvas.title = "Alt-drag to move the pivot (on a touch screen: press and hold)"; else vp.canvas.removeAttribute("title");
   }
   // a Bin & Box Maker set (its cases, drawers, bins, doors and lid) is picked and moved together
   function setOf(id) {
@@ -810,10 +810,10 @@ export function initBeginner(app) {
     wantsTouch(e) { return !!((armed && app.sel.length) || pv.dot.at(e, "beginner") || pickHandle(e) || app.scene.pickFace(e) || (!multi && app.directEdit.regionAt(e))); }, // jumpstart-3d: grok move. let an armed touch move the selection
     down(e) {
       vpEl.querySelectorAll(".popover:not(.mirror-pop)").forEach((p) => p.remove());
-      // jumpstart-3d: grok move. Alt or a hold moves the pivot; an ordinary dot drag moves bodies
+      // jumpstart-3d: grok move. Alt (or a touch or pen hold) moves the pivot; an ordinary dot drag moves bodies
       const onDot = pv.dot.at(e, "beginner");
       if (onDot && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && !multi && !vp.tapping && startPivot(e)) return true;
-      if (armed && !e.ctrlKey && !e.metaKey && !multi && !vp.tapping && !(onDot && !e.shiftKey)) { // (a plain press on the dot keeps its press-and-hold, below)
+      if (armed && !e.ctrlKey && !e.metaKey && !multi && !vp.tapping && !(onDot && !e.shiftKey)) { // (a plain press on the dot keeps its touch and pen press-and-hold, below)
         const h = pickHandle(e);
         if (h) { rotKeys = null; return startHandle(e, h); }
         const f = onDot ? null : app.scene.pickFace(e);
@@ -825,7 +825,7 @@ export function initBeginner(app) {
       if (onDot && !e.shiftKey && !e.ctrlKey && !e.metaKey && !multi && !vp.tapping) {
         const d = { kind: "dotpress", event: e, start: vp.local(e), ids: app.sel.filter((id) => !app.isLocked(id)), armed };
         const stopEsc = onEscape(escMove);
-        d.timer = setTimeout(() => { if (drag === d) { stopEsc(); startPivot(d.event); } }, 450);
+        if (e.pointerType !== "mouse") d.timer = setTimeout(() => { if (drag === d) { stopEsc(); startPivot(d.event); } }, 450); // jumpstart-3d: grok hold. only a finger or pen held still moves the pivot; a mouse uses Alt, so a slow mouse drag still moves the shape
         d.restore = () => { clearTimeout(d.timer); stopEsc(); };
         d.up = d.restore;
         drag = d;
