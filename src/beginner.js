@@ -2,7 +2,8 @@
 import * as THREE from "three";
 import { store, findBody, IDENTITY, primName, nextSeq } from "./store.js";
 import { el, fmt, round, PALETTE, clone, parseLength, uid } from "./util.js";
-import { showLen, parseLen } from "./units.js";
+import { showLen, parseLen, getUnit } from "./units.js"; // jumpstart-3d: move step. getUnit
+import { IS_MAC } from "./util.js"; // jumpstart-3d: move step. the status line says ⌥ on a Mac
 import { ICON, shapeTile } from "./icons.js";
 import { LIB, textureThumb } from "./texture.js";
 import { FACEPAT } from "./facepat.js";
@@ -12,6 +13,7 @@ import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
 import { onEscape } from "./pivot.js"; // jumpstart-3d: pivot
 import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, fine, turnFeedback } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { faceBox, faceDrag } from "./facedrag.js"; // jumpstart-3d: face snap
 import { besideSpot } from "./placebeside.js"; // jumpstart-3d: grok move. place clicked shapes beside existing ones
 import { plateDims, getPlatePref } from "./printerpresets.js"; // jumpstart-3d: grok move. keep clicked shapes on the plate
 import {
@@ -74,7 +76,7 @@ export function initBeginner(app) {
     help.innerHTML = "";
     help.append(el("div", { class: "hint", html:
       `Drag a shape onto the workplane or onto another shape (or click it to drop one in the middle). Slide the strip with the arrows, the mouse wheel, or a sideways drag. Or press <b>Sketch</b>, draw a closed shape, and press <b>E</b> to extrude it. Set shapes to <b>Hole</b>, select them together and press <b>Group</b> to cut. <br><br>
-      <span class="kbd">Arrows</span> nudge · <span class="kbd">Ctrl</span>+<span class="kbd">↑</span> lift · <span class="kbd">D</span> drop to workplane ·
+      <span class="kbd">Arrows</span> nudge by the snap step (<span class="kbd">Shift</span> ×10, <span class="kbd">Alt</span> finer) · <span class="kbd">Ctrl</span>+<span class="kbd">↑</span> lift · <span class="kbd">D</span> drop to workplane ·
       <span class="kbd">H</span> hole · <span class="kbd">S</span> solid · <span class="kbd">Ctrl+G</span> group · <span class="kbd">Ctrl+D</span> duplicate · <span class="kbd">A</span> align · <span class="kbd">M</span> mirror · <span class="kbd">L</span> <span class="kbd">R</span> <span class="kbd">C</span> sketch · <span class="kbd">Ctrl+L</span> lock · <span class="kbd">T</span> texture · <span class="kbd">?</span> all shortcuts` }),
       el("button", { class: "btn", style: { marginTop: "8px" }, onclick: () => { help.hidden = true; } }, "Got it"));
   }
@@ -400,14 +402,17 @@ export function initBeginner(app) {
     const ids = free();
     if (!ids.length) return;
     const before = store.doc; // jumpstart-3d: grok move. a chosen pivot goes with the nudged bodies
-    transformBodies(ids, new THREE.Matrix4().makeTranslation(dx, dy, dz), "Nudge");
+    // jumpstart-3d: move step. each moved coordinate lands on a clean number (0.01 mm for mm steps), not 0.30000000000000004
+    const clean = (v, step) => { const q = Math.abs(step * 100 - Math.round(step * 100)) < 1e-6 ? 0.01 : 1e-6; return Math.round(v / q) * q; };
+    const step = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
+    store.update((doc) => { for (const id of ids) { const b = findBody(doc, id); if (!b) continue; const m = b.m.slice(); [dx, dy, dz].forEach((d, i) => { if (d) m[12 + i] = +clean(m[12 + i] + d, step).toFixed(6) || 0; }); b.m = m; } }, "Nudge");
     pv.moved(before, new THREE.Vector3(dx, dy, dz)); // jumpstart-3d: grok move
   }
 
   // ---------------------------------------------------------------- placing shapes
   function placement(e, kind, ignoreId) {
     const g = app.gridStep() || 0;
-    const hit = e ? app.scene.pickFace(e, (b) => b.id !== ignoreId && !b.hole) : null;
+    const hit = e && app.faceSnap && !e.altKey ? app.scene.pickFace(e, (b) => b.id !== ignoreId && !b.hole) : null; // jumpstart-3d: face snap. the Faces switch and Alt skip the face
     if (hit) {
       const n = hit.normal;
       if (n.z > 0.999) {
@@ -763,7 +768,7 @@ export function initBeginner(app) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -z), start = vp.rayPlane(e, plane);
     if (!ids.length || !start) return null;
     const stopEsc = onEscape(escMove); // Escape puts the shapes back and keeps the selection
-    return { kind: "move", plane, start, ids, moved: false, base: new Map(ids.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(ids.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])), stopEsc, restore: stopEsc, ...(isArmed ? { armed: true } : {}) };
+    return { kind: "move", plane, start, ids, moved: false, base: new Map(ids.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(ids.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])), box0: faceBox(app, ids, store.doc), stopEsc, restore: stopEsc, ...(isArmed ? { armed: true } : {}) };
   }
   function dotTitle(on) {
     if (on === dotTooltip) return;
@@ -777,6 +782,16 @@ export function initBeginner(app) {
     if (!main || !main.bin) return [id];
     const ids = [main.id, ...Object.values(main.bin.ids || {}), ...(main.bin.lidId ? [main.bin.lidId] : [])];
     return [...new Set(ids)].filter((x) => findBody(store.doc, x));
+  }
+  // jumpstart-3d: move step. while a shape or the lift handle is moving, say by how much and with which snap step
+  function moveHint() {
+    if (!drag || !((drag.kind === "move" && drag.moved && (drag.delta || drag.turned)) || (drag.kind === "lift" && drag.dz != null))) return "";
+    const alt = IS_MAC ? "⌥" : "Alt", u = getUnit() === "in" ? " in" : " mm", sg = (v) => (v > 0 ? "+" : "") + showLen(v) + u;
+    const opt = [...$("snap").options].find((o) => o.value === app.snapSize());
+    const snap = drag.free ? "Snap off (" + alt + " held)" : app.gridStep() ? "Snap " + (opt ? opt.textContent : showLen(app.gridStep()) + u) : "Snap off (free)";
+    const tail = drag.kind === "lift" || drag.free ? "" : " · hold " + alt + " for free movement";
+    if (drag.kind === "move" && drag.turned) return "Standing on a face · hold " + alt + " to ignore faces"; // jumpstart-3d: face snap
+    return (drag.kind === "lift" ? "Lifting Z " + sg(drag.dz) : "Moving X " + sg(drag.delta.x) + ", Y " + sg(drag.delta.y) + (drag.delta.z ? ", Z " + sg(drag.delta.z) : "")) + " · " + snap + tail;
   }
   let hot = null;
   let multi = false;
@@ -850,7 +865,7 @@ export function initBeginner(app) {
         const movable = sel.filter((id) => !app.isLocked(id));
         if (!movable.length) { drag = { kind: "locked", start: vp.local(e) }; return true; }
         const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -f.point.z);
-        drag = { kind: "move", plane, start: f.point.clone(), ids: movable, moved: false, base: new Map(movable.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(movable.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])) };
+        drag = { kind: "move", plane, start: f.point.clone(), ids: movable, moved: false, base: new Map(movable.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(movable.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])), box0: faceBox(app, movable, store.doc) }; // jumpstart-3d: face snap
         return true;
       }
       drag = { kind: "rubber", start: vp.local(e), add: e.shiftKey || e.ctrlKey || e.metaKey || multi, base: app.sel.slice() };
@@ -870,16 +885,21 @@ export function initBeginner(app) {
       if (drag.kind === "move") {
         const p = vp.rayPlane(e, drag.plane);
         if (!p) return;
-        const g = app.gridStep();
+        const free = !!e.altKey, g = free ? 0.01 : app.moveStep(); // jumpstart-3d: move step. Alt held after the press: free for a moment (0.01 mm, no object snapping)
         let dx = round(p.x - drag.start.x, g), dy = round(p.y - drag.start.y, g);
         if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
         if (!drag.moved && Math.hypot(...vp.local(e).map((v, i) => v - vp.project(drag.start)[i])) < 3) return;
         drag.moved = true;
+        const fs = faceDrag(app, drag, e), dz = fs && fs.dz || 0; // jumpstart-3d: face snap
+        if (dz) { const q = vp.rayPlane(e, new THREE.Plane(new THREE.Vector3(0, 0, 1), -(drag.start.z + dz))); if (q) { dx = round(q.x - drag.start.x, g); dy = round(q.y - drag.start.y, g); if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } } } // jumpstart-3d: face snap. read the pointer at the lifted grab height, so the shape stays under it
+        drag.turned = !!(fs && fs.mats);
+        if (drag.turned) { app.clearSnapGuides(); drag.delta = null; store.setPreview((doc) => { for (const id of drag.ids) findBody(doc, id).m = fs.mats.get(id); }); app.status(); return; }
         // snap edges and centers to other shapes
-        const sn = app.snapToObjects(drag.ids, drag.boxes, new THREE.Vector3(dx, dy, 0), ["x", "y"]);
+        const sn = free ? { delta: new THREE.Vector3(dx, dy, 0) } : app.snapToObjects(drag.ids, drag.boxes, new THREE.Vector3(dx, dy, 0), ["x", "y"]);
         dx = sn.delta.x; dy = sn.delta.y;
-        drag.delta = new THREE.Vector3(dx, dy, 0); // jumpstart-3d: grok move. carry a chosen pivot with the bodies
-        const T = new THREE.Matrix4().makeTranslation(dx, dy, 0);
+        drag.delta = new THREE.Vector3(dx, dy, dz); // jumpstart-3d: grok move. carry a chosen pivot with the bodies
+        drag.free = free; // jumpstart-3d: move step. the status line says so
+        const T = new THREE.Matrix4().makeTranslation(dx, dy, dz);
         store.setPreview((doc) => { for (const id of drag.ids) { const b = findBody(doc, id); b.m = arr(M4(drag.base.get(id)).premultiply(T)); } });
         app.status();
       } else if (drag.kind === "locked") {
@@ -903,10 +923,11 @@ export function initBeginner(app) {
       if (e && e.type === "pointercancel" && (drag.kind === "rot" || drag.kind === "pivot" || drag.kind === "move" || drag.kind === "dotpress")) return handler.cancel(); // jumpstart-3d: rotation access, grok move. an interrupted touch turns or moves nothing
       const d = drag;
       drag = null;
+      app.status(); // jumpstart-3d: move step. the drag's hint goes away
       if (d.kind === "move") {
         if (d.stopEsc) d.stopEsc(); // jumpstart-3d: grok move
         app.clearSnapGuides();
-        if (d.moved) { const before = store.doc; store.commitPreview("Move"); if (d.delta) pv.moved(before, d.delta); } // jumpstart-3d: grok move. keep a chosen pivot with the selection
+        if (d.moved) { const before = store.doc; store.commitPreview("Move"); if (d.turned) pv.reset(d.ids); else if (d.delta) pv.moved(before, d.delta); } // jumpstart-3d: grok move. keep a chosen pivot with the selection
         else store.setPreview(null);
       } else if (d.kind === "rubber") {
         rubber.hidden = true;
@@ -921,7 +942,7 @@ export function initBeginner(app) {
       if (d.kind === "pivot" && vp.touchMode && !d.moved()) return "tap"; // a finger on the dot that did not move: the viewport treats it as a tap on what is under it
       if (d.kind === "rot" && vp.touchMode && !d.moved) return "tap"; // jumpstart-3d: rotation access. a finger on an arc that did not move: the viewport treats it as a tap on what is under it
     },
-    cancel() { app.directEdit.cancel(); if (drag && drag.restore) drag.restore(); fb.hide(); app.clearSnapGuides(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); }, // jumpstart-3d: rotation access, grok move. redraw: the other arcs come back; a cancelled move leaves no snap guides
+    cancel() { app.directEdit.cancel(); if (drag && drag.restore) drag.restore(); fb.hide(); app.clearSnapGuides(); if (drag && drag.kind !== "none" && drag.kind !== "rubber") store.setPreview(null); drag = null; rubber.hidden = true; app.scene.setPreselected([]); vp.request(); app.status(); }, // jumpstart-3d: rotation access, grok move. redraw: the other arcs come back; a cancelled move leaves no snap guides
   };
 
   // bodies a selection window catches: drag right = whole body inside, drag left = touching
@@ -1052,8 +1073,9 @@ export function initBeginner(app) {
         move(ev) {
           const p = vp.rayPlane(ev, plane);
           if (!p || !start) return;
-          const dz = round(p.z - start.z, app.gridStep());
+          const dz = round(p.z - start.z, app.moveStep()); // jumpstart-3d: move step
           lz = dz; // jumpstart-3d: grok move
+          drag.dz = dz; app.status(); // jumpstart-3d: move step
           const T = new THREE.Matrix4().makeTranslation(0, 0, dz);
           store.setPreview((doc) => { for (const id of ids) { const b = findBody(doc, id); b.m = arr(M4(base.get(id)).premultiply(T)); } });
         },
@@ -1405,7 +1427,8 @@ export function initBeginner(app) {
     if (e.key === "Escape") rotKeys = null;
     if (e.key === "Tab" && !mod && !e.altKey && app.sel.length === 1) return startDimEdit(e.shiftKey);
     const k = e.key.toLowerCase();
-    const g = (app.gridStep() || 1) * (e.shiftKey ? 10 : 1);
+    // jumpstart-3d: move step. the snap step (0.1 mm when snapping is off); Shift x10, Alt /10 (floor 0.01 mm), Alt+Shift x1
+    const base = app.gridStep() || 0.1, g = e.altKey && e.shiftKey ? base : e.shiftKey ? base * 10 : e.altKey ? Math.max(base / 10, 0.01) : base;
     if (mod && k === "c") { copy(); return true; }
     if (mod && k === "v") { paste(); return true; }
     if (mod && k === "d") { dup(); return true; }
@@ -1413,7 +1436,7 @@ export function initBeginner(app) {
     if (mod && k === "a") { app.select(store.doc.bodies.map((b) => b.id)); return true; }
     if (mod && k === "l") { toggleLock(); return true; }
     if (e.key === "Delete" || e.key === "Backspace") { del(); return true; }
-    if (/^Arrow/.test(e.key) && !e.altKey) { const d = app.arrowDelta(e, g); nudge(d.x, d.y, d.z); return true; }
+    if (/^Arrow/.test(e.key)) { const d = app.arrowDelta(e, g); nudge(d.x, d.y, d.z); return true; }
     if (mod) return false;
     if (k === "h") { setHole(true); return true; }
     if (k === "s") { setHole(false); return true; }
@@ -1444,7 +1467,7 @@ export function initBeginner(app) {
     get moveArmed() { return armed; },
     get busy() { return !!drag && !drag.armed; }, // a pivot, handle or other drag is under way: its own Escape comes first
     onArm: null,
-    hint() { return pivotDragging ? "Moving the pivot (the point it turns around). The shape stays put." : armed && app.sel.length ? "Drag anywhere on the plate to move the selected shape. Esc or Move again to stop." : ""; },
+    hint() { return pivotDragging ? "Moving the pivot (the point it turns around). The shape stays put." : moveHint() || (armed && app.sel.length ? "Drag anywhere on the plate to move the selected shape. Esc or Move again to stop." : ""); },
     handler,
     key,
     showTile,

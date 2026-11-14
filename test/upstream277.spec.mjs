@@ -185,7 +185,7 @@ test("Chip Carving opens from Advanced → Workshop and closes without work or e
   await page.locator("#ad-chipcarve").click();
   await expect(page.getByRole("dialog", { name: "Choose what to carve" })).toBeVisible();
   expect(await run(() => window.__app.carve.active)).toBe(true);
-  expect(await run(() => { try { JS3D.newDesign(); return "allowed"; } catch (e) { return e.message; } })).toBe("close Chip Carving first");
+  expect(await run(() => { try { JS3D.newDesign(); return "allowed"; } catch (e) { return e.message; } })).toMatch(/^close Chip Carving first/);
   await run(() => window.__app.carve.close());
   expect(await run(() => window.__app.carve.active)).toBe(false);
   await expect(page.locator(".s3d-modal-back")).toHaveCount(0);
@@ -207,8 +207,9 @@ test("Chip Carving carves a board and adds the carving to the design as a body",
   expect(cut).toBeGreaterThan(0);
   await page.locator("#carve-done").click();
   await page.locator("#carve-add").click();
+  // Add builds the final mesh after a short pause and only then puts the body in the design and closes (src/carve.js commit): wait for that, then for the engine
+  await expect.poll(() => run(() => window.__app.carve.active), { timeout: 120_000 }).toBe(false);
   await waitIdle(page, 120_000);
-  expect(await run(() => window.__app.carve.active)).toBe(false);
   const list = await bodies(page);
   expect(list).toHaveLength(1);
   expect(list[0].name).toMatch(/^Chip carving/);

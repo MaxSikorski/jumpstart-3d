@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets.js";
 import { startJob, BED_TOUCH } from "./overhang.js";
+import { initPhoneSheet } from "./phonesheet.js";
+import { initPhoneFit } from "./phonefit.js";
+import { initA11yNames } from "./a11ynames.js";
 import { startPlateJob, fitsPlate, flatness, verdict, curvedBottom } from "./printcheck.js";
 import { ICON } from "./icons.js";
 import { store } from "./store.js";
@@ -158,7 +161,7 @@ function initPlate(app) {
   panel.querySelector(".simple-print-footer").addEventListener("keydown", toolKeys);
   $("simple-print").onclick = () => { if ($("menu-export").hidden) $("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]')?.click(); };
   $("simple-export-more").onclick = () => $("btn-export").click();
-  $("simple-sheet-handle").onclick = () => { const expanded = panel.classList.toggle("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", expanded); };
+  const sheet = initPhoneSheet(app, panel);
   const inspector = $("inspector"), oldParent = inspector.parentNode, placeholder = document.createComment("inspector position");
   oldParent.insertBefore(placeholder, inspector.nextSibling);
   const label = document.createElement("button"); label.id = "simple-plate-label"; label.onclick = () => app.plateView.open(); $("viewport").append(label);
@@ -174,7 +177,7 @@ function initPlate(app) {
     $("simple-multi").hidden = selected.length < 2;
     const ungroup = $("simple-multi").querySelector('[data-for="bb-ungroup"]'); ungroup.hidden = selected.length < 2 || $("bb-ungroup")?.disabled;
     $("simple-fixes").querySelector('[data-for="bb-fillopen"]').hidden = !selected.some(b => b.node.t === "mesh" || b.node.t === "step");
-    if (!selected.length) { panel.classList.remove("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", "false"); }
+    sheet.sync(selected);
   }
   const cache = new WeakMap();
   function setText(state, text) {
@@ -344,11 +347,18 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { displa
 @media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { --simple-panel-w: 236px; grid-template-columns: 80px minmax(0, 1fr) 236px; } }
 @media (max-width: 640px) {
  html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
- html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: absolute; z-index: 35; grid-column: 1 / -1; grid-row: 1; left: 0; right: 0; bottom: 58px; height: 40vh; max-height: calc(100% - 58px); border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: relative; z-index: 35; grid-column: 1 / -1; grid-row: 1; align-self: end; max-height: 100%; overflow: hidden; border: 1px solid var(--line); border-bottom: 0; border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px #0002; }
  html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.has-selection { display: flex; }
- html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { height: 80vh; }
- #simple-sheet-handle { display: block; flex: none; min-height: 44px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
- #simple-panel:not(.expanded) .simple-print-footer { display: none; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { grid-row: 1 / 3; height: min(var(--sheet-open-h, 50%), 100%); overflow-y: auto; overscroll-behavior: contain; }
+ #simple-panel:not(.expanded) > :not(#simple-sheet-handle) { display: none !important; }
+ #simple-panel :is(.simple-panel-scroll, .simple-print-footer) { flex: none; overflow: visible; }
+ #simple-sheet-handle { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; position: sticky; top: 0; z-index: 2; flex: none; min-height: 52px; padding: 8px 16px; border: 0; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; touch-action: none; }
+ #simple-sheet-handle .sheet-grip { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--line); }
+ #simple-sheet-handle .sheet-name { font: 600 14px/1.2 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ #simple-sheet-handle .sheet-size { font: 13px/1.2 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+ /* the panel buttons at the foot of the view move above the collapsed sheet, and step aside while it is open */
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) #app[data-mode="beginner"] .work:has(> #simple-panel.has-selection:not(.expanded)) #viewport > .simple-collapse { bottom: 60px; }
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) #app[data-mode="beginner"] .work:has(> #simple-panel.has-selection.expanded) #viewport > .simple-collapse { display: none !important; }
 }
 
 #simple-rail, .simple-panel { display: none; }
@@ -362,6 +372,11 @@ html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; 
 html[data-face="simple"] #app[data-mode="beginner"] > .work { grid-column: 1; grid-row: 2; }
 html[data-face="simple"] #app[data-mode="beginner"] > .status { grid-column: 1; grid-row: 3; }
 html[data-face="simple"] #app[data-mode="beginner"] #ribbon { display: none; }
+/* Until Simple has its own sketch tools: while a sketch is open, J.Siwek's sketch ribbon shows above the view, in a row whatever layout is picked (build 36 showed no tools at all) */
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > #ribbon { display: flex; grid-column: 1; grid-row: 2; flex-direction: row; width: auto; min-height: 58px; border: 0; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > .work { grid-row: 3; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > .status { grid-row: 4; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-rail { display: flex; grid-column: 1; grid-row: 1; width: 80px; min-height: 0; box-sizing: border-box; flex-direction: column; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
 #simple-rail button, .simple-panel button { font: 600 12px/1.2 var(--f-ui); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 #simple-rail button { flex: 1 0 44px; min-height: 44px; padding: 4px 2px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }
@@ -405,12 +420,12 @@ html[data-face="simple"] #app[data-mode="beginner"] .simple-panel:not([hidden]) 
 .menu .face-look button[aria-checked="true"] { background: #ffd66b; border-color: #ffd66b; color: #1b1407; }
 .menu .face-look button[aria-checked="true"]::after { content: none; }
 :root[data-ui="contrast"] .menu .face-look button[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #000; }
-html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-autosave, #btn-chat, #btn-about, #btn-keys, #btn-full, #btn-projects, #mode-chisel, #mode-arch) { display: none; }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-autosave, #btn-chat, #btn-about, #btn-keys, #btn-full, #mode-chisel, #mode-arch) { display: none; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .face-more-wrap { display: block; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-undo, #btn-redo) { display: inline-flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .menu-wrap:has(#btn-theme) { display: block; }
-html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #menu-theme { position: fixed; right: 12px; top: calc(var(--topbar-h, 46px) + 6px); max-height: calc(100dvh - var(--topbar-h, 46px) - 20px); }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #menu-theme { position: fixed; right: 12px; top: calc(var(--topbar-h, 46px) + 6px); max-height: calc(100dvh - var(--topbar-h, 46px) - env(safe-area-inset-bottom, 0px) - 32px); }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent-2); color: #fff; border-radius: 6px; padding: 6px 12px; font-weight: 600; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export:hover { background: var(--accent); }
 html[data-ui="contrast"][data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent); color: #000; }
@@ -421,6 +436,11 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 @media (min-width: 861px) {
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar #btn-save .lbl { display: inline; }
 }
+@media (min-width: 1280px) {
+  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar #btn-projects .lbl { display: inline; }
+}
+/* Your designs joined the Simple bar: Customize and About show only their icons below 1100 px so the bar stays one row at 1024 px, and a 375 px phone drops the logo for the room */
+@media (min-width: 761px) and (max-width: 1099px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) .lbl { display: none; } }
 @media (max-width: 1100px) { .faceswitch button { padding: 4px 9px; font-size: 12px; } }
 html:not([data-face="simple"]) .faceswitch button, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button { padding: 4px 9px; font-size: 12px; }
 @media (min-width: 561px) and (max-width: 1480px) { html:not([data-face="simple"]) .topbar, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .topbar { gap: 4px; } }
@@ -453,6 +473,8 @@ html[data-face="simple"] #menu-theme :is([data-layout], .layout-note) { display:
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) { min-width: 44px; min-height: 44px; justify-content: center; }
 }
+@media (max-width: 400px), (min-width: 641px) and (max-width: 920px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: none !important; } } /* and from 641 to 920 px, where Designs would push Print / Export onto a second row (a 768 px tablet) */
+@media (min-width: 641px) and (max-width: 920px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar { padding-left: 6px; padding-right: 6px; } }
 .try-simple { position: absolute; left: 14px; bottom: 56px; top: auto; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
 .try-simple p { margin: 0 0 10px; }
 .try-simple button { font: 600 13px/1 var(--f-ui); cursor: pointer; border: 0; border-radius: 6px; padding: 7px 10px; }
@@ -477,6 +499,7 @@ export function initSimpleMode(app) {
   const $ = (id) => document.getElementById(id);
   const plate = initPlate(app);
   const collapse = initCollapse(app, plate);
+  initPhoneFit(); initA11yNames();
   const row = document.createElement("div");
   row.className = "faceswitch-row";
   row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
@@ -485,6 +508,8 @@ export function initSimpleMode(app) {
   wrap.innerHTML = '<button class="tb-btn" id="face-more" title="About this build" aria-label="About this build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg><span class="lbl">About</span></button>';
   $("btn-export").closest(".menu-wrap").before(wrap);
   const themeWrap = $("btn-theme").closest(".menu-wrap"), themePlace = document.createComment("Customize position"); themeWrap.before(themePlace);
+  const projectsBtn = $("btn-projects"), projectsPlace = document.createComment("Designs position"); projectsBtn.before(projectsPlace);
+  projectsBtn.setAttribute("aria-label", "Your designs"); // the label is hidden on narrower bars, so the name must not depend on it
   const themeLabel = document.createElement("span"); themeLabel.className = "lbl"; themeLabel.textContent = "Customize"; $("btn-theme").append(themeLabel);
   $("menu-theme").querySelector(".menu-head").insertAdjacentHTML("afterend", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false">Original</button></div>`);
   // Original below 1440 px: the Simple | Original pill takes the room of Autosave and Keyboard shortcuts, which move into Customize
@@ -512,7 +537,7 @@ export function initSimpleMode(app) {
   function dismissCard() { if (!card) return; card.remove(); card = null; try { localStorage.setItem("jumpstart.simple.card", "seen"); } catch (e) { /* storage may be unavailable */ } }
   function apply(name) {
     if (name !== "simple" && app.beginner?.moveArmed) app.beginner.armMove(false); // Move is Simple's: Original never stays armed
-    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); plate.layout(); plate.schedule();
+    face = name; document.documentElement.dataset.face = face; if (name === "simple") { $("btn-tutorials").after(themeWrap); $("btn-save").after(projectsBtn); } else { themePlace.after(themeWrap); projectsPlace.after(projectsBtn); } collapse.activate(face === "simple"); if (face === "simple") plate.sync(); plate.layout(); plate.schedule(); // sync: the rail last mirrored the tools while Simple was showing, so its buttons were stale after a switch from Original
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
@@ -545,7 +570,7 @@ export function initSimpleMode(app) {
   }
   store.on(() => { if (card && store.doc.bodies.length) dismissCard(); });
   // A lesson whose steps point at top-bar buttons that Simple moved into More runs in Original, and Simple comes back when it ends (tutorials.js calls these)
-  const MOVED = ["btn-autosave", "btn-chat", "btn-about", "btn-keys", "btn-full", "btn-projects", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
+  const MOVED = ["btn-autosave", "btn-chat", "btn-about", "btn-keys", "btn-full", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
   const narrow = matchMedia("(max-width: 640px)");
   const moved = (q) => (narrow.matches ? [...MOVED, ...MOVED_NARROW] : MOVED).some((id) => new RegExp("#" + id + "(?![\\w-])").test(q));
   const needsOriginal = (tut) => tut.steps.some((st) => { const parts = ((st.show && st.show.sel) || "").split(",").map((q) => q.trim()).filter(Boolean); return parts.length && parts.every(moved); });

@@ -54,16 +54,16 @@ test("snapshot isolation, whole-doc restoration and one undo step", () => {
   store.doc.sketches[0].curves.push(2); api.rollback(c.id); assert.deepEqual(store.doc,original);
 });
 test("monotonic ids, FIFO cap, helpful errors and label validation", () => {
-  const {api}=harness(); assert.throws(()=>api.diff("c9"),/no checkpoint "c9"; none yet: call checkpoint first/);
+  const {api}=harness(); assert.throws(()=>api.diff("c9"),/no checkpoint "c9"/);
   assert.throws(()=>api.checkpoint({}),/label must be a string/);
   for(let i=0;i<22;i++)api.checkpoint();
   const list=api.checkpoints(); assert.equal(list.length,20); assert.equal(list[0].id,"c3"); assert.equal(list.at(-1).id,"c22"); assert.ok(Number.isFinite(Date.parse(list[0].at)));
-  assert.throws(()=>api.rollback("c1"),/no checkpoint "c1"; checkpoints: c3, c4/);
+  assert.throws(()=>api.rollback("c1"),/no checkpoint "c1"/);
   assert.throws(()=>api.diff("c3","c99"),/no checkpoint "c99"/);
 });
 test("wrong design and edit guard refuse without a mutation", () => {
   const {api,store,block}=harness(); const c=api.checkpoint(); store.doc.id="d2";
-  assert.throws(()=>api.rollback(c.id),{message:"checkpoint c1 belongs to another design; checkpoints are kept per design"});
+  assert.throws(()=>api.rollback(c.id),/checkpoint "c1" belongs to another design/);
   block(); assert.throws(()=>api.rollback(c.id),/leave Chisel mode first/); assert.equal(store.undo.length,0);
 });
 
@@ -96,7 +96,7 @@ test("rollback keeps current mode, refuses in sim, skips __proto__, shares asset
   const store={doc:{...doc(),mode:"beginner",assets:{a:{kind:"mesh",name:"A",data:"d"}}}, undo:[], update(fn,l){const n=structuredClone(this.doc);fn(n);this.undo.push(l);this.doc=n;}};
   let sim=false; const api=historyCalls({store,snapshot:()=>structuredClone(store.doc),edit(){},app:{get simLock(){return sim;}}});
   const c=api.checkpoint(); store.doc.mode="advanced"; store.doc.assets.b={kind:"mesh",name:"B",data:"e"};
-  sim=true; assert.throws(()=>api.rollback(c.id),{message:"undo is off in the 3D Print Sim"}); assert.equal(store.undo.length,0);
+  sim=true; assert.throws(()=>api.rollback(c.id),/undo is off in the 3D Print Sim/); assert.equal(store.undo.length,0);
   sim=false; api.rollback(c.id); assert.equal(store.doc.mode,"advanced"); assert.deepEqual(Object.keys(store.doc.assets),["a"]);
   Object.defineProperty(store.doc,"__proto__",{value:{polluted:1},enumerable:true,configurable:true,writable:true}); api.checkpoint();
   store.doc.bodies.push(body()); api.rollback("c2");

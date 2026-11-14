@@ -29,6 +29,8 @@ Environment variables:
 Logs go to stderr; stdout is the protocol.`;
 
 const allowedOrigin = (origin) => origin === undefined || ORIGINS.some((re) => re.test(origin)); // browsers always send one; other local programs may not
+// src/teach.js show(), inline: this server ships without src/ next to it. Quoted, cut at 60 characters, never throws.
+const show = (v) => { if (v === null || typeof v === "number" || typeof v === "boolean") return String(v); if (typeof v !== "string") return typeof v; const s = JSON.stringify(v.slice(0, 60)); return s.length > 60 || v.length > 60 ? s.slice(0, 59) + "…" : s; };
 
 // {"$bytes": base64} -> Buffer (top level only, as JS3D.invoke makes it)
 function decode(r) {
@@ -37,10 +39,10 @@ function decode(r) {
 
 export class Session {
   constructor({ mode = "auto", wsPort = 8822, viewport = "1000x700", app, log = (m) => console.error("jumpstart-mcp: " + m) } = {}) {
-    if (!["auto", "tab", "headless"].includes(mode)) throw new Error(`JS3D_MODE must be auto, tab or headless, not "${mode}"`);
+    if (!["auto", "tab", "headless"].includes(mode)) throw new Error(`JS3D_MODE must be auto, tab or headless, got ${show(mode)}. Set it in the server's env, or leave it out for auto.`);
     const m = /^(\d+)x(\d+)$/.exec(viewport);
-    if (!m) throw new Error(`JS3D_VIEWPORT must look like 1000x700, not "${viewport}"`);
-    if (!/^\d+$/.test(String(wsPort)) || Number(wsPort) > 65535) throw new Error(`JS3D_WS_PORT must be a whole number from 0 to 65535, not "${wsPort}"`);
+    if (!m) throw new Error(`JS3D_VIEWPORT must look like 1000x700, got ${show(viewport)}. Try "1000x700".`);
+    if (!/^\d+$/.test(String(wsPort)) || Number(wsPort) > 65535) throw new Error(`JS3D_WS_PORT must be a whole number from 0 to 65535, got ${show(wsPort)}. Try 8822, the port Connect to AI agent uses.`);
     Object.assign(this, { mode, wsPort: Number(wsPort), viewport: { width: +m[1], height: +m[2] }, appSpec: app, log });
     this.wss = null; this.wsError = null;
     this.tab = null; // { ws, hello } once a page has said hello
@@ -79,7 +81,7 @@ export class Session {
     if (!msg || typeof msg !== "object") return;
     if (msg.hello === "jumpstart-3d") {
       if (this.tab && this.tab.ws !== ws) { // a tab that is connected is never replaced: the newcomer is told to stop trying
-        this.log("a second tab tried to connect; refused");
+        this.log("a second tab tried to connect; refused: another tab already has the link. Close that tab, then reload this one.");
         ws.close(4001, "another tab already has the AI agent link");
         return;
       }
@@ -96,7 +98,7 @@ export class Session {
     if (!this.tab || this.tab.ws !== ws) return;
     this.tab = null;
     this.log("tab disconnected");
-    this.#failPending("The tab disconnected before it answered.");
+    this.#failPending("The tab disconnected before it answered. Turn Connect to AI agent on again or reload the page, then retry; call status to check the link.");
   }
   #failPending(why) {
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error(why)); }
@@ -112,7 +114,7 @@ export class Session {
       let url = spec;
       if (!/^(https?|file):\/\//i.test(spec)) {
         const path = resolve(spec);
-        if (!existsSync(path)) throw new Error(`JS3D_APP not found: ${path}`);
+        if (!existsSync(path)) throw new Error(`JS3D_APP not found: ${path}. Set it to a folder holding the built site, an .html file, or a web address.`);
         if (statSync(path).isDirectory()) { stat = await serve(path); url = stat.url; } else url = pathToFileURL(path).href;
       }
       this.log(`starting a headless browser on ${url}`);
@@ -131,7 +133,7 @@ export class Session {
     } catch (e) {
       if (browser) await browser.close().catch(() => {});
       if (stat) await stat.close();
-      throw new Error("could not start the headless browser: " + e.message);
+      throw new Error("could not start the headless browser: " + e.message + '. Run npx playwright@1.62.1 install chromium, then retry, or set JS3D_MODE=tab.');
     }
   }
   defaultApp() {
@@ -159,13 +161,13 @@ export class Session {
       if (!this.tab) {
         if (!this.pinned) throw new Error(this.noTab());
         await this.#waitForTab(TAB_RETURN_MS);
-        if (!this.tab) throw new Error("The tab disconnected; turn Connect to AI agent on again or reload it, then retry.");
+        if (!this.tab) throw new Error("The tab disconnected; turn Connect to AI agent on again or reload it, then retry. If it stays away, call status, or restart the server with JS3D_MODE=headless to work without a browser.");
       }
       this.pinned = "tab";
       return decode(await this.#callTab(name, args, timeoutMs));
     }
     if (!this.hl) await (this.launching ||= this.#launch().finally(() => { this.launching = null; }));
-    if (!this.hl) throw new Error("the headless browser closed right after it started");
+    if (!this.hl) throw new Error("the headless browser closed right after it started. Retry the call to start a new one; if it keeps closing, call status and run npx playwright@1.62.1 install chromium.");
     this.pinned = "headless";
     return decode(await this.#callHeadless(name, args, timeoutMs));
   }
@@ -173,13 +175,14 @@ export class Session {
     for (let t0 = Date.now(); !this.tab && Date.now() - t0 < ms;) await new Promise((r) => setTimeout(r, 100));
   }
   noTab() {
-    return "No JumpStart 3D tab is connected. Open the app in a browser, open Customize (the sliders button in the top bar) and turn on Connect to AI agent; if the browser asks about local network access, allow it." + (this.wsError ? ` (The server ${this.wsError}.)` : "");
+    if (this.wsError) return `No JumpStart 3D tab is connected: the server ${this.wsError}. Set JS3D_WS_PORT, restart, then run JS3D.connect("ws://127.0.0.1:PORT") in the tab.`;
+    return "No JumpStart 3D tab is connected. In the app, open Customize (the sliders button in the top bar), turn on Connect to AI agent, and allow local network access if the browser asks. Or restart the server with JS3D_MODE=headless to work without a browser.";
   }
   #callTab(name, args, timeoutMs) {
     const { ws } = this.tab;
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`The tab did not answer ${name} within ${timeoutMs / 1000} s.`)); }, timeoutMs);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`The tab did not answer ${name} within ${timeoutMs / 1000} s. Call status to see whether the tab is still there, then retry; if the page is busy, call wait_ready first.`)); }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       ws.send(JSON.stringify({ id, call: name, args }));
     });
@@ -191,7 +194,7 @@ export class Session {
       page.evaluate(async ([call, a]) => {
         try { const r = await window.JS3D.invoke(call, a); return { ok: r === undefined ? null : r }; } catch (e) { return { err: (e && e.message) || String(e) }; }
       }, [name, args]),
-      new Promise((_, no) => { timer = setTimeout(() => no(new Error(`The headless browser did not answer ${name} within ${timeoutMs / 1000} s.`)), timeoutMs); }),
+      new Promise((_, no) => { timer = setTimeout(() => no(new Error(`The headless browser did not answer ${name} within ${timeoutMs / 1000} s. Call status, then retry; if the page is busy, call wait_ready first.`)), timeoutMs); }),
     ]).finally(() => clearTimeout(timer));
     if (out.err !== undefined) throw new Error(out.err);
     return out.ok;
@@ -205,7 +208,7 @@ export class Session {
     if (this.wsError) s.wsError = this.wsError;
     if (this.pinned === "headless" && this.tab) s.hint = "a tab is connected but this session is headless; restart the server to use the tab";
     if (!live) {
-      s.hint = this.pinned === "tab" ? "The tab disconnected; turn Connect to AI agent on again or reload it. Calls wait 5 seconds for it, then fail." :
+      s.hint = this.pinned === "tab" ? "The tab disconnected; turn Connect to AI agent on again or reload it, then retry. Calls wait 5 seconds for it, then fail. To work without a browser, restart the server with JS3D_MODE=headless." :
         this.pinned === "headless" ? "The headless browser starts again on the next tool call that needs a page." :
         this.mode === "tab" ? this.noTab() : this.mode === "headless" ? "A headless browser starts on the first tool call that needs a page." :
         "No page yet. Open JumpStart 3D and turn on Connect to AI agent in the Customize menu (the sliders button) to use that tab (allow the browser's local network permission if it asks), or call any other tool to start a headless browser.";

@@ -1,6 +1,7 @@
 // jumpstart-3d: advanced CAD calls (IMPROVEMENT_PLAN 9.1). AGPL-3.0-only.
 // Shapes as data -> sketch points, entities and constraints, every shape fully dimensioned (degrees of freedom 0) the way the
 // sketcher's own tools leave it; and the default profile choice for Extrude and Revolve. Pure: no app, no browser.
+import { show } from "./teach.js";
 import { uid } from "./util.js";
 import { pointInPoly, regionContains } from "./regions.js";
 
@@ -12,7 +13,7 @@ const MAX_SKETCH = 2000;
 const isNum = (x) => typeof x === "number" && isFinite(x);
 const isPair = (a) => Array.isArray(a) && a.length === 2 && a.every(isNum);
 const tiny = (x) => Math.abs(x) < 1e-9;
-const plainNum = (v, what) => { if (isNum(v)) return { v }; throw new Error(`${what} "${v}" does not give a usable number`); };
+const plainNum = (v, what) => { if (isNum(v)) return { v }; throw new Error(`${what} ${show(v)} does not give a usable number. Use a finite number.`); };
 
 class Sketch {
   pts = []; ents = []; cons = []; origin = null;
@@ -49,7 +50,7 @@ class Sketch {
 // shapes: the list the caller gave; num(value, what) -> { v, expr? } turns a number or an expression into a value (and throws
 // `<what> "<text>" does not give a usable number`). Returns { pts, ents, cons, shapes: [{ type, ents, center? }] }.
 export function buildShapes(shapes, num = plainNum) {
-  if (!Array.isArray(shapes) || shapes.length < 1 || shapes.length > 200) throw new Error("shapes must be a list of 1 to 200 shapes");
+  if (!Array.isArray(shapes) || shapes.length < 1 || shapes.length > 200) throw new Error(`shapes must be a list of 1 to 200 shapes, got ${show(shapes)}. Example: shapes: [{type: "circle", diameter: 10}].`);
   let points = 0, entities = 0, needsOrigin = false;
   for (const s of shapes) {
     const m = Array.isArray(s?.points) ? s.points.length : 0, n = Number.isInteger(s?.sides) ? s.sides : 0;
@@ -63,21 +64,21 @@ export function buildShapes(shapes, num = plainNum) {
   const S = new Sketch(), out = [];
   shapes.forEach((s, i) => {
     const at = `shapes[${i}]`;
-    if (!s || typeof s !== "object" || !Object.hasOwn(KEYS, s.type)) throw new Error(`${at}.type must be one of ${Object.keys(KEYS).join(", ")}`);
-    for (const k of Object.keys(s)) if (k !== "type" && !KEYS[s.type].includes(k)) throw new Error(`${at} has an unknown key "${k}"; it takes ${KEYS[s.type].join(", ")}`);
+    if (!s || typeof s !== "object" || !Object.hasOwn(KEYS, s.type)) throw new Error(`${at}.type must be one of ${Object.keys(KEYS).join(", ")}, got ${show(s?.type)}. Choose a listed type.`);
+    for (const k of Object.keys(s)) if (k !== "type" && !KEYS[s.type].includes(k)) throw new Error(`${at} has an unknown key ${show(k)}; it takes ${KEYS[s.type].join(", ")}. Remove that key.`);
     const size = (v, key, msg = `${at}.${key} must be a number of mm more than 0, or an expression`) => {
-      if (!(isNum(v) || (typeof v === "string" && v.trim()))) throw new Error(msg);
+      if (!(isNum(v) || (typeof v === "string" && v.trim()))) throw new Error(`${msg}, got ${show(v)}. Give a positive size.`);
       const n = num(v, `${at}.${key}`);
-      if (!(n.v > 0)) throw new Error(msg);
+      if (!(n.v > 0)) throw new Error(`${msg}, got ${show(v)}. Give a positive size.`);
       return n;
     };
-    const pair = (v, key, what = "[x, y] in mm") => { if (!isPair(v)) throw new Error(`${at}.${key} must be ${what}`); return v; };
+    const pair = (v, key, what = "[x, y] in mm") => { if (!isPair(v)) throw new Error(`${at}.${key} must be ${what}, got ${show(v)}. Example: [0, 0].`); return v; };
     const center = s.center === undefined ? [0, 0] : pair(s.center, "center", "[x, y] in mm (numbers; expressions are for sizes)");
     const [cx, cy] = center;
     let drawn, withCenter = true;
     if (s.type === "rect" || s.type === "roundrect") {
       const msg = `${at}.size must be [w, h] in mm, each more than 0`;
-      if (!Array.isArray(s.size) || s.size.length !== 2) throw new Error(msg);
+      if (!Array.isArray(s.size) || s.size.length !== 2) throw new Error(`${msg}, got ${show(s.size)}. Example: [10, 5].`);
       const w = size(s.size[0], "size[0]", msg), h = size(s.size[1], "size[1]", msg), hw = w.v / 2, hh = h.v / 2;
       const P = (x, y) => S.pt(cx + x, cy + y), C = S.pt(cx, cy), line = (a, b) => S.ent({ t: "line", a, b });
       if (s.type === "rect") {
@@ -91,9 +92,9 @@ export function buildShapes(shapes, num = plainNum) {
         drawn = L;
       } else {
         const lim = Math.min(w.v, h.v) / 2;
-        if (s.radius === undefined) throw new Error(`${at}.radius must be more than 0 and less than half the smaller side (${+lim.toFixed(4)} mm here)`);
+        if (s.radius === undefined) throw new Error(`${at}.radius must be more than 0 and less than half the smaller side (${+lim.toFixed(4)} mm here), got ${show(s.radius)}. Give a smaller positive radius.`);
         const r = size(s.radius, "radius");
-        if (!(r.v < lim)) throw new Error(`${at}.radius must be more than 0 and less than half the smaller side (${+lim.toFixed(4)} mm here)`);
+        if (!(r.v < lim)) throw new Error(`${at}.radius must be more than 0 and less than half the smaller side (${+lim.toFixed(4)} mm here), got ${show(s.radius)}. Give a smaller positive radius.`);
         const p = [P(-hw + r.v, -hh), P(hw - r.v, -hh), P(hw, -hh + r.v), P(hw, hh - r.v), P(hw - r.v, hh), P(-hw + r.v, hh), P(-hw, hh - r.v), P(-hw, -hh + r.v)];
         const c = [P(-hw + r.v, -hh + r.v), P(hw - r.v, -hh + r.v), P(hw - r.v, hh - r.v), P(-hw + r.v, hh - r.v)];
         const arc = (k, a, b) => S.ent({ t: "arc", c: c[k], a: p[a], b: p[b] });
@@ -119,9 +120,9 @@ export function buildShapes(shapes, num = plainNum) {
       drawn = [e];
     } else if (s.type === "slot") {
       const width = size(s.width, "width"), length = size(s.length, "length");
-      if (!(length.v > width.v)) throw new Error(`${at}.length must be more than its width`);
+      if (!(length.v > width.v)) throw new Error(`${at}.length must be more than its width, got ${show(s.length)}. Increase length above ${show(s.width)}.`);
       const angle = s.angle ?? 0;
-      if (angle !== 0 && angle !== 90) throw new Error(`${at}.angle must be 0 or 90 (for other angles use a polyline)`);
+      if (angle !== 0 && angle !== 90) throw new Error(`${at}.angle must be 0 or 90 (for other angles use a polyline), got ${show(angle)}. Set angle to 0 or 90.`);
       const k = (length.v - width.v) / 2, r = width.v / 2, vertical = angle === 90;
       const P = (x, y) => (vertical ? S.pt(cx - y, cy + x) : S.pt(cx + x, cy + y));
       const A = P(-k, -r), B = P(k, -r), Cc = P(k, r), D = P(-k, r), Cr = P(k, 0), Cl = P(-k, 0), M = P(0, 0);
@@ -139,7 +140,7 @@ export function buildShapes(shapes, num = plainNum) {
       drawn = [ab, right, cd, left];
     } else if (s.type === "polygon") {
       const n = s.sides;
-      if (!Number.isInteger(n) || n < 3 || n > 64) throw new Error(`${at}.sides must be a whole number from 3 to 64`);
+      if (!Number.isInteger(n) || n < 3 || n > 64) throw new Error(`${at}.sides must be a whole number from 3 to 64, got ${show(n)}. Choose a whole number in that range.`);
       const d = size(s.diameter, "diameter"), R = d.v / 2, C = S.pt(cx, cy);
       const V = Array.from({ length: n }, (_, k) => { const t = ((-90 - 180 / n + (360 * k) / n) * Math.PI) / 180; return S.pt(cx + R * Math.cos(t), cy + R * Math.sin(t)); });
       const L = V.map((a, k) => S.ent({ t: "line", a, b: V[(k + 1) % n] }));
@@ -155,18 +156,18 @@ export function buildShapes(shapes, num = plainNum) {
       withCenter = false;
       if (s.type === "line") {
         const a = pair(s.from, "from"), b = pair(s.to, "to");
-        if (tiny(b[0] - a[0]) && tiny(b[1] - a[1])) throw new Error(`${at} has a zero-length side at point 1`);
+        if (tiny(b[0] - a[0]) && tiny(b[1] - a[1])) throw new Error(`${at} has a zero-length side at point 1. Give from and to different points.`);
         const ia = S.pt(...a), ib = S.pt(...b);
         drawn = [S.segment(a, b, ia, ib, s.construction === true)];
         S.place(ia, a[0], a[1]);
       } else {
         const closed = s.closed ?? true, p = s.points;
-        if (typeof closed !== "boolean") throw new Error(`${at}.closed must be true or false`);
-        if (!Array.isArray(p) || p.length < (closed ? 3 : 2) || p.length > 200 || !p.every(isPair)) throw new Error(`${at}.points must be 2 to 200 [x, y] points in mm (3 or more when closed)`);
+        if (typeof closed !== "boolean") throw new Error(`${at}.closed must be true or false, got ${show(closed)}. Set closed to true or false.`);
+        if (!Array.isArray(p) || p.length < (closed ? 3 : 2) || p.length > 200 || !p.every(isPair)) throw new Error(`${at}.points must be 2 to 200 [x, y] points in mm (3 or more when closed), got ${show(p)}. Add valid points.`);
         const m = p.length, segs = closed ? m : m - 1;
         for (let k = 0; k < segs; k++) {
           const a = p[k], b = p[(k + 1) % m];
-          if (tiny(b[0] - a[0]) && tiny(b[1] - a[1])) throw new Error(`${at} has a zero-length side at point ${(k + 1) % m}`);
+          if (tiny(b[0] - a[0]) && tiny(b[1] - a[1])) throw new Error(`${at} has a zero-length side at point ${(k + 1) % m}. Remove or move the repeated point.`);
         }
         const ids = p.map((q) => S.pt(...q));
         drawn = [];
@@ -192,9 +193,9 @@ export function defaultProfiles(regions) {
 export function pickProfiles(regions, points, sketchName) {
   const out = [];
   for (const pt of points) {
-    if (!isPair(pt)) throw new Error("profiles must be a list of [x, y] points in the sketch");
+    if (!isPair(pt)) throw new Error(`profiles must be a list of [x, y] points in the sketch, got ${show(pt)}. Example: profiles: [[0, 0]].`);
     const hit = regions.filter((r) => regionContains(r, pt)).sort((a, b) => a.area - b.area)[0];
-    if (!hit) throw new Error(`no closed profile at [${pt[0]}, ${pt[1]}] in ${sketchName}`);
+    if (!hit) throw new Error(`no closed profile at ${show(pt)} in ${sketchName}. Use a point inside a closed profile.`);
     if (!out.includes(hit)) out.push(hit);
   }
   return out;

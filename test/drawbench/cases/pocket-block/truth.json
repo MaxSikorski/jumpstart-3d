@@ -1,0 +1,19 @@
+{
+  "spec": 1,
+  "name": "Pocket block",
+  "units": "mm",
+  "source": { "kind": "drawing", "projection": "third", "scale": "dimensioned" },
+  "checks": [
+    { "id": "size", "kind": "size", "value": [60, 40, 15], "tol": 0.1, "from": "stated" },
+    { "id": "holes-5", "kind": "holes", "dia": 5, "count": 2, "axis": "z", "through": true, "at": [[50, 8], [50, 32]], "tol": 0.1, "from": "stated" },
+    { "id": "pocket-depth", "kind": "distance", "a": { "near": [50, 20, 15] }, "b": { "near": [25, 22, 7] }, "value": 8, "tol": 0.1, "from": "stated" },
+    { "id": "pocket-w", "kind": "distance", "a": { "near": [10, 22, 11] }, "b": { "near": [40, 22, 11] }, "value": 30, "tol": 0.1, "from": "stated" },
+    { "id": "pocket-l", "kind": "distance", "a": { "near": [25, 14, 11] }, "b": { "near": [25, 30, 11] }, "value": 16, "tol": 0.1, "from": "stated" },
+    { "id": "pocket-x", "kind": "distance", "a": { "near": [0, 20, 7.5] }, "b": { "near": [10, 22, 11] }, "value": 10, "tol": 0.1, "from": "stated" },
+    { "id": "pocket-y", "kind": "distance", "a": { "near": [30, 0, 7.5] }, "b": { "near": [25, 14, 11] }, "value": 14, "tol": 0.1, "from": "stated" },
+    { "id": "volume", "kind": "volume", "value": 31570.95, "tol": "1%", "from": "derived", "note": "60*40*15 - 30*16*8 - 2*pi*2.5^2*15" },
+    { "id": "solids", "kind": "solids", "value": 1 }
+  ],
+  "assumed": [],
+  "questions": []
+}

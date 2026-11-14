@@ -10,7 +10,11 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
-| `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it) |
+| `apicontract.js` | Versioned scripting API call and property manifest |
+| `teach.js` | Short, safe values for API error messages |
+| `kernelhints.js` | Suggestions for recognized geometry-engine errors |
+| `embed.js` | Cross-origin temporary-design message channel |
+| `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it); it drops layers no piece uses and throws an Error saying why when the used layers would need more than about 300 MB. `layerscape.js` keeps a refused or unreadable diorama in the design until the user agrees to replace it |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
 | `meshdetail.js` | Mesh detail menu: Normal, Fine, Extra fine, custom up to 32x |
@@ -47,10 +51,13 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
 | `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
-| `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
+| `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot (its gizmo moves by `app.moveStep()`), status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `simpleabout.js` | Community About dialog, update check, help and support links |
-| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
+| `phonefit.js` | Long menus scroll inside the window with a fade while more items are below; 44 px touch targets on touch screens for Save, Undo, Redo, view buttons, view-cube arrows and status-bar controls |
+| `phonesheet.js` | Simple’s selected-shape sheet on a phone opens collapsed with the name and size; tap or pull to open it, sized to keep the shape in view |
+| `a11ynames.js` | Icon-only buttons or controls with a tooltip but no name get the tooltip as an aria-label, at start and when controls are added later |
+| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar with Customize and Your designs, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
@@ -67,6 +74,10 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations; `curvedBottom` (a round bottom resting on the plate: a sphere, a cylinder on its side, a cone tip down) |
 | `placebeside.js` | Where a clicked shape goes when its drop spot is taken: beside the rightmost shape, 5 mm apart, on the plate; pure |
+| `facesnap.js`, `facedrag.js` | Face snap: a Beginner drag lands on the face under the pointer (top: rests on it; side: turns to stand out of it). `facesnap.js` is the pure maths (no DOM, no three.js); `facedrag.js` is the glue the move drag calls |
+| `escapekey.js` | Escape closes the dialog in front, or an open menu or Simple panel, and nothing else (Grok review, build 36); full-window studios keep their own Escape |
+| `codecad.js` | Code CAD dialog and `JS3D.codeCad`: replicad code builds one solid in a temporary worker and is added as a STEP body that keeps its recipe as inert text; runs again only on Update |
+| `codecad-worker.js` | Code CAD, worker side: locks the temporary worker down (no network, storage or extra scripts), builds one closed solid and proves its STEP reads back; not a full sandbox |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
 | `meshbool.js` | Joins, cuts and combines that involve an imported mesh run on Manifold (triangle-mesh engine, `third_party/manifold-3d/`) instead of OpenCascade. `startManifold()` / `manifoldReady()` load it (the worker starts it on a mesh asset; a failed or 15 s stuck start ends in a kept error and OpenCascade does the booleans); `kernel.js` calls it from marked blocks (`import` + `initMeshBool`, the top of `evalNode`, `buildBodies`, `clearCache`). `meshBody` draws a meshy body from a Manifold (`meshEngine: "manifold"`); `meshBrep` builds a B-rep from it on demand; a refusal runs today's OpenCascade code (`meshEngine: "occt-fallback"`). Corners of a moved operand go back to the decimal they were written as, through the matrix in doubles, to float32 once (so a moved mesh still meets a box set on its face); `simplify(1e-5)`, cavities kept with the solid around them, closed-by-position check, films dropped |
@@ -76,7 +87,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 153, `projects.js` 60, `app.js` 94, `beginner.js` 43, `index.html` 49, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 14.
 `fasteners.js` (since 2.8.1.3 his Fasteners parts library, `fastenerCmd` in `advanced.js`): our marked blocks add UNF sizes, the tap cutter, left-hand threads and the ISO minor-diameter nut bore, and at the bottom our `JS3D.fastener` builder (bolt, nut, threaded rod, tap cutter: its own tested shapes); the dialog's print offset per part, hand, turns guard and F8 spacing are marked blocks in `fastenerCmd`.
 Few markers (1 to 5): `layerscape.js`, `layerscape.html` and `lsimport.js` (Layerscape, from 2.9.8.9: the on-demand page and `lsguard.js` checks), `dxf.js` (body drawing: inch units and TEXT in `writeDXF`), `inflate.js`, `icons.js`, `tutorials.js`, `tutorial_data.js`, `dims.js`, `facepat.js`, `meshimport.js`, `ops.js`, `voxel.js`, `constraints.js`, `lathe.js`, `recovery.js`, `scene.js`, `worker.js`, `version.js`.
-`kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`); `version.js` holds the community build number that `/ship` bumps.
+`kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`) and exports STEP as bytes through replicad's `exportShapeSTEPBytes` (our block in its `export.ts`: Safari cannot read a Blob made inside the single file's engine worker); `version.js` holds the community build number that `/ship` bumps.
 
 ## 3. J.Siwek's, untouched
 No markers. On a port, take his new version whole. Do not "tidy" these.

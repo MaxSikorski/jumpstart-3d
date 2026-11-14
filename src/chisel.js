@@ -132,7 +132,7 @@ export function initChisel(app) {
     // snapping settings, shared with the status bar's Snap to menu
     snap: () => {
       const sel = document.getElementById("snap");
-      return { grid: app.snapOn, obj: app.objectSnap, size: +sel.value, sizes: [...sel.options].map((o) => ({ v: +o.value, label: o.textContent })) };
+      return { grid: app.snapOn, obj: app.objectSnap, size: +app.snapSize(), sizes: [...sel.options].filter((o) => +o.value > 0).map((o) => ({ v: +o.value, label: o.textContent })) };
     },
     setSnap: (k, v) => {
       if (k === "grid") app.setSnap(v, true);
@@ -239,7 +239,7 @@ export function initChisel(app) {
     const note = helperLoadingNote(() => app.switchMode("beginner")), mine = host;
     helperPage("chisel").then((html) => { if (host === mine) { note.done(); ifr.srcdoc = html; } }, (e) => {
       if (host !== mine) return;
-      host.remove(); host = ifr = readyP = null;
+      note.done(); host.remove(); host = ifr = readyP = null;
       readyRes(false); readyRes = null;
       if (app.mode === "chisel") { app.toast(helperFailText("Chisel", e), "err"); app.switchMode("beginner"); }
     });

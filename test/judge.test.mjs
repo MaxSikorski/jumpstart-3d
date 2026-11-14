@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
-import { BUILDS, FORMATS, ROOT, fileKey, worldExpectation, validateInputs, parseInfo, slicerDiagnostics, parseGcode, parseFreecad, child, requireChild, resolveExecutable, isolatedEnvironment, sliceFile, summaryTable, measurements, applyKnown, classifyCrossings, nativeVerdict, readKnown } from '../tools/judge-exports.mjs';
+import { BUILDS, FORMATS, ROOT, fileKey, worldExpectation, validateInputs, parseInfo, slicerDiagnostics, parseGcode, parseFreecad, child, requireChild, progressAllowance, resolveExecutable, isolatedEnvironment, sliceFile, summaryTable, measurements, applyKnown, classifyCrossings, nativeVerdict, readKnown } from '../tools/judge-exports.mjs';
 import { sha256, normalizeStep, IDENTITY } from './helpers.mjs';
 
 const fixtures = path.join(ROOT, 'test/fixtures/judge');
@@ -192,6 +192,22 @@ test('child captures stdout/stderr, exit status, missing executable, signal and 
   assert.throws(() => requireChild(noProgress), /progress/);
   const deadline = await run('setInterval(()=>{},100)', { deadline: Date.now() + 50 });
   assert.throws(() => requireChild(deadline), /deadline/);
+  // a big file gets a longer window after its BEGIN line; the next line goes back to the short one
+  const slow = 'console.log("JUDGE_BEGIN site/big.stl");setTimeout(()=>console.log("JUDGE_RESULT {}"),300);';
+  const longer = await run(slow, { startupMs: 1000, progressMs: 50, progressFor: line => line.startsWith('JUDGE_BEGIN site/big.stl') ? 2000 : 50 });
+  requireChild(longer); assert.match(longer.stdout, /JUDGE_RESULT/);
+  const stopped = await run(slow + 'setInterval(()=>{},100)', { startupMs: 1000, progressMs: 50, progressFor: line => line.startsWith('JUDGE_BEGIN site/big.stl') ? 2000 : 50 });
+  assert.throws(() => requireChild(stopped), /progress/);
+});
+
+test('the no-progress window grows by 2 s per MB of the file being checked', t => {
+  const dir = temporary(t), big = path.join(dir, 'big.stl'), small = path.join(dir, 'small.stl');
+  writeFileSync(big, Buffer.alloc(66_000_001)); writeFileSync(small, Buffer.alloc(10));
+  const allowance = progressAllowance([{ key: 'site/big.stl', path: big }, { key: 'site/small.stl', path: small }], 20_000);
+  assert.equal(allowance('JUDGE_BEGIN site/big.stl'), 20_000 + 67 * 2000);
+  assert.equal(allowance('JUDGE_BEGIN site/small.stl'), 20_000 + 2000);
+  assert.equal(allowance('JUDGE_RESULT {"build":"site"}'), 20_000);
+  assert.equal(allowance('JUDGE_BEGIN site/unknown.stl'), 20_000);
 });
 
 for (const [mode, reason] of [['missing', /missing G-code/], ['nonzero', /exit=9/], ['stderr', /slicer diagnostic/], ['good', null]]) test(`slicer child ${mode}, stale outputs never count`, async t => {

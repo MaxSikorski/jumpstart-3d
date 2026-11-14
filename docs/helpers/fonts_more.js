@@ -1,4 +1,4 @@
-js3d-build:031bbf69a9
+js3d-build:b8198f43d2
 // More fonts for the Text tool (made by tools/make_fonts.py): subsets of open-licence fonts from
 // the Google Fonts collection, renamed "JumpStart <style>". Licences and copyrights: licenses.js.
 // Only the main page carries these; the geometry worker is sent the ones it needs.
