@@ -2935,8 +2935,10 @@ async function parsePSD(buf) {
     const liLen = len(), liEnd = o + liLen;
     if (liLen > 0) {
       const count = Math.abs(i16());
+      if (count > 1000) throw new Error("That file has more layers than Layerscape can open."); // jumpstart-3d: a crafted file must not freeze the page
       for (let n = 0; n < count; n++) {
         const r = { top: i32(), left: i32(), bottom: i32(), right: i32(), ch: [] };
+        if (r.right - r.left > 30000 || r.bottom - r.top > 30000 || (r.right - r.left) * (r.bottom - r.top) > 1e8) throw new Error("That file has a layer bigger than Layerscape can open."); // jumpstart-3d: a crafted file must not freeze the page
         const nc = u16(); for (let c = 0; c < nc; c++) r.ch.push({ id: i16(), len: len() });
         o += 4; o += 4; r.opacity = u8[o++]; r.clip = u8[o++]; r.flags = u8[o++]; o++;
         const exLen = u32(), exEnd = o + exLen;
@@ -4923,15 +4925,15 @@ function kitFromDesign(d) {
   const ngonL = (n, rx, ry, rot) => Array.from({ length: n }, (_, i) => [Math.cos(rot + (i / n) * Math.PI * 2) * rx, Math.sin(rot + (i / n) * Math.PI * 2) * ry]);
   const darker = (c) => toHex(hexRGB(c).map((v) => v * 0.62));
   const blocks = [], roofs = [];
-  for (const it of d.items) {
+  for (const it of d.items.slice(0, 1000)) { // jumpstart-3d: at most 1,000 blocks from a design
     if (it.kind === "mesh") { blocks.push({ t: "mesh", V: it.V, I: it.I, color: it.color, name: it.name, z: it.z }); continue; }
     const m = it.m, p = it.p || {}, w = p.w || 10, dd = p.d || w, h = p.h || 10;
     let fp, t = "box";
     if (it.kind === "box") fp = [[-w / 2, -dd / 2], [w / 2, -dd / 2], [w / 2, dd / 2], [-w / 2, dd / 2]];
     else if (it.kind === "cylinder" || it.kind === "tube") { fp = ngonL(16, w / 2, dd / 2, 0); t = "prism"; }
-    else if (it.kind === "prism") { fp = ngonL(Math.max(3, Math.round(p.sides || 6)), w / 2, dd / 2, Math.PI / 2); t = "prism"; }
+    else if (it.kind === "prism") { fp = ngonL(Math.min(64, Math.max(3, Math.round(p.sides || 6))), w / 2, dd / 2, Math.PI / 2); t = "prism"; } // jumpstart-3d: at most 64 sides from a design
     else if (it.kind === "cone") { fp = ngonL(16, w / 2, dd / 2, 0); t = "spire"; }
-    else if (it.kind === "pyramid") { const n = Math.max(3, Math.round(p.sides || 4)); fp = n === 4 ? [[-w / 2, -dd / 2], [w / 2, -dd / 2], [w / 2, dd / 2], [-w / 2, dd / 2]] : ngonL(n, w / 2, dd / 2, Math.PI / 2); t = "spire"; }
+    else if (it.kind === "pyramid") { const n = Math.min(64, Math.max(3, Math.round(p.sides || 4))); /* jumpstart-3d: at most 64 sides from a design */ fp = n === 4 ? [[-w / 2, -dd / 2], [w / 2, -dd / 2], [w / 2, dd / 2], [-w / 2, dd / 2]] : ngonL(n, w / 2, dd / 2, Math.PI / 2); t = "spire"; }
     else if (it.kind === "roof") { fp = [[w / 2, -dd / 2], [w / 2, dd / 2], [-w / 2, dd / 2], [-w / 2, -dd / 2]]; t = "roof"; }
     else continue;
     fp = fp.map(([x, y]) => [m[0] * x + m[4] * y + m[12], m[1] * x + m[5] * y + m[13]]);

@@ -746,14 +746,15 @@ function featureSettings(m) {
     if (!["straight", "gusset"].includes(o.shape)) throw damaged("rib shape");
     for (const k of ["height", "thick", "spacing"]) positive(o[k], k);
     count(o.count, LIMITS.REPEAT, "rib count"); bool(o.flip, "rib flip");
-    for (const k of ["a", "b", "n"]) vec(o[k], 3, "rib " + k);
+    vec(o.a, 3, "rib a"); vec(o.b, 3, "rib b"); normal(o.n, "rib n");
+    if (o.a.every((x, i) => x === o.b[i])) throw damaged("rib ends");
   } else {
     allow(o, new Set(["size", "head", "shank", "length", "lip", "depth", "ang", "at"]), "a keyhole");
     if (!["small", "medium", "large", "custom"].includes(o.size)) throw damaged("keyhole size");
     for (const k of ["head", "shank", "length", "lip", "depth"]) positive(o[k], k);
     if (o.head <= o.shank || ![0, 90, 180, 270].includes(o.ang)) throw damaged("keyhole settings");
     const points = arr(o.at, "keyhole points", LIMITS.REPEAT); if (!points.length) throw damaged("keyhole points");
-    for (const q of points) { obj(q, "a keyhole point"); allow(q, new Set(["p", "n"]), "a keyhole point"); vec(q.p, 3, "point"); vec(q.n, 3, "normal"); }
+    for (const q of points) { obj(q, "a keyhole point"); allow(q, new Set(["p", "n"]), "a keyhole point"); vec(q.p, 3, "point"); normal(q.n, "normal"); }
   }
 }
 function jigSettings(j) {

@@ -83,6 +83,45 @@ test("Layerscape opens, makes a puzzle and adds its parts to the design", async 
   expect((await checkedBodies()).length).toBeGreaterThan(0);
 });
 
+// ours (src/lsguard.js): a diorama inside a design file is untrusted. Layerscape runs in a same-origin frame, so a crafted
+// piece id must not become markup, and no picture or colour in it may make the app contact a web address.
+test("a hostile Layerscape diorama in a design runs no script and fetches nothing", async () => {
+  test.setTimeout(180_000);
+  const hits = [];
+  await page.route(/example\.invalid/, (r) => { hits.push(r.request().url()); return r.abort(); });
+  try {
+    const png = await run(() => { const c = document.createElement("canvas"); c.width = c.height = 4; const g = c.getContext("2d"); g.fillStyle = "#8ab"; g.fillRect(0, 0, 4, 4); return c.toDataURL("image/png"); });
+    const evil = '"><img src=x onerror="window.__pwned=1">';
+    const diorama = (image) => JSON.stringify({ app: "layerscape", version: 1, name: "Hostile", W: 4, H: 4, image, owner: "-1:8,1:8", nextId: 2, horizon: 0.6,
+      pieces: [{ id: "1" + evil, name: "bad" }, { id: 1, name: "ok" + evil, type: "standee", color: "url(https://example.invalid/c.png)", auto: '" autofocus onfocus="window.__pwned=1', depth: 0.5, flatBase: true, scale: 1, dx: 0, cloneOf: null }],
+      settings: { smooth: 1e30, sheet: "constructor" }, view: { zoom: "url(https://example.invalid/v.png)" }, scene: -1,
+      layers: { list: [{ name: "l", x: 0, y: 0, png: "https://example.invalid/l.png" }], bg: "https://example.invalid/bg.png" } });
+    const open = async () => {
+      await page.click("#bb-layerscape");
+      const frame = page.frameLocator("#layerscape iframe");
+      await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 90_000 }).toBe(true);
+      return frame;
+    };
+    // a safe photo: the project opens with only the well-formed piece, its colour replaced, its name as plain text
+    await loadDoc(page, newDoc("Hostile diorama", "beginner", { layerscape: diorama(png) }));
+    let frame = await open();
+    await expect(frame.locator("#pieceList li.pitem")).toHaveCount(1);
+    await expect(frame.locator("#pieceList .pname")).toHaveValue("ok" + evil);
+    expect(await frame.locator("#pieceList .sw").evaluate((e) => getComputedStyle(e).backgroundImage)).toBe("none");
+    expect(await frame.locator("body").evaluate(() => window.__pwned)).toBeUndefined();
+    await run(() => window.__app.layerscape.close());
+    // a photo that is a web address: the project is refused and Layerscape opens its own sample instead
+    await loadDoc(page, newDoc("Hostile diorama 2", "beginner", { layerscape: diorama("https://example.invalid/photo.png") }));
+    frame = await open();
+    expect(await frame.locator("body").evaluate(() => window.__pwned)).toBeUndefined();
+    await run(() => window.__app.layerscape.close());
+    expect(await run(() => window.__pwned)).toBeUndefined();
+    expect(hits).toEqual([]);
+  } finally {
+    await page.unroute(/example\.invalid/);
+  }
+});
+
 test("Helmet Maker adds a solid helmet", async () => {
   test.setTimeout(180_000);
   await loadDoc(page, empty("Helmet", "beginner"));
@@ -178,8 +217,9 @@ test("Color Lithophane exports a multi-object 3MF from an uploaded picture", asy
 // ours: the design keeps its painted filaments (doc.printPaint) while the lithophane plate is in the sim and after Back to my design
 test("the colour lithophane plate never replaces the design's painted filaments", async () => {
   test.setTimeout(180_000);
-  const paint = { slots: ["#ff0000", "#00aa00"], of: { bx: 1 } };
-  const doc = newDoc("Painted", "advanced", { bodies: [body("bx", "Painted box", prim("box", { w: 30, d: 30, h: 10 }))] });
+  // two bodies on two filaments: the app keeps paint only when at least two filaments are used
+  const paint = { slots: ["#ff0000", "#00aa00"], of: { bx: 0, by: 1 }, faces: {} };
+  const doc = newDoc("Painted", "advanced", { bodies: [body("bx", "Red box", prim("box", { w: 30, d: 30, h: 10 })), body("by", "Green box", prim("box", { w: 20, d: 20, h: 10 }))] });
   doc.printPaint = paint;
   await loadDoc(page, doc);
   await checkedBodies();
