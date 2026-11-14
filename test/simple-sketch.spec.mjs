@@ -13,6 +13,8 @@ test.afterEach(() => expect(errors).toEqual([]));
 for (const layout of ["default", "clean"]) {
   test(`Simple Beginner (${layout} layout): a sketch shows Line, Rectangle, Circle and Finish, and a rectangle drawn with them is a closed profile`, async ({ page }) => {
     if (layout !== "default") await page.evaluate((l) => { document.documentElement.dataset.layout = l; }, layout);
+    await page.evaluate(() => window.__app.setMode("beginner"));
+    await expect(page.locator("#sr-sketch")).toBeVisible();
     await expect(page.locator("#ribbon")).toBeHidden();
     await page.click("#sr-sketch");
     await page.locator("#plane-seg button").first().click();
