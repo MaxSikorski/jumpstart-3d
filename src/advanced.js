@@ -8175,6 +8175,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ timeline
   const TL_ICON = { rib: "rib", keyhole: "keyhole", sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", keeppiece: "splitBody", pattern: "pattern", fillopen: "fillOpen" }; // jumpstart-3d: pattern, fill openings
   let lastTl = null, lastTlT = 0;
+  const tlDbl = { key: null, at: -1e9 }; // jumpstart-3d: Firefox timeline double-click (see the tl-item onclick)
   // ---- stepping through the timeline (rollback): see the design as it was after any step
   const TL_SVG = {};
   const tlSteps = () => timeline(store.doc);
@@ -8250,8 +8251,14 @@ export function initAdvanced(app) {
       const err = it.body && scene.errors.has(it.body);
       const cls = "tl-item" + (err ? " err" : "") + (rolled && idx > at ? " tl-future" : "") + (rolled && idx === at ? " tl-now" : "");
       const b = el("button", { class: cls, "data-mod": it.mod || "", "data-step": idx, title: `${it.label}${err ? " — " + scene.errors.get(it.body) : ""}\n${rolled ? "Click to show the design at this step. " : ""}Double-click (or tap twice) to edit`, "aria-label": it.label, html: ICON[TL_ICON[it.kind]] || ICON.prim });
-      b.onclick = () => {
+      b.onclick = (e) => {
         if (app.command && app.command.timelinePick && it.mod) { app.command.timelinePick(it); return; }
+        // jumpstart-3d: each click redraws the timeline, so the second click of a double-click lands on a new button, and Firefox then
+        // sends no dblclick. Every browser still counts that click as the second (detail 2): it opens the item here, and ondblclick
+        // below skips the dblclick Chromium and WebKit still send right after it.
+        const tk = it.mod || it.body || it.sketch;
+        if (e.detail === 2 && tlDbl.key === tk) { tlDbl.key = null; lastTl = null; b.ondblclick(); tlDbl.at = performance.now(); return; }
+        tlDbl.key = tk;
         // while stepping through: a click moves the marker to that step
         if (rolled) { if (roll.timer) rollStop(); rollToIndex(idx); return; }
         const key = it.mod || it.body || it.sketch;
@@ -8260,7 +8267,7 @@ export function initAdvanced(app) {
         if (it.body) { selSketch = null; app.select([it.body]); }
         else if (it.sketch) { selSketch = it.sketch; app.select([]); renderBrowser(); }
       };
-      b.ondblclick = () => { if (roll.timer) rollStop(); if (store.rollTo != null) { store.setRoll(null); } editItem(it); };
+      b.ondblclick = () => { if (performance.now() - tlDbl.at < 500) return; if (roll.timer) rollStop(); if (store.rollTo != null) { store.setRoll(null); } editItem(it); }; // jumpstart-3d: skip it when the second click above opened the item
       tl.append(b);
     });
     // keep the current step in sight
