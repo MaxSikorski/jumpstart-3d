@@ -112,6 +112,7 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
   // the time on the tiles is worked out like Orca Slicer's (hours and minutes)
   await expect(page.locator("#ps-time")).toHaveText(/\d+\s*(h|min)/);
   // G-code: a real file with Orca-style ;TYPE: comments and moves
+  await page.click("#ps-tab-others"); // J.Siwek 2.9.8.9.x: the G-code options and export are in the Others tab
   const g = await download(() => page.click("#ps-gcode"));
   expect(g.name).toMatch(/\.gcode$/);
   const text = g.bytes.toString("utf8");
