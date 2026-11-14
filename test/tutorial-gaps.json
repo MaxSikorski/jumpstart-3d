@@ -1,5 +1,5 @@
 {
-  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run. ar-planexp (Floor plan: PDF, SVG, DXF) is in none of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats. From J.Siwek 2.7.8 to 2.8.1.3: his new buttons (Floor Planner, whose ten tutorials live inside the planner; Quick Hinge; Bin & Box Maker; Stained Glass; the Fasteners entries other than Advanced Create; the Print Sim ribbon G-code button) have no JumpStart 3D lesson; upstream2813.spec.mjs covers each. From J.Siwek 2.8.1.4 to 2.9.3: Clearance, his Gears entries, the Neon Sign Builder, the pinned Constraints palette, Architect furniture, stairs, railings, porches and floor holes, the STL/3MF quality and Save-download switches, and the layout and Tablet entries have no JumpStart 3D lesson; upstream293.spec.mjs covers the headline ones (his ten Advanced/Expert tutorials are walked; his twelve Chisel tutorials run inside Chisel and are not). From J.Siwek 2.9.4 to 2.9.7.1: Neon Sign and Box Maker replace Chip Carve, Lathe and Stained Glass on the Beginner ribbon (bb-neon, bb-bins have no lesson; upstream2971.spec.mjs covers them); the Architect staging camera has no lesson.",
+  "note": "Buttons in the toolbars and menus that no tutorial step points at yet (test/tutorials.spec.mjs). Buttons without an id are keyed menu:data-value or menu:text:... (export:3mf, theme:perf:high). A NEW button without a tutorial fails the test: add a tutorial step for it, or list it here. When a tutorial starts using one, delete it from this list (the test says so). Regenerate the groups from test-results/tutorial-coverage-<build>.json after a run. ar-planexp (Floor plan: PDF, SVG, DXF) is in none of J.Siwek's 12 Architect lessons; upstream25.spec.mjs saves all three formats. From J.Siwek 2.7.8 to 2.8.1.3: his new buttons (Floor Planner, whose ten tutorials live inside the planner; Quick Hinge; Bin & Box Maker; Stained Glass; the Fasteners entries other than Advanced Create; the Print Sim ribbon G-code button) have no JumpStart 3D lesson; upstream2813.spec.mjs covers each. From J.Siwek 2.8.1.4 to 2.9.3: Clearance, his Gears entries, the Neon Sign Builder, the pinned Constraints palette, Architect furniture, stairs, railings, porches and floor holes, the STL/3MF quality and Save-download switches, and the layout and Tablet entries have no JumpStart 3D lesson; upstream293.spec.mjs covers the headline ones (his ten Advanced/Expert tutorials are walked; his twelve Chisel tutorials run inside Chisel and are not). From J.Siwek 2.9.4 to 2.9.7.1: Neon Sign and Box Maker replace Chip Carve, Lathe and Stained Glass on the Beginner ribbon (bb-neon, bb-bins have no lesson; upstream2971.spec.mjs covers them); the Architect staging camera has no lesson. Tutorials batch 5 (c5-* in src/tutorial_data_community.js) covers the laser cut files, the whole 3D Print Sim toolbar, Layerscape, the Helmet Maker, Color lithophane and the Simulate tab's Bin & Box Maker.",
   "gaps": {
     "Advanced toolbar": [
       "ad-chipcarve",
@@ -97,20 +97,8 @@
       "hole-tile:tube",
       "hole-tile:wedge"
     ],
-    "Advanced 3D print sim toolbar": [
-      "ps-r-auto",
-      "ps-r-gcode",
-      "ps-r-lay",
-      "ps-r-layers",
-      "ps-r-model",
-      "ps-r-play",
-      "ps-r-rx",
-      "ps-r-ry",
-      "ps-r-strength"
-    ],
     "Advanced simulate toolbar": [
       "sim-apply",
-      "sim-bins",
       "sim-chipcarve",
       "sim-cosforge",
       "sim-drive",
@@ -164,18 +152,6 @@
       "ar-porch",
       "ar-rail",
       "ar-stairs"
-    ],
-    "J.Siwek 2.9.8.3 to 2.9.8.9.8 (upstream29898.spec.mjs covers Layerscape, Helmet Maker, Colour Lithophane and laser files)": [
-      "bb-layerscape",
-      "sim-layerscape",
-      "sim-helmet",
-      "ps-r-litho",
-      "exp-laser-svg",
-      "exp-laser-dxf",
-      "ps-r-prepare",
-      "ps-r-preview",
-      "ps-r-slice",
-      "ps-r-arrange"
     ]
   }
 }

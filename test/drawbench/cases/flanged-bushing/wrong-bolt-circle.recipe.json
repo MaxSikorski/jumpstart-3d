@@ -1,0 +1,17 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["FLANGE_D", "40"] },
+    { "call": "setParam", "args": ["FLANGE_T", "5"] },
+    { "call": "setParam", "args": ["BODY_D", "22"] },
+    { "call": "setParam", "args": ["H", "25"] },
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Flange", "shapes": [{ "type": "circle", "center": [0, 0], "diameter": "FLANGE_D" }] }], "as": "flange" },
+    { "call": "extrude", "args": [{ "sketch": "$flange.sketch", "dist": "FLANGE_T", "name": "Flanged bushing" }], "as": "part" },
+    { "call": "sketch", "args": [{ "on": { "body": "$part.body", "face": "top" }, "name": "Body", "shapes": [{ "type": "circle", "center": [0, 0], "diameter": "BODY_D" }] }], "as": "barrel" },
+    { "call": "extrude", "args": [{ "sketch": "$barrel.sketch", "dist": "H - FLANGE_T", "op": "join", "body": "$part.body" }] },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[0, 0, 25]], "dia": 12 }] },
+    { "call": "hole", "args": ["$part.body", { "face": "+z and <z", "points": [[16, 0, 5], [-16, 0, 5], [0, 16, 5], [0, -16, 5]], "dia": 4.5 }] }
+  ]
+}

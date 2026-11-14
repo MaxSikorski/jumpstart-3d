@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { accessSync, constants, existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, mkdirSync, rmSync, lstatSync, realpathSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, mkdirSync, rmSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256, normalizeStep } from '../test/helpers.mjs';
@@ -149,7 +149,8 @@ export function resolveExecutable(name) {
   throw new Error(`executable not found: ${name} (supply a single executable path, without flags)`);
 }
 
-export function child(executable, args, { env, timeoutMs, startupMs, progressMs = 20_000, deadline = Infinity, log, cwd = ROOT } = {}) {
+// progressFor(line): the no-progress window after that protocol line (default progressMs), so one big file can get longer than the rest.
+export function child(executable, args, { env, timeoutMs, startupMs, progressMs = 20_000, progressFor = () => progressMs, deadline = Infinity, log, cwd = ROOT } = {}) {
   const started = performance.now();
   mkdirSync(path.dirname(log), { recursive: true });
   const stdoutFile = `${log}.stdout`, stderrFile = `${log}.stderr`;
@@ -169,7 +170,7 @@ export function child(executable, args, { env, timeoutMs, startupMs, progressMs 
       if (startupMs) {
         pending += s;
         const lines = pending.split('\n'); pending = lines.pop();
-        for (const line of lines) if (/^JUDGE_(?:BEGIN|RESULT|COMPLETE|VERSION) /.test(line)) arm(progressMs);
+        for (const line of lines) if (/^JUDGE_(?:BEGIN|RESULT|COMPLETE|VERSION) /.test(line)) arm(progressFor(line));
       }
     });
     proc.stderr.on('data', data => { stderr += data.toString(); appendFileSync(stderrFile, data); });
@@ -226,11 +227,19 @@ export function isolatedEnvironment(dir) {
   return env;
 }
 
+// A file's FreeCAD check takes time in step with its size: spring.3mf grew to 66 MB (867k triangles) with the 2.9.3 port and took longer than the
+// 20 s window, so the batch was stopped and every file failed (nightly runs from 2026-11-06). After a file's BEGIN line the window grows by 2 s per MB.
+export const PROGRESS_MS_PER_MB = 2000;
+export function progressAllowance(files, progressMs) {
+  const extra = new Map(files.map(f => [f.key, Math.ceil(statSync(f.path).size / 1e6) * PROGRESS_MS_PER_MB]));
+  return line => progressMs + (extra.get(/^JUDGE_BEGIN (.*)$/.exec(line)?.[1]) || 0);
+}
+
 export async function freecadBatch(files, { executable, out, env, runId, deadline = Infinity, startupMs = 60_000, progressMs = 20_000 }) {
   mkdirSync(out, { recursive: true });
   const request = { schema: 1, runId, files: files.map(f => f.format === '3mf' ? { ...f, splitDir: path.join(out, 'split') } : f) }, requestPath = path.join(out, 'request.json');
   writeFileSync(requestPath, JSON.stringify(request, null, 2) + '\n');
-  const processResult = await child(executable, [macro], { env: { ...env, JUDGE_REQUEST: requestPath }, startupMs, progressMs, deadline, log: path.join(out, 'freecad') });
+  const processResult = await child(executable, [macro], { env: { ...env, JUDGE_REQUEST: requestPath }, startupMs, progressFor: progressAllowance(files, progressMs), deadline, log: path.join(out, 'freecad') });
   const protocol = parseFreecad(processResult, request);
   writeFileSync(path.join(out, 'protocol.json'), JSON.stringify({ ...protocol, results: [...protocol.results.values()], process: { ...processResult, stdout: undefined, stderr: undefined } }, null, 2) + '\n');
   return { ...protocol, elapsedMs: processResult.elapsedMs };
