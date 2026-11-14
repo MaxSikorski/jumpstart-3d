@@ -1,7 +1,8 @@
 // The Grok review's Beginner move and first run (js3d-review bug 1 and 4, quick wins 1, 3, 4, 7, item 9's "AI at the top of More").
 // Proof from the user's side, with real mouse (or touch) events and positions read from the document and window.__app.pivot:
 //  - a plain drag that starts on the white pivot dot moves the selected box (one Undo entry, Position fields follow), in Simple and in
-//    Original + Beginner; Alt-drag or a press held still on the dot moves only the pivot, and the status line says so;
+//    Original + Beginner; Alt-drag (or, on a touch screen, a finger held still) on the dot moves only the pivot, and the status line says so;
+//    a mouse press that pauses on the dot and then drags still moves the box;
 //  - Simple's Move button arms a real move: a drag on empty plate moves the selection; Esc, Move again or no selection stops it;
 //  - clicked solids land beside each other, a clicked hole still lands on the old spot;
 //  - the Simple card goes away for good with the first shape; a sphere's print card is calm; AI chat is first in More.
@@ -12,7 +13,7 @@ const BOX = { w: 20, d: 20, h: 20, r: 0, c: 0 };
 const design = () => newDoc("grok move", "beginner", { bodies: [body("b1", "Box", prim("box", BOX))] });
 const MOVE_HINT = "Drag anywhere on the plate to move the selected shape. Esc or Move again to stop.";
 const PIVOT_HINT = "Moving the pivot (the point it turns around). The shape stays put.";
-const DOT_TIP = /^(Alt|⌥)-drag \(or press and hold\) to move the pivot$/; // the app writes ⌥ for Alt on a Mac
+const DOT_TIP = /^(Alt|⌥)-drag to move the pivot \(on a touch screen: press and hold\)$/; // the app writes ⌥ for Alt on a Mac
 const phone = (info) => info.project.name === "mobile";
 
 let errors;
@@ -118,20 +119,28 @@ test("Original + Beginner: Alt-drag on the dot moves only the pivot, the status 
   await expect.poll(() => hint(page)).not.toBe(PIVOT_HINT);
 });
 
-test("Simple: a press held still on the dot, then a drag, moves only the pivot", async ({ page }, info) => {
-  test.skip(phone(info), "mouse drags: computer layout");
-  await open(page, info, "simple");
-  const depth = await undoDepth(page), before = await matrixOf(page);
-  const from = await dotClient(page);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await expect.poll(() => hint(page), { message: "after about half a second the pivot is what moves" }).toBe(PIVOT_HINT);
-  await page.mouse.move(from.x - 80, from.y + 50, { steps: 12 });
-  await page.mouse.up();
-  expect(await matrixOf(page)).toEqual(before);
-  expect(await undoDepth(page)).toBe(depth);
-  expect(near(await pivotNow(page), [0, 0, 10], 1e-3)).toBe(false);
-});
+for (const face of ["simple", "original"]) {
+  test(`${face}: a mouse press on the dot that waits, then drags, still moves the box (the pivot goes with it, one Undo entry)`, async ({ page }, info) => {
+    test.skip(phone(info), "mouse drags: computer layout");
+    await open(page, info, face);
+    const depth = await undoDepth(page), before = await matrixOf(page);
+    const from = await dotClient(page);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.waitForTimeout(700); // the input under test is a slow user's pause (longer than a touch hold), not a wait for the app
+    expect(await hint(page), "a mouse pause does not switch to moving the pivot").not.toBe(PIVOT_HINT);
+    await page.mouse.move(from.x - 80, from.y + 50, { steps: 12 });
+    await page.mouse.up();
+    await waitIdle(page);
+    const m = await matrixOf(page);
+    expect(Math.hypot(m[12], m[13]), "the box moved on the plate").toBeGreaterThan(5);
+    expect(m.slice(0, 12)).toEqual(before.slice(0, 12));
+    expect(await undoDepth(page), "one Undo entry").toBe(depth + 1);
+    expect(await run(page, () => window.__store.undoStack.at(-1).label)).toBe("Move");
+    const c = await centreOf(page);
+    expect(near(await pivotNow(page), c, 1e-6), "the pivot followed the box").toBe(true);
+  });
+}
 
 test("Simple: Move arms a real move; a drag on empty plate moves the selection; Esc, Move again or no selection stops it", async ({ page }, info) => {
   test.skip(phone(info), "mouse drags: computer layout (the phone has its own touch test)");
