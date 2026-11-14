@@ -5,7 +5,7 @@
 `window.JS3D` (the scripting bridge, documented in [`../BRIDGE.md`](../BRIDGE.md)). It works in two ways:
 
 - **Your open tab.** The app in your browser connects to the server, and the agent edits the design you are looking at.
-  You turn this on yourself: theme menu (the half-moon button) › **Connect to AI agent**. It is off unless you turn it on.
+  You turn this on yourself: **Customize** (the sliders button in the top bar) › **Connect to AI agent**. It is off unless you turn it on.
 - **Headless.** The server starts its own invisible Chromium on the built site and works there. Nothing needs to be open.
   Good for "make me a bracket and save the STL".
 
@@ -69,9 +69,9 @@ Add the server to Claude Code's `.mcp.json` (project folder) or with `claude mcp
 
 Replace `<repo>` with the path of your checkout. Any agent that speaks MCP over stdio uses the same command. From a checkout,
 headless mode opens the checkout's own `docs/` folder when it is there. Tools added this way are called `mcp__jumpstart-3d__<tool>`.
-`node <repo>/mcp/server.mjs --help` lists the settings. The server needs Node 18 or newer (the repository's tests use 22).
+`node <repo>/mcp/server.mjs --help` lists the settings. The server needs Node 20 or newer (its Playwright needs 20; the repository's tests use 22).
 
-To use your open tab: open JumpStart 3D (the website or the single file), open the theme menu (◐) and turn on
+To use your open tab: open JumpStart 3D (the website or the single file), open **Customize** (the sliders button in the top bar) and turn on
 **Connect to AI agent**. The row reads "waiting" until the server is found, then "connected". On the website your browser may ask to allow "local network access": allow it. The setting is remembered in
 that browser, so the tab reconnects by itself when you reload it or restart the agent. Turn it off the same way.
 
@@ -94,7 +94,7 @@ Any client that starts a stdio MCP server can use it. Replace `<repo>` with the 
 | Open WebUI | through the `mcpo` bridge (`uvx mcpo --port 8000 --api-key KEY -- node <repo>/mcp/server.mjs`), then Settings › Admin › Integrations › External Tool Servers | not documented; use `path` |
 | ChatGPT on the web (connectors, developer mode) | cannot: remote servers only. The Codex desktop app works, see the Codex row | |
 
-Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: 54 tools is a lot for a small one.
+Ollama and oMLX only run models; put one of the agents above on top. Use a model with tool calling and at least 9B parameters: the tool list is long for a small one.
 
 Cursor, LM Studio, Cline, Antigravity and most others read the `mcpServers` shape (Claude Code's `.mcp.json` too):
 
@@ -174,7 +174,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `inspect_bodies`, `measure`, `check_print`, `check_collisions`, `section_view` | Check your work without a picture: size, volume, area, weight; distances and wall thickness; Ready to print on a chosen printer; parts that collide; the outline and area of a cut (with an optional picture) |
 | `add_shape`, `remove_bodies`, `duplicate_bodies` | Make, delete, copy shapes |
 | `add_fastener` | A hex bolt, hex nut, threaded rod or tap cutter (a threaded hole shape: group it with a solid to cut a threaded hole), metric M2.5 to M12 or inch #6 to 1/2, with a print offset. Takes a few seconds to build: call `wait_ready` |
-| `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 8 tapped (measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
+| `add_hole_pattern` | Round holes in a grid, a staggered grid or a circle on one flat face of a body, as one Hole feature (plain, counterbore, countersink or tapped, with a screw size such as M3), or with `shape` square, hex or slot (`width`, and `length` for a slot) as one sketch and one Extrude cut. Holes that would not fit are left out. Columns run along the face's longest straight edge, rows across it. At most 200 plain holes or shapes, 130 counterbores or countersinks, 8 tapped (tapped holes measured in a 6 mm plate; thicker plates take longer). Call `wait_ready` after |
 | `add_gear` | A spur gear, a helical gear (`angle` 5 to 30°, `hand`; meshes with the opposite hand on a parallel axis), a straight bevel gear (meshes at 90° with a bevel gear of `mate` teeth) or a straight rack from a `module` (mm) and `teeth`, with involute teeth at 20°, a print clearance, and an optional `bore` (with a DIN 6885 `keyway` on spur gears). Spur 12 to 200 teeth, helical 12 to 30, bevel 12 to 90, rack 2 to 100. Takes a moment to build: call `wait_ready` |
 | `add_name_plate` | A name plate or tag sized to one line of `text` (at most 40 characters, bold fonts with English and Western European letters): a rounded or pill plate with an optional hanging hole or two screw holes, and the letters either `raised` as a second body in its own colour (keep it separate from the plate: grouping fuses the colours) or `cut` into the plate. Returns `{plate, textBody, size}`. Call `wait_ready` after |
 | `add_knurl` | A knurled knob or grip: a cylinder with straight V grooves all round (a true solid that exports to STEP) and an optional `round`, `hex` or `d` bore. Grooves default to about one per mm of circumference (8 to 120) and the depth to a 90° V. Returns the id. Call `wait_ready` after |
@@ -193,6 +193,7 @@ tool error carrying the app's own message, so the agent can correct itself.
 | `set_hole`, `set_color`, `rename_body`, `set_hidden` | Change a body's properties |
 | `group_bodies`, `ungroup_body` | Join, cut (a hole is subtracted) or intersect bodies |
 | `list_params`, `set_param`, `remove_param`, `bind_size` | Named parameters and sizes that follow them |
+| `checkpoint`, `list_checkpoints`, `diff_checkpoint`, `rollback` | Save the design before a risky edit, list and compare saved points, go back to one (see Checkpoints below) |
 | `undo`, `redo`, `select_bodies`, `fit_view`, `set_mode` | History, selection, view, Beginner, Advanced or Architect (`arch`) |
 | `screenshot` | A PNG of the 3D view as an image (`width` default 800, `fit` default true). With `path`, for a model that cannot see images, it writes the PNG there and returns `{path, bytes, width}` as text instead |
 | `export_file` | Writes STL, OBJ, 3MF, GLB, STEP or the project `json` to a path and returns path and size |
@@ -287,7 +288,7 @@ writes the file (default: the design file's name with the new extension, next to
 
 ## Troubleshooting
 
-- **"No JumpStart 3D tab is connected"**: open the app, theme menu › Connect to AI agent. If the row says "waiting", the server is not running or is on another port (`status` shows `wsPort`).
+- **"No JumpStart 3D tab is connected"**: open the app, Customize › Connect to AI agent. If the row says "waiting", the server is not running, it is on another port (`status` shows `wsPort`), or the browser is still waiting for you to allow local network access (next item).
 - **The website cannot connect but the single file can**: recent Chrome and Edge ask before a public website may reach a program on your computer ("local network access"). Allow it when asked; if you dismissed the question, open the lock icon in the address bar and allow "Local network access" for the site, then reload. The console shows `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` until you do.
 - **`wsError` in `status`**: the port was taken (another copy of the server?). The server keeps running with headless only. Set `JS3D_WS_PORT`.
 - **Headless fails to start**: run `npx playwright@1.62.1 install chromium`. The first start takes several seconds (the geometry engine loads).

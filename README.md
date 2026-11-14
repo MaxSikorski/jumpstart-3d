@@ -136,9 +136,10 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has ninety step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
-toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
+JumpStart 3D has 126 step-by-step lessons with animations, behind the **Tutorials** button
+in the top bar: J.Siwek's own (his About text counts fifty-one; he keeps adding, such as the
+lamp and workshop projects) and the rest added by this community build, first of all "Your first
+print: a box with a hole", then lessons for the toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
 a tour of the top bar, how the model looks on screen and sketch constraints.
 
 ### Add yours
@@ -177,6 +178,12 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
   STL, 3MF, STEP and DXF (Chisel also exports OBJ).
 - A projector window, pictures and video on objects, and Picture to 3D.
+- **2.9.8.3 to 2.9.8.9.8:** **Layerscape** turns a photo into a layered slot-together diorama to
+  laser cut or 3D print, with a puzzle maker and building kits, part of the design. **Helmet Maker**
+  in CosForge, with the shape from photos. **Jig Maker** for woodworking jigs, honeycomb inside.
+  **Colour Lithophane** in white, cyan, magenta and yellow filament. **Rib** and **Keyhole slot**
+  features, laser cut files (SVG or DXF) from flat parts, Box Maker dovetail fit and joining
+  plates, 3D-print filament looks (silk, rainbow), and thirteen new lamp and workshop tutorials.
 
 ### Added by this community build
 
@@ -243,8 +250,8 @@ other edit.
 | OpenAI-style (OpenAI, OpenRouter, Groq, oMLX…) | `https://api.openai.com/v1` (change it for the others) | yes |
 | Anthropic | `https://api.anthropic.com/v1` | yes |
 
-Use **List models** to fill the model box from the server. Tick **Model can see images** if yours
-can. For a local model, pick one that supports tools; 9B or larger works best.
+Use **List models** to fill the model box from the server, and **Test connection** (under the address) to check
+that the server answers. Tick **Model can see images** if yours can. For a local model, pick one that supports tools; 9B or larger works best.
 
 ### Let a local model connect
 
@@ -260,12 +267,15 @@ A local model server has to allow the JumpStart 3D page to talk to it, once.
   `lms server start --cors`), then start the server.
 
 If Chrome asks whether the site may reach devices on your local network, allow it. Safari may block
-the website from reaching `localhost`; use the single file there.
+the website from reaching `localhost`; use the single file there. When a model server on your
+computer does not answer or refuses the page, the chat says so in one line ("Can't reach a model at
+localhost:11434: start Ollama there, or allow this page in OLLAMA_ORIGINS"); after a message or List
+models, these steps are under **More help** below that line.
 
 ### Chat keys and scripts
 
 Your key stays in this browser and is saved only if you tick **Remember key in this browser**.
-Nothing is sent until you press Send. **Allow scripts** is off unless you tick it: with it on, the
+Nothing is sent until you press Send, List models or Test connection. **Allow scripts** is off unless you tick it: with it on, the
 model can run any JavaScript in the page, the same trust as Open/Export › Run script….
 
 ## Use it with an AI agent
@@ -298,7 +308,7 @@ claude plugin install jumpstart-3d@maxsikorski
 ### Edit the design you have open
 
 For an agent to edit the JumpStart 3D design open in your browser, turn on **Connect to AI agent**
-in the Theme, performance and mesh detail menu (the half-moon button). It is off unless you turn it
+in the Customize menu (the sliders button in the top bar). It is off unless you turn it
 on. Without that, the agent works in its own invisible browser, which needs Chromium once:
 `npx playwright@1.62.1 install chromium`.
 
@@ -406,7 +416,7 @@ upstream version stays easy to merge.
 - Pre-painted 3MF: what you paint in the 3D Print Sim is written into the 3MF, so Orca and
   PrusaSlicer open it with the colours already on the model. Not yet tried in Orca, Snapmaker
   Orca or Bambu Studio themselves.
-- Mesh detail, in the Theme, performance and mesh detail menu: Normal, Fine, Extra fine, or a
+- Mesh detail, in the Customize menu: Normal, Fine, Extra fine, or a
   custom level up to 32×, for smoother curves in the view and in exports. It asks before building
   more than 500,000 triangles.
 

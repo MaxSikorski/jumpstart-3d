@@ -1,5 +1,5 @@
 // How the server reaches a JumpStart 3D page. Two ways, one call(name, args):
-//   tab       the app open in the user's browser connects to our WebSocket (Connect to AI agent, in the theme menu)
+//   tab       the app open in the user's browser connects to our WebSocket (Connect to AI agent, in the Customize menu)
 //   headless  we start our own Chromium (Playwright) on the built site and call JS3D inside it
 // Both end in JS3D.invoke(call, args) (src/bridge.js), so a call means the same thing either way.
 // stdout is the MCP protocol: everything we say goes to stderr.
@@ -173,7 +173,7 @@ export class Session {
     for (let t0 = Date.now(); !this.tab && Date.now() - t0 < ms;) await new Promise((r) => setTimeout(r, 100));
   }
   noTab() {
-    return "No JumpStart 3D tab is connected. Open the app in a browser, open the theme menu (the half-moon button) and turn on Connect to AI agent; if the browser asks about local network access, allow it." + (this.wsError ? ` (The server ${this.wsError}.)` : "");
+    return "No JumpStart 3D tab is connected. Open the app in a browser, open Customize (the sliders button in the top bar) and turn on Connect to AI agent; if the browser asks about local network access, allow it." + (this.wsError ? ` (The server ${this.wsError}.)` : "");
   }
   #callTab(name, args, timeoutMs) {
     const { ws } = this.tab;
@@ -208,7 +208,7 @@ export class Session {
       s.hint = this.pinned === "tab" ? "The tab disconnected; turn Connect to AI agent on again or reload it. Calls wait 5 seconds for it, then fail." :
         this.pinned === "headless" ? "The headless browser starts again on the next tool call that needs a page." :
         this.mode === "tab" ? this.noTab() : this.mode === "headless" ? "A headless browser starts on the first tool call that needs a page." :
-        "No page yet. Open JumpStart 3D and turn on Connect to AI agent in the theme menu to use that tab (allow the browser's local network permission if it asks), or call any other tool to start a headless browser.";
+        "No page yet. Open JumpStart 3D and turn on Connect to AI agent in the Customize menu (the sliders button) to use that tab (allow the browser's local network permission if it asks), or call any other tool to start a headless browser.";
       return s;
     }
     s.url = t === "tab" ? this.tab.hello.url : this.hl.page.url();

@@ -1,5 +1,5 @@
 // Upstream 2.9.8.2 (J.Siwek), shared by the site and single-file projects. One outcome test per headline change:
-//  - the splash and About show 2.9.8.2 with his "New in version 2.9.8.2" note
+//  - About keeps his "New in version 2.9.8.2" note (the version itself: upstream29898.spec.mjs)
 //  - Texture tool: four new groups (Seasons, Holidays, Celebrations, Animals) of picture textures drawn on a canvas the first
 //    time they are needed (src/texture_themes.js); one applies to a whole body without errors
 //  - picture textures (pic: true) subdivide the surface finely, like imported pictures: a much finer mesh than a plain texture
@@ -7,7 +7,6 @@
 // His own tests (JumpStart-3D-v2.9.8.2-full-source/tests/tthemetex.cjs, tsa2982.cjs) are screenshot scripts; the checks below assert real state.
 import { test, expect } from "@playwright/test";
 import { boot, watchErrors, loadDoc, waitIdle, bodies, newDoc, body, prim } from "./helpers.mjs";
-import { BUILD, VERSION } from "../src/version.js";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -35,13 +34,10 @@ async function triangles(id) {
   return last;
 }
 
-test("the splash and About show version 2.9.8.2 with his notes for 2.9.8.2", async () => {
-  expect(VERSION).toBe("2.9.8.2");
-  const label = `Version 2.9.8.2 · community build ${BUILD}`;
-  expect(await page.locator("#sp-ver").textContent()).toBe(label);
+// the version itself is upstream29898.spec.mjs's job since 2.9.8.9.8; his 2.9.8.2 notes stay in About
+test("About keeps his notes for 2.9.8.2", async () => {
   await page.click("#btn-about");
   const about = page.locator(".modal", { hasText: "Created by J.Siwek" });
-  await expect(about).toContainText(label);
   for (const t of ["New in version 2.9.8.2", "Seasonal & holiday textures", "New in version 2.9.8.1"]) await expect(about).toContainText(t);
   await page.keyboard.press("Escape");
   await expect(about).toBeHidden();

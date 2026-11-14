@@ -27,6 +27,8 @@ export function subjectMask(img, opts = {}) {
       cols.push([r / m, g / m, b / m]);
       if (cols.length >= 6) break;
     }
+    // background colours picked by hand (v2.9.8.9.5)
+    for (const c of opts.bg || []) cols.push(c);
     const thr = 12 + (opts.sens ?? 30) * 1.6; // color distance
     for (let i = 0, j = 0; i < n; i++, j += 4) {
       if (data[j + 3] < 128) { bgLike[i] = 1; continue; }
@@ -51,6 +53,7 @@ export function subjectMask(img, opts = {}) {
   }
   let mask = new Uint8Array(n);
   for (let i = 0; i < n; i++) mask[i] = bg[i] ? 0 : 1;
+  if (opts.raw) return mask; // the refinements are done by the caller (photo3d.js)
   // smooth the edge a little (blur + threshold), keep the biggest piece, fill its holes
   mask = smoothMask(mask, W, H, opts.smooth ?? 2);
   mask = largestPiece(mask, W, H);

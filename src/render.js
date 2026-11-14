@@ -4,7 +4,7 @@
 // average converges to a clean, soft-lit, photo-like image. Output is a PNG.
 import * as THREE from "three";
 import { IS_IOS, IS_IPHONE } from "./util.js";
-import { lookOf } from "./appearance.js";
+import { lookOf, heightColors } from "./appearance.js";
 
 export const QUALITY = {
   low: { label: "Low", width: 1280, samples: 48, note: "a few seconds" },
@@ -35,7 +35,7 @@ export const BACKGROUNDS = {
 };
 
 // a soft photo studio for reflections
-function studioEnv(renderer) {
+export function studioEnv(renderer) {
   const room = new THREE.Scene();
   room.add(new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10), new THREE.MeshBasicMaterial({ color: 0x9aa1a9, side: THREE.BackSide })));
   const panel = (x, y, z, sx, sy, sz, c) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); room.add(m); };
@@ -69,16 +69,17 @@ function skyDir(r1, r2) {
 function halton(i, b) { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; }
 
 // the materials used in the picture: a little richer than the editor's
-function photoMaterial(look, fallbackColor, env) {
+function photoMaterial(look, fallbackColor, env, zr) {
   const L = look ? lookOf(look) : { color: fallbackColor || "#a7b0ba", metal: 0, rough: 0.42, opacity: 1 };
   const plastic = L.metal < 0.5;
   const m = new THREE.MeshPhysicalMaterial({
     color: L.color, metalness: L.metal, roughness: L.rough, envMap: env,
-    envMapIntensity: L.metal > 0.5 ? 1.25 : 0.6,
+    envMapIntensity: L.env ?? (L.metal > 0.5 ? 1.25 : 0.6),
     clearcoat: plastic && L.rough < 0.5 ? 0.35 : 0, clearcoatRoughness: 0.25,
     side: THREE.DoubleSide,
   });
   if (L.opacity < 1) { m.transparent = true; m.opacity = L.opacity; m.depthWrite = false; }
+  if (L.fx && zr) heightColors(m, L, zr[0], zr[1]);
   return m;
 }
 
@@ -119,7 +120,9 @@ export function renderImage(job) {
   const root = new THREE.Group();
   const mats = [];
   for (const it of job.items) {
-    const ms = it.materials.map((m) => photoMaterial(m.look, m.color, env));
+    let zr = null; // the body's bottom and top, for rainbow / gradient silk
+    if (it.materials.some((m) => m.look && lookOf(m.look).fx)) { if (!it.geometry.boundingBox) it.geometry.computeBoundingBox(); const b = it.geometry.boundingBox.clone().applyMatrix4(it.matrix); zr = [b.min.z, b.max.z]; }
+    const ms = it.materials.map((m) => { const pm = photoMaterial(m.look, m.color, env, zr); if (m.glow) { pm.emissive = new THREE.Color(m.glow); pm.emissiveIntensity = 0.9; } return pm; });
     mats.push(...ms);
     const g = it.geometry.clone();
     if (it.groups && g.groups.length) g.groups.forEach((gr, i) => (gr.materialIndex = it.groups[i] || 0));

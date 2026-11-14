@@ -2,7 +2,7 @@
 // or a hosted API), type what you want, and this module runs the tool-calling loop in the page. The
 // model acts only through the tools in chattools.js, which call JS3D (see BRIDGE.md). The wire formats
 // live in chatproviders.js. Nothing runs at load but reading the saved settings; nothing is sent
-// anywhere until Send. Each provider keeps its own address, model and key; a key is saved only when "Remember key" is ticked.
+// anywhere until a person sends a message or checks a connection. Each provider keeps its own address, model and key; a key is saved only when "Remember key" is ticked.
 import { TOOLS, runTool } from "./chattools.js";
 import { PROVIDERS } from "./chatproviders.js";
 import { store } from "./store.js";
@@ -10,6 +10,7 @@ import { el } from "./util.js";
 
 const KEY = "jumpstart.chat";
 const MAX_CALLS = 30; // tool calls per Send; the person can send another message to go on
+const TEST_SECONDS = 10; // Test connection gives up after this long
 
 const SYSTEM = `You are an assistant inside JumpStart 3D, a CAD app that runs in the browser. You change the open design only through your tools; the person watches it update.
 Lengths are millimetres, angles degrees, positions [x, y, z] with z up.
@@ -19,7 +20,7 @@ How to work:
 - Call wait_ready, then list_bodies to check sizes and volumes. A body with an error did not build: read the message, fix it, or undo.
 - After every few edits take a screenshot and look at it. If you cannot see images, trust list_bodies instead.
 - export_file offers a download in the person's browser. Say that you offered it, with the file name.
-- Sketches, extrudes, revolves, fillets and chamfers have no tool. If run_script is among your tools, use it only for what no other tool can do.
+- For more than basic shapes: add_sketch, then extrude or revolve; fillet_edges, chamfer_edges, shell_body and add_holes pick faces and edges with selectors such as "top" or "edges of top". If run_script is among your tools, use it only for what no other tool can do.
 
 Facts to keep straight:
 - add_shape puts the middle of the shape's footprint at "at" [x, y] and its base at "at" z. Default [0, 0, 0].
@@ -58,6 +59,10 @@ export function initChat(app) {
   };
   const box = $("chat-messages"), input = $("chat-input"), status = $("chat-status");
   const sendBtn = $("chat-send"), stopBtn = $("chat-stop"), newBtn = $("chat-new");
+  const testBtn = el("button", { class: "btn", id: "chat-test", type: "button" }, "Test connection");
+  const testResult = el("span", { id: "chat-test-result", role: "status" });
+  f.url.closest("label").after(el("div", { class: "chat-testrow" }, testBtn, testResult));
+  let testVersion = 0, testAbort = null; // testAbort: the request of the test still running
 
   for (const [id, p] of Object.entries(PROVIDERS)) f.provider.append(el("option", { value: id }, p.label));
 
@@ -96,7 +101,11 @@ export function initChat(app) {
     for (const [id, { key, ...v }] of Object.entries(per)) out[id] = s.remember && key ? { ...v, key } : v; // unticking drops every key on this save
     try { localStorage.setItem(KEY, JSON.stringify({ provider: current, remember: s.remember, scripts: s.scripts, per: out })); } catch (e) { /* storage blocked: settings last until reload */ }
   };
-  f.provider.addEventListener("change", () => { collect(); current = f.provider.value; show(current); save(); });
+  // a changed provider, address or key makes an earlier answer (or a test still waiting) meaningless
+  const clearTest = () => { testVersion++; testAbort?.abort(); testResult.textContent = ""; testBtn.disabled = false; };
+  f.provider.addEventListener("change", () => { clearTest(); collect(); current = f.provider.value; show(current); save(); });
+  f.url.addEventListener("input", clearTest);
+  f.key.addEventListener("input", clearTest);
   for (const e of Object.values(f)) if (e !== f.provider) e.addEventListener(e.type === "checkbox" ? "change" : "input", save);
 
   // ---- conversations: one per design, kept in memory only
@@ -142,8 +151,30 @@ export function initChat(app) {
     return say(c, row);
   };
 
+  // A failed fetch looks the same whether the server is not running or refuses the page (CORS), so the line names both.
+  // more: the chat shows "More help" under the line; Test connection does not.
+  const localFailure = (err, id, url, more = true) => {
+    if (!err.network) return "";
+    try {
+      const address = new URL(url);
+      if (!["localhost", "127.0.0.1", "[::1]"].includes(address.hostname)) return "";
+      const host = address.host + (address.port ? "" : address.protocol === "https:" ? ":443" : ":80");
+      const fix = { ollama: "start Ollama there, or allow this page in OLLAMA_ORIGINS", lmstudio: "start the LM Studio server there, or turn on Enable CORS in LM Studio" }[id]
+        || "start your model server there, or allow this page in its CORS settings";
+      return `Can't reach a model at ${host}: ${fix}${more ? " (More help)" : ""}.`;
+    } catch (e) { return ""; }
+  };
+
   const showError = (c, err, id, url) => {
     const provider = PROVIDERS[id];
+    const local = localFailure(err, id, url);
+    if (local) {
+      note(c, "error", local);
+      setStatus(local);
+      const hint = HINTS[id] || "Could not reach " + url + ". Check that the server is running and allows browser access (CORS).\n" + HINT_MORE;
+      say(c, el("details", { class: "chat-msg hint" }, el("summary", {}, "More help"), "The browser said: " + err.message + ".\n" + hint));
+      return;
+    }
     note(c, "error", err.message || String(err));
     setStatus(err.message || String(err));
     if (!err.network) return; // a failed fetch: the browser hides the reason, so say the likely ones
@@ -179,7 +210,7 @@ export function initChat(app) {
     controller = new AbortController();
     const { signal } = controller;
     busy(true);
-    // the model sees the 36 tools; run_script is left out unless the person allowed scripts
+    // the model sees every tool; run_script is left out unless the person allowed scripts
     const tools = TOOLS.filter((t) => s.scripts || t.name !== "run_script").map(({ name, description, parameters }) => ({ name, description, parameters }));
     const ctx = { scripts: s.scripts, vision: s.vision, download };
     let calls = 0;
@@ -250,6 +281,27 @@ export function initChat(app) {
   input.addEventListener("keydown", (e) => {
     e.stopPropagation(); // the app's own shortcuts must not see typing
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+  });
+
+  testBtn.addEventListener("click", async () => {
+    const s = settings(), version = ++testVersion, ctl = new AbortController();
+    let host = s.url, timer;
+    testAbort = ctl;
+    try { host = new URL(s.url).host; } catch (e) { /* use the entered address */ }
+    testBtn.disabled = true;
+    testResult.textContent = "Testing…";
+    // a server that accepts the connection and never answers would keep the button off for good
+    const late = new Promise((_, no) => { timer = setTimeout(() => { no(new Error(`No answer from ${host} within ${TEST_SECONDS} seconds.`)); ctl.abort(); }, TEST_SECONDS * 1000); });
+    try {
+      const ids = await Promise.race([PROVIDERS[s.provider].listModels({ url: s.url, model: s.model, key: s.key, signal: ctl.signal }), late]);
+      if (version === testVersion) testResult.textContent = `Connected: ${ids.length} ${ids.length === 1 ? "model" : "models"}`;
+    } catch (err) {
+      if (version === testVersion) testResult.textContent = localFailure(err, s.provider, s.url, false) || (err.network ? `Could not reach ${host}: ${err.message}` : err.message || String(err));
+    } finally {
+      clearTimeout(timer);
+      if (testAbort === ctl) testAbort = null;
+      if (version === testVersion) testBtn.disabled = false;
+    }
   });
 
   $("chat-list").addEventListener("click", async () => {
