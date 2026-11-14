@@ -654,3 +654,23 @@ test("the link does not leak while the question is open, after Cancel, with the 
     } finally { await context.close(); }
   }
 });
+
+// The makers' own plain-data generators provide the exact tools saved by the dialogs.
+test("new maker settings and generated shapes round-trip through links", async () => {
+  const { makeLink, readFragment } = await import("../src/sharelink.js");
+  const { ribTool, keyholeTool, faceUp } = await import("../src/ribkey.js");
+  const { jigSet, JIG_DEFAULTS } = await import("../src/jigs.js");
+  const matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const roundTrip = async (d) => { const r = await makeLink(d, "http://localhost/"); expect(r.ok, r.message).toBe(true); return readFragment(fragmentOf(r.url)); };
+  const d = fixture("beginner-box"), b = d.bodies[0];
+  const rib = { shape: "straight", height: 10, thick: 2, count: 1, spacing: 10, flip: false, a: [0, 0, 0], b: [10, 0, 0], n: [0, 0, 1] };
+  const kh = { size: "medium", head: 9.5, shank: 4.6, length: 12, lip: 2.5, depth: 3.5, ang: 0, at: [{ p: [0, 0, 0], n: [0, 0, 1] }] };
+  b.node.mods = [{ id: "rib1", t: "bool", op: "join", src: "rib", rib, tool: ribTool(rib, rib.a, rib.b, rib.n).tool, m: matrix }, { id: "kh1", t: "bool", op: "cut", src: "keyhole", kh, tool: keyholeTool(kh, kh.at.map(q => ({ ...q, dir: faceUp(q.n) }))), m: matrix }];
+  expect((await roundTrip(d)).bodies[0].node.mods).toEqual(b.node.mods);
+  for (const change of [x => { x.bodies[0].node.mods[0].rib.shape = "bad"; }, x => { x.bodies[0].node.mods[0].rib.height = "bad"; }, x => { x.bodies[0].node.mods[1].kh.at = Array(201).fill(kh.at[0]); }]) { const x = structuredClone(d); change(x); expect((await makeLink(x, "http://localhost/")).ok).toBe(false); }
+  const j = fixture("beginner-box"), opts = { ...JIG_DEFAULTS, type: "dowel" }; j.bodies[0].node = jigSet(opts).parts[0].node; j.bodies[0].jig = { o: opts, ids: {}, base: matrix };
+  expect((await roundTrip(j)).bodies[0].jig).toEqual(j.bodies[0].jig);
+  const bin = fixture("beginner-box"); bin.bodies[0].bin = { dvFit: "snug", plates: "side", gplates: "both", plateFit: "tight", clips: "back" };
+  expect((await roundTrip(bin)).bodies[0].bin).toEqual(bin.bodies[0].bin);
+  for (const field of ["layerscape", "cosforge"]) { const x = fixture("beginner-box"); x[field] = field === "layerscape" ? { photo: "data:image/png;base64,AAAA" } : { parts: [{ photo: { map: { r: [1] } } }] }; const r = await makeLink(x, "http://localhost/"); expect(r.reason).toBe("unsupported"); expect(r.message).toContain("Use a project file"); }
+});

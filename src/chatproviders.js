@@ -71,7 +71,7 @@ const ollama = {
   vision: false,
   local: true,
   async listModels(cfg) {
-    const data = await request(join(cfg.url, "/api/tags"), { headers: cfg.key ? { authorization: `Bearer ${cfg.key}` } : {} });
+    const data = await request(join(cfg.url, "/api/tags"), { headers: cfg.key ? { authorization: `Bearer ${cfg.key}` } : {}, signal: cfg.signal });
     return shaped(data.models?.map((m) => m.name));
   },
   async chat(cfg, { system, messages, tools, signal }) {
@@ -101,7 +101,7 @@ const ollama = {
 const openaiStyle = {
   family: "openai",
   async listModels(cfg) {
-    const data = await request(join(cfg.url, "/models"), { headers: cfg.key ? { authorization: `Bearer ${cfg.key}` } : {} });
+    const data = await request(join(cfg.url, "/models"), { headers: cfg.key ? { authorization: `Bearer ${cfg.key}` } : {}, signal: cfg.signal });
     return shaped(data.data?.map((m) => m.id).sort());
   },
   async chat(cfg, { system, messages, tools, signal }) {
@@ -153,7 +153,7 @@ const anthropic = {
   vision: true,
   local: false,
   async listModels(cfg) {
-    const data = await request(join(cfg.url, "/models"), { headers: claudeHeaders(cfg) });
+    const data = await request(join(cfg.url, "/models"), { headers: claudeHeaders(cfg), signal: cfg.signal });
     return shaped(data.data?.map((m) => m.id));
   },
   async chat(cfg, { system, messages, tools, signal }) {

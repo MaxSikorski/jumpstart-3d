@@ -39,7 +39,8 @@ async function openBlank() {
 async function drawHexagon() {
   await press("#sk-line");
   for (const [x, y] of [...DRAW, DRAW[0]]) await clickAt(x, y);
-  await page.keyboard.press("Escape");
+  // J.Siwek 2.9.8.9.7: closing the shape finishes the line and puts the Line tool down (Esc now would leave the sketch)
+  await expect.poll(() => run(() => window.__app.sketcher.tool)).toBe("select");
   const sk = await sketch();
   expect(sk.ents.length, "six lines").toBe(6);
   expect(sk.pts.length, "closed: six corners").toBe(6);

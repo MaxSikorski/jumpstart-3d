@@ -9,10 +9,11 @@ import THREE from "./helper-three.html";
 import FONTS_MORE from "./fonts_more.js"; // text, not a module: tools/helper-files.mjs lists it, so both builds import it as text
 import FLOORPLAN from "./floorplan.html";
 import NEON from "./neon.html";
+import LAYERSCAPE from "./layerscape.html";
 import { withFonts } from "./helperfonts.js";
 
 // "" in the site build (build.mjs empties these imports), the whole text in the single file
-const INLINE = { "chisel.html": CHISEL, "flexigen.html": FLEXIGEN, "meshstep.html": MESHSTEP, "helper-three.html": THREE, "fonts_more.js": FONTS_MORE, "floorplan.html": FLOORPLAN, "neon.html": NEON };
+const INLINE = { "chisel.html": CHISEL, "flexigen.html": FLEXIGEN, "meshstep.html": MESHSTEP, "helper-three.html": THREE, "fonts_more.js": FONTS_MORE, "floorplan.html": FLOORPLAN, "neon.html": NEON, "layerscape.html": LAYERSCAPE };
 const STAMP = /^js3d-build:([0-9a-f]+)\n/; // the first line of every file in helpers/ (build.mjs): which build wrote it
 const loaded = new Map();
 

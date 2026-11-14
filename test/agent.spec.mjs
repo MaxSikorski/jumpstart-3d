@@ -3,6 +3,7 @@
 // touch a real server on port 8822; the menu row, which always uses 8822, is served by a mock route inside the page instead.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { WebSocketServer } from "ws";
 import { boot, reload, watchErrors } from "./helpers.mjs";
 
@@ -52,6 +53,10 @@ test.afterEach(() => { expect(errors.filter((e) => !/WebSocket connection to/.te
 const state = () => page.evaluate(() => JS3D.connection());
 const row = () => page.locator("#menu-theme button[data-agent]");
 const openMenu = async () => { if (await page.locator("#menu-theme").isHidden()) await page.click("#btn-theme"); };
+// a port nothing listens on: open one, note its number, close it
+const closedPort = () => new Promise((resolve) => { const s = createServer().listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
+const GUIDE = "https://github.com/MaxSikorski/jumpstart-3d/blob/main/mcp/AGENT-SETUP.md";
+const LNA = "Chrome will ask to allow access to your local network; this row says 'waiting' until you allow it.";
 
 test("off by default: the page opens no WebSocket, and the menu row says off", async () => {
   await page.waitForTimeout(2000);
@@ -198,4 +203,57 @@ test("screenshot({width}) is that wide with the same shape; invoke gives the sam
   for (const bad of [0, -5, "300", 99999, NaN]) {
     expect(await page.evaluate((w) => JS3D.screenshot({ width: w }).catch((e) => e.message), bad)).toMatch(/width must be a number/);
   }
+});
+
+test("the note links the setup guide on GitHub in a new tab, only when clicked", async () => {
+  const asked = [];
+  const seen = (r) => { if (r.url().startsWith("https://github.com/")) asked.push(r.url()); };
+  page.context().on("request", seen);
+  await page.context().route("https://github.com/**", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "<title>guide</title>" }));
+  try {
+    await openMenu();
+    const link = page.locator("#menu-theme .agent-note a");
+    await expect(link).toHaveAttribute("href", GUIDE);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", /noopener/);
+    await expect(page.locator("#menu-theme .agent-note")).not.toContainText("mcp/AGENT-SETUP.md in the repository");
+    expect(asked).toEqual([]); // the menu is open and nothing has asked GitHub
+    const [popup] = await Promise.all([page.waitForEvent("popup"), link.click()]);
+    await popup.waitForLoadState();
+    expect(popup.url()).toBe(GUIDE);
+    expect(page.url()).not.toContain("github.com"); // the app stays where it was
+    expect(asked).toEqual([GUIDE]);
+    await popup.close();
+  } finally {
+    page.context().off("request", seen);
+    await page.context().unroute("https://github.com/**");
+  }
+  if (await page.locator("#menu-theme").isVisible()) await page.click("#btn-theme");
+});
+
+test("on the website, after 5 seconds of waiting with no server, the local-network sentence lights up and goes out when the link stops; the single file does not show it", async () => {
+  await openMenu();
+  const hint = page.locator("#agent-lna");
+  if (await page.evaluate(() => location.protocol === "file:")) {
+    // the single file, opened from disk, is never asked about the local network, so the note does not say it will be
+    await expect(hint).toHaveCount(0);
+    await expect(page.locator("#menu-theme .agent-note a")).toHaveAttribute("href", GUIDE);
+    await page.click("#btn-theme");
+    return;
+  }
+  await expect(hint).toHaveText(LNA);
+  await expect(hint).not.toHaveClass(/hot/);
+  const port = await closedPort();
+  const t0 = Date.now();
+  await page.evaluate((p) => JS3D.connect("ws://127.0.0.1:" + p), port);
+  try {
+    await expect(row()).toContainText("waiting");
+    expect((await hint.getAttribute("class")) ?? "").not.toMatch(/hot/); // not yet: under 5 seconds
+    await expect(hint).toHaveClass(/hot/, { timeout: 15_000 });
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(4500);
+    expect((await state()).state).toBe("waiting");
+    await expect(hint).toBeVisible();
+  } finally { await page.evaluate(() => JS3D.disconnect()); }
+  await expect(hint).not.toHaveClass(/hot/);
+  await page.click("#btn-theme");
 });

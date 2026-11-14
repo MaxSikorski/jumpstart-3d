@@ -54,7 +54,7 @@ test("a file in on-use mode is left out of the install list and is the only one 
 });
 
 test("the extra fonts are saved quietly after the engine is ready; the Floor Planner and Neon Sign Builder pages only when opened (Max, 2026-10-30 and 2026-11-05)", () => {
-  assert.deepEqual(helperLists().onUse, ["helpers/floorplan.html", "helpers/neon.html"]);
+  assert.deepEqual(helperLists().onUse, ["helpers/floorplan.html", "helpers/layerscape.html", "helpers/neon.html"]);
   assert.deepEqual(helperLists().precache.sort(), ["helpers/chisel.html", "helpers/flexigen.html", "helpers/fonts_more.js", "helpers/helper-three.html", "helpers/meshstep.html"]);
 });
 
