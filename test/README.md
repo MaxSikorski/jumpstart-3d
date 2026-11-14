@@ -19,6 +19,9 @@ suite runs on GitHub Actions: the smoke and golden specs gate every pull request
 
 | File | Coverage |
 |---|---|
+| `api-docs.test.mjs` | API manifest, documentation and discovery checks |
+| `api.spec.mjs` | Browser API discovery and state checks |
+| `bridgenode.mjs` | Node harness for the scripting bridge |
 | `safeurl.test.mjs` | Allowed raster data, rejected addresses and kinds, document cleanup |
 | `mediasrc.spec.mjs` | Both builds: no project URL requests through load or direct use; embedded pictures still display |
 
