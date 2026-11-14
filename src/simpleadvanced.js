@@ -397,6 +397,8 @@ html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .w
  html[data-face="simple"] #simple-rail #sar button[data-short-label]::after { content:attr(data-short-label); font-size:10px; }
  html[data-face="simple"] #app[data-mode="advanced"] .work:has(#simple-adv-panel.expanded) #simple-rail { display:flex; }
 }
+/* A lesson's panel (J.Siwek's .tut-panel, z-index 48) opens at the view's left, where Simple's Shapes and More open: while open they sit above it, so a step that says "open More, then pick it" can be done (Beginner too) */
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#simple-more, #simple-shapes):not([hidden]) { z-index: 49; }
 `; document.head.append(style);
   update();
 }
