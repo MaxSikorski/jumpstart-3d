@@ -13,6 +13,7 @@ import { setExpr, exprOf } from "./params.js"; // jumpstart-3d: parameters
 import { commitCombine } from "./combinesplit.js"; // jumpstart-3d: separate Group pieces
 import { onEscape } from "./pivot.js"; // jumpstart-3d: pivot
 import { dragAngle, turnAbout, arcPoints, nearestArc, snapSwitch, fine, turnFeedback } from "./rotationui.js"; // jumpstart-3d: rotation access
+import { faceBox, faceDrag } from "./facedrag.js"; // jumpstart-3d: face snap
 import { besideSpot } from "./placebeside.js"; // jumpstart-3d: grok move. place clicked shapes beside existing ones
 import { plateDims, getPlatePref } from "./printerpresets.js"; // jumpstart-3d: grok move. keep clicked shapes on the plate
 import {
@@ -411,7 +412,7 @@ export function initBeginner(app) {
   // ---------------------------------------------------------------- placing shapes
   function placement(e, kind, ignoreId) {
     const g = app.gridStep() || 0;
-    const hit = e ? app.scene.pickFace(e, (b) => b.id !== ignoreId && !b.hole) : null;
+    const hit = e && app.faceSnap && !e.altKey ? app.scene.pickFace(e, (b) => b.id !== ignoreId && !b.hole) : null; // jumpstart-3d: face snap. the Faces switch and Alt skip the face
     if (hit) {
       const n = hit.normal;
       if (n.z > 0.999) {
@@ -767,7 +768,7 @@ export function initBeginner(app) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -z), start = vp.rayPlane(e, plane);
     if (!ids.length || !start) return null;
     const stopEsc = onEscape(escMove); // Escape puts the shapes back and keeps the selection
-    return { kind: "move", plane, start, ids, moved: false, base: new Map(ids.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(ids.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])), stopEsc, restore: stopEsc, ...(isArmed ? { armed: true } : {}) };
+    return { kind: "move", plane, start, ids, moved: false, base: new Map(ids.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(ids.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])), box0: faceBox(app, ids, store.doc), stopEsc, restore: stopEsc, ...(isArmed ? { armed: true } : {}) };
   }
   function dotTitle(on) {
     if (on === dotTooltip) return;
@@ -784,12 +785,13 @@ export function initBeginner(app) {
   }
   // jumpstart-3d: move step. while a shape or the lift handle is moving, say by how much and with which snap step
   function moveHint() {
-    if (!drag || !((drag.kind === "move" && drag.moved && drag.delta) || (drag.kind === "lift" && drag.dz != null))) return "";
+    if (!drag || !((drag.kind === "move" && drag.moved && (drag.delta || drag.turned)) || (drag.kind === "lift" && drag.dz != null))) return "";
     const alt = IS_MAC ? "⌥" : "Alt", u = getUnit() === "in" ? " in" : " mm", sg = (v) => (v > 0 ? "+" : "") + showLen(v) + u;
     const opt = [...$("snap").options].find((o) => o.value === app.snapSize());
     const snap = drag.free ? "Snap off (" + alt + " held)" : app.gridStep() ? "Snap " + (opt ? opt.textContent : showLen(app.gridStep()) + u) : "Snap off (free)";
     const tail = drag.kind === "lift" || drag.free ? "" : " · hold " + alt + " for free movement";
-    return (drag.kind === "lift" ? "Lifting Z " + sg(drag.dz) : "Moving X " + sg(drag.delta.x) + ", Y " + sg(drag.delta.y)) + " · " + snap + tail;
+    if (drag.kind === "move" && drag.turned) return "Standing on a face · hold " + alt + " to ignore faces"; // jumpstart-3d: face snap
+    return (drag.kind === "lift" ? "Lifting Z " + sg(drag.dz) : "Moving X " + sg(drag.delta.x) + ", Y " + sg(drag.delta.y) + (drag.delta.z ? ", Z " + sg(drag.delta.z) : "")) + " · " + snap + tail;
   }
   let hot = null;
   let multi = false;
@@ -863,7 +865,7 @@ export function initBeginner(app) {
         const movable = sel.filter((id) => !app.isLocked(id));
         if (!movable.length) { drag = { kind: "locked", start: vp.local(e) }; return true; }
         const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -f.point.z);
-        drag = { kind: "move", plane, start: f.point.clone(), ids: movable, moved: false, base: new Map(movable.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(movable.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])) };
+        drag = { kind: "move", plane, start: f.point.clone(), ids: movable, moved: false, base: new Map(movable.map((id) => [id, findBody(store.doc, id).m])), boxes: new Map(movable.map((id) => [id, app.scene.boxWithMatrix(id, M4(findBody(store.doc, id).m))])), box0: faceBox(app, movable, store.doc) }; // jumpstart-3d: face snap
         return true;
       }
       drag = { kind: "rubber", start: vp.local(e), add: e.shiftKey || e.ctrlKey || e.metaKey || multi, base: app.sel.slice() };
@@ -888,12 +890,16 @@ export function initBeginner(app) {
         if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
         if (!drag.moved && Math.hypot(...vp.local(e).map((v, i) => v - vp.project(drag.start)[i])) < 3) return;
         drag.moved = true;
+        const fs = faceDrag(app, drag, e), dz = fs && fs.dz || 0; // jumpstart-3d: face snap
+        if (dz) { const q = vp.rayPlane(e, new THREE.Plane(new THREE.Vector3(0, 0, 1), -(drag.start.z + dz))); if (q) { dx = round(q.x - drag.start.x, g); dy = round(q.y - drag.start.y, g); if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } } } // jumpstart-3d: face snap. read the pointer at the lifted grab height, so the shape stays under it
+        drag.turned = !!(fs && fs.mats);
+        if (drag.turned) { app.clearSnapGuides(); drag.delta = null; store.setPreview((doc) => { for (const id of drag.ids) findBody(doc, id).m = fs.mats.get(id); }); app.status(); return; }
         // snap edges and centers to other shapes
         const sn = free ? { delta: new THREE.Vector3(dx, dy, 0) } : app.snapToObjects(drag.ids, drag.boxes, new THREE.Vector3(dx, dy, 0), ["x", "y"]);
         dx = sn.delta.x; dy = sn.delta.y;
-        drag.delta = new THREE.Vector3(dx, dy, 0); // jumpstart-3d: grok move. carry a chosen pivot with the bodies
+        drag.delta = new THREE.Vector3(dx, dy, dz); // jumpstart-3d: grok move. carry a chosen pivot with the bodies
         drag.free = free; // jumpstart-3d: move step. the status line says so
-        const T = new THREE.Matrix4().makeTranslation(dx, dy, 0);
+        const T = new THREE.Matrix4().makeTranslation(dx, dy, dz);
         store.setPreview((doc) => { for (const id of drag.ids) { const b = findBody(doc, id); b.m = arr(M4(drag.base.get(id)).premultiply(T)); } });
         app.status();
       } else if (drag.kind === "locked") {
@@ -921,7 +927,7 @@ export function initBeginner(app) {
       if (d.kind === "move") {
         if (d.stopEsc) d.stopEsc(); // jumpstart-3d: grok move
         app.clearSnapGuides();
-        if (d.moved) { const before = store.doc; store.commitPreview("Move"); if (d.delta) pv.moved(before, d.delta); } // jumpstart-3d: grok move. keep a chosen pivot with the selection
+        if (d.moved) { const before = store.doc; store.commitPreview("Move"); if (d.turned) pv.reset(d.ids); else if (d.delta) pv.moved(before, d.delta); } // jumpstart-3d: grok move. keep a chosen pivot with the selection
         else store.setPreview(null);
       } else if (d.kind === "rubber") {
         rubber.hidden = true;

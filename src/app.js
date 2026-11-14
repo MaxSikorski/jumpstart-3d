@@ -76,6 +76,7 @@ export const app = {
   clipboard: null,
   snapOn: true,
   objectSnap: true,
+  faceSnap: true, // jumpstart-3d: face snap
   gridStep() { const v = +app.snapSize(); return app.snapOn && v > 0 ? v : 0; }, // jumpstart-3d: move step. the last chosen size, even while the list shows Off · free
   snapSize() { return snapPick[getUnit()]; }, // jumpstart-3d: move step
   moveStep() { return app.gridStep() || 0.01; }, // jumpstart-3d: move step. free movement lands on 0.01 mm
@@ -300,7 +301,7 @@ app.voxel = initVoxel(app);
   $("snap-obj").onclick = () => app.setObjectSnap(!app.objectSnap);
   // the Snap to menu: grid and / or objects & bodies
   const smenu = $("snap-menu"), smore = $("snap-more");
-  const syncSnapMenu = () => { $("snap-grid-chk").checked = app.snapOn; $("snap-obj-chk").checked = app.objectSnap; };
+  const syncSnapMenu = () => { $("snap-grid-chk").checked = app.snapOn; $("snap-obj-chk").checked = app.objectSnap; $("snap-face-chk").checked = app.faceSnap; /* jumpstart-3d: face snap */ };
   smore.onclick = (e) => {
     e.stopPropagation(); smenu.hidden = !smenu.hidden; smore.setAttribute("aria-expanded", !smenu.hidden); syncSnapMenu();
     // it opens upward from the button (the status bar would clip it)
@@ -309,6 +310,7 @@ app.voxel = initVoxel(app);
   };
   $("snap-grid-chk").onchange = (e) => app.setSnap(e.target.checked);
   $("snap-obj-chk").onchange = (e) => app.setObjectSnap(e.target.checked);
+  $("snap-face-chk").onchange = (e) => app.setFaceSnap(e.target.checked); // jumpstart-3d: face snap
   window.addEventListener("pointerdown", (e) => { if (!smenu.hidden && !smenu.contains(e.target) && !smore.contains(e.target)) { smenu.hidden = true; smore.setAttribute("aria-expanded", "false"); } });
   app.syncSnapMenu = syncSnapMenu;
   // the sketch palette's snap checkbox drives the same setting
@@ -526,7 +528,7 @@ function gridFromSnap() {
 }
 function readPrefs() { try { return JSON.parse(localStorage.getItem("workplane.ui.v1") || "{}"); } catch (e) { return {}; } }
 function savePrefs() {
-  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ skw: sketchStyle.width, skc: sketchStyle.color, theme: app.themePref, layout: app.layoutPref, tablet: !!app.tabletOn, tabletPrevLayout: app.tabletPrevLayout || null, snap: app.snapOn, obj: app.objectSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
+  try { localStorage.setItem("workplane.ui.v1", JSON.stringify({ skw: sketchStyle.width, skc: sketchStyle.color, theme: app.themePref, layout: app.layoutPref, tablet: !!app.tabletOn, tabletPrevLayout: app.tabletPrevLayout || null, snap: app.snapOn, obj: app.objectSnap, faces: app.faceSnap, grid: snapPick.mm, gridIn: snapPick.in, lightOn: app.vp.realistic, appear: app.scene.state.appearance !== false })); } catch (e) {}
 }
 function loadPrefs() {
   const p = readPrefs();
@@ -535,6 +537,7 @@ function loadPrefs() {
   fillSnapSizes();
   $("unit-toggle").textContent = unitName();
   app.objectSnap = p.obj !== false;
+  app.faceSnap = p.faces !== false; // jumpstart-3d: face snap
   $("snap-obj").setAttribute("aria-pressed", app.objectSnap);
   app.setSnap(p.snap !== false, true);
   app.setSketchStyle({ width: p.skw || "thin", color: p.skc || "theme" }, true);
@@ -570,6 +573,13 @@ app.setObjectSnap = function (on, quiet) {
   app.syncSnapMenu && app.syncSnapMenu();
   app.chisel && app.chisel.snapChanged && app.chisel.snapChanged();
   if (!quiet) { app.toast(app.objectSnap ? "Snapping to objects and bodies on" : "Snapping to objects and bodies off"); savePrefs(); }
+};
+
+// jumpstart-3d: face snap. a dragged shape lands on the face under the pointer
+app.setFaceSnap = function (on, quiet) {
+  app.faceSnap = !!on;
+  app.syncSnapMenu && app.syncSnapMenu();
+  if (!quiet) { app.toast(app.faceSnap ? "Snapping to faces on" : "Snapping to faces off"); savePrefs(); }
 };
 
 // Performance: Normal (lightest), High or Ultra (sharpest) change only how the 3D view is drawn (pixels
@@ -1294,7 +1304,7 @@ app.showShortcuts = function () {
     el("div", { class: "mbody keys-grid" },
       rows("Sketching (both modes)", [["L", "Line"], ["R", "Rectangle (last type used; ▾ for 2-point, 3-point, center)"], ["C", "Circle"], ["A", "Arc"], ["P", "Polygon"], ["Shift T", "Text"], ["Enter / dbl-click", "Finish a spline"], ["T", "Trim"], ["D", "Dimension"], ["X", "Construction line"], ["S", "Select"], ["E", "Finish and extrude"], ["Tab", "Next typed value"], ["Esc", "Stop / finish sketch"]]),
       rows("Advanced", [["L R C", "Start a sketch with that tool"], ["Arrows", "Nudge the selection, the way it looks on screen (Ctrl ↑↓: up / down)"], ["S", "Create sketch"], ["E", "Extrude"], ["Shift R", "Revolve"], ["Q", "Offset face (press pull)"], ["H", "Hole"], ["F", "Fillet"], ["Shift C", "Chamfer"], ["M", "Move / copy"], ["A", "Align"], ["P", "Pattern"], ["B", "Combine"], ["T", "Texture"], ["I", "Measure"], ["Shift F", "Fit all"], ["Drag right / left", "Window / crossing select"]]),
-      rows("Beginner", [["L R C", "Sketch a line, rectangle or circle"], ["E", "Extrude"], ["A", "Align"], ["P", "Pattern"], ["M", "Mirror"], ["H", "Make hole"], ["S", "Make solid"], ["D", "Drop to workplane"], ["T", "Texture"], ["F", "Fit all"], ["Arrows", "Nudge by the snap step, the way it looks on screen (Shift ×10, Alt finer)"], ["Ctrl ↑↓", "Lift / lower by the snap step"], [", .", "Turn 1° after a rotation arc (Shift 15°)"], ["Ctrl G", "Group (Shift: ungroup)"], ["Ctrl D", "Duplicate"], ["Tab", "Type sizes on the selected shape (Shift Tab: back)"], ["I", "Measure"]]),
+      rows("Beginner", [["L R C", "Sketch a line, rectangle or circle"], ["E", "Extrude"], ["A", "Align"], ["P", "Pattern"], ["M", "Mirror"], ["H", "Make hole"], ["S", "Make solid"], ["D", "Drop to workplane"], ["T", "Texture"], ["F", "Fit all"], ["Arrows", "Nudge by the snap step, the way it looks on screen (Shift ×10, Alt finer)"], ["Alt while dragging", "Move freely: no grid, objects or faces for a moment"], ["Ctrl ↑↓", "Lift / lower by the snap step"], [", .", "Turn 1° after a rotation arc (Shift 15°)"], ["Ctrl G", "Group (Shift: ungroup)"], ["Ctrl D", "Duplicate"], ["Tab", "Type sizes on the selected shape (Shift Tab: back)"], ["I", "Measure"]]),
       rows("Architect", [["W", "Wall (click each corner)"], ["R", "Room (drag corner to corner)"], ["E", "Raise walls"], ["D", "Door"], ["N", "Window"], ["O", "Roof"], ["G", "Floor"], ["T", "Finishes (textures, colours, patterns)"], ["L", "Landscape (ground, water, plants)"], ["S", "Simulate (weather, flood test)"], ["Arrows", "Nudge the selected roof, door or window"], ["V", "Select"], ["0-9 Enter", "While drawing a wall: type its exact length (12' 6\" or 3600)"], ["Enter", "Finish the walls you are drawing"], ["Shift", "Draw at any angle"], ["Alt", "Turn snapping off for a moment"], ["P", "Plan view / 3D"], ["X", "See-through on or off"], ["Delete", "Delete the selection"], ["Esc", "Stop drawing, back to Select"]]),
       rows("Chisel (Pro)", [["D", "Standard brush"], ["C", "Clay"], ["S", "Smooth"], ["T", "Flatten"], ["G", "Move brush"], ["N", "Snakehook"], ["Q", "Mask"], ["J", "Paint"], ["M", "Select & move"], ["[ ]", "Brush size"], ["Shift drag", "Smooth"], ["Alt drag", "Invert brush"], ["Ctrl drag", "Mask"], ["X", "Mirror X"], ["F", "Frame"], ["Drag right / left", "Window / crossing select (Select & move)"], ["Tab", "Type sizes (Select & move)"], ["R C P", "Rectangle, circle, polygon (Sketch)"], ["E", "Extrude the sketch"], ["Esc", "Cancel the shape / sketch"]]),
       ...(IS_MAC ? [rows("Mac trackpad", [["Option drag", "Orbit"], ["Option Shift drag", "Pan"], ["Pinch", "Zoom"], ["Two-finger scroll", "Zoom"], ["Control click", "Right-click menu (drag to orbit)"]])] : []),
