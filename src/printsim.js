@@ -2160,6 +2160,7 @@ export function initPrintSim(app, X) {
     const bytes = new TextEncoder().encode(r.text);
     if (app.projects && app.projects.saveModel) await app.projects.saveModel(base + ".gcode", bytes);
     renderPanel();
+    app.onExport && app.onExport("gcode"); // jumpstart-3d: a lesson ticks its G-code step on this export, not on an earlier one (tutorials batch 5)
     app.toast(`Saved ${base}.gcode: ${Math.round(r.secs / 60)} min, ${r.grams.toFixed(1)} g of filament. Copy it to the printer's SD card or USB stick, or send it with the printer's app.`);
     return r;
   }
