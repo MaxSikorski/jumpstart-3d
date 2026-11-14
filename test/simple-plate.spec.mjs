@@ -61,8 +61,8 @@ test("selected shape panel keeps the inspector and proxies", async ({ page }, in
   await waitIdle(page);
   const panel = page.locator("#simple-panel");
   await expect(panel).toBeVisible();
+  if (info.project.name === "mobile") await page.click("#simple-sheet-handle"); // a phone opens the sheet collapsed to its handle
   await expect(panel.locator("#inspector")).toBeVisible();
-  if (info.project.name === "mobile") await page.click("#simple-sheet-handle");
   await expectVerdict(panel.locator("#simple-ready"), "ready");
   for (const id of ["drop", "dup", "mirror", "shell", "fillet", "del"]) await expect(panel.locator(`[data-for="bb-${id}"]`)).toHaveCount(1);
   await page.locator("#insp-w").fill("30"); await page.locator("#insp-w").press("Enter"); await waitIdle(page);
@@ -86,4 +86,13 @@ test("plate panel and sphere check", async ({ page }, info) => {
   await expect(page.locator("#simple-panel")).toBeVisible();
   if (info.project.name === "mobile") { await page.click("#simple-sheet-handle"); await expect(page.locator("#simple-sheet-handle")).toHaveAttribute("aria-expanded", "true"); }
   await expectVerdict(page.locator("#simple-ready"), "warn");
+});
+
+test("switching from Original shows every rail tool at once, without waiting for another change", async ({ page }, info) => {
+  // beforeEach booted in Original and then switched to Simple; build 36 showed only Shapes, Move and More here until something else refreshed the screen
+  const wanted = info.project.name === "mobile" ? ["sr-shapes", "sr-sketch", "sr-import", "sr-move", "sr-hole", "sr-group", "sr-more"] : ["sr-shapes", "sr-sketch", "sr-import", "sr-move", "sr-hole", "sr-group", "sr-align", "sr-fillet", "sr-measure", "sr-more"];
+  await expect.poll(() => page.locator("#simple-rail > button").evaluateAll((bs) => bs.filter((b) => b.getClientRects().length).map((b) => b.id)), { timeout: 5000 }).toEqual(wanted);
+  await page.evaluate(() => window.__app.setFace("original", true));
+  await page.evaluate(() => window.__app.setFace("simple", true));
+  await expect.poll(() => page.locator("#simple-rail > button").evaluateAll((bs) => bs.filter((b) => b.getClientRects().length).map((b) => b.id)), { timeout: 5000 }).toEqual(wanted);
 });

@@ -441,6 +441,7 @@ async function prepareFor(p, sel, mode, ch = "") {
     return "ground made";
   }
   if (/param-expr/.test(sel)) { await click("#browser .param-add"); return "one parameter added"; }
+  if (/#ps-r-/.test(sel)) { await click("#ws-print"); await p.waitForSelector("#ps-r-arrange", { state: "attached" }); return "3D Print Sim open"; }
   if (/#bn-/.test(sel)) { // J.Siwek 2.9.8.9.x Box Maker lessons: the step before opens the Box Maker; its joins and plates show for a dovetailed set of drawers two wide and two high
     await p.evaluate((plates) => { try { if (plates) localStorage.setItem("jumpstart3d.bins", JSON.stringify({ style: "drawer", units: 2, across: 2, lock: "dovetail", sideLock: "dovetail" })); } catch {} window.__app.advanced.openBins(); try { localStorage.removeItem("jumpstart3d.bins"); } catch {} }, /bn-(lock|plates)/.test(sel));
     await p.waitForSelector(sel.split(",")[0].trim(), { state: "attached" });
@@ -501,8 +502,10 @@ const readSpot = ({ phone, sel, via }) => {
   const panel = document.getElementById("tut-panel"), cube = document.querySelector(".viewcube");
   out.miniOverCube = false;
   if (phone && panel && panel.classList.contains("mini") && cube && cube.getClientRects().length) {
-    const p = panel.getBoundingClientRect(), c = cube.getBoundingClientRect(), left = c.left - 22;
-    out.miniOverCube = p.right > left && p.left < c.right && p.bottom > c.top && p.top < c.bottom;
+    // the cube and its arrows: they reach 22 px past it with a mouse, and sit around it as 44 px targets on a touch screen
+    const p = panel.getBoundingClientRect(), c = cube.getBoundingClientRect(), arrows = [...document.querySelectorAll(".cube-arrows > *")].map((b) => b.getBoundingClientRect()).filter((r) => r.width);
+    const left = Math.min(c.left - 22, ...arrows.map((r) => r.left)), top = Math.min(c.top, ...arrows.map((r) => r.top)), bottom = Math.max(c.bottom, ...arrows.map((r) => r.bottom));
+    out.miniOverCube = p.right > left && p.left < c.right && p.bottom > top && p.top < bottom;
   }
   return out;
 };

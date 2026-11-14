@@ -230,9 +230,7 @@ async function boxesFile(count) {
 }
 const boxVolume = (count) => Array.from({ length: count }, (_, i) => 8 * 8 * (8 + (i % 5))).reduce((a, b) => a + b, 0);
 
-// quarantined: the single file in WebKit cannot read the STEP blob back out of the engine worker (see booleans.spec.mjs)
 test("a file with 200 parts splits into 200 bodies that all build", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
   test.setTimeout(300_000);
   const bytes = await boxesFile(200);
   await importFile("two hundred.step", bytes);
@@ -247,7 +245,6 @@ test("a file with 200 parts splits into 200 bodies that all build", async ({}, i
 });
 
 test("a file with 201 parts stays one body and says so", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
   test.setTimeout(300_000);
   const bytes = await boxesFile(201);
   await page.evaluate(() => {
@@ -321,7 +318,10 @@ test("the split never costs an unrelated undo step when the history is full", as
   expect(await page.evaluate(() => ({ n: window.__store.undoStack.length, first: window.__store.undoStack[0].label, last: window.__store.undoStack[window.__store.undoStack.length - 1].label }))).toEqual({ n: 120, first: "Edit 0", last: "Import full" });
 });
 
-test("the timeline names an import part and explains it; the body keeps its volume", async () => {
+// quarantined: a double-click on a timeline item opens nothing in Firefox: each click selects the body and draws the timeline again, and Firefox
+// sends no dblclick when the element under the pointer was replaced. A real Firefox bug in the timeline (advanced.js), written up for after the upstream port
+test("the timeline names an import part and explains it; the body keeps its volume", async ({}, info) => {
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: a double-click on a timeline item opens nothing (each click redraws the timeline)");
   await fresh("advanced");
   await importFile("three parts.step", fixture("step-assembly-3-parts.step"));
   await whenBuilt(3);

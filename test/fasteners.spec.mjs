@@ -314,9 +314,9 @@ test("Beginner: the Fasteners button makes a tap cutter standing on the ground; 
   expect(after).toBeGreaterThan(before * 1.5);
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs; in Firefox the engine stalls on the threads
+// quarantined: in Firefox the engine stalls on the threads
 test("the golden design exports to STEP as true solids, one per part", async ({}, info) => {
-  quarantine(info, ["single-webkit", "site-firefox", "single-firefox"], "STEP export fails in the single file in WebKit; Firefox stalls on threaded shapes");
+  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: the engine stalls on threaded shapes");
   const json = JSON.parse(readFileSync(new URL("./projects/fasteners.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();

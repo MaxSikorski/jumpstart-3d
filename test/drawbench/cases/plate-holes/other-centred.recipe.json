@@ -1,0 +1,14 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["PlateW", "80"] },
+    { "call": "setParam", "args": ["PlateD", "50"] },
+    { "call": "setParam", "args": ["Thick", "6"] },
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Plate", "shapes": [{ "type": "roundrect", "center": [0, 0], "size": ["PlateD", "PlateW"], "radius": 6 }] }], "as": "plate" },
+    { "call": "extrude", "args": [{ "sketch": "$plate.sketch", "dist": "-Thick", "name": "Plate turned" }], "as": "part" },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[17, -32, 0], [17, 32, 0], [-17, -32, 0], [-17, 32, 0]], "dia": 5.5 }] },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[5, -10, 0]], "dia": 10 }] }
+  ]
+}

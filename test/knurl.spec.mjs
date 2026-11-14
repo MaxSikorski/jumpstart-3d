@@ -4,7 +4,7 @@
 // bore areas are the textbook formulas.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, exportBytes, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, exportBytes } from "./helpers.mjs";
 
 // the polygon area of a knob and its bore, for the numbers the spec gives
 function formula({ diameter = 20, length = 15, grooves, depth, bore = "none", boreSize }) {
@@ -212,7 +212,6 @@ test("the dialog shows the error, warns about fine grooves, and the Beginner but
 });
 
 test("the golden design is four true solids in a STEP file", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/knurl.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();

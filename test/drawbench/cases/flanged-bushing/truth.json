@@ -1,0 +1,18 @@
+{
+  "spec": 1,
+  "name": "Flanged bushing",
+  "units": "mm",
+  "source": { "kind": "drawing", "projection": "third", "scale": "dimensioned" },
+  "checks": [
+    { "id": "size", "kind": "size", "value": [40, 40, 25], "tol": 0.1, "from": "stated" },
+    { "id": "holes-12", "kind": "holes", "dia": 12, "count": 1, "axis": "z", "through": true, "at": [[20, 20]], "tol": 0.1, "from": "stated" },
+    { "id": "holes-4.5", "kind": "holes", "dia": 4.5, "count": 4, "axis": "z", "through": true, "at": [[4.5, 20], [35.5, 20], [20, 4.5], [20, 35.5]], "tol": 0.1, "from": "stated" },
+    { "id": "flange-t", "kind": "distance", "a": { "near": [30.96, 30.96, 5] }, "b": { "near": [30.96, 30.96, 0] }, "value": 5, "tol": 0.1, "from": "stated" },
+    { "id": "flange-r", "kind": "radius", "near": [34.142, 34.142, 2.5], "value": 20, "tol": 0.1, "from": "stated" },
+    { "id": "body-r", "kind": "radius", "near": [27.778, 27.778, 15], "value": 11, "tol": 0.1, "from": "stated" },
+    { "id": "volume", "kind": "volume", "value": 10740.32, "tol": "1%", "from": "derived", "note": "pi*20^2*5 + pi*11^2*20 - pi*6^2*25 - 4*pi*2.25^2*5" },
+    { "id": "solids", "kind": "solids", "value": 1 }
+  ],
+  "assumed": [],
+  "questions": []
+}

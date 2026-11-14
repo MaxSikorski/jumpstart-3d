@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets.js";
 import { startJob, BED_TOUCH } from "./overhang.js";
+import { initPhoneSheet } from "./phonesheet.js";
+import { initPhoneFit } from "./phonefit.js";
+import { initA11yNames } from "./a11ynames.js";
 import { startPlateJob, fitsPlate, flatness, verdict, curvedBottom } from "./printcheck.js";
 import { ICON } from "./icons.js";
 import { store } from "./store.js";
@@ -158,7 +161,7 @@ function initPlate(app) {
   panel.querySelector(".simple-print-footer").addEventListener("keydown", toolKeys);
   $("simple-print").onclick = () => { if ($("menu-export").hidden) $("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]')?.click(); };
   $("simple-export-more").onclick = () => $("btn-export").click();
-  $("simple-sheet-handle").onclick = () => { const expanded = panel.classList.toggle("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", expanded); };
+  const sheet = initPhoneSheet(app, panel);
   const inspector = $("inspector"), oldParent = inspector.parentNode, placeholder = document.createComment("inspector position");
   oldParent.insertBefore(placeholder, inspector.nextSibling);
   const label = document.createElement("button"); label.id = "simple-plate-label"; label.onclick = () => app.plateView.open(); $("viewport").append(label);
@@ -174,7 +177,7 @@ function initPlate(app) {
     $("simple-multi").hidden = selected.length < 2;
     const ungroup = $("simple-multi").querySelector('[data-for="bb-ungroup"]'); ungroup.hidden = selected.length < 2 || $("bb-ungroup")?.disabled;
     $("simple-fixes").querySelector('[data-for="bb-fillopen"]').hidden = !selected.some(b => b.node.t === "mesh" || b.node.t === "step");
-    if (!selected.length) { panel.classList.remove("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", "false"); }
+    sheet.sync(selected);
   }
   const cache = new WeakMap();
   function setText(state, text) {
@@ -344,11 +347,18 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { displa
 @media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { --simple-panel-w: 236px; grid-template-columns: 80px minmax(0, 1fr) 236px; } }
 @media (max-width: 640px) {
  html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
- html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: absolute; z-index: 35; grid-column: 1 / -1; grid-row: 1; left: 0; right: 0; bottom: 58px; height: 40vh; max-height: calc(100% - 58px); border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: relative; z-index: 35; grid-column: 1 / -1; grid-row: 1; align-self: end; max-height: 100%; overflow: hidden; border: 1px solid var(--line); border-bottom: 0; border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px #0002; }
  html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.has-selection { display: flex; }
- html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { height: 80vh; }
- #simple-sheet-handle { display: block; flex: none; min-height: 44px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
- #simple-panel:not(.expanded) .simple-print-footer { display: none; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { grid-row: 1 / 3; height: min(var(--sheet-open-h, 50%), 100%); overflow-y: auto; overscroll-behavior: contain; }
+ #simple-panel:not(.expanded) > :not(#simple-sheet-handle) { display: none !important; }
+ #simple-panel :is(.simple-panel-scroll, .simple-print-footer) { flex: none; overflow: visible; }
+ #simple-sheet-handle { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; position: sticky; top: 0; z-index: 2; flex: none; min-height: 52px; padding: 8px 16px; border: 0; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; touch-action: none; }
+ #simple-sheet-handle .sheet-grip { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--line); }
+ #simple-sheet-handle .sheet-name { font: 600 14px/1.2 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ #simple-sheet-handle .sheet-size { font: 13px/1.2 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+ /* the panel buttons at the foot of the view move above the collapsed sheet, and step aside while it is open */
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) #app[data-mode="beginner"] .work:has(> #simple-panel.has-selection:not(.expanded)) #viewport > .simple-collapse { bottom: 60px; }
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) #app[data-mode="beginner"] .work:has(> #simple-panel.has-selection.expanded) #viewport > .simple-collapse { display: none !important; }
 }
 
 #simple-rail, .simple-panel { display: none; }
@@ -362,6 +372,11 @@ html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; 
 html[data-face="simple"] #app[data-mode="beginner"] > .work { grid-column: 1; grid-row: 2; }
 html[data-face="simple"] #app[data-mode="beginner"] > .status { grid-column: 1; grid-row: 3; }
 html[data-face="simple"] #app[data-mode="beginner"] #ribbon { display: none; }
+/* Until Simple has its own sketch tools: while a sketch is open, J.Siwek's sketch ribbon shows above the view, in a row whatever layout is picked (build 36 showed no tools at all) */
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > #ribbon { display: flex; grid-column: 1; grid-row: 2; flex-direction: row; width: auto; min-height: 58px; border: 0; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > .work { grid-row: 3; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > .status { grid-row: 4; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-rail { display: flex; grid-column: 1; grid-row: 1; width: 80px; min-height: 0; box-sizing: border-box; flex-direction: column; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
 #simple-rail button, .simple-panel button { font: 600 12px/1.2 var(--f-ui); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 #simple-rail button { flex: 1 0 44px; min-height: 44px; padding: 4px 2px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }
@@ -410,7 +425,7 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-undo, #btn-redo) { display: inline-flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .menu-wrap:has(#btn-theme) { display: block; }
-html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #menu-theme { position: fixed; right: 12px; top: calc(var(--topbar-h, 46px) + 6px); max-height: calc(100dvh - var(--topbar-h, 46px) - 20px); }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #menu-theme { position: fixed; right: 12px; top: calc(var(--topbar-h, 46px) + 6px); max-height: calc(100dvh - var(--topbar-h, 46px) - env(safe-area-inset-bottom, 0px) - 32px); }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent-2); color: #fff; border-radius: 6px; padding: 6px 12px; font-weight: 600; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export:hover { background: var(--accent); }
 html[data-ui="contrast"][data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent); color: #000; }
@@ -477,6 +492,7 @@ export function initSimpleMode(app) {
   const $ = (id) => document.getElementById(id);
   const plate = initPlate(app);
   const collapse = initCollapse(app, plate);
+  initPhoneFit(); initA11yNames();
   const row = document.createElement("div");
   row.className = "faceswitch-row";
   row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
@@ -512,7 +528,7 @@ export function initSimpleMode(app) {
   function dismissCard() { if (!card) return; card.remove(); card = null; try { localStorage.setItem("jumpstart.simple.card", "seen"); } catch (e) { /* storage may be unavailable */ } }
   function apply(name) {
     if (name !== "simple" && app.beginner?.moveArmed) app.beginner.armMove(false); // Move is Simple's: Original never stays armed
-    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); plate.layout(); plate.schedule();
+    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); if (face === "simple") plate.sync(); plate.layout(); plate.schedule(); // sync: the rail last mirrored the tools while Simple was showing, so its buttons were stale after a switch from Original
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
