@@ -6,13 +6,12 @@
 // its position is m[12..14]). `ids` takes one id or an array. A call that names a missing body throws
 // Error("no body <id>"). Every edit is one undo step with a readable label, and leaves the selection alone.
 //
-//   Reading    version, appVersion, kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
+//   Reading    version, apiVersion, appVersion, supports(), describe(), kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
 //   Generators boxMaker({style, w, d, h, units, across, cols, rows, ...}) -> {id, parts, cell, info}
 //              gearSet({type, module, teeth, teeth2, ...}) -> {id, parts, info}
 //              hardware({part, size, length, threads, clear, left, at, name}) -> id
 //              textures() -> [{key, name, category, size}], texture(id, {texture, faces, size, depth, ...}) -> {body, texture, faces}
 //              drawing({ids, views, scale, units, dims}) -> Uint8Array (DXF)
-//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
@@ -35,6 +34,7 @@
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
+import { API_VERSION, API_COMPAT, CALLS, describe } from "./apicontract.js";
 import * as THREE from "three";
 import { initBridgeGen } from "./bridgegen.js"; // jumpstart-3d: generator calls
 import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
@@ -207,7 +207,8 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.12", // jumpstart-3d: checkpoints
+    version: API_COMPAT,
+    apiVersion: API_VERSION,
     appVersion: VERSION,
     internals: { app, store },
 
@@ -217,6 +218,8 @@ export function initBridge(app) {
     doc: snapshot,
     save: () => ({ app: "jumpstart-3d", version: 1, doc: snapshot() }),
     ready,
+    supports: (name) => typeof name === "string" && Object.hasOwn(api, name) && typeof api[name] === "function" && CALLS.some((call) => call.name === name),
+    describe: () => describe(VERSION),
 
     // ----------------------------------------------------------- shapes
     add(kind, opts = {}) {
@@ -532,7 +535,7 @@ export function initBridge(app) {
     s.onopen = () => {
       link.state = "connected";
       linkChanged();
-      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
+      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, apiVersion: api.apiVersion, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
       setTimeout(() => { if (sock === s) app.toast("Connected to an AI agent."); }, 500); // the server may refuse right away (another tab has the link)
     };
     s.onmessage = (ev) => { queue = queue.then(() => answer(s, ev.data)); };
