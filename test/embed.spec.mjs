@@ -113,8 +113,8 @@ test('single file embed parameter does not activate', async ({page}, info) => {
   await expect(page.getByText('Temporary design, not saved')).toHaveCount(0);
   await page.evaluate(() => { window.messages = []; addEventListener('message', e => messages.push(e.data)); const f = document.createElement('iframe'); f.src = location.href; document.body.append(f); });
   await page.locator('iframe').waitFor();
-  const frame = page.frames().find(f => f !== page.mainFrame());
-  await frame.waitForFunction(() => !!window.JS3D);
+  // the frame swaps from about:blank to the file while loading, so ask the iframe element for its frame each time
+  await expect.poll(async () => { const f = await (await page.locator('iframe').elementHandle()).contentFrame(); return !!f && f.evaluate(() => !!window.JS3D).catch(() => false); }, {timeout: 90000}).toBe(true);
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => messages.some(m => m?.type === 'js3d-ready'))).toBe(false);
 });
