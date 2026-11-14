@@ -1179,7 +1179,7 @@ export const COMMUNITY_TUTORIALS = [
     learn: ["Bin & Box Maker", "Layerscape", "Helmet Maker", "Color lithophane"],
     steps: [
       nameStep("Maker Tour", "Lopez, Maria, Maker Tour"),
-      { title: "A storage bin", tool: "Simulate → Bin & Box Maker", icon: "box", show: { sel: "#sim-bins, #ws-simulate" },
+      { title: "A storage bin", tool: "Simulate → Bin & Box Maker", icon: "box", show: { sel: "#sim-bins, #ws-simulate" }, anim: false,
         how: ["Click the <b>Simulate</b> tab, then <b>Bin & Box Maker</b>.", "Leave Style on <b>Bin</b> and the sizes as they are. Click the plate to place it, then click OK."],
         when: "The Box Maker builds bins, drawers and whole cabinets from a few numbers. Double-click the bin later to change it.",
         check: (t) => t.bodies().some((b) => b.bin) },
