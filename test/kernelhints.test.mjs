@@ -6,7 +6,7 @@ test('gives advice for the actual kernel failures', () => {
     ['Fillet: its edges no longer exist', /remove.*feature.*JS3D.edges/],
     ['Chamfer: its edges no longer exist', /remove.*feature.*JS3D.edges/],
     ["Shell: the faces to remove weren't found. Edit the shell and pick them again.", /Remove.*shell.*JS3D.faces/],
-    ['Empty group', /Show or add a solid/],
+    ['Empty group', /Undo the step that emptied the group/],
     ['The taper is too large: the profile collapses before the end of the sweep.', /smaller taper or distance/],
     ['The taper changes this profile too much (some of its edges vanish). Use a smaller taper angle or distance.', /smaller taper or distance/],
     ['Fillet 5 mm is too large for the selected edges.', /JS3D.undo\(\).*smaller/],

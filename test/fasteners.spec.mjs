@@ -227,7 +227,7 @@ test("the turns guard: a hint at 64 turns, a refusal at 160, and the same refusa
   await expect.poll(() => run(() => __store.view.bodies.some((x) => x.fastener))).toBe(false);
   await page.click('#cmd button[aria-label="Cancel"]');
   expect(await run(() => JS3D.list().length)).toBe(0);
-  const too = "Too many turns (160; the most is 150). Make it shorter or pick a larger size.";
+  const too = "Too many turns (160; the most is 150), got length 200. Use a shorter length or pick a larger size.";
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 200 }))).toBe(too);
   expect(await failure(() => JS3D.fastener({ type: "bolt", size: "M8", length: 200 }))).toBe(too);
   expect(await run(() => JS3D.list().length)).toBe(0);
@@ -266,8 +266,8 @@ test("JS3D.fastener refuses bad input with plain messages and adds nothing", asy
   expect(await failure(() => JS3D.fastener(null))).toContain('type must be "bolt", "nut", "rod" or "cutter"');
   expect(await failure(() => JS3D.fastener({ type: "screw", size: "M8", length: 20 }))).toContain('type must be "bolt", "nut", "rod" or "cutter"');
   expect(await failure(() => JS3D.fastener())).toContain('type must be "bolt", "nut", "rod" or "cutter"');
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M7", length: 20 }))).toMatch(/^unknown size, got "M7"; sizes: M2\.5, M3, M4, .*, 1\/2-13, 1\/2-20/);
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "#4-40", length: 20 }))).toMatch(/^unknown size, got "#4-40"/);
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M7", length: 20 }))).toMatch(/^unknown size "M7"; sizes: M2\.5, M3, M4, .*, 1\/2-13, 1\/2-20/);
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "#4-40", length: 20 }))).toMatch(/^unknown size "#4-40"/);
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 3 }))).toContain("length must be a number of at least 3.75 mm for M8");
   expect(await failure(() => JS3D.fastener({ type: "bolt", size: "M8" }))).toContain("length must be a number of at least 3.75 mm for M8");
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: 0.2 }))).toContain("clear must be a number from -1 to 0 (mm)");

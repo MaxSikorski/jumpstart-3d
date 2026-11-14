@@ -70,7 +70,7 @@ test("faces and edges list the shape in world terms and refuse unknown picks", a
   expect(vertical[0]).toMatchObject({ type: "line", direction: [0, 0, 1] });
   expect(await run((id) => JS3D.faces(id, "front").then((f) => f[0].normal), body)).toEqual([0, -1, 0]);
   expect(await run((id) => JS3D.faces(id, [0, 1]).then((f) => f.map((x) => x.index)), body)).toEqual([0, 1]);
-  expect(await failure((id) => JS3D.faces(id, "cone"), body)).toMatch(/^no faces match "cone" on Body 1/);
+  expect(await failure((id) => JS3D.faces(id, "cone"), body)).toMatch(/^no faces match "cone" on "Body 1"/);
   expect(await failure((id) => JS3D.faces(id, 17), body)).toContain("Body 1 has no face 17 (it has 0 to 5)");
   expect(await failure((id) => JS3D.edges(id, 400), body)).toMatch(/^Body 1 has no edge 400 \(it has 0 to \d+; seams and smooth joins are not edges\)/);
   expect(await failure((id) => JS3D.edges(id, "edges of"), body)).toMatch(/unknown word "edges"|unexpected/);
@@ -131,13 +131,13 @@ test("a sketch on a face and a cut right through", async () => {
   const m = await run((id) => JS3D.get(id).node.mods.at(-1), body);
   expect(m).toMatchObject({ t: "bool", op: "cut", tool: { t: "extrude", dist: -26 } });
   expect(await failure((id) => JS3D.sketch({ on: { body: id, face: "#Z" }, shapes: [{ type: "circle", diameter: 4 }] }), body)).toMatch(/matches 4 faces; a sketch needs exactly one/);
-  expect(await failure((id) => JS3D.sketch({ on: { body: id, face: "hole" }, shapes: [{ type: "circle", diameter: 4 }] }), body)).toContain('face "hole" on Body 1 is not flat (it is a cylinder)');
+  expect(await failure((id) => JS3D.sketch({ on: { body: id, face: "hole" }, shapes: [{ type: "circle", diameter: 4 }] }), body)).toContain('face "hole" on "Body 1" is not flat (it is a cylinder)');
 });
 
 test("revolve a profile about a world axis, and refuse an axis not in the plane", async () => {
   await fresh();
   const sk = await run(() => JS3D.sketch({ on: "XZ", shapes: [{ type: "polyline", points: [[0, 0], [10, 0], [10, 20], [0, 20]] }] }));
-  expect(await failure((s) => JS3D.revolve({ sketch: s, axis: "Y" }), sk.sketch)).toContain('axis "Y" is not in the plane of Sketch 1; use X or Z');
+  expect(await failure((s) => JS3D.revolve({ sketch: s, axis: "Y" }), sk.sketch)).toContain('axis "Y" is not in the plane of "Sketch 1"; use X or Z');
   const { body } = await run((s) => JS3D.revolve({ sketch: s, axis: "z" }), sk.sketch);
   expect(await volumeOf(body)).toBeCloseTo(Math.PI * 100 * 20, 0);
   const env = await run(() => JS3D.save());
@@ -160,7 +160,7 @@ test("holes and a pattern: three M3 holes along x; off-face and overlapping poin
   expect(await failure((id) => JS3D.hole(id, { face: "top", points: [[-10, 0, 25], [-7.5, 0, 25]], size: "M3" }), body)).toBe("holes 1 and 2 overlap (centres 2.5 mm apart; each is 3.4 mm wide)");
   expect(await failure((id) => JS3D.hole(id, { face: "top", points: [[0, 0, 25]], shape: "hex", size: "M3" }), body)).toMatch(/round holes/);
   expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 3, spacing: 0 }), [body, h.feature])).toContain("spacing must be a number of mm, not 0, got 0");
-  expect(await failure((id) => JS3D.pattern(id, { features: ["nope"], type: "rect", axis: "x", count: 3, spacing: 5 }), body)).toContain('feature "nope" is not on Body 1');
+  expect(await failure((id) => JS3D.pattern(id, { features: ["nope"], type: "rect", axis: "x", count: 3, spacing: 5 }), body)).toContain('feature "nope" is not on "Body 1"');
 });
 
 test("the proof: a 60 x 40 x 25 enclosure, 2 mm walls, filleted rim, four M3 holes, built only through calls", async () => {

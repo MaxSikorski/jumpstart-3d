@@ -81,6 +81,14 @@ cases.push(
   {name: 'box count', run: a => a.boxMaker({cols: 0}), mentions: ['cols', '0'], allowed: /1.*20/},
   {name: 'gear type', run: a => a.gearSet({type: 'bad'}), mentions: ['type', '"bad"'], allowed: /pair.*rack.*ring.*planet.*bevel.*helical/},
   {name: 'gear module', run: a => a.gearSet({module: 0}), mentions: ['module', '0'], allowed: /0\.3.*10/},
+  {name:'set color', setup:body, run:(a,id)=>a.setColor(id,'red'), mentions:['color','"red"']},
+  {name:'invalid about', setup:body, run:(a,id)=>a.rotate(id,'z',10,{about:[1,2]}), mentions:['about','[1,2]']},
+  {name:'bevel set teeth',run:a=>a.gearSet({type:'bevel',teeth:1}),mentions:['teeth','1']},
+  {name:'bevel set teeth2',run:a=>a.gearSet({type:'bevel',teeth2:1}),mentions:['teeth2','1']},
+  {name:'ring teeth',run:a=>a.gearSet({type:'ring',teeth:20,teeth2:21}),mentions:['teeth2','21']},
+  {name:'planet assembly',run:a=>a.gearSet({type:'planet',sunTeeth:19,planetTeeth:12,planets:3}),mentions:['sunTeeth','19']},
+  {name:'planet clearance',run:a=>a.gearSet({type:'planet',sunTeeth:8,planetTeeth:20,planets:4}),mentions:['planetTeeth','20']},
+  {name:'gear bore',run:a=>a.gearSet({bore:100}),mentions:['bore','100']},
   {name: 'gear pressure', run: a => a.gearSet({pressureAngle: 15}), mentions: ['pressureAngle', '15'], allowed: /14\.5.*20.*25/},
   {name: 'hardware option', run: a => a.hardware({bad: 1}), mentions: ['option', '"bad"']},
   {name: 'hardware part', run: a => a.hardware({part: 'bad'}), mentions: ['part', '"bad"']},
@@ -165,4 +173,12 @@ for (const {name, run, mentions, allowed, setup, app, dynamicId} of cases) test(
     if (!mentions.some(part => /undefined|\[object Object\]|NaN/.test(part))) assert.doesNotMatch(error.message, /undefined|\[object Object\]|NaN/);
     return true;
   });
+});
+
+test('nameplate reads invalid text only once', () => {
+  let reads = 0;
+  const spec = {get text() { if (++reads > 1) throw new TypeError('read twice'); return ''; }};
+  const {api} = bridge({advanced});
+  assert.throws(() => api.namePlate(spec), /text must be a non-empty string, got ""/);
+  assert.equal(reads, 1);
 });

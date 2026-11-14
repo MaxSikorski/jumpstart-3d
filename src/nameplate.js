@@ -29,48 +29,52 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 // listed in BRIDGE.md.
 function resolve(spec) {
   spec = spec ?? {};
-  let text = spec.text;
-  if (typeof text !== "string" || !text.trim()) throw new Error(("text must be a non-empty string") + `, got ${show(spec.text)}. Example: JS3D.namePlate({text: "Hello"}).`);
+  const inputText = spec.text;
+  let text = inputText;
+  if (typeof text !== "string" || !text.trim()) throw new Error(("text must be a non-empty string") + `, got ${show(inputText)}. Example: JS3D.namePlate({text: "Hello"}).`);
   text = text.trim();
-  if (/[\n\r\t]/.test(text)) throw new Error(("text must be one line, without line breaks or tabs") + `, got ${show(spec.text)}. Example: JS3D.namePlate({text: "Hello"}).`);
+  if (/[\n\r\t]/.test(text)) throw new Error(("text must be one line, without line breaks or tabs") + `, got ${show(inputText)}. Example: JS3D.namePlate({text: "Hello"}).`);
   const chars = Array.from(text);
-  if (chars.length > MAX_CHARS) throw new Error((`text can have at most ${MAX_CHARS} characters (this has ${chars.length})`) + `, got ${show(spec.text)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const font = spec.font == null ? "sans" : spec.font;
+  if (chars.length > MAX_CHARS) throw new Error((`text can have at most ${MAX_CHARS} characters (this has ${chars.length})`) + `, got ${show(inputText)}. Example: JS3D.namePlate({text: "Hello"}).`);
+  const font = spec.font ?? "sans";
   if (!FONTS.includes(font)) throw new Error(('font must be "sans", "serif" or "mono"') + `, got ${show(font)}. Example: JS3D.namePlate({text: "Hello"}).`);
   // hasChar says yes to everything; a glyph index of 0 is the font's "missing" box, which the kernel would drop as a blank gap
   const face = getFont(font), missing = [...new Set(chars.filter((c) => face.charToGlyphIndex(c) === 0))];
-  if (missing.length) throw new Error((`text has characters the fonts do not have: ${show(missing)}, got ${show(spec.text)}. The fonts cover English and Western European letters, digits and common symbols`) + `. Example: JS3D.namePlate({text: "Hello"}).`);
-  const size = spec.size == null ? 10 : spec.size;
+  if (missing.length) throw new Error((`text has characters the fonts do not have: ${show(missing)}, got ${show(inputText)}. The fonts cover English and Western European letters, digits and common symbols`) + `. Example: JS3D.namePlate({text: "Hello"}).`);
+  const size = spec.size ?? 10;
   if (!inRange(size, 2, 100)) throw new Error(("size must be a number from 2 to 100 (mm, the height of a capital letter)") + `, got ${show(size)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const style = spec.style == null ? "raised" : spec.style;
+  const style = spec.style ?? "raised";
   if (!STYLES.some((s) => s[0] === style)) throw new Error(('style must be "raised" or "cut"') + `, got ${show(style)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const depth = spec.depth == null ? 1 : spec.depth;
+  const depth = spec.depth ?? 1;
   if (!inRange(depth, 0.2, 10)) throw new Error(("depth must be a number from 0.2 to 10 (mm)") + `, got ${show(depth)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const H = spec.thickness == null ? 3 : spec.thickness;
+  const H = spec.thickness ?? 3;
   if (!inRange(H, 0.6, 20)) throw new Error(("thickness must be a number from 0.6 to 20 (mm)") + `, got ${show(H)}. Example: JS3D.namePlate({text: "Hello"}).`);
   if (style === "cut") {
     if (H < 0.8 - 1e-9) throw new Error(("the plate is too thin to cut text into (make it at least 0.8 mm)") + `, got ${show(H)}. Example: JS3D.namePlate({text: "Hello"}).`);
     if (depth > H - 0.6 + 1e-9) throw new Error((`depth must be at most ${fmt(H - 0.6, 3)} mm here, so 0.6 mm of plate stays under the letters`) + `, got ${show(depth)}. Example: JS3D.namePlate({text: "Hello"}).`);
   }
-  const m = spec.margin == null ? 3 : spec.margin;
+  const m = spec.margin ?? 3;
   if (!inRange(m, 1.5, 20)) throw new Error(("margin must be a number from 1.5 to 20 (mm)") + `, got ${show(m)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const shape = spec.shape == null ? "rounded" : spec.shape;
+  const shape = spec.shape ?? "rounded";
   if (!SHAPES.some((s) => s[0] === shape)) throw new Error(('shape must be "rounded" or "pill"') + `, got ${show(shape)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const holes = spec.holes == null ? "hang" : spec.holes;
+  const holes = spec.holes ?? "hang";
   if (!HOLES.some((s) => s[0] === holes)) throw new Error(('holes must be "none", "hang" or "screws"') + `, got ${show(holes)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  if (holes === "none" && spec.holeDia != null) throw new Error(('holeDia is only for holes "hang" or "screws"') + `, got ${show(spec.holeDia)}. Example: JS3D.namePlate({text: "Hello"}).`);
+  const holeDia = spec.holeDia;
+  if (holes === "none" && holeDia != null) throw new Error(('holeDia is only for holes "hang" or "screws"') + `, got ${show(holeDia)}. Example: JS3D.namePlate({text: "Hello"}).`);
   const tb = textBounds({ str: text, size, font }), tw = tb.maxX - tb.minX, th = tb.maxY - tb.minY, D = th + 2 * m;
-  const hd = holes === "none" ? 0 : spec.holeDia == null ? (holes === "hang" ? 5 : 3.5) : spec.holeDia;
+  const hd = holes === "none" ? 0 : holeDia == null ? (holes === "hang" ? 5 : 3.5) : holeDia;
   if (holes !== "none" && D - 3 < 1) throw new Error(('the text is too small for a hole here') + `, got size ${show(size)}. Use a larger margin or set holes to "none".`);
   if (holes !== "none" && !inRange(hd, 1, D - 3)) throw new Error((`holeDia must be a number from 1 to ${fmt(D - 3, 3)} mm for this plate (it leaves 1.5 mm of plate round the hole)`) + `, got ${show(hd)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const color = spec.color == null ? "#2b7bb9" : spec.color;
+  const color = spec.color ?? "#2b7bb9";
   if (!COLOR.test(color)) throw new Error(('color must look like "#rrggbb"') + `, got ${show(color)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  if (style === "cut" && spec.textColor != null) throw new Error(("textColor is only for raised text (cut-in letters are part of the plate)") + `, got ${show(spec.textColor)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const textColor = spec.textColor == null ? "#ffffff" : spec.textColor;
+  const inputTextColor = spec.textColor;
+  if (style === "cut" && inputTextColor != null) throw new Error(("textColor is only for raised text (cut-in letters are part of the plate)") + `, got ${show(inputTextColor)}. Example: JS3D.namePlate({text: "Hello"}).`);
+  const textColor = inputTextColor == null ? "#ffffff" : inputTextColor;
   if (style === "raised" && !COLOR.test(textColor)) throw new Error(('textColor must look like "#rrggbb"') + `, got ${show(textColor)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const at = spec.at == null ? [0, 0, 0] : spec.at;
+  const at = spec.at ?? [0, 0, 0];
   if (!vec3(at)) throw new Error(("at must be [x, y, z] in mm") + `, got ${show(at)}. Example: JS3D.namePlate({text: "Hello"}).`);
-  const given = spec.name == null ? "" : String(spec.name).trim();
+  const inputName = spec.name;
+  const given = inputName == null ? "" : String(inputName).trim();
   const name = given || `Name plate ${text}`;
 
   // layout, plate-local: the origin is the plate's centre; the text box's corners keep m from the edge (a pill's ends are arcs

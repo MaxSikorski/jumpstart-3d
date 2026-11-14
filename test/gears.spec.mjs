@@ -202,7 +202,7 @@ test("a bevel gear is two hidden sketches and a straight loft with the frustum v
   const bored = await bodyOf(await run(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, mate: 30, width: 10, clear: 0, bore: 6, at: [100, 0, 0] })));
   expect(bored.error).toBeNull();
   near(g.volume - bored.volume, Math.PI * 9 * 10, 0.001, "bore");
-  expect(await failure(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, width: 11 }))).toBe("width must be a positive number of mm, at most 10 for this bevel gear (a third of the way to the cone's tip)");
+  expect(await failure(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, width: 11 }))).toBe("width must be a positive number of mm, at most 10 for this bevel gear (a third of the way to the cone's tip), got 11. Example: JS3D.gear({kind: \"spur\", module: 2, teeth: 20}).");
 });
 
 // quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)

@@ -268,7 +268,7 @@ export function initBridge(app) {
       ids = idList(ids);
       const a = new THREE.Vector3(...(typeof axis === "string" ? (Object.hasOwn(AXES, axis.toLowerCase()) ? AXES[axis.toLowerCase()] : [0, 0, 0]) : Array.isArray(axis) ? vec3(axis, "axis") : [0, 0, 0]));
       if (!a.lengthSq()) throw new Error(`axis must be "x", "y", "z" or a nonzero [x, y, z], got ${show(axis)}. Example: JS3D.rotate(id, "z", 45).`);
-      if (typeof degrees !== "number" || !isFinite(degrees)) throw new Error(`degrees must be a finite number, got ${show(degrees)}. Example: JS3D.rotate(id, "z", 45).`);
+      if (typeof degrees !== "number" || !isFinite(degrees)) throw new Error(`degrees must be a number, got ${show(degrees)}. Example: JS3D.rotate(id, "z", 45).`);
       const c = vec3(opts.about ?? centreOf(ids), "opts.about");
       const R = translation(c).multiply(new THREE.Matrix4().makeRotationAxis(a.normalize(), (degrees * Math.PI) / 180)).multiply(translation(c.map((x) => -x)));
       transformBodies(ids, R, "Rotate");
@@ -367,7 +367,7 @@ export function initBridge(app) {
         if (!isFinite(p.value)) { bad = true; return false; } // leaves the design and the history untouched
         value = p.value;
       }, old ? "Edit parameter" : "Add parameter");
-      if (bad) throw new Error(`expression did not evaluate to a finite number, got expr ${show(expr)}. Call JS3D.params() to check parameter names.`);
+      if (bad) throw new Error(`expression did not evaluate, got expr ${show(expr)}. Call JS3D.params() to check parameter names.`);
       return value;
     },
     removeParam(name) {

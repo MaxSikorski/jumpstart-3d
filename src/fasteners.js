@@ -336,7 +336,7 @@ export function resolve(spec, STD) {
   if (!TYPES.some((t) => t[0] === type)) throw new Error(('type must be "bolt", "nut", "rod" or "cutter"') + `, got ${show(type)}. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const key = spec.size;
   const std = SIZES.includes(key) && findStd(STD, key);
-  if (!std) throw new Error((`unknown size, got ${show(key)}; sizes: ${SIZES.join(", ")}`) + `. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
+  if (!std) throw new Error((`unknown size ${show(key)}; sizes: ${SIZES.join(", ")}`) + `. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const [, d, p] = std;
   const [af, k, nutAf, m] = HEX[diaKey(key)];
   let length = 0;

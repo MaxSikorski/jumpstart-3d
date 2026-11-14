@@ -30,7 +30,7 @@ Logs go to stderr; stdout is the protocol.`;
 
 const allowedOrigin = (origin) => origin === undefined || ORIGINS.some((re) => re.test(origin)); // browsers always send one; other local programs may not
 // src/teach.js show(), inline: this server ships without src/ next to it. Quoted, cut at 60 characters, never throws.
-const show = (v) => { if (typeof v !== "string") return typeof v; const s = JSON.stringify(v.slice(0, 60)); return s.length > 60 || v.length > 60 ? s.slice(0, 59) + "…" : s; };
+const show = (v) => { if (v === null || typeof v === "number" || typeof v === "boolean") return String(v); if (typeof v !== "string") return typeof v; const s = JSON.stringify(v.slice(0, 60)); return s.length > 60 || v.length > 60 ? s.slice(0, 59) + "…" : s; };
 
 // {"$bytes": base64} -> Buffer (top level only, as JS3D.invoke makes it)
 function decode(r) {
@@ -175,8 +175,8 @@ export class Session {
     for (let t0 = Date.now(); !this.tab && Date.now() - t0 < ms;) await new Promise((r) => setTimeout(r, 100));
   }
   noTab() {
-    const fix = this.wsError ? `The server ${this.wsError}, so no tab can reach it: set JS3D_WS_PORT and restart, then run JS3D.connect("ws://127.0.0.1:PORT") in the tab with that port.` : "Restart the server with JS3D_MODE=headless to work without a browser.";
-    return "No JumpStart 3D tab is connected. Open the app in a browser, open the theme menu (the half-moon button) and turn on Connect to AI agent (allow local network access if the browser asks). " + fix;
+    const fix = this.wsError ? `The server ${this.wsError}. Set JS3D_WS_PORT and restart, then reconnect the tab with JS3D.connect("ws://127.0.0.1:PORT").` : "Restart the server with JS3D_MODE=headless to work without a browser.";
+    return "No JumpStart 3D tab is connected. Open the app, then turn on Connect to AI agent in the theme menu. " + fix;
   }
   #callTab(name, args, timeoutMs) {
     const { ws } = this.tab;

@@ -193,7 +193,7 @@ test("cut in: one body with a Deboss text feature, the exact volume loss, and th
   expect(v.volume).toBeLessThan(list.find((b) => b.id === raised.plate).volume);
   expect(v.bbox.min[2]).toBeCloseTo(0, 4);
   expect(v.bbox.max[2]).toBeCloseTo(3, 4);
-  expect(await failure((s) => JS3D.namePlate(s), { ...spec, style: "cut", depth: 2.5 })).toBe("depth must be at most 2.4 mm here, so 0.6 mm of plate stays under the letters");
+  expect(await failure((s) => JS3D.namePlate(s), { ...spec, style: "cut", depth: 2.5 })).toBe("depth must be at most 2.4 mm here, so 0.6 mm of plate stays under the letters, got 2.5. Example: JS3D.namePlate({text: \"Hello\"}).");
   // the Deboss text row in the Advanced timeline opens the existing Edit Emboss text dialog, with the words in it
   await page.locator('.tl-item[aria-label^="Deboss text"]').dblclick();
   await expect(page.locator("#cmd")).toContainText("Edit Emboss text");

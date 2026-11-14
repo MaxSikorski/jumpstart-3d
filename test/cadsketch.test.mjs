@@ -92,7 +92,7 @@ test("validation texts", () => {
   const bad = (shapes, message) => assert.throws(() => buildShapes(shapes), { message });
   bad([], "shapes must be a list of 1 to 200 shapes, got []. Example: shapes: [{type: \"circle\", diameter: 10}].");
   bad("rect", "shapes must be a list of 1 to 200 shapes, got \"rect\". Example: shapes: [{type: \"circle\", diameter: 10}].");
-  bad(Array(201).fill({ type: "circle", diameter: 1 }), "shapes must be a list of 1 to 200 shapes, got [{\"type\":\"circle\",\"diameter\":1},{\"type\":\"circle\",\"diameter\"…. Example: shapes: [{type: \"circle\", diameter: 10}].");
+  bad(Array(201).fill({ type: "circle", diameter: 1 }), "shapes must be a list of 1 to 200 shapes, got [{\"type\":\"circle\",\"diameter\":1},{\"type\":\"cir…] (length 201). Example: shapes: [{type: \"circle\", diameter: 10}].");
   bad([{ type: "rect", size: [1, 1] }, { type: "rect", size: [1, 1] }, { type: "cube" }], "shapes[2].type must be one of rect, roundrect, circle, slot, polygon, polyline, line, got \"cube\". Choose a listed type.");
   bad([{ type: "rect", size: [0, 5] }], "shapes[0].size must be [w, h] in mm, each more than 0, got 0. Give a positive size.");
   bad([{ type: "rect", size: 5 }], "shapes[0].size must be [w, h] in mm, each more than 0, got 5. Example: [10, 5].");

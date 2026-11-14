@@ -47,7 +47,7 @@ function resolve(spec) {
   if (bore !== "none") {
     // the largest corner of the bore (a hex's corners, a D's round part) stays WALL under the grooves; with depth >= minDepth the root is the nearest point of the outline
     const max = floor3(bore === "hex" ? Math.sqrt(3) * (root - WALL) : 2 * (root - WALL));
-    if (max < 1) throw new Error(("this knob is too small for a bore") + `, got diameter ${show(D)}. Example: JS3D.knurl({diameter: 20}).`);
+    if (max < 1) throw new Error(("this knob is too small for a bore") + `, got diameter ${show(D)}. Use a larger diameter or set bore to "none".`);
     if (!inRange(bs, 1, max)) throw new Error((`boreSize must be a number from 1 to ${fmt(max, 3)} mm for this knob (it leaves ${WALL} mm under the grooves)${bore === "hex" ? ", measured across flats" : ""}`) + `, got ${show(bs)}. Example: JS3D.knurl({diameter: 20}).`);
   }
   const at = spec.at == null ? [0, 0, 0] : spec.at;

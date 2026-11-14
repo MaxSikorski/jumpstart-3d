@@ -194,7 +194,7 @@ test("measure: points, bodies, flat faces and the mesh", async () => {
   expect(r.bad).toMatch(/^no body "nope"/);
   expect(r.nul).toContain("a " + target + ", got null");
   expect(r.badPoint).toContain("a must be [x, y, z] in mm, got [1,2]");
-  expect(r.far).toMatch(/^face must be a whole number from 0 to \d+ \(Box has \d+ faces\), got 9999/);
+  expect(r.far).toMatch(/^face must be a whole number from 0 to \d+ \("Box" has \d+ faces\), got 9999/);
   expect(r.same).toContain("a and b are the same body, got ");
   expect(r.obj).toContain("a " + target + ", got ");
 });
@@ -383,8 +383,8 @@ test("wire-only STEP bodies give plain answers", async () => {
   expect(r.inspect.bodies[0]).toMatchObject({ volume: 0, area: 0, bbox: null, error: null });
   expect(r.inspect.bodies[0].note).toMatch(/wire-only/);
   expect(r.check.issues.find((x) => x.code === "wire_only").text).toMatch(/^Ring is a wire-only shape/);
-  expect(r.measure).toMatch(/^Ring is a wire-only shape/);
-  expect(r.point).toMatch(/^Ring is a wire-only shape/);
+  expect(r.measure).toMatch(/^"Ring" is a wire-only shape/);
+  expect(r.point).toMatch(/^"Ring" is a wire-only shape/);
 });
 
 test("section picture: always from Home, and the user's camera comes back", async () => {

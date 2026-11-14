@@ -9,13 +9,14 @@ const given = (v) => v !== undefined && v !== null;
 const quoteOr = (a) => a.length === 1 ? `"${a[0]}"` : a.slice(0, -1).map((v) => `"${v}"`).join(", ") + ` or "${a.at(-1)}"`;
 function only(o, keys) { for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option ${show(k).length > 30 ? show(k).slice(0, 29) + "…" : show(k)}; options: ${keys.join(", ")}. Remove it.`); }
 function num(o, k, lo, hi, unit = "mm") {
-  if (!given(o[k])) return;
-  if (!isNum(o[k]) || o[k] < lo || o[k] > hi) throw new Error(`${k} must be a number from ${lo} to ${hi}${unit ? ` (${unit})` : ""}, got ${show(o[k])}. Try ${lo}.`);
-  return o[k];
+  const v = o[k];
+  if (!given(v)) return;
+  if (!isNum(v) || v < lo || v > hi) throw new Error(`${k} must be a number from ${lo} to ${hi}${unit ? ` (${unit})` : ""}, got ${show(v)}. Try ${lo}.`);
+  return v;
 }
-function int(o, k, lo, hi) { if (given(o[k]) && (!Number.isInteger(o[k]) || o[k] < lo || o[k] > hi)) throw new Error(`${k} must be a whole number from ${lo} to ${hi}, got ${show(o[k])}. Try ${lo}.`); }
-function pick(o, k, list) { if (given(o[k]) && !list.includes(o[k])) throw new Error(`${k} must be ${quoteOr(list)}, got ${show(o[k])}. Try ${show(list[0])}.`); }
-function flag(o, k) { if (given(o[k]) && typeof o[k] !== "boolean") throw new Error(`${k} must be true or false, got ${show(o[k])}. Try true.`); }
+function int(o, k, lo, hi) { const v = o[k]; if (given(v) && (!Number.isInteger(v) || v < lo || v > hi)) throw new Error(`${k} must be a whole number from ${lo} to ${hi}, got ${show(v)}. Try ${lo}.`); }
+function pick(o, k, list) { const v = o[k]; if (given(v) && !list.includes(v)) throw new Error(`${k} must be ${quoteOr(list)}, got ${show(v)}. Try ${show(list[0])}.`); }
+function flag(o, k) { const v = o[k]; if (given(v) && typeof v !== "boolean") throw new Error(`${k} must be true or false, got ${show(v)}. Try true.`); }
 export function at3(v) {
   if (!given(v)) return [0, 0, 0];
   if (!Array.isArray(v) || v.length !== 3 || !Array.from(v).every(isNum)) throw new Error(`at must be [x, y, z] in mm, got ${show(v)}. Try [0, 0, 0].`);
@@ -65,7 +66,7 @@ export function gearSetOptions(opts = {}) {
   const m = num(opts, "module", 0.3, 10) ?? 2, at = at3(opts.at), width = num(opts, "width", 0.5, 200);
   if (!lib) {
     const teeth = opts.teeth ?? 20, teeth2 = opts.teeth2 ?? teeth, max = type === "bevel" ? 90 : 30;
-    for (const [k, v] of [["teeth", teeth], ["teeth2", teeth2]]) if (!Number.isInteger(v) || v < 12 || v > max) throw new Error(`${k} must be a whole number from 12 to ${max} for a ${type} gear`);
+    for (const [k, v] of [["teeth", teeth], ["teeth2", teeth2]]) if (!Number.isInteger(v) || v < 12 || v > max) throw new Error(`${k} must be a whole number from 12 to ${max} for a ${type} gear, got ${show(v)}. Try 20.`);
     const { bore, clear, angle, hand } = opts, other = hand === "left" ? "right" : "left";
     const spec1 = { kind: type, module: m, teeth, mate: type === "bevel" ? teeth2 : undefined, width, bore, clear, angle, hand, at };
     const spec2 = { ...spec1, teeth: teeth2, mate: type === "bevel" ? teeth : undefined, hand: type === "helical" ? other : undefined, at: [0, 0, 0] };
@@ -75,21 +76,22 @@ export function gearSetOptions(opts = {}) {
   }
   for (const [k, lo, hi] of [["teeth", 6, 300], ["teeth2", 6, 400], ["sunTeeth", 8, 200], ["planetTeeth", 8, 200], ["planets", 2, 6]]) int(opts, k, lo, hi);
   num(opts, "backlash", 0, 1); num(opts, "rackLength", 0, 2000); num(opts, "rackHeight", 2, 100);
-  if (given(opts.pressureAngle) && ![14.5, 20, 25].includes(opts.pressureAngle)) throw new Error(`pressureAngle must be 14.5, 20 or 25 (degrees), got ${show(opts.pressureAngle)}. Try 20.`);
+  const pressureAngle = opts.pressureAngle;
+  if (given(pressureAngle) && ![14.5, 20, 25].includes(pressureAngle)) throw new Error(`pressureAngle must be 14.5, 20 or 25 (degrees), got ${show(pressureAngle)}. Try 20.`);
   pick(opts, "boreShape", ["round", "d", "hex", "key"]); flag(opts, "joints");
   const z = opts.teeth ?? 20, z2 = opts.teeth2 ?? 40, zs = opts.sunTeeth ?? 18, bore = opts.bore ?? 0;
-  if (type === "ring" && z2 - z < 8) throw new Error("a ring gear needs at least 8 more teeth than its pinion (teeth2 at least teeth + 8)");
+  if (type === "ring" && z2 - z < 8) throw new Error(`a ring gear needs at least 8 more teeth than its pinion (teeth2 at least teeth + 8), got teeth ${show(z)} and teeth2 ${show(z2)}. Increase teeth2.`);
   const zp = opts.planetTeeth ?? 12, planets = opts.planets ?? 3;
   if (type === "planet") {
     const sum = 2 * (zs + zp);
-    if (sum % planets) throw new Error(`these teeth cannot be assembled with ${planets} planets: sun + ring teeth (${sum}) must divide by the number of planets`);
-    if (m * (zs + zp) * Math.sin(Math.PI / planets) <= m * (zp + 2) + 0.5) throw new Error("neighbouring planets need more than 0.5 mm clearance between their teeth");
+    if (sum % planets) throw new Error(`these teeth cannot be assembled with ${planets} planets: sun + ring teeth (${sum}) must divide by the number of planets, got sunTeeth ${show(zs)} and planetTeeth ${show(zp)}. Try sunTeeth 18, planetTeeth 12 and planets 3.`);
+    if (m * (zs + zp) * Math.sin(Math.PI / planets) <= m * (zp + 2) + 0.5) throw new Error(`neighbouring planets need more than 0.5 mm clearance between their teeth, got sunTeeth ${show(zs)}, planetTeeth ${show(zp)} and planets ${show(planets)}. Try fewer planets or more sunTeeth.`);
   }
   const zMin = type === "pair" ? Math.min(z, z2) : type === "planet" ? zs : z;
   const limits = [m * (zMin - 4.5), m * (zMin / 2 - 1.25) * 1.6];
   if (type === "planet") limits.push((zp - 2.5) * m * 0.5, m * (zp / 2 - 1.25) * 1.6);
   const max = Math.floor(Math.min(...limits) * 10 + 1e-9) / 10;
-  if (!isNum(bore) || (bore !== 0 && (bore < 0.5 || bore > max))) throw new Error(max < 0.5 ? "bore must be 0 (none): these gears are too small for a bore" : `bore must be 0 (none) or from 0.5 to ${max} mm for these gears`);
+  if (!isNum(bore) || (bore !== 0 && (bore < 0.5 || bore > max))) throw new Error(max < 0.5 ? `bore must be 0 (none): these gears are too small for a bore, got ${show(bore)}. Set bore to 0.` : `bore must be 0 (none) or from 0.5 to ${max} mm for these gears, got ${show(bore)}. Try 0.`);
   const o = { ...GEAR_DEFAULTS, type, m, z, z2, zs, zp: opts.planetTeeth ?? 12, nPlanets: opts.planets ?? 3, thick: width ?? 8, backlash: opts.backlash ?? 0.15, pa: opts.pressureAngle ?? 20, bore: bore > 0 ? opts.boreShape ?? "round" : "none", boreD: bore > 0 ? bore : GEAR_DEFAULTS.boreD, rackLen: opts.rackLength ?? 0, rackH: opts.rackHeight ?? 8, joints: opts.joints ?? true, hub: false, spokes: false };
   return { type, lib, o, at };
 }
