@@ -480,7 +480,7 @@ export function initBridge(app) {
     // The one way a call arrives from outside: the tool server's WebSocket client and its headless page both use
     // this, so they cannot drift apart. A Uint8Array result becomes {"$bytes": base64}, because JSON has no bytes.
     async invoke(call, args = []) {
-      if (call === "invoke" || !Object.hasOwn(api, call) || typeof api[call] !== "function") throw new Error(`unknown call ${show(call)}. Check BRIDGE.md for JS3D function names; invoke cannot call itself.`);
+      if (call === "invoke" || !Object.hasOwn(api, call) || typeof api[call] !== "function") throw new Error(`unknown call ${show(call)}. Use JS3D.supports(name) to check a call or JS3D.describe() to list calls; invoke cannot call itself.`);
       if (!Array.isArray(args)) throw new Error(`args must be an array, got ${show(args)}. Pass an array such as [].`);
       const r = await api[call](...args);
       return r instanceof Uint8Array ? { $bytes: base64(r) } : r;
