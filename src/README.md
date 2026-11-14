@@ -47,7 +47,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
 | `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
-| `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
+| `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot (its gizmo moves by `app.moveStep()`), status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `simpleabout.js` | Community About dialog, update check, help and support links |
 | `phonefit.js` | Long menus scroll inside the window with a fade while more items are below; 44 px touch targets on touch screens for Save, Undo, Redo, view buttons, view-cube arrows and status-bar controls |

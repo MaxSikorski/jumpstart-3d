@@ -448,7 +448,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ placing text on a face
   // Snap a point on a flat face (all vectors in one space): to the face's center lines when close,
   // otherwise to the grid measured from the face center. Returns the point and its offsets.
-  const gridMM = () => { const v = +(document.getElementById("snap") || {}).value; return v > 0 ? v : 1; };
+  const gridMM = () => { const v = +app.snapSize(); return v > 0 ? v : 1; }; // jumpstart-3d: move step. the last chosen size, even while the list shows Off · free
   function snapOnFace(p, c, x, up, tolMM, on) {
     let u = p.clone().sub(c).dot(x), v = p.clone().sub(c).dot(up);
     if (on) {
