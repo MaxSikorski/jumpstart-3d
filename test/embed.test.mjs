@@ -23,7 +23,9 @@ test('ready, source, origin, exact replies, refused and missing calls', async ()
   x.send(1, 'list', [], { source: {} }); x.send(1, 'list', [], { origin: 'https://wrong.example' }); assert.equal(x.sent.length, 2);
   x.send(1, 'list', [], { origin: other }); await tick(); assert.equal(x.sent.at(-1).to, other);
   x.send(2, 'run', []); assert.match(x.sent.at(-1).error, /not available/);
-  x.send(3, 'supports', []); assert.equal(x.sent.at(-1).error, 'unknown call');
+  x.send(3, 'supports', ['add']); await tick(); assert.equal(x.sent.at(-1).result, true);
+  const { describe, ...older } = api; const y = setup(older);
+  y.send(1, 'describe', []); assert.equal(y.sent.at(-1).error, 'unknown call');
 });
 test('profiles and print defaults', async () => {
   let got; const x = setup({ setMode: () => {}, newDesign: () => {}, printCheck: (o) => { got = o; } });
