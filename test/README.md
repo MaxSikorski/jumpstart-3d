@@ -19,6 +19,9 @@ suite runs on GitHub Actions: the smoke and golden specs gate every pull request
 
 | File | Coverage |
 |---|---|
+| `api-docs.test.mjs` | API manifest, documentation and discovery checks |
+| `api.spec.mjs` | Browser API discovery and state checks |
+| `bridgenode.mjs` | Node harness for the scripting bridge |
 | `bridge-errors.test.mjs` | Node checks for bridge error messages |
 | `teach.test.mjs` | Safe error value formatting |
 | `kernelhints.test.mjs` | Hints for known geometry-engine errors |

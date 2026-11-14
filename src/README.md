@@ -10,6 +10,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
+| `apicontract.js` | Versioned scripting API call and property manifest |
 | `teach.js` | Short, safe values for API error messages |
 | `kernelhints.js` | Suggestions for recognized geometry-engine errors |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
