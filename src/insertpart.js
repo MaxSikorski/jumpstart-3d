@@ -107,7 +107,7 @@ export function initInsertPart(app) {
     for (const node of document.querySelectorAll("#timeline, #toasts, #shapes.dock, .status, #dock-help")) {
       if (node.id === "toasts" && !node.children.length) continue;
       const rect = node.getBoundingClientRect();
-      if (node.getClientRects().length && rect.height && getComputedStyle(node).visibility !== "hidden") top = Math.min(top, rect.top);
+      if (node.getClientRects().length && rect.height && rect.right > vp.left && rect.left < vp.right && getComputedStyle(node).visibility !== "hidden") top = Math.min(top, rect.top);
     }
     pill.style.left = `${vp.left + 12}px`;
     pill.style.bottom = `${window.innerHeight - top + 12}px`;

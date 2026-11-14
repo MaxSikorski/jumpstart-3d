@@ -42,7 +42,7 @@ export function initStepProgress(app) {
     let bottom = 12;
     for (const obstacle of document.querySelectorAll(".timeline, .panel-tab.bottom")) {
       const rect = obstacle.getBoundingClientRect();
-      if (rect.width && rect.height && rect.bottom > viewport.top && rect.top < viewport.bottom)
+      if (rect.width && rect.height && rect.right > viewport.left && rect.left < viewport.right && rect.bottom > viewport.top && rect.top < viewport.bottom)
         bottom = Math.max(bottom, viewport.bottom - rect.top + 12);
     }
     panel.style.bottom = `${bottom}px`;
