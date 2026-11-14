@@ -266,6 +266,7 @@ app.voxel = initVoxel(app);
     scene.showSketches = !scene.showSketches;
     e.currentTarget.setAttribute("aria-pressed", scene.showSketches);
     scene.syncSketches(store.view);
+    if (app.command && app.command.refreshOk) app.command.refreshOk(); // jumpstart-3d: why OK is off. an open tool's "why" line follows Show sketches
   };
   $("snap").onchange = () => { gridFromSnap(); savePrefs(); };
   // mm / inch switch, always in the status bar: changes every readout and typed value
@@ -366,6 +367,7 @@ app.voxel = initVoxel(app);
   vp.onFingerTap = (n) => { if (n === 2) app.undo(); else if (n >= 3) app.redo(); };
 
   document.addEventListener("keydown", onKey);
+  app.escapeLayer = initEscapeKey(app); // jumpstart-3d: Escape and dialogs. Escape closes the dialog or menu in front (or the 3D Print Sim) and never reaches the design behind it
   window.addEventListener("pointerdown", (e) => {
     const menu = $("menu-export");
     if (!menu.hidden && !menu.contains(e.target) && e.target.closest("#btn-export") == null) menu.hidden = true;
@@ -1239,7 +1241,7 @@ app.showAbout = function () {
         ["Import:", "STL and 3MF meshes (repaired automatically) and STEP models in both modes, SVG and DXF drawings, and pictures to trace: drag their handles to scale, stretch and turn them, scale one from a length you know, or Auto trace a picture into outlines ready to extrude."],
         ["Drop a file:", "in Beginner or Advanced, drag an STL, 3MF, OBJ, STEP, SVG or DXF file from your computer onto the page. It opens like the Import button, and a model lands on the build plate, selected."], // jumpstart-3d: drop import
         ["Mesh to STEP:", "in Advanced → Simulate, convert an STL or 3MF mesh into a STEP solid with real flat, round and curved faces, then open it in JumpStart 3D to edit it with CAD tools."],
-        ["Saving:", "designs are kept in this browser. Save (or Ctrl+S) makes a new version each time: \"Lopez, Maria, Keychain v1\", v2, v3…, and STL and project files carry the same name and number. Optional Autosave keeps numbered backups (\"… autosave v1\", v2…) with crash recovery."]]),
+        ["Saving:", "designs are kept in this browser after every change. Save (or Ctrl+S) makes a new version each time: \"Lopez, Maria, Keychain v1\", v2, v3…, and STL and project files carry the same name and number. Optional Crash recovery keeps numbered backups (\"… autosave v1\", v2…) and offers them back if the app closes unexpectedly."]]), // jumpstart-3d: the Autosave button is labelled Crash recovery
       sec("Viewing", [
         ["Lighting:", "realistic shading and shadows (sun button), light, dark or high-contrast themes, orthographic view and the view cube."],
         ["Projection & animation:", "Projector (a second window that shows your objects on black, for a projector or second screen), Media (pictures and videos on objects: facing view, wrap around, all sides or ball), and Picture to 3D model (puffs a picture's subject up into a rounded, printable solid with the picture painted on), and in Chisel: ready-made characters (people, heads, animals, aliens), textures, a History strip, and the Puppet Animator (rig, pose, keyframes up to 10 seconds, an animation library, a virtual set with your own background, MP4 export)."],
@@ -1431,6 +1433,7 @@ app.status = function () {
   else if (app.sketcher.active) hint = app.sketchHint();
   else if (app.command) hint = app.command.hint ? app.command.hint() : "";
   else if (app.directEdit && app.directEdit.hint()) hint = app.directEdit.hint(); // jumpstart-3d: direct edit
+  else if (app.mode === "beginner" && app.beginner && app.beginner.hint && app.beginner.hint()) hint = app.beginner.hint(); // jumpstart-3d: grok move. the pivot drag and Simple's Move say what a drag does
   else if (app.mode === "beginner") hint = app.vp.touchMode ? "Drag shapes onto the workplane. Drag empty space to orbit, two fingers to pan and zoom." : (IS_MAC ? "Drag shapes onto the workplane. Option-drag (or two-finger click and drag) to orbit, Option+Shift-drag to pan, pinch or scroll to zoom." : "Drag shapes onto the workplane. Right-drag to orbit, Shift+right-drag or middle-drag to pan, scroll to zoom.");
   else if (app.sel.length === 1 && !app.isLocked(app.sel[0])) hint = "Drag the white handles to scale the body. Double-click a body or timeline item to edit it.";
   else hint = app.vp.touchMode ? "Start with Sketch, or add a primitive. Drag to orbit, two fingers to pan and zoom, double-tap to edit." : (IS_MAC ? "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Option-drag orbits, Option+Shift-drag pans, pinch zooms." : "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Right-drag orbits, middle-drag pans.");
@@ -1580,11 +1583,13 @@ app.promptValue = function ({ at, label, value, onOk, onCancel, unit = getUnit()
 };
 
 // ------------------------------------------------------------------ keyboard
+import { initEscapeKey } from "./escapekey.js"; // jumpstart-3d: Escape and dialogs (imported here, not at the top, so J.Siwek's import list merges cleanly)
 // jumpstart-3d: keyboard access. true from a mouse press until the next key press: a button focused this way still hands Tab to the size box (:focus-visible cannot tell, the browser has already seen the key)
 let focusByMouse = false, keyAfterMouse = false;
 document.addEventListener("pointerdown", () => { focusByMouse = true; }, true);
 document.addEventListener("keydown", () => { keyAfterMouse = focusByMouse; focusByMouse = false; }, true); // keyAfterMouse: this key is the first one since the press
 function onKey(e) {
+  if (app.escapeLayer && app.escapeLayer(e)) return; // jumpstart-3d: Escape and dialogs
   if (app.mode === "chisel") return; // Chisel has its own keys (in its frame)
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "select" || tag === "textarea") return;

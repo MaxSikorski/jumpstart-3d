@@ -39,6 +39,8 @@ const CSS = `
  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status .busy-btn { min-width: 44px; height: auto; }
 }
 @media (pointer: coarse) and (max-width: 860px) { :root .viewport { --cube: 72px; } }
+/* the one-line first-visit card on a phone stops short of the moved cube and its left arrow (40 + 72 + 36 px, plus a gap) */
+@media (pointer: coarse) and (max-width: 560px) { :root .try-simple { right: 156px; } }
 /* a phone's small lesson panel (left: 8 px) stops short of the cube and its arrows: 40 + 72 + 36 px from the right edge, plus gaps */
 @media (pointer: coarse) and (max-width: 699px) { :root .tut-panel.mini { width: calc(100vw - 170px); } }
 /* Simple on a touch tablet: the view sits between the 80 px rail and the shape panel, the lesson panel starts 10 px into it */
