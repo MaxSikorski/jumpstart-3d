@@ -52,6 +52,10 @@ not change. A synchronous call will not become asynchronous.
 A minor version can add calls, options or result fields. A patch fixes
 behaviour to match these docs.
 
+Generators reject unknown options, as do shape size keys and sketch shape keys.
+`add` ignores unknown top-level options today. Other calls can differ.
+Pass only documented options; an option the docs do not list is not covered by the promise.
+
 Error message wording may improve in any release. Do not match exact message
 text. Use `JS3D.supports(name)` to check whether a call exists.
 
@@ -94,7 +98,7 @@ Waits until the design is fully built, so that the sizes, boxes and volumes in `
 - **Arguments:** `timeoutMs`: how long to wait before giving up, in ms, default 90000. It looks every 50 ms.
 - **Returns:** `undefined`, once every shown shape has been built or has a build error, and the geometry engine has nothing left to do (no shape building, no queue, and no Combine or Group still staging).
 - **Errors:** throws after `timeoutMs` and names the shapes still building (or says the geometry engine is busy). The fix is to wait longer, to give the heavy feature (a fine thread, a fillet with a large radius) more time, or to look at those bodies' `error` in `list()`. A shape whose definition cannot be read at all (a hand-written file with a broken node) is never sent to the engine, so `ready` does not wait for it and `list()` shows its error instead.
-- **Example:** `JS3D.add("box", { size: [20, 20, 20] }); await JS3D.ready(); JS3D.list()[0].volume;   // 8000`
+- **Example:** `const id = JS3D.add("box", {size: [20, 20, 20]}); await JS3D.ready(); JS3D.get(id).volume; // 8000`
 - **Since:** 1.0 · async: every shown shape is built (or has an error) and the engine is idle, checked every 50 ms · does not change the design
 
 <a id="api-supports"></a>
@@ -118,7 +122,7 @@ Gives a tool the whole API in one object: every call with its area, version, arg
 ### Reference: Reading
 
 <a id="api-kinds"></a>
-#### `JS3D.kinds() -> array`
+#### `JS3D.kinds() -> [{kind, defaults}]`
 The shape kinds `add` accepts, each with the sizes it starts with. Use it to check a kind name, or to find out which size keys that kind has before you pass `size`.
 - **Arguments:** none.
 - **Returns:** an array of 20 `{kind, defaults}` objects, always in this order: `box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, `arrow`. `kind` is the name to give `add`. `defaults` holds that shape's size keys and their starting values: `w`, `d`, `h` in mm, plus the keys that shape has — `r` (corner radius) and `c` (chamfer), `sides` or `points` (whole counts), `top`, `tube`, `wall`, `inner`, `turns`, `wire`, and for text `text` (a string), `font` (a string) and `size` (mm). It is a fresh copy: changing it changes nothing.
@@ -127,34 +131,34 @@ The shape kinds `add` accepts, each with the sizes it starts with. Use it to che
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-list"></a>
-#### `JS3D.list() -> array`
+#### `JS3D.list() -> [{id, name, kind, hole, hidden, locked, color, position, bbox, volume, error, children?}]`
 Every body in the design, holes and hidden ones too, as one entry each. The quickest way to see what is there and where it is.
 - **Arguments:** none.
-- **Returns:** an array of `{id, name, kind, hole, hidden, locked, color, position, bbox, volume, error}`, one per body. `id` is the string to pass as `ids`. `name` is its name. `kind` is the shape kind for a basic shape (`"box"`, `"cylinder"`...) and the body's type for the rest (`"group"`, `"extrude"`, `"revolve"`...). `hole` and `hidden` are true or false. `locked` is the mouse guard; the bridge itself never checks it. `color` is `"#rrggbb"`. `position` is `[x, y, z]` in mm, the translation in the body's matrix. `bbox` is the exact world box `{min: [x, y, z], max: [x, y, z]}` in mm, rounded to 0.0001 mm, or `null` while the body is still being built or has an error. `volume` is mm³ rounded to 0.001, or `null` for the same reason. `error` is the geometry engine's message or `null`. A group entry also has `children`, the number of parts in it.
+- **Returns:** an array of `{id, name, kind, hole, hidden, locked, color, position, bbox, volume, error}`, one per body. `id` is the string to pass as `ids`. `name` is its name, or `undefined` if omitted in a loaded body. `kind` is the shape kind for a basic shape (`"box"`, `"cylinder"`...) and the body's type for the rest (`"group"`, `"extrude"`, `"revolve"`...). `hole` and `hidden` are true or false. `locked` is the mouse guard; `codeCad` also refuses to update a locked body. `color` is `"#rrggbb"` or `undefined` if omitted in a loaded body. `position` is `[x, y, z]` in mm, the translation in the body's matrix. `bbox` is the world box derived from mesh vertices `{min: [x, y, z], max: [x, y, z]}` in mm, rounded to 0.0001 mm, or `null` while the body is still being built or has an error. `volume` is mm³ rounded to 0.001, or `null` for the same reason. It is copied from the built geometry without applying the matrix determinant, so a loaded scaled matrix can make it differ from world volume. `error` is the geometry engine's message or `null`. A group entry also has `children`, the number of parts in it.
 - **Errors:** none.
 - **Example:** `JS3D.list().filter((b) => !b.hidden).map((b) => b.name)`
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-get"></a>
-#### `JS3D.get(id) -> object`
+#### `JS3D.get(id) -> {...list entry, node, m}`
 One body in full: the same entry `list()` gives, plus its definition and its matrix. Use it to read how a body was made (sizes, features, group parts) before copying or changing it.
 - **Arguments:** `id`: one body id (a single string; not a list).
-- **Returns:** an object with every field of a `list()` entry, plus `node` and `m`. `node` is a deep copy of the body's definition: `{t: "prim", kind, p, mods}` for a basic shape (`p` holds its sizes, `mods` its features), `{t: "group", children, mods}` for a group (each child has `node`, `m`, `hole`, `name`, `color`), and the body's type with its own fields for CAD bodies such as `extrude` or `revolve` — Part 2 has every field. `m` is the 16-number matrix, column-major; its position is `m[12..14]`. Changing the result changes nothing.
+- **Returns:** an object with every field of a `list()` entry, plus `node` and `m`. `node` is a deep copy of the body's definition: `{t: "prim", kind, p, mods}` for a basic shape (`p` holds its sizes, `mods` its features), `{t: "group", children, mods}` for a group (each child has `node`, `m`, `hole`, `name`, `color`), and the body's type with its own fields for CAD bodies such as `extrude` or `revolve` — Part 2 has every field. `m` is the 16-number matrix, column-major; its position is `m[12..14]`. The optional name and color, mesh-derived bounds and scaled-matrix volume limitation described under `list` also apply here. Changing the result changes nothing.
 - **Errors:** throws when the id is not a body in the design.
-- **Example:** `JS3D.get(id).node.p.h` → 20
+- **Example:** `const id = JS3D.add("box"); JS3D.get(id).node.p.h; // 20`
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-doc"></a>
 #### `JS3D.doc() -> object`
 A copy of the whole design document: everything a project file saves. Use it to inspect the design as data, or to keep a copy before a big change (`save()` gives it in file form).
 - **Arguments:** none. (An internal option, `{shareAssets: true}`, keeps imported file data shared instead of copying it; checkpoints use it. Leave it out.)
-- **Returns:** the design as a plain object: `v` (always 1), `id`, `name`, `mode` (`"beginner"`, `"advanced"`, `"arch"` or `"chisel"`), `created` (milliseconds since 1970), `seq` (the counter new bodies, sketches and features take numbers from), `grid`, `bodies`, `sketches`, `planes`, `joints` and `params`, plus `ver`, `assets` (imported files, base64) and `texImages` when the design has them. The 3D view's own cache (`_key`) is taken off every body. Part 2 describes each part. It is a deep copy: changing it changes nothing.
+- **Returns:** the Part 2 design object as a plain object: `v` (always 1), `id`, `name`, `mode` (`"beginner"`, `"advanced"`, `"arch"` or `"chisel"`), `created` (milliseconds since 1970), `seq` (the counter new bodies, sketches and features take numbers from), `grid`, `bodies`, `sketches`, `planes`, `joints` and `params`, plus `ver`, `assets` (imported files, base64) and `texImages` when the design has them. The 3D view's own cache (`_key`) is taken off every body. Part 2 describes each part. It is a deep copy: changing it changes nothing.
 - **Errors:** none.
-- **Example:** `JS3D.doc().bodies.length` → 2
+- **Example:** `JS3D.doc().bodies.length`
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-save"></a>
-#### `JS3D.save() -> object`
+#### `JS3D.save() -> {app, version, doc}`
 The design wrapped as a project file, the same thing the Export menu writes. Nothing is downloaded or stored: you get the object (or `JSON.stringify` it yourself).
 - **Arguments:** none.
 - **Returns:** `{app: "jumpstart-3d", version: 1, doc}`. `app` is the file's name tag, `version` is the file format (always 1 — it is not `JS3D.version`), and `doc` is exactly what `doc()` gives.
@@ -163,12 +167,12 @@ The design wrapped as a project file, the same thing the Export menu writes. Not
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-params"></a>
-#### `JS3D.params() -> array`
+#### `JS3D.params() -> [{name, expr, value, unit}]`
 The named parameters, in the order they were added. Each parameter sees only the ones above it.
 - **Arguments:** none.
-- **Returns:** an array of `{name, expr, value, unit}`. `name` is the parameter's name, `expr` the text it was set to (such as `"60"` or `"Width / 2"`), `value` its result in mm (`null` when the expression does not work any more), and `unit` `"mm"` or `"in"` — what a bare number in `expr` is read in.
+- **Returns:** an array of `{name, expr, value, unit}`. `name` is the parameter's name, `expr` the text it was set to (such as `"60"` or `"Width / 2"`), `value` its result in mm (`null` when the expression does not work any more), and `unit` `"mm"` or `"in"` — what a bare number in `expr` is read in when it contains no parameter name. If it contains a parameter name, bare numbers are read in mm regardless of `unit`.
 - **Errors:** none.
-- **Example:** `JS3D.params().map((p) => `${p.name} = ${p.value} mm`)`
+- **Example:** ``JS3D.params().map((p) => `${p.name} = ${p.value} mm`)``
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-mode"></a>
@@ -181,12 +185,12 @@ Which mode the app is in. The bridge has no calls for the modes it is not in: Ch
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-selection"></a>
-#### `JS3D.selection() -> array`
+#### `JS3D.selection() -> [id]`
 The bodies the person has selected. Useful to work on what is selected instead of guessing ids.
 - **Arguments:** none.
 - **Returns:** an array of body ids, in the order the app holds them; `[]` when nothing is selected. `select(ids)` sets it.
 - **Errors:** none.
-- **Example:** `JS3D.selection().length` → 1
+- **Example:** `JS3D.selection().length`
 - **Since:** 1.0 · synchronous · does not change the design
 
 ### Reference: Shapes
@@ -194,7 +198,7 @@ The bodies the person has selected. Useful to work on what is selected instead o
 <a id="api-add"></a>
 #### `JS3D.add(kind, {size, at, hole, color, name}) -> id`
 Adds a primitive shape.
-- **Arguments:** `kind` is one of `box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, or `arrow`. `JS3D.kinds()` lists each kind's size keys and defaults. `size` is an object of those keys or `[w, d, h]` in mm; omitted keys use the kind's defaults. `w`, `d`, `h`, and `size` must be at least 0.01; `sides` and `points` are integers at least 3. `at` is a three-number position in mm, default `[0, 0, 0]`. `hole` marks a cutting body, default false. `color` is `"#rrggbb"`, default an automatic color. `name` is the body name, default an automatic name.
+- **Arguments:** `kind` is one of `box`, `cylinder`, `sphere`, `cone`, `pyramid`, `wedge`, `torus`, `tube`, `hemisphere`, `prism`, `text`, `star`, `heart`, `roof`, `roundroof`, `paraboloid`, `gem`, `spring`, `capsule`, or `arrow`. `JS3D.kinds()` lists each kind's size keys and defaults. `size` is an object of those keys or `[w, d, h]` in mm; omitted keys use the kind's defaults. `w`, `d`, `h`, and `size` must be at least 0.01; `sides` and `points` are integers at least 3. Other numeric size keys must be finite and nonnegative; `text` and `font` must be nonempty strings. For a torus, `d` is always set to `w`, even when `d` is supplied separately. `at` is a three-number position in mm, default `[0, 0, 0]`. `hole` marks a cutting body, default false. `color` is `"#rrggbb"`, default an automatic color. `name` is the body name, default an automatic name.
 - **Returns:** The new body id string.
 - **Errors:** Throws for an unknown kind, invalid size keys or values, position or color, or while an editing mode blocks changes. Supply valid values or leave the mode first.
 - **Example:** `JS3D.add("box", {size: [40, 30, 20]})`
@@ -212,16 +216,16 @@ Adds a threaded bolt, nut, rod or tap cutter.
 <a id="api-holePattern"></a>
 #### `JS3D.holePattern({body, face, layout, hole}) -> Promise<{id, holes, dropped, sketch?}>`
 Cuts a pattern into a flat face as one feature.
-- **Arguments:** `body` is the solid body id; `face` is `"+x"`, `"-x"`, `"+y"`, `"-y"`, `"+z"` or `"-z"`. `layout` is a grid `{type: "grid", cols, rows, pitch, margin, stagger, angle}` or circle `{type: "circle", count, radius, start, center, margin}`. Grid `cols` and `rows` are integers 1–200; `pitch` is a positive mm number or `[column, row]`, omitted to spread holes; `stagger` defaults false and `angle` defaults 0 degrees. Circle `count` is an integer 2–200, `radius` is positive mm, `start` defaults 0 degrees, and `center` is a world `[x, y, z]` in mm, default face center. `margin` is nonnegative mm, default 0. `hole` has `shape` (`"round"` default, `"square"`, `"hex"`, `"slot"`), `depth` (positive mm; omitted for through). Round holes accept `kind` (`"simple"` default, `"cbore"`, `"csink"`, `"tapped"`), `size` (supported preset, e.g. `"M3"`), `dia`, `tip`, `cbDia`, `cbDepth`, `csDia`, `csAngle`, `pitch`, `clear`. `dia`, `cbDia`, `cbDepth`, `csDia`, and `pitch` are positive mm; `tip` selects a drill-point bottom and defaults false. Without a preset, counterbore diameter and depth default to 6.5 and 3.3 mm, countersink diameter to 6.9 mm, and `csAngle` to 90 degrees (allowed 1–179). Tapped `clear` is -1 to 0 mm, default design thread offset. Presets fill dimensions; supplied values override them. Non-round holes require positive `width` in mm; slots also require `length` greater than width. At most 200 plain or shaped holes, 130 counterbores or countersinks, or 8 tapped holes.
+- **Arguments:** `body` is the solid body id; `face` is `"+x"`, `"-x"`, `"+y"`, `"-y"`, `"+z"` or `"-z"`. `layout` is a grid `{type: "grid", cols, rows, pitch, margin, stagger, angle}` or circle `{type: "circle", count, radius, start, center, margin}`. Grid `cols` and `rows` are integers 1–200; `pitch` is a positive mm number or `[column, row]`, omitted to spread holes; `stagger` defaults false and `angle` defaults 0 degrees. Circle `count` is an integer 2–200, `radius` is positive mm, `start` defaults 0 degrees, and `center` is a world `[x, y, z]` in mm, default face center. `margin` is nonnegative mm, default 0. `hole` has `shape` (`"round"` default, `"square"`, `"hex"`, `"slot"`), `depth` (positive mm; omitted for through). Round holes accept `kind` (`"simple"` default, `"cbore"`, `"csink"`, `"tapped"`), `size` (supported preset, e.g. `"M3"`), `dia`, `tip`, `cbDia`, `cbDepth`, `csDia`, `csAngle`, `pitch`, `clear`. A round hole requires `dia` or a `size` preset; a tapped hole without a preset also requires `pitch`. `dia`, `cbDia`, `cbDepth`, `csDia`, and `pitch` are positive mm; `tip` selects a drill-point bottom and defaults false. Without a preset, counterbore diameter and depth default to 6.5 and 3.3 mm, countersink diameter to 6.9 mm, and `csAngle` to 90 degrees (allowed 1–179). Tapped `clear` is -1 to 0 mm, default design thread offset. Presets fill dimensions; supplied values override them. Non-round holes require positive `width` in mm; hex width is measured across flats; slots also require `length` greater than width. The chosen face is the flat face within one degree of the world direction that lies farthest along it; ties within 0.01 mm go to the largest area. Grid axes lie in the face frame, centered on its bounding rectangle; `angle` turns those axes. At most 200 plain or shaped holes, 130 counterbores or countersinks, or 8 tapped holes.
 - **Returns:** `{id, holes, dropped, sketch?}`: the feature id, number made, number outside the face, and the hidden sketch id for non-round holes.
 - **Errors:** Rejects missing or unbuildable bodies, hole bodies, invalid face, layout or hole settings, overlaps, too many holes, or a pattern with no fitting holes. Show and repair the body, choose a flat face, and adjust the pattern. Editing modes can also block the call.
-- **Example:** `await JS3D.holePattern({body: id, face: "+z", layout: {type: "grid", cols: 2, rows: 2}, hole: {dia: 3}})`
+- **Example:** `const id = JS3D.add("box", {size: [40, 40, 20]}); await JS3D.holePattern({body: id, face: "+z", layout: {type: "grid", cols: 2, rows: 2}, hole: {dia: 3}})`
 - **Since:** 1.3 · async: waits for geometry to build · one undo step
 
 <a id="api-gear"></a>
 #### `JS3D.gear({kind, module, teeth, width, angle, hand, mate, base, bore, keyway, clear, at, name}) -> id`
 Adds a gear or rack with hidden construction sketches.
-- **Arguments:** `kind` is `"spur"` (default), `"helical"`, `"bevel"`, or `"rack"`. `module` is required, 0.3–10 mm; `teeth` is required, integer 12–200 for spur, 12–30 helical, 12–90 bevel, 2–100 rack. `width` is positive mm, default 6; bevel defaults to the smaller of 6 and a third of the cone height, and cannot exceed that third; helical width also has a geometry-dependent maximum. Helical `angle` is 5–30 degrees, default 20, and `hand` is `"right"` (default) or `"left"`. Bevel `mate` is partner teeth, integer 12–200, default `teeth`. Rack `base` is positive mm, default 5. Other gears accept `bore` 0 (default, none) or at least 1 mm, leaving `max(1, module)` mm under teeth. `keyway` is a boolean, default false, spur only, requiring a 6–58 mm bore and enough wall. `clear` is 0 to the smaller of 0.5 and module/4 mm, default the smaller of 0.1 and module/4. `at` is `[x, y, z]` in mm, default origin; `name` defaults to a generated name.
+- **Arguments:** `kind` is `"spur"` (default), `"helical"`, `"bevel"`, or `"rack"`. `module` is required, 0.3–10 mm (the normal module for helical gears); `teeth` is required, integer 12–200 for spur, 12–30 helical, 12–90 bevel, 2–100 rack. `width` is positive mm, default 6; bevel defaults to the smaller of 6 and a third of the cone height rounded down to 0.1 mm, and cannot exceed that third; helical width also has a geometry-dependent maximum. Helical `angle` is 5–30 degrees, default 20, and `hand` is `"right"` (default) or `"left"`. Bevel `mate` is partner teeth, integer 12–200, default `teeth`. Rack `base` is positive mm, default 5. Other gears accept `bore` 0 (default, none) or at least 1 mm, leaving `max(1, module)` mm under teeth. `keyway` is a boolean, default false, spur only, requiring a 6–58 mm bore and enough wall. `clear` is 0 to the smaller of 0.5 and module/4 mm, default the smaller of 0.1 and module/4. `at` is `[x, y, z]` in mm, default origin; `name` defaults to a generated name.
 - **Returns:** The new body id string.
 - **Errors:** Throws for invalid or incompatible options, insufficient wall, excessive width, invalid position, or blocked editing. Adjust the specified dimensions or leave the editing mode.
 - **Example:** `JS3D.gear({module: 2, teeth: 20})`
@@ -230,7 +234,7 @@ Adds a gear or rack with hidden construction sketches.
 <a id="api-namePlate"></a>
 #### `JS3D.namePlate({text, font, size, style, depth, thickness, margin, shape, holes, holeDia, color, textColor, at, name}) -> {plate, textBody, size}`
 Adds a plate fitted to a line of text, raised or cut in.
-- **Arguments:** `text` is required, trimmed, one line of 1–40 supported characters. `font` is `"sans"` (default), `"serif"` or `"mono"`; `size` is capital height 2–100 mm, default 10. `style` is `"raised"` (default) or `"cut"`; `depth` is 0.2–10 mm, default 1. `thickness` is 0.6–20 mm, default 3; cut text requires at least 0.8 mm thickness and leaves at least 0.6 mm beneath it. `margin` is 1.5–20 mm, default 3; `shape` is `"rounded"` (default) or `"pill"`. `holes` is `"hang"` (default), `"none"` or `"screws"`; `holeDia` is 1 mm to plate depth minus 3 mm, default 5 for hang or 3.5 for screws, and is not used with none. `color` is `"#rrggbb"`, default `"#2b7bb9"`; `textColor` is for raised text only, default `"#ffffff"`. `at` is `[x, y, z]` in mm, default origin, with plate centered in x and y and base at z; `name` defaults to a name based on text.
+- **Arguments:** `text` is required, trimmed, one line of 1–40 supported characters. `font` is `"sans"` (default), `"serif"` or `"mono"`; `size` is capital height 2–100 mm, default 10. `style` is `"raised"` (default) or `"cut"`; `depth` is 0.2–10 mm, default 1. `thickness` is 0.6–20 mm, default 3; cut text requires at least 0.8 mm thickness and leaves at least 0.6 mm beneath it. `margin` is 1.5–20 mm, default 3; `shape` is `"rounded"` (default) or `"pill"`. `holes` is `"hang"` (default), `"none"` or `"screws"`; `holeDia` is 1 mm to plate depth minus 3 mm, default 5 for hang or 3.5 for screws, and must be omitted (or null) with `holes: "none"`. `color` is `"#rrggbb"`, default `"#2b7bb9"`; `textColor` is for raised text only, default `"#ffffff"`. `at` is `[x, y, z]` in mm, default origin, with plate centered in x and y and base at z; `name` defaults to a name based on text.
 - **Returns:** `{plate, textBody, size}`: plate id, raised text body id or null for cut text, and `[width, depth, height]` in mm.
 - **Errors:** Throws for invalid or unsupported text, invalid options, holes that cannot fit, insufficient thickness, or blocked editing. Change the text or dimensions and try again.
 - **Example:** `JS3D.namePlate({text: "Workshop", holes: "none"})`
@@ -241,14 +245,14 @@ Adds a plate fitted to a line of text, raised or cut in.
 Builds one solid from replicad code in a temporary worker and saves it as a STEP body.
 - **Arguments:** `code` is a function body string of at most 100,000 characters, receiving `replicad` and `params` and returning one closed solid in mm. `bindings` optionally maps up to 20 code parameter names to design parameter names or ids. Each alias is at most 40 characters, starts with a letter, underscore or dollar sign, and then uses letters, digits, underscores or dollar signs; `__proto__` is forbidden. `name` optionally names the body and is trimmed to 80 characters. `bodyId` optionally updates a previous Code CAD body in place, keeping its id, position and later features.
 - **Returns:** The created or updated body id string.
-- **Errors:** Rejects invalid code or bindings, a non-solid or multiple solids, failed or cancelled builds, a build over 25 seconds, or a design, linked parameter or updated body changing during the build. Correct the code or retry. Editing modes can block the call. Code runs as trusted JavaScript with browser access.
+- **Errors:** Rejects invalid code or bindings, a non-solid or multiple solids, failed or cancelled builds, concurrent builds, locked update targets, STEP files over 50 MB, worker startup over 90 seconds, or code execution over 25 seconds. Read-back and geometry waiting follow those limits. It also rejects if the design id or load generation changes, linked parameter ids or values change, or the update target is removed, locked, or changes its asset or Code CAD recipe during the build. Correct the code or retry. Editing modes can block the call. Code runs as trusted JavaScript with browser access.
 - **Example:** `await JS3D.codeCad({code: "return replicad.makeBox([0, 0, 0], [10, 10, 10]);"})`
-- **Since:** 1.7 · async: waits for the worker and geometry build · one undo step
+- **Since:** 1.7 · async: waits for the worker and geometry build · one undo step; selects the resulting body
 
 <a id="api-knurl"></a>
 #### `JS3D.knurl({diameter, length, grooves, depth, bore, boreSize, at, name}) -> id`
 Adds a straight-grooved knob with an optional bore.
-- **Arguments:** `diameter` is 6–150 mm, default 20; `length` 1–200 mm, default 15. `grooves` is an integer 8–120, default rounded circumference in mm, limited to that range. `depth` is 0.1 to diameter/4 mm and at least radius × (1 − cos(π/grooves)); default π × diameter / grooves / 2. `bore` is `"none"` (default), `"round"`, `"hex"`, or `"d"`; `boreSize` is 1 mm to the maximum leaving 1 mm under the roots, default 5 (8 for hex), and is not used with none. Hex size is across flats. `at` is `[x, y, z]` in mm, default origin, axis at x/y and base at z. `name` defaults to a generated name.
+- **Arguments:** `diameter` is 6–150 mm, default 20; `length` 1–200 mm, default 15. `grooves` is an integer 8–120, default rounded circumference in mm, limited to that range. `depth` is at least 0.1 mm and radius × (1 − cos(π/grooves)) rounded up to 0.001 mm, and at most diameter/4 rounded down to 0.001 mm. The default π × diameter / grooves / 2 is rounded to 0.001 mm. `bore` is `"none"` (default), `"round"`, `"hex"`, or `"d"`; `boreSize` is 1 mm to the maximum leaving 1 mm under the roots, default 5 (8 for hex), and must be omitted (or null) with `bore: "none"`. With root radius = diameter/2 − depth, the maximum is 2 × (root radius − 1), or √3 × (root radius − 1) for hex, rounded down to 0.001 mm. Hex size is across flats. `at` is `[x, y, z]` in mm, default origin, axis at x/y and base at z. `name` defaults to a generated name.
 - **Returns:** The body id string.
 - **Errors:** Throws for invalid dimensions, disappearing grooves, a bore that does not fit, invalid position, or blocked editing. Adjust the size or leave the mode.
 - **Example:** `JS3D.knurl({diameter: 20, bore: "round", boreSize: 5})`
@@ -271,7 +275,7 @@ Deletes bodies. Sketches that only they used (drawn on their faces, or used only
 - **Arguments:** `ids`: one body id or an array of ids. A repeated id counts once.
 - **Returns:** how many bodies were deleted (the number of distinct ids).
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open (leave them first); when no ids are given; or when an id is not in the design. An open dialog is cancelled first, and nothing is deleted when it throws.
-- **Example:** `JS3D.remove(cutoutId)` → 1
+- **Example:** `const id = JS3D.add("box"); JS3D.remove(id); // 1`
 - **Since:** 1.0 · synchronous · one undo step ("Delete")
 
 <a id="api-delete"></a>
@@ -280,7 +284,7 @@ The same function as `remove` (in fact `JS3D.delete === JS3D.remove`): deleting 
 - **Arguments:** `ids`: one body id or an array of ids.
 - **Returns:** how many bodies were deleted.
 - **Errors:** the same as `remove`: Chisel, CosForge or Chip Carving open; no ids; an id that is not in the design.
-- **Example:** `JS3D.delete([holeA, holeB])` → 2
+- **Example:** `const id = JS3D.add("box"); JS3D.delete(id); // 1`
 - **Since:** 1.0 · synchronous · one undo step ("Delete")
 
 <a id="api-duplicate"></a>
@@ -289,7 +293,7 @@ Copies bodies. A copy keeps everything the original has (sizes, features, colour
 - **Arguments:** `ids`: one body id or an array of ids. `offset`: `[dx, dy, dz]` in mm, the copy's shift along the world axes; default `[0, 0, 0]`, which puts the copy exactly on the original.
 - **Returns:** an array of the new ids, in the order of `ids`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given; when an id is not in the design; or when `offset` is not three numbers.
-- **Example:** `JS3D.duplicate(board, [25, 0, 0])[0]` → the id of the copy
+- **Example:** `const id = JS3D.add("box"); JS3D.duplicate(id, [25, 0, 0])[0]`
 - **Since:** 1.0 · synchronous · one undo step ("Duplicate")
 
 <a id="api-move"></a>
@@ -298,7 +302,7 @@ Moves bodies by an offset along the world axes. The usual way to space parts out
 - **Arguments:** `ids`: one body id or an array of ids. `[dx, dy, dz]`: the shift in mm along world x, y and z; any sign, any size.
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given; when an id is not in the design; or when the offset is not three numbers.
-- **Example:** `JS3D.move(id, [0, 0, 5])`
+- **Example:** `const id = JS3D.add("box"); JS3D.move(id, [0, 0, 5])`
 - **Since:** 1.0 · synchronous · one undo step ("Move")
 
 <a id="api-moveTo"></a>
@@ -307,7 +311,7 @@ Puts one body's position at a point, whatever its turn. This moves the body's ow
 - **Arguments:** `id`: one body id (a single string; not a list). `pos`: `[x, y, z]` in world mm, the new translation in the body's matrix (`m[12..14]`).
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when the id is not in the design; or when `pos` is not three numbers.
-- **Example:** `JS3D.moveTo(id, [0, 0, 20])`
+- **Example:** `const id = JS3D.add("box"); JS3D.moveTo(id, [0, 0, 20])`
 - **Since:** 1.0 · synchronous · one undo step ("Move")
 
 <a id="api-rotate"></a>
@@ -316,16 +320,16 @@ Turns bodies about a world axis, right-hand rule (for `"z"`, a positive angle tu
 - **Arguments:** `ids`: one body id or an array of ids. `axis`: `"x"`, `"y"` or `"z"` (any capitals) or a vector `[x, y, z]` in world mm — it is normalized, so `[1, 0, 1]` is a valid diagonal axis and `[0, 0, 0]` is refused. `degrees`: the angle, any number; negative turns the other way, and values over 360 just keep turning. `opts.about`: `[x, y, z]` in world mm, the point that stays put; default the middle of the bodies' world box, which needs them built (call `await JS3D.ready()` first, or pass `about`).
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given or an id is not in the design; when the axis is not one of those words or three numbers with a length; when `degrees` is not a number; when `about` is not three numbers; and, without `about`, when a body is still being built (`<name> is still being built`). No timing surprises: with `about` the result is worked out from the numbers you give.
-- **Example:** `JS3D.rotate(lid, "z", 90)` · `JS3D.rotate([a, b], "x", -30, { about: [0, 0, 0] })`
+- **Example:** `const id = JS3D.add("box"); await JS3D.ready(); JS3D.rotate(id, "z", 90)`
 - **Since:** 1.0 · synchronous · one undo step ("Rotate")
 
 <a id="api-resize"></a>
 #### `JS3D.resize(id, size) -> undefined`
 Sets the sizes of one plain shape — a basic shape with no features and no scale. It changes the shape's definition, not a transform, so the 3D view rebuilds it.
-- **Arguments:** `id`: one body id. `size`: `{w, d, h, ...}` with the keys that kind has (`kinds()` lists them, for example `r` and `c` on a box, `sides` on a pyramid, `tube` on a torus), or `[w, d, h]` as a shorthand for a kind that has a `w`. `w`, `d`, `h` and `size` must be at least 0.01 mm; other numbers 0 or more; `sides` and `points` whole numbers of 3 or more. A torus keeps `d` equal to `w`. A size that was tied to an expression is freed and keeps the number you give.
+- **Arguments:** `id`: one body id. `size`: `{w, d, h, ...}` with the keys that kind has (`kinds()` lists them, for example `r` and `c` on a box, `sides` on a pyramid, `tube` on a torus), or `[w, d, h]` as a shorthand for a kind that has a `w`. `w`, `d`, `h` and `size` must be at least 0.01 mm; other numbers 0 or more; `sides` and `points` whole numbers of 3 or more. A torus keeps `d` equal to `w`. A size that was tied to an expression is freed and keeps the number you give. String size keys such as `text` and `font` must be nonempty. For a torus, `d` is reset to `w`.
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when the id is not in the design; when the body is not a plain shape (`resize works on plain shapes; use scale` — a body with any feature, such as a fillet or a scale, needs `scale` or undo first); when `size` is not an object; when the kind has no such key (the message lists the keys it has); or when `[w, d, h]` is used on a kind without a `w` (text).
-- **Example:** `JS3D.resize(pin, { w: 8, d: 8, h: 30 })`
+- **Example:** `const id = JS3D.add("box"); JS3D.resize(id, {w: 8, d: 8, h: 30})`
 - **Since:** 1.0 · synchronous · one undo step ("Resize")
 
 <a id="api-scale"></a>
@@ -334,7 +338,7 @@ Stretches bodies, plain or not. It adds a Scale feature to the body, worked out 
 - **Arguments:** `ids`: one body id or an array of ids. `k`: one number (the same in every direction) or `[kx, ky, kz]`, along the body's **own** axes (on a turned body they are not the world's). Every factor must be more than 0; 1 leaves that direction alone; under 1 shrinks. `opts.about`: `[x, y, z]` in world mm, the point that stays put; default the middle of the bodies' world box, which needs them built (`await JS3D.ready()` first, or pass `about`).
 - **Returns:** `undefined`. Scaling back by `1/k` about the same point removes the feature again.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given or an id is not in the design; when `k` is not a positive number or three positive numbers; when `about` is not three numbers; and, without `about`, when a body is still being built. After a scale the body is no longer a plain shape, so `resize` and `bind` refuse it until you undo or scale back.
-- **Example:** `JS3D.scale(strut, [1, 1, 2])` · `JS3D.scale(gear, 1.5, { about: [0, 0, 0] })`
+- **Example:** `const id = JS3D.add("box"); await JS3D.ready(); JS3D.scale(id, [1, 1, 2])`
 - **Since:** 1.0 · synchronous · one undo step ("Scale")
 
 <a id="api-setHole"></a>
@@ -343,7 +347,7 @@ Makes bodies holes, or makes them solid again. A hole cuts away what it overlaps
 - **Arguments:** `ids`: one body id or an array of ids. `hole`: `true` to make holes, `false` to make solids — exactly a boolean, not `1` or `"true"`.
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given or an id is not in the design; or when `hole` is not `true` or `false`.
-- **Example:** `JS3D.setHole(cavity, true)`
+- **Example:** `const id = JS3D.add("box"); JS3D.setHole(id, true)`
 - **Since:** 1.0 · synchronous · one undo step ("Make hole" / "Make solid")
 
 <a id="api-setColor"></a>
@@ -352,7 +356,7 @@ Sets the colour of bodies, the one the 3D view and the 3MF export use. A group i
 - **Arguments:** `ids`: one body id or an array of ids. `color`: exactly `"#rrggbb"` — six hex digits, capitals allowed. Not the short form `"#f00"` and not a colour name.
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given or an id is not in the design; or when the colour is not `"#rrggbb"`. Nothing changes when it throws.
-- **Example:** `JS3D.setColor(plate, "#2b7bb9")`
+- **Example:** `const id = JS3D.add("box"); JS3D.setColor(id, "#2b7bb9")`
 - **Since:** 1.0 · synchronous · one undo step ("Color")
 
 <a id="api-rename"></a>
@@ -361,7 +365,7 @@ Renames one body. The name shows in the body list and in `list()`.
 - **Arguments:** `id`: one body id. `name`: a non-empty string; spaces at both ends are trimmed, the rest is kept as typed. Names need not be unique — the app only avoids repeats when it makes objects itself.
 - **Returns:** `undefined`.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when the id is not in the design; or when the name is empty or not a string.
-- **Example:** `JS3D.rename(plate, "Front plate")`
+- **Example:** `const id = JS3D.add("box"); JS3D.rename(id, "Front plate")`
 - **Since:** 1.0 · synchronous · one undo step ("Rename")
 
 <a id="api-setHidden"></a>
@@ -370,7 +374,7 @@ Hides bodies from the 3D view and from exports, or shows them again. Handy to ge
 - **Arguments:** `ids`: one body id or an array of ids. `hidden`: `true` to hide, `false` to show — exactly a boolean.
 - **Returns:** `undefined`. A hidden body stays in `list()` with `hidden: true` and can be shown again at any time.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when no ids are given or an id is not in the design; or when `hidden` is not `true` or `false`.
-- **Example:** `JS3D.setHidden(lid, true)`
+- **Example:** `const id = JS3D.add("box"); JS3D.setHidden(id, true)`
 - **Since:** 1.0 · synchronous · one undo step ("Hide" / "Show")
 
 <a id="api-group"></a>
@@ -379,7 +383,7 @@ Combines two or more bodies into one new body: solids are joined and holes are c
 - **Arguments:** `ids`: two or more body ids. `opts` (`{name, op}`): `name`, the group's name — default `"Group N"`, or `"Hole group N"` when every part is a hole; `op` — leave it out to join, `"intersect"` keeps only what all parts share, `"cut"` cuts every other part out of the first id in `ids`. With `op` the group takes the name of the part it keeps (for `"cut"`, the first id) unless you give one.
 - **Returns:** the new group's id (a string). A group's own position stays `[0, 0, 0]` (the parts keep their places inside it), so read `bbox` for where it is.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when fewer than two ids are given; when an id is not in the design; or when `op` is neither `"intersect"` nor `"cut"`.
-- **Example:** `JS3D.group([box, cavity], { name: "Enclosure" })`
+- **Example:** `const box = JS3D.add("box"); const cavity = JS3D.add("box", {hole: true, size: [10, 10, 10]}); JS3D.group([box, cavity], {name: "Enclosure"})`
 - **Since:** 1.0 · synchronous · one undo step ("Group")
 
 <a id="api-ungroup"></a>
@@ -388,7 +392,7 @@ Splits a group back into its parts, as new bodies in the same places, and remove
 - **Arguments:** `id`: one group id.
 - **Returns:** an array of the new part ids.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when the id is not in the design; when the body is not a group; when the group carries features other than a scale (fillets, holes... — they would be lost, so remove them or undo first); or when the group was stretched at an angle, so it cannot be split back into shapes. Nothing changes when it throws.
-- **Example:** `JS3D.ungroup(enclosureId).length` → 2
+- **Example:** `const a = JS3D.add("box"); const b = JS3D.add("box"); const group = JS3D.group([a, b]); JS3D.ungroup(group)`
 - **Since:** 1.0 · synchronous · one undo step ("Ungroup")
 
 ### Reference: Parameters
@@ -396,7 +400,7 @@ Splits a group back into its parts, as new bodies in the same places, and remove
 <a id="api-setParam"></a>
 #### `JS3D.setParam(name, expr, [opts]) -> number`
 Adds a named parameter, or changes one that already has that name (in any capitals). Sizes bound with `bind` follow it, so a design can be driven by a few numbers.
-- **Arguments:** `name`: a string. A new name uses letters, digits and `_` and starts with a letter; a unit word (`mm`, `cm`, `m`, `in`, `ft`, `deg`) and a dimension name such as `d1` are refused; a name already taken (any capitals) edits that parameter instead. `expr`: the text, such as `"60"`, `"Width / 2"` or `"1in"`, trimmed; it may use the parameters above it (the ones added before it) and nothing below. `opts.unit`: `"mm"` (default) or `"in"` — what a bare number in `expr` is read in. Like the sidebar, every edit sets the unit afresh, so a parameter made in inches goes back to mm unless you pass `unit` again.
+- **Arguments:** `name`: a string. A new name uses letters, digits and `_` and starts with a letter or underscore; a unit word (`mm`, `cm`, `m`, `in`, `ft`, `deg`) and a dimension name such as `d1` are refused; a name already taken (any capitals) edits that parameter instead. `expr`: the text, such as `"60"`, `"Width / 2"` or `"1in"`, trimmed; it may use the parameters above it (the ones added before it) and nothing below. `opts.unit`: `"mm"` (default) or `"in"` — what a bare number in `expr` is read in when it contains no parameter name. If it contains a parameter name, bare numbers are read in mm regardless of `unit`. Like the sidebar, every edit sets the unit afresh, so a parameter made in inches goes back to mm unless you pass `unit` again.
 - **Returns:** the parameter's value in mm, as a number.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when the name is not a string; when the expression is empty; when `unit` is neither `"mm"` nor `"in"`; when the name is not allowed (the app's own message, for example `"d1" is a dimension name.` or `"in" is a unit.` — only for a new name; a name that is already taken edits that parameter); or when the expression does not give a number (`expression did not evaluate`) — then nothing changes, not even the undo history. A size whose new value is out of range (below 0.01 mm, say) keeps its last number while the parameter still changes.
 - **Example:** `JS3D.setParam("Width", "60")` → 60 · `JS3D.setParam("Depth", "4", { unit: "in" })` → 101.6
@@ -408,7 +412,7 @@ Deletes a parameter (the name is matched in any capitals). Sizes, sketch dimensi
 - **Arguments:** `name`: the parameter's name.
 - **Returns:** how many bound values were freed (0 when nothing used it).
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; or when there is no parameter with that name (also when `name` is not a string).
-- **Example:** `JS3D.removeParam("Width")` → the number of values freed, 3 here
+- **Example:** `JS3D.setParam("Width", "60"); JS3D.removeParam("Width"); // 0`
 - **Since:** 1.0 · synchronous · one undo step ("Delete parameter")
 
 <a id="api-bind"></a>
@@ -417,7 +421,7 @@ Ties one size of a plain shape to an expression, so that it follows a parameter,
 - **Arguments:** `id`: one body id; the body must be a plain shape (a basic shape with no features and no scale). `key`: the size key of that kind, and it must be a number — `w`, `d`, `h`, `r`, `c`, `top`, `tube`, `wall`, `inner`, `size`, `turns`, `wire`...; text-only keys such as `text` and `font` are refused. `expr`: the text, such as `"Width / 2"`, which may use the parameters and the sketch dimension names, or `null` to free the size and keep the number it has. It must give at least 0.01 mm when you bind; the numbers are worked out in mm whatever unit the page shows.
 - **Returns:** the size in mm, after binding — the shape takes the new value straight away.
 - **Errors:** throws while Chisel, CosForge or Chip Carving is open; when the id is not in the design; when the body is not a plain shape (`bind works on plain shapes`); when the kind has no numeric size under that key (the message names the kind); or when the expression does not give a usable size (`"..." did not evaluate to a usable size`).
-- **Example:** `JS3D.bind(pin, "h", "Height")` → 30 · `JS3D.bind(pin, "h", null)` frees it
+- **Example:** `const id = JS3D.add("box"); JS3D.setParam("Height", "30"); JS3D.bind(id, "h", "Height"); // 30`
 - **Since:** 1.0 · synchronous · one undo step ("Bind size" / "Free size")
 
 ### Reference: History and view
@@ -427,7 +431,7 @@ Ties one size of a plain shape to an expression, so that it follows a parameter,
 Goes back one step in the design's history, the same step the Undo button takes. Call it when a script or a tool has made a change that should not stay.
 - **Arguments:** none.
 - **Returns:** the label of the step that was undone, in the app's own words (`"Add box"`, `"Fillet"`, `"Move"`), or `null` when there is nothing to undo.
-- **Errors:** throws `leave Chisel mode first` while Chisel is open (switch modes with `setMode`), throws while CosForge or Chip Carving is open (close it first), and throws `undo is off in the 3D Print Sim` while the 3D Print Sim is open, because that view never changes the design. A dialog that is still open and unconfirmed is cancelled rather than undone.
+- **Errors:** throws `leave Chisel mode first` while Chisel is open (switch modes with `setMode`), throws while CosForge or Chip Carving is open (close it first), and throws `undo is off in the 3D Print Sim` while the 3D Print Sim is open, because that view never changes the design. An unconfirmed dialog is cancelled first, then the preceding history step is also undone if one exists.
 - **Example:** `JS3D.add("box", { size: [20, 20, 20] }); JS3D.undo();   // "Add box"`
 - **Since:** 1.0 · synchronous · one step back; the step is kept, so `redo` puts it back
 
@@ -437,7 +441,7 @@ Puts back the step that `undo` took away, the same step the Redo button takes.
 - **Arguments:** none.
 - **Returns:** the label of the step put back, in the app's own words, or `null` when there is nothing to redo.
 - **Errors:** the same as `undo`: refused in Chisel mode, while CosForge or Chip Carving is open, and while the 3D Print Sim is open. An unconfirmed dialog is cancelled first.
-- **Example:** `JS3D.undo(); JS3D.redo();   // null, then the label that was undone`
+- **Example:** `JS3D.add("box"); JS3D.undo(); JS3D.redo(); // both return the edit label`
 - **Since:** 1.0 · synchronous · one step forward; the step is kept, so `undo` takes it away again. Any new edit clears the redo steps.
 
 <a id="api-select"></a>
@@ -446,7 +450,7 @@ Selects bodies, as clicking them does, so `fit()` and the panels work on them.
 - **Arguments:** `ids`: one body id or an array of ids, optional. Leave it out or pass `[]` to clear the selection. Every id must be in the design.
 - **Returns:** `undefined`.
 - **Errors:** throws `no body <id>` when an id is not in the design; the selection is left as it was.
-- **Example:** `JS3D.select([id]); JS3D.fit();`
+- **Example:** `const id = JS3D.add("box"); await JS3D.ready(); JS3D.select([id]); JS3D.fit()`
 - **Since:** 1.0 · synchronous · no undo step; the selection is not part of the design, is not saved and is not undone
 
 <a id="api-fit"></a>
@@ -455,7 +459,7 @@ Frames the view: the selected bodies fill it, or the whole design when nothing i
 - **Arguments:** none.
 - **Returns:** `undefined`. The camera glides into place over a moment; there is no promise to await.
 - **Errors:** none of its own. In Architect it frames the building rather than the bodies.
-- **Example:** `JS3D.select(id); JS3D.fit();`
+- **Example:** `const id = JS3D.add("box"); await JS3D.ready(); JS3D.select(id); JS3D.fit()`
 - **Since:** 1.0 · synchronous · does not change the design; it moves the camera
 
 <a id="api-setMode"></a>
@@ -482,7 +486,7 @@ The same picture as `screenshot`, written as a data address instead of bytes, wh
 - **Arguments:** the same as `screenshot`: `fit` (default `false`) and `width` (1 to 8192 pixels, default the view's width).
 - **Returns:** a promise for text that starts `data:image/png;base64,` and holds the PNG.
 - **Errors:** the same as `screenshot`.
-- **Example:** `document.querySelector("img").src = await JS3D.screenshotDataURL({ width: 800 });`
+- **Example:** `const img = document.createElement("img"); img.src = await JS3D.screenshotDataURL({width: 800}); document.body.append(img)`
 - **Since:** 1.0 · async: every shape is built, and the camera move for `fit` (up to 3 seconds) · does not change the design
 
 ### Reference: Files
@@ -493,7 +497,7 @@ Makes a file from the design and hands back its bytes instead of downloading it:
 - **Arguments:** `kind`: `"stl"`, `"obj"`, `"3mf"`, `"glb"`, `"step"` or `"json"`. `ids`: optional, one body id or a list, to export only those bodies; without it every shown solid is exported, like the Export menu with nothing selected.
 - **Returns:** a promise for the file's bytes (`Uint8Array`). `"json"` is the project file (`save()` as indented text), made at once and ignoring `ids`. STL, OBJ, 3MF and GLB are the menu's own bytes; STEP differs only in its time stamp and an export counter inside the file. Holes and hidden bodies are left out, also when named in `ids`.
 - **Errors:** throws `kind must be "stl", "obj", "3mf", "glb", "step" or "json"`, `no body <id>`, `"<name>" has a build error (...); fix it before exporting` (the menu would export its last good shape instead), and `nothing to export: holes and hidden shapes are left out` when no solid is left.
-- **Example:** `const stl = await JS3D.export("stl", { ids: [box, lid] });`
+- **Example:** `const id = JS3D.add("box"); const stl = await JS3D.export("stl", {ids: [id]})`
 - **Since:** 1.0 · async: every shape is built; STL and 3MF then wait for the finer mesh the Export menu's quality setting asks for (Fine can take minutes, and the view's mesh is used if that takes over 4 minutes) · does not change the design
 
 <a id="api-load"></a>
@@ -501,8 +505,8 @@ Makes a file from the design and hands back its bytes instead of downloading it:
 Opens a project the way opening a file does: the open design is replaced and the new one becomes the current design.
 - **Arguments:** `json`: the file's text, the parsed object, or a bare design (`doc`), with or without the `{app, version, doc}` envelope. `keepId`: `true` keeps the design id in the file; default `false`, which gives the design a new id, as opening a file does.
 - **Returns:** a promise for `undefined`, after the new design's shapes are built.
-- **Errors:** throws `not a JumpStart 3D project` when the text is not JSON or the design has no `bodies` and `sketches` lists, and `not a JumpStart 3D project: body <n> needs an id, a node and a matrix m of 16 numbers` for a body that would break the 3D view. Nothing is changed when it throws. Like every edit it is refused while Chisel, CosForge or Chip Carving is open (leave or close it first).
-- **Example:** `await JS3D.load(projectText, { keepId: true });`
+- **Errors:** throws `not a JumpStart 3D project` when the text is not JSON or the design has no `bodies` and `sketches` lists, and `not a JumpStart 3D project: body <n> needs an id, a node and a matrix m of 16 numbers` for a body that would break the 3D view. Validation failures leave the design unchanged. After replacement, `ready()` can reject, for example on timeout, while the replacement remains loaded. Saving to browser storage starts after replacement and is not awaited. Like every edit it is refused while Chisel, CosForge or Chip Carving is open (leave or close it first).
+- **Example:** `const project = JS3D.save(); await JS3D.load(project, {keepId: true})`
 - **Since:** 1.0 · async: the new design's shapes are built · replaces the design, clears the undo history, saves it in this browser's designs and puts the camera in the home view
 
 <a id="api-newDesign"></a>
@@ -575,10 +579,10 @@ Creates a sketch with dimensioned shapes. It does not copy a selected face's out
 <a id="api-extrude"></a>
 #### `JS3D.extrude({sketch, profiles, dist, through, mode, dist2, op, body, name}) -> Promise<{body, feature}>`
 Pushes closed sketch profiles along the sketch normal and hides the sketch.
-- **Arguments:** `sketch` is a sketch id. `profiles` is an optional array of `[x,y]` points in sketch mm, each picking its smallest containing region; omitted or empty chooses regions inside an even number of other outlines. `dist` is a nonzero signed mm number or expression, unless `through: true` is used. `mode` is `"one"` (default), `"sym"`, or `"two"`; `dist2` is a positive mm number or expression required only for `"two"`. `through` is boolean, default false; true requires `op: "cut"`, mode `"one"`, and no `dist`, and computes the distance from the current body. `op` is `"new"` (default), `"join"` or `"cut"`; `body` is required for join or cut and forbidden for new. `name` is an optional nonempty name for new only. Expressions have at most 200 characters.
+- **Arguments:** `sketch` is a sketch id. `profiles` is an optional array of `[x,y]` points in sketch mm, each picking its smallest containing region; omitted or empty chooses regions inside an even number of other outlines. `dist` is a signed mm number with absolute value greater than 0.000001 or expression, unless `through: true` is used. `mode` is `"one"` (default), `"sym"`, or `"two"`; `dist2` is a positive mm number or expression required only for `"two"`. `through` is boolean, default false; true requires `op: "cut"`, mode `"one"`, and no `dist`, and computes the distance from the current body. `op` is `"new"` (default), `"join"` or `"cut"`; `body` is required for join or cut and forbidden for new. `name` is an optional nonempty name for new only. Expressions have at most 200 characters.
 - **Returns:** `body` is the new or target body id; `feature` is the added feature id, or `null` for a new body.
 - **Errors:** rejects missing sketches or bodies, sketches without closed regions, unmatched profile points, invalid distances or option combinations, hole bodies, and a through cut whose body does not reach the plane. Editing must be available; a through cut also requires a built body.
-- **Example:** `await JS3D.extrude({sketch: sk.sketch, dist: 10})`
+- **Example:** `const sk = await JS3D.sketch({shapes: [{type: "rect", size: [20, 20]}]}); await JS3D.extrude({sketch: sk.sketch, dist: 10})`
 - **Since:** 1.9 · async: waits for the geometry engine for a through cut · one undo step
 
 <a id="api-revolve"></a>
@@ -587,43 +591,43 @@ Turns closed sketch profiles around an axis and hides the sketch.
 - **Arguments:** `sketch`, `profiles`, `op`, `body` and `name` follow `extrude`: profile points are sketch mm, default selects alternating nested regions; `op` defaults to `"new"`, with `body` required for `"join"` or `"cut"` and `name` allowed only for new. `axis` is `"X"`, `"Y"` or `"Z"` through the world origin and parallel to the sketch plane, or a line entity id in the sketch. `angle` is degrees, greater than 0 and at most 360, default 360; a number or expression of at most 200 characters.
 - **Returns:** `body` is the new or target body id; `feature` is the feature id, or `null` for new.
 - **Errors:** rejects invalid sketches, profiles, axis, angle or operation, missing or hole target bodies, and unavailable editing. A profile crossing the axis may instead fail when the geometry builds; inspect the body's build error.
-- **Example:** `await JS3D.revolve({sketch: sk.sketch, axis: "X"})`
+- **Example:** `const sk = await JS3D.sketch({shapes: [{type: "rect", center: [0, 15], size: [10, 10]}]}); await JS3D.revolve({sketch: sk.sketch, axis: "X"})`
 - **Since:** 1.9 · async: returns a Promise after creating the feature; does not wait for its build · one undo step
 
 <a id="api-fillet"></a>
 #### `JS3D.fillet(id, edges, r) -> Promise<{body, feature, edges}>`
 Rounds selected edges without extending the selection along tangent edges.
-- **Arguments:** `id` is a solid body id; `edges` is edge selector text, an index, or a nonempty array of indices; `r` is a positive radius in mm or an expression of at most 200 characters. Selectors are described under `edges`.
+- **Arguments:** `id` is a solid body id; `edges` is edge selector text, an index, or a nonempty array of indices; `r` is a positive radius in mm or an expression of at most 200 characters. Selectors are described under `edges`. Index arrays are converted to selector text, which must be at most 500 characters after conversion.
 - **Returns:** `body` and `feature` are ids; `edges` is the number selected.
 - **Errors:** rejects unavailable editing, missing, hole, unbuilt or failed bodies, invalid or unmatched selectors, and invalid radius. An overly large radius may fail during the later build; reduce it and inspect the body's error.
-- **Example:** `await JS3D.fillet(id, "edges of top", 1)`
+- **Example:** `const id = JS3D.add("box"); await JS3D.fillet(id, "edges of top", 1)`
 - **Since:** 1.9 · async: waits for the current body to build · one undo step
 
 <a id="api-chamfer"></a>
 #### `JS3D.chamfer(id, edges, d) -> Promise<{body, feature, edges}>`
 Bevels selected edges.
-- **Arguments:** `id` is a solid body id; `edges` is edge selector text, an index, or a nonempty array of indices; `d` is a positive distance in mm or an expression of at most 200 characters. Selectors are described under `edges`.
+- **Arguments:** `id` is a solid body id; `edges` is edge selector text, an index, or a nonempty array of indices; `d` is a positive distance in mm or an expression of at most 200 characters. Selectors are described under `edges`. Index arrays are converted to selector text, which must be at most 500 characters after conversion.
 - **Returns:** `body` and `feature` are ids; `edges` is the number selected.
 - **Errors:** rejects unavailable editing, missing, hole, unbuilt or failed bodies, invalid or unmatched selectors, and invalid distance. An unsuitable bevel may fail during the later build; reduce it and inspect the body's error.
-- **Example:** `await JS3D.chamfer(id, "edges of top", 1)`
+- **Example:** `const id = JS3D.add("box"); await JS3D.chamfer(id, "edges of top", 1)`
 - **Since:** 1.9 · async: waits for the current body to build · one undo step
 
 <a id="api-shell"></a>
 #### `JS3D.shell(id, {th, open, dir}) -> Promise<{body, feature, open}>`
 Hollows a body and optionally removes selected faces.
-- **Arguments:** `id` is a solid body id; `th` is a positive wall thickness in mm or an expression of at most 200 characters. `open` is face selector text, an index, or an array of indices; omitted, null or empty means a closed hollow. `dir` is `"in"` (default), `"out"` or `"both"`.
+- **Arguments:** `id` is a solid body id; `th` is a positive wall thickness in mm or an expression of at most 200 characters. `open` is face selector text, an index, or an array of indices; omitted, null or empty means a closed hollow. `dir` is `"in"` (default), `"out"` or `"both"`. Index arrays are converted to selector text, which must be at most 500 characters after conversion.
 - **Returns:** `body` and `feature` are ids; `open` is the number of removed faces.
 - **Errors:** rejects unavailable editing, missing, hole, unbuilt or failed bodies, invalid thickness or direction, and invalid or unmatched selectors. Geometry may fail on a later build if the wall is unsuitable.
-- **Example:** `await JS3D.shell(id, {th: 2, open: "top"})`
+- **Example:** `const id = JS3D.add("box"); await JS3D.shell(id, {th: 2, open: "top"})`
 - **Since:** 1.9 · async: waits for the current body to build · one undo step
 
 <a id="api-hole"></a>
 #### `JS3D.hole(id, {face, points, kind, size, dia, depth, tip, cbDia, cbDepth, csDia, csAngle, pitch, clear}) -> Promise<{body, feature, holes}>`
 Cuts round holes at world points projected onto one flat face.
-- **Arguments:** `id` is a solid body id; `face` is a selector or index matching exactly one flat face; `points` is a nonempty array of world `[x,y,z]` mm points. `kind` is `"simple"` (plain, default), `"cbore"`, `"csink"` or `"tapped"`. Give `size` or positive `dia` in mm; a size fills the standard dimensions, and explicit values override them. Plain, counterbore and countersink sizes are `M2`, `M2.5`, `M3`, `M4`, `M5`, `M6`, `M8`, `M10`, `M12`, `#4`, `#6`, `#8`, `#10`, `1/4`, `5/16`, `3/8`, `1/2`. Tapped sizes also include metric `M16`, `M20`, and inch `#2`, `#4`, `#6`, `#8`, `#10`, `#10 fine`, `1/4`, `1/4 fine`, `5/16`, `5/16 fine`, `3/8`, `3/8 fine`, `1/2`. `depth` is positive mm; omitted or null makes a through hole. `tip` enables a drill tip on a blind hole, default false. `cbDia`, `cbDepth`, `csDia` are positive mm, defaults 6.5, 3.3, 6.9; `csAngle` is 1–179 degrees, default 90. `pitch` is positive mm and required for tapped holes without a size; `clear` is -1 to 0 mm, default the design's thread offset. Size presets may change these defaults. Limits are 200 plain, 130 counterbore, 130 countersink or 8 tapped holes per call.
+- **Arguments:** `id` is a solid body id; `face` is selector text, an index, or a one-element index array matching exactly one flat face; `points` is a nonempty array of world `[x,y,z]` mm points. `kind` is `"simple"` (plain, default), `"cbore"`, `"csink"` or `"tapped"`. Give `size` or positive `dia` in mm; a size fills the standard dimensions, and explicit values override them. Plain, counterbore and countersink sizes are `M2`, `M2.5`, `M3`, `M4`, `M5`, `M6`, `M8`, `M10`, `M12`, `#4`, `#6`, `#8`, `#10`, `1/4`, `5/16`, `3/8`, `1/2`. Tapped sizes also include metric `M16`, `M20`, and inch `#2`, `#4`, `#6`, `#8`, `#10`, `#10 fine`, `1/4`, `1/4 fine`, `5/16`, `5/16 fine`, `3/8`, `3/8 fine`, `1/2`. `depth` is positive mm; omitted or null makes a through hole. `tip` enables a drill tip on a blind hole, default false. `cbDia`, `cbDepth`, `csDia` are positive mm, defaults 6.5, 3.3, 6.9; `csAngle` is 1–179 degrees, default 90. `pitch` is positive mm and required for tapped holes without a size; `clear` is -1 to 0 mm, default the design's thread offset. Size presets may change these defaults. Limits are 200 plain, 130 counterbore, 130 countersink or 8 tapped holes per call. Index arrays are converted to selector text, which must be at most 500 characters after conversion.
 - **Returns:** `body` and `feature` are ids; `holes` is the number created.
 - **Errors:** rejects unavailable editing, missing, hole, unbuilt or failed bodies, bad face selection, invalid hole options, too many points, holes that cross the face edge or overlap, and any `shape` option. Use `holePattern` for non-round holes.
-- **Example:** `await JS3D.hole(id, {face: "top", points: [[0, 0, 10]], size: "M3"})`
+- **Example:** `const id = JS3D.add("box"); await JS3D.hole(id, {face: "top", points: [[0, 0, 20]], size: "M3"})`
 - **Since:** 1.9 · async: waits for the current body to build · one undo step
 
 <a id="api-pattern"></a>
@@ -632,25 +636,25 @@ Repeats eligible features or the whole body.
 - **Arguments:** `id` is a solid body id. `features` is a nonempty array of ids of holes, embossed text, or sketch-based extrude, revolve or sweep joins or cuts; `["shape"]` repeats the body. `type` is `"rect"` or `"circle"`. `axis` is a nonzero world direction `"x"`, `"y"`, `"z"` or `[x,y,z]`. For rect, `count` is an integer 1–200; `spacing` is mm, nonzero when count exceeds 1. Optional `axis2`, `count2` (1–200, default 1), `spacing2` (nonzero when count2 exceeds 1) set a second direction; `axis2` is required when count2 exceeds 1. `both` is boolean, default false, and extends both ways. The original and copies together cannot exceed 2000 and at least one copy is required. For circle, `count` is 2–360 including the original, `angle` is greater than 0 and at most 360 degrees (default 360), `center` is world `[x,y,z]` mm (default origin). Counts, spacing and angle accept expressions up to 200 characters.
 - **Returns:** `body` and `feature` are ids; `copies` counts new copies, excluding the original.
 - **Errors:** rejects unavailable editing, missing or hole bodies, unsupported or missing features, invalid axes, counts, spacing, angles or expressions, and patterns with no copies or too many total instances.
-- **Example:** `JS3D.pattern(id, {features: [feature], type: "rect", axis: "x", count: 3, spacing: 10})`
+- **Example:** `const id = JS3D.add("box"); JS3D.pattern(id, {features: ["shape"], type: "rect", axis: "x", count: 3, spacing: 30})`
 - **Since:** 1.9 · synchronous · one undo step
 
 <a id="api-faces"></a>
 #### `JS3D.faces(id, selector) -> Promise<array>`
 Lists matching faces of the currently built body in world coordinates.
-- **Arguments:** `id` is a body id, including a hole body; `selector` defaults to `"all"` and may be text, an index or a nonempty index array. Text is case-insensitive, at most 500 characters: `all`, `plane`, `cylinder`, `cone`, `sphere`, `torus`, `other`, `hole`; `face N`; `>X`, `<X` and their Y/Z forms; aliases `top` (+Z extreme), `bottom`, `front` (-Y), `back`, `left`, `right`; optional `[n]` selects a zero-based extreme level, negative from the other end. `|X` and `#X` select flat normals parallel or perpendicular within 1 degree; `+X` and `-X` select facing direction, also for Y/Z. Combine with `not`, `and`, `or` and parentheses; `and` narrows left to right and precedes `or`. Extreme centers within 0.01 mm share a level.
+- **Arguments:** `id` is a body id, including a hole body; `selector` defaults to `"all"` and may be text, an index or a nonempty index array. Text is case-insensitive, at most 500 characters: `all`, `plane`, `cylinder`, `cone`, `sphere`, `torus`, `other`, `hole`; `face N`; `>X`, `<X` and their Y/Z forms; aliases `top` (+Z extreme), `bottom`, `front` (-Y), `back`, `left`, `right`; optional `[n]` selects a zero-based extreme level, negative from the other end. `|X` and `#X` select flat normals parallel or perpendicular within 1 degree; `+X` and `-X` select facing direction, also for Y/Z. Combine with `not`, `and`, `or` and parentheses; `and` narrows left to right and precedes `or`. Extreme centers within 0.01 mm share a level. Index arrays are converted to selector text, which must be at most 500 characters after conversion.
 - **Returns:** index-sorted objects: `index`, `type`, world `center` in mm, `area` in mm², `edgeCount`; planes also have `normal`, cylinders `radius` in mm, `axis` and boolean `hole`, spheres `radius` in mm. Indices describe the current build and can change after edits.
 - **Errors:** rejects unavailable editing, missing, unbuilt or failed bodies, invalid selectors or indices, and selectors matching nothing. Show an unbuilt hidden body first.
-- **Example:** `await JS3D.faces(id, "top and plane")`
+- **Example:** `const id = JS3D.add("box"); await JS3D.faces(id, "top and plane")`
 - **Since:** 1.9 · async: waits for the current body to build · does not change the design
 
 <a id="api-edges"></a>
 #### `JS3D.edges(id, selector) -> Promise<array>`
 Lists matching drawn edges of the currently built body in world coordinates; seams and smooth joins are omitted.
-- **Arguments:** `id` is a body id, including a hole body; `selector` defaults to `"all"` and may be text, an index or a nonempty index array. Text is case-insensitive, at most 500 characters: `all`, `line`, `circle`, `ellipse`, `other`, `edge N`, `edges of` followed by a face selector, extreme `>X`, `<X` and Y/Z forms, aliases `top`, `bottom`, `front`, `back`, `left`, `right`, and optional extreme level `[n]` (zero-based, negative from the other end). `|X` and `#X` select straight directions parallel or perpendicular within 1 degree, also for Y/Z. Use `not`, `and`, `or`, parentheses; `and` narrows left to right and precedes `or`. Extreme centers within 0.01 mm share a level. Face selectors for `edges of` use the grammar in `faces`.
+- **Arguments:** `id` is a body id, including a hole body; `selector` defaults to `"all"` and may be text, an index or a nonempty index array. Text is case-insensitive, at most 500 characters: `all`, `line`, `circle`, `ellipse`, `other`, `edge N`, `edges of` followed by a face selector, extreme `>X`, `<X` and Y/Z forms, aliases `top`, `bottom`, `front`, `back`, `left`, `right`, and optional extreme level `[n]` (zero-based, negative from the other end). `|X` and `#X` select straight directions parallel or perpendicular within 1 degree, also for Y/Z. Use `not`, `and`, `or`, parentheses; `and` narrows left to right and precedes `or`. Extreme centers within 0.01 mm share a level. Face selectors for `edges of` use the grammar in `faces`. Index arrays are converted to selector text, which must be at most 500 characters after conversion.
 - **Returns:** index-sorted objects: `index`, `type`, world `start`, `end`, `mid`, `center` in mm, approximate `length` in mm, and `faces` indices; lines also have `direction`, circles `radius` in mm. Indices describe the current build and can change after edits.
 - **Errors:** rejects unavailable editing, missing, unbuilt or failed bodies, invalid selectors or indices, and selectors matching nothing. Show an unbuilt hidden body first.
-- **Example:** `await JS3D.edges(id, "edges of top and line")`
+- **Example:** `const id = JS3D.add("box"); await JS3D.edges(id, "edges of top and line")`
 - **Since:** 1.9 · async: waits for the current body to build · does not change the design
 
 ### Reference: Inspection
@@ -659,16 +663,16 @@ Lists matching drawn edges of the currently built body in world coordinates; sea
 #### `JS3D.inspect(ids, {material, density}) -> Promise<{material, bodies, total}>`
 Measures bodies and estimates their weight from density.
 - **Arguments:** `ids` is one body id or an array; omitted, null or empty selects shown solid bodies, excluding holes. Explicit ids can include hidden or hole bodies. `material` defaults to `"pla"`; choices are `pla`, `plaplus`, `petg`, `abs`, `asa`, `nylon`, `pc`, `cfpla`, `cfnylon`, `peek`, `tpu`. `density` overrides material and must be 0.1–25 g/cm³.
-- **Returns:** `material` has `key`, `name`, `density`; custom density uses key `custom`. Each `bodies` item has `id`, `name`, `hole`, `hidden`, `bbox: {min,max}` and `size` in world mm, `volume` in mm³, `volumeFrom` (`solid` or mesh estimate), `area` in mm², `weight` in grams, `solids`, and `error`. A wire has zero volume, area and weight, zero solids and a `note`; a failed build has null measurements and an error. `total` has `bodies` counted with successful surface measurements, combined `bbox`, `size`, `volume`, `area`, `weight`; its box and size are null if none succeed.
+- **Returns:** `material` has `key`, `name`, `density`; custom density uses key `custom`. Each `bodies` item has `id`, `name`, `hole`, `hidden`, `bbox: {min,max}` and `size` in world mm, `volume` in mm³, `volumeFrom` (`"solid"`, `"mesh"`, or `null` for a wire or failed build), `area` in mm², `weight` in grams, `solids`, and `error`. A wire has zero volume, area and weight, zero solids and a `note`; a failed build has null measurements and an error. `total` has `bodies` counted with successful surface measurements, combined `bbox`, `size`, `volume`, `area`, `weight`; its box and size are null if none succeed.
 - **Errors:** rejects unknown ids, material or density and a preview or rolled-back design. Individual build failures appear in results; show hidden bodies that have not built.
-- **Example:** `await JS3D.inspect([id], {material: "petg"})`
+- **Example:** `const id = JS3D.add("box"); await JS3D.inspect([id], {material: "petg"})`
 - **Since:** 1.10 · async: waits for the geometry engine to settle · does not change the design
 
 <a id="api-measure"></a>
 #### `JS3D.measure(a, b) -> Promise<object>`
 Measures a distance between points, bodies or faces.
 - **Arguments:** Each of `a` and `b` is a world point `[x,y,z]` in mm, a body id, `{body, face}` with a zero-based face index, or `{body, near}` with a world point that chooses the nearest face. Explicit bodies may be hidden or holes if built.
-- **Returns:** `a` and `b` echo targets: a point has `point`; a body has `body`, `name`; a face adds `face`, surface `type`, world `center`, optional `normal`, and `nearDistance` in mm when chosen by proximity. `distance` is mm, `exact` indicates the method, and `kind` is `point-point`, `body-body`, `planes` or `mesh`. Point-point also has world `from`, `to`, `delta`; mesh results have closest `from`, `to`. Two faces with normals also have `angle` in degrees and `parallel`; parallel planes use exact plane distance. Mesh distances are approximations.
+- **Returns:** `a` and `b` echo targets: a point has `point`; a body has `body`, `name`; a face adds `face`, surface `type`, world `center`, optional `normal`, and `nearDistance` in mm when chosen by proximity. `distance` is mm, `exact` indicates the method, and `kind` is `point-point`, `body-body`, `planes` or `mesh`. Point-point also has world `from`, `to`, `delta`; mesh results have closest `from`, `to`. Two faces with normals also have `angle`, the unsigned acute angle from 0 to 90 degrees, and `parallel`; parallel planes use exact plane distance. Mesh distances are approximations.
 - **Errors:** rejects invalid targets, missing or unbuilt bodies, wire-only shapes, invalid face indices, measuring a body against itself, engine measurement failure, or a preview or rolled-back design.
 - **Example:** `await JS3D.measure([0, 0, 0], [3, 4, 0])`
 - **Since:** 1.10 · async: waits for the geometry engine to settle and, for two bodies, its contact calculation · does not change the design
@@ -688,7 +692,7 @@ Finds touching, overlapping or nearby bodies.
 - **Arguments:** `ids` is one body id or an array, defaulting when omitted, null or empty to shown solid bodies. Explicit ids can include hidden or hole bodies if built. At most 50 bodies may be requested. `gap` is 0–50 mm, default 0.
 - **Returns:** `checked` counts usable bodies; `skipped` lists `id`, `name`, `error` for unbuilt or wire bodies. Each sorted `pairs` item has body ids `a`, `b`, names `aName`, `bName`, `distance` in mm, `state` (`overlap`, `touch`, `near`), `overlap` in mm³ or null, and optional `error` or `note`. Contacts within 0.001 mm are treated as touching; overlap is measured for at most 20 contacts within a 90-second budget, so some volumes can be null.
 - **Errors:** rejects unknown ids, more than 50 bodies, an invalid gap, or a preview or rolled-back design. Engine failures or time limits can leave a pair's overlap unmeasured.
-- **Example:** `await JS3D.collisions({ids: [a, b], gap: 2})`
+- **Example:** `const a = JS3D.add("box"); const b = JS3D.add("box", {at: [30, 0, 0]}); await JS3D.collisions({ids: [a, b], gap: 2})`
 - **Since:** 1.10 · async: waits for the geometry engine to settle, find contacts and probe overlaps · does not change the design
 
 <a id="api-section"></a>
@@ -697,7 +701,7 @@ Measures cross sections through bodies and can capture a section picture.
 - **Arguments:** `plane` is `{axis: "x"|"y"|"z", at}` in world mm or `{origin, normal}` with world three-number vectors; normal must be nonzero. `ids` is one id or an array, defaulting when omitted, null or empty to shown solid bodies; explicit ids can include built hidden or hole bodies. `points` includes loop points when truthy, default false. `picture` requests a PNG data URL when truthy, default false, in Beginner or Advanced mode; `width` is picture width in pixels from 1 to 8192, default 800.
 - **Returns:** `plane` is `{origin, normal, u, v}` with normalized directions; `shifted` is 0 or 0.0001 mm along the normal to avoid vertices on the plane; `area` is total mm². `bodies` contains intersected `id`, `name`, `area`, and `loops`; each loop has `area` mm², `perimeter` mm, `hole`, `closed`, 2D `min`, `max`, and optionally `points` in the plane's mm coordinates. At most 5000 points are included; `truncated: true` indicates omitted loops' points. `skipped` has `id`, `name`, `error`. With a picture, `dataURL` is the PNG.
 - **Errors:** rejects invalid planes or ids, a preview or rolled-back design, invalid picture width, or picture requests outside Beginner and Advanced mode. Unbuilt and wire bodies are listed in `skipped`.
-- **Example:** `await JS3D.section({axis: "z", at: 10}, {points: true})`
+- **Example:** `JS3D.add("box"); await JS3D.section({axis: "z", at: 10}, {points: true})`
 - **Since:** 1.10 · async: waits for the geometry engine to settle and, if requested, the picture capture · does not change the design; temporarily changes and restores the section view and camera for a picture
 
 ### Reference: Generators
@@ -706,7 +710,7 @@ Measures cross sections through bodies and can capture a section picture.
 #### `JS3D.boxMaker({style, w, d, h, units, across, cols, rows, shape, wall, divider, floor, radius, inner, scoop, scoopR, label, labelW, stack, foot, lid, clear, lock, sideLock, caseT, pull, hinge, doorPull, doorCatch, layout, at, name}) -> {id, parts, cell, info}`
 Makes a bin or a case with compartments and optional parts.
 - **Arguments:** `style` is `"bin"` (default), `"drawer"`, `"tilt"`, or `"door"`. In mm, `w` and `d` are 10–1000 for bins or 30–1000 otherwise (defaults 120, 80); `h` is 5–1000 for bins or 20–1000 otherwise (40). `units` and `across` are integers 1–8 (1); `cols` is 1–20 for bin/door, 1–12 drawer, 1–8 tilt (3); `rows` is 1–20 except drawer 1–12 (2). `shape` is `"square"` (default), `"round"`, or `"hex"`. In mm: `wall`, `divider`, `floor` are 0.4–20 (defaults 1.6, 1.2, 1.2); `radius` 0–100 (4); `inner` 0–50 (2); `scoopR` 1–100 (10); `labelW` 2–100 (10); `foot` 1–50 (3); `clear` 0–2 (0.25); `caseT` 1.2–20 (2.4). Boolean `scoop` defaults true; `label`, `stack`, `lid` default false. `lock` and `sideLock` are `"dovetail"` (default), `"pegs"`, or `"none"`; `pull` is `"bar"` (default), `"knob"`, or `"notch"`; `hinge` is `"left"` (default) or `"right"`; `doorPull` is `"knob"` (default), `"hole"`, or `"bar"`; `doorCatch` is `"light"` (default), `"none"`, or `"firm"`; `layout` is `"assembled"` (default) or `"print"`. `at` is a three-number position in mm, default origin. `name` is converted to a trimmed string of at most 256 characters; empty uses an automatic name.
-- **Returns:** `{id, parts, cell, info}`: main body id; part list `{id, name, kind}`; compartment dimensions or null; and an informational string.
+- **Returns:** `{id, parts, cell, info}`: main body id; part list `{id, name, kind}`; `cell: {w, d, h}` compartment dimensions in mm or `null`; and an informational string.
 - **Errors:** Throws for unknown options, invalid ranges, choices, flags or position, an overlong name, compartments too small to build, or blocked editing. Adjust options or leave the mode.
 - **Example:** `JS3D.boxMaker({style: "drawer", cols: 2})`
 - **Since:** 1.11 · synchronous · one undo step
@@ -715,7 +719,7 @@ Makes a bin or a case with compartments and optional parts.
 #### `JS3D.gearSet({type, module, teeth, teeth2, sunTeeth, planetTeeth, planets, width, bore, boreShape, backlash, pressureAngle, rackLength, rackHeight, joints, clear, angle, hand, at}) -> {id, parts, info}`
 Adds a meshing gear set and, for library sets, optional joints.
 - **Arguments:** `type` is `"pair"` (default), `"rack"`, `"ring"`, `"planet"`, `"bevel"`, or `"helical"`. All accept `module` 0.3–10 mm (default 2), `width` 0.5–200 mm (default 8 for library sets, gear-specific default for bevel/helical), `bore` in mm (default 0, none), and `at` as `[x, y, z]` in mm (default origin). Pair and ring accept integer `teeth` 6–300 (20) and `teeth2` 6–400 (40); rack accepts `teeth`; planet accepts integer `sunTeeth` 8–200 (18), `planetTeeth` 8–200 (12), and `planets` 2–6 (3). These four library types accept `backlash` 0–1 mm (0.15), `pressureAngle` 14.5, 20 or 25 degrees (20), `boreShape` `"round"` (default), `"d"`, `"hex"`, or `"key"`, and boolean `joints` (true). Rack also accepts `rackLength` 0–2000 mm (0 selects an automatic length) and `rackHeight` 2–100 mm (8). Library bore is 0 or 0.5 mm up to the geometry-dependent maximum: the smaller of module × (smallest relevant tooth count − 4.5) and 1.6 times its root radius, rounded down to 0.1 mm; planet bores also must fit the planet roots. Ring teeth2 must be at least teeth + 8. Planet spacing must leave over 0.5 mm between tips, and sun plus ring teeth must divide by the number of planets. Bevel/helical accept integer `teeth` and `teeth2`, 12–90 for bevel or 12–30 for helical (20 and same as teeth); `clear` follows `JS3D.gear`. Helical also accepts `angle` 5–30 degrees (20) and `hand` `"right"` (default) or `"left"`; the second gear uses the opposite hand. Bevel/helical bore and width must also satisfy `JS3D.gear` limits.
-- **Returns:** `{id, parts, info}`: main body id, list of `{id, name}` for each body, and information about the set.
+- **Returns:** `{id, parts, info}`: main body id, list of `{id, name}` for each body, and an array of informational strings about the set.
 - **Errors:** Throws for unknown or type-incompatible options, invalid ranges or geometry, impossible planet spacing or ring teeth, a bore that does not fit, or blocked editing. Adjust the set or leave the mode.
 - **Example:** `JS3D.gearSet({type: "pair", module: 2, teeth: 20, teeth2: 40})`
 - **Since:** 1.11 · synchronous · one undo step
@@ -723,7 +727,7 @@ Adds a meshing gear set and, for library sets, optional joints.
 <a id="api-hardware"></a>
 #### `JS3D.hardware({part, size, length, threads, clear, left, at, name}) -> id`
 Adds one hardware body from the hardware library.
-- **Arguments:** `part` is required: `"hexbolt"`, `"shcs"`, `"button"`, `"flat"`, `"set"`, `"wood"`, `"rod"`, `"nut"`, `"nyloc"`, `"sqnut"`, `"washer"`, `"lockw"`, `"insert"`, or `"dowel"`. `size` is a supported size string for that part, such as `"M3"` or `"1/4-20"`; inserts are metric only. `length` is 1–300 mm, only for screws, rods and dowels, default the library length. `threads` is boolean, default false, and requires a threaded part; threaded lengths cannot exceed 150 turns. `clear` is -1 to 0 mm, default the design thread offset. `left` is boolean, default false. `at` is `[x, y, z]` in mm, default origin; the lowest point rests at z. `name` is converted to a trimmed string of at most 256 characters, default the library name.
+- **Arguments:** `part` is required: `"hexbolt"`, `"shcs"`, `"button"`, `"flat"`, `"set"`, `"wood"`, `"rod"`, `"nut"`, `"nyloc"`, `"sqnut"`, `"washer"`, `"lockw"`, `"insert"`, or `"dowel"`. `size` is a supported size string for that part, such as `"M3"` or `"1/4-20"`; inserts are metric only. `length` is 1–300 mm, only for screws, rods and dowels, default based on nominal diameter `d` in mm: set screws use max(3, round(1.5 × d)), rods round(10 × d), dowels round(4 × d), and other length-bearing parts max(4, round(3 × d)). `threads` is boolean, default false, and requires a threaded part; threaded lengths cannot exceed 150 turns. `clear` is -1 to 0 mm, default the design thread offset. `left` is boolean, default false. `at` is `[x, y, z]` in mm, default origin; the lowest point rests at z. `name` is converted to a trimmed string of at most 256 characters, default the library name.
 - **Returns:** The new body id string.
 - **Errors:** Throws for unknown options, unsupported part or size, length on a part without length, invalid ranges or flags, unsupported threads, too many turns, invalid position, overlong name, or blocked editing. The size error lists supported sizes.
 - **Example:** `JS3D.hardware({part: "shcs", size: "M3", length: 10})`
@@ -744,7 +748,7 @@ Adds a texture layer to a solid body's faces.
 - **Arguments:** `id` is a body id. `texture` is a key from `JS3D.textures()`, default `"knurl"`. `faces` is `"all"` (default), a nonempty face selector string such as `"top"`, a nonnegative face index, or a nonempty array of selectors and indices; duplicates are removed. In mm, `size` is 0.5–100 (default texture tile size or 4), `depth` 0.05–3 (0.6), `edgeBlend` 0–10 (0). `dir` is `"raise"` (default), `"engrave"`, or `"both"`; `rotation` is -180–180 degrees (0); `mapping` is `"auto"` (default), `"planar"`, `"cylindrical"`, or `"triplanar"`. `invert` and `once` are booleans, default false. A body can have at most 16 texture layers.
 - **Returns:** `{body, texture, faces}`: body id, new texture layer id, and `"all"` or the number of selected faces.
 - **Errors:** Rejects invalid options or selectors, a missing or hole body, a full 16-layer body, build errors, no matched faces, or a body changed while preparing the texture. Correct the input, remove a layer, repair the body or retry. Editing modes can block the call.
-- **Example:** `await JS3D.texture(id, {texture: "knurl", faces: "top"})`
+- **Example:** `const id = JS3D.add("box"); await JS3D.texture(id, {texture: "knurl", faces: "top"})`
 - **Since:** 1.11 · async: waits for geometry and face selection · one undo step
 
 <a id="api-drawing"></a>
@@ -753,7 +757,7 @@ Creates a DXF drawing of visible solid CAD bodies.
 - **Arguments:** `ids` is one body id or an array, default all bodies; holes and hidden bodies are omitted. `views` is a nonempty array of distinct `"top"`, `"front"`, `"right"`, default all three; output uses that order. `scale` is 0.01–100, default 1 for full size. `units` is `"mm"` (default) or `"in"`. `dims` is boolean, default false; true adds overall dimensions.
 - **Returns:** A `Uint8Array` containing DXF file bytes.
 - **Errors:** Rejects invalid options or ids, no visible solid bodies, build failures, bodies that cannot be drawn, or mesh bodies that need conversion to STEP. Repair or exclude those bodies and retry; cancellation and geometry errors also reject.
-- **Example:** `await JS3D.drawing({views: ["top"], dims: true})`
+- **Example:** `JS3D.add("box"); await JS3D.drawing({views: ["top"], dims: true})`
 - **Since:** 1.11 · async: waits for geometry and drawing generation · does not change the design
 
 ### Reference: Checkpoints
@@ -780,18 +784,18 @@ Lists checkpoint metadata held in this page's memory, including checkpoints from
 #### `JS3D.diff(fromId, toId) -> string`
 Compares a checkpoint with the current design or another checkpoint of the current design.
 - **Arguments:** `fromId` is a checkpoint id string; optional `toId` is another checkpoint id, default the current design. Both checkpoints must belong to the current design.
-- **Returns:** A readable multiline string of changes, or `"No changes."`. Output is capped at 200 change lines and about 20 KiB, with a count of remaining changes; long values are shortened.
+- **Returns:** A readable multiline string of changes, or `"No changes."`. Output is capped at 200 change lines and 20,480 JavaScript string units for change lines (counting one separator per line), not UTF-8 bytes; the remaining-change count is appended beyond that cap; long values are shortened.
 - **Errors:** Throws if a checkpoint is missing or belongs to another design. Choose a retained checkpoint for the current design.
-- **Example:** `JS3D.diff("c1")`
+- **Example:** `const cp = JS3D.checkpoint("Before"); JS3D.add("box"); JS3D.diff(cp.id)`
 - **Since:** 1.12 · synchronous · does not change the design
 
 <a id="api-rollback"></a>
 #### `JS3D.rollback(id) -> {id, label, bodies, at}`
-Restores a retained checkpoint for the current design as one undoable change.
+Restores a retained checkpoint for the current design as one undoable change, preserving the current mode.
 - **Arguments:** `id` is a checkpoint id string from `JS3D.checkpoints()`; it must belong to the current design.
 - **Returns:** `{id, label, bodies, at}`: restored checkpoint id, label, body count, and ISO timestamp.
 - **Errors:** Throws if the checkpoint is missing or from another design, editing is blocked, or 3D Print Sim has undo locked. Choose a retained checkpoint for this design and leave the blocking mode.
-- **Example:** `JS3D.rollback("c1")`
+- **Example:** `const cp = JS3D.checkpoint("Before"); JS3D.add("box"); JS3D.rollback(cp.id)`
 - **Since:** 1.12 · synchronous · one undo step
 
 ### Reference: Properties
@@ -835,9 +839,9 @@ The app's own objects, for people who know this code. Unsupported: anything reac
   Bad input throws an `Error` with a plain message that says what to change.
 - While Chisel mode is open, every call that edits or loads throws `leave Chisel mode first` (`setMode` is how you leave it).
 - Everything is synchronous except `ready`, `export`, `screenshot`,
-  `screenshotDataURL`, `load`, `newDesign`, `run`, `invoke`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `faces` and `edges`, which return promises.
+  `screenshotDataURL`, `load`, `newDesign`, `run`, `invoke`, `codeCad`, `holePattern`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `texture` and `drawing`, which return promises.
 - Every edit is one undo step with a readable label (the Undo button and
-  `JS3D.undo()` use it) and leaves the selection alone.
+  `JS3D.undo()` use it). Most edits leave the selection alone; `codeCad` selects the resulting body.
 - **Shapes are built in the background.** After an edit, `volume` and `bbox`
   in `list()` are `null` until the geometry engine has finished. Call
   `await JS3D.ready()` before reading them. `export` and `screenshot` wait by
@@ -1221,7 +1225,7 @@ Check each tool result for an error before continuing. The headless end-to-end t
 - 1.4: Added square, hex and slot hole patterns.
 - 1.3: Added hole patterns.
 - 1.2: Added fasteners.
-- 1.1: Added the agent connection.
+- 1.1: Added the agent connection, `run`, `invoke`, `appVersion` and screenshot width support.
 - 1.0: Introduced the scripting bridge.
 
 ## Part 2: The project file format

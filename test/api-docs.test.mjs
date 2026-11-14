@@ -19,10 +19,17 @@ for (const [name, change] of [
  ['stale anchor',{text:good+'<a id="api-stale"></a>'}],
  ['missing errors',{text:good.replace('- **Errors:** None\n','')}],
  ['empty example',{text:good.replace('`JS3D.foo()`','``')}],
+ ['empty returns code span',{text:good.replace('- **Returns:** Number','- **Returns:** ``')}],
+ ['empty example fence',{text:good.replace('`JS3D.foo()`','```js\n```')}],
  ['example without JS3D',{text:good.replace('`JS3D.foo()`','`foo()`')}],
  ['property function',{installed:[base.installed[0],{name:'version',type:'function'}]}],
  ['duplicate heading',{text:good+'## Repeat\n## Repeat\n'}],
 ]) test(name,()=>assert.ok(checkDocs({...base,...change}).length));
+test('bridge resets listeners and storage and supports selection',()=>{
+ const first=bridge(); let calls=0; first.store.on(()=>calls++); localStorage.setItem('fixture','value');
+ const {api,store}=bridge(); store.emit('change'); assert.equal(calls,0); assert.equal(localStorage.getItem('fixture'),null);
+ const id=api.add('box'); api.select([id]); assert.deepEqual(api.selection(),[id]); api.select([]); assert.deepEqual(api.selection(),[]);
+});
 test('discovery is fresh, sorted, JSON safe and recognizes only calls',()=>{
  const {api}=bridge(); const d=api.describe(); assert.deepEqual(JSON.parse(JSON.stringify(d)),d); assert.equal(d.apiVersion,API_VERSION); assert.equal(d.version,API_VERSION.split('.').slice(0,2).join('.')); assert.ok(d.appVersion);
  for(const list of [d.calls,d.properties]) assert.deepEqual(list.map(x=>x.name),list.map(x=>x.name).sort((a,b)=>a.localeCompare(b)));

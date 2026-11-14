@@ -8,7 +8,7 @@ import {CALLS} from '../../src/apicontract.js';
 import {API_MAPPING} from './api-mapping-fixture.mjs';
 const clean=x=>JSON.parse(JSON.stringify(x));
 const stop=new Error('fixture: stop before effects');
-test('every tool has an explicit mapping and byte-equal descriptions',()=>{
+test('every tool has an explicit mapping',()=>{
  assert.deepEqual(API_MAPPING.map(x=>x.tool).sort(),TOOLS.map(x=>x.name).sort());
  for(const f of API_MAPPING){if(f.call)assert.ok(CALLS.some(c=>c.name===f.call),f.call);assert.ok(f.difference);}
 });
@@ -26,10 +26,15 @@ for(const f of API_MAPPING)test(`${f.tool}: named arguments reach documented pos
 });
 test('shared enums and parameter names agree; documented adapter differences remain explicit',()=>{
  const different=new Set(['status','screenshot','export_file','export_drawing','save_project','load_project','run_script']);
+ const enumExceptions=new Set(['rotate_bodies.axis']); // MCP also accepts a vector for this argument.
  for(const m of TOOLS){const c=CHAT.find(t=>t.name===m.name);if(different.has(m.name))continue;
   const extras={rotate_bodies:['axis_vector'],scale_bodies:['k_xyz']}[m.name]||[];
   assert.deepEqual(Object.keys(c.parameters.properties).sort(),[...Object.keys(m.shape),...extras].sort(),m.name);
   const enumOf=s=>{while (s && typeof s.unwrap === 'function') s=s.unwrap(); return s?.options;};
-  for(const [key,s] of Object.entries(c.parameters.properties)){if(!s.enum)continue;const values=enumOf(m.shape[key]);if(values && values.every(v => typeof v === 'string'))assert.deepEqual(s.enum,values,m.name+'.'+key);}
+  for(const [key,s] of Object.entries(c.parameters.properties)){
+   if(enumExceptions.has(m.name+'.'+key))continue;
+   const values=enumOf(m.shape[key]); const mcpEnum=Array.isArray(values) && values.every(v=>typeof v==='string');
+   if(s.enum || mcpEnum){assert.ok(s.enum,m.name+'.'+key+': missing chat enum');assert.ok(mcpEnum,m.name+'.'+key+': missing MCP enum');assert.deepEqual(s.enum,values,m.name+'.'+key);}
+  }
  }
 });

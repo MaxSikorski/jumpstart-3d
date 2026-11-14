@@ -29,7 +29,7 @@ export function checkDocs({ installed, calls, properties, text }) {
     if (entry.split(/\r?\n/)[0] !== heading) problems.push(`wrong heading: ${item.name}`);
     for (const field of call ? ['Arguments', 'Returns', 'Errors', 'Example', 'Since'] : ['Value', 'Example', 'Since']) {
       const line = entry.match(new RegExp(`^- \\*\\*${field}:\\*\\*[ \t]*(.*)$`, 'm'));
-      if (!line || !line[1].trim()) problems.push(`missing ${field}: ${item.name}`);
+      if (!line || !/[\p{L}\p{N}]/u.test(line[1].replace(/^\s*```[\w-]*\s*$/, ''))) problems.push(`missing ${field}: ${item.name}`);
       else if (field === 'Example' && (!line[1].includes('JS3D.') || !line[1].replace(/[`\s]/g, ''))) problems.push(`invalid Example: ${item.name}`);
     }
   }
