@@ -28,6 +28,24 @@ export function startPlateJob(positions, indices, m) {
     result() { return { bounds: { min: [minX,minY,minZ], max: [maxX,maxY,maxZ] }, minZ, contactArea }; }
   };
 }
+export function curvedBottom(positions, indices, m, minZ, maxZ) {
+  const limit = minZ + Math.max(0.5, 0.05 * (maxZ - minZ)), normals = new Set();
+  for (let i = 0; i + 2 < indices.length; i += 3) {
+    const points = [];
+    for (let j = 0; j < 3; j++) {
+      const k = indices[i+j] * 3, x = positions[k], y = positions[k+1], z = positions[k+2];
+      points.push([m[0]*x+m[4]*y+m[8]*z+m[12], m[1]*x+m[5]*y+m[9]*z+m[13], m[2]*x+m[6]*y+m[10]*z+m[14]]);
+    }
+    const [a, b, c] = points;
+    if (a[2] > limit || b[2] > limit || c[2] > limit) continue;
+    const ux = b[0]-a[0], uy = b[1]-a[1], uz = b[2]-a[2], vx = c[0]-a[0], vy = c[1]-a[1], vz = c[2]-a[2];
+    const nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx, len = Math.hypot(nx, ny, nz);
+    if (!len || nz/len >= -0.05) continue;
+    normals.add([nx, ny, nz].map(n => Math.round(n/len*20)).join(','));
+    if (normals.size > 4) return true;
+  }
+  return false;
+}
 export function worldBounds(vertices, m) {
   let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (let i = 0; i < vertices.length; i += 3) {

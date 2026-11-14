@@ -90,12 +90,16 @@ async function clickBody(id = "b1", modifier = null) {
 }
 const selected = () => run(() => window.__app.sel.join(","));
 
-// The dot, dragged on the mouse from where it is to a screen point (a snap shows on the way)
+// The dot, dragged on the mouse from where it is to a screen point (a snap shows on the way). In Beginner a plain drag on the dot
+// moves the shape (the Grok review, bug 1): Alt held at the press moves the pivot, so the press is made with Alt there.
 async function dragDot(to, { release = true } = {}) {
   await expect.poll(dotShown).toBe(true);
   const from = await dotClient();
+  const alt = await run(() => window.__app.mode === "beginner");
   await page.mouse.move(from.x, from.y);
+  if (alt) await page.keyboard.down("Alt");
   await page.mouse.down();
+  if (alt) await page.keyboard.up("Alt");
   await page.mouse.move(to.x, to.y, { steps: 14 });
   if (release) await page.mouse.up();
 }
@@ -619,9 +623,11 @@ const touch = (cdp, type, pts) => cdp.send("Input.dispatchTouchEvent", { type, t
 async function touchTo(cdp, from, to, steps = 10) {
   for (let i = 1; i <= steps; i++) await touch(cdp, "touchMove", [{ x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps }]);
 }
+// Beginner: a finger dragged from the dot moves the shape; held still about half a second first, it moves the pivot (the Grok review, bug 1)
+const held = async (p, mode) => { if (mode === "beginner") await expect.poll(() => p.evaluate(() => window.__app.beginner.hint())).toContain("Moving the pivot"); };
 
 for (const mode of ["beginner", "advanced"]) {
-  test(`touch (tablet, ${mode}): a finger 21 px from the dot picks it and moves only the pivot; a second finger or a cancelled touch puts it back; a held finger changes nothing`, async ({ browser, browserName }, info) => {
+  test(`touch (tablet, ${mode}): a finger 21 px from the dot picks it and moves only the pivot (Beginner: held still first); a second finger or a cancelled touch puts it back; a held finger changes nothing`, async ({ browser, browserName }, info) => {
     test.skip(browserName !== "chromium", "touch events through the DevTools protocol");
     const { ctx, p, cdp, errs } = await touchPage(browser, info, tablet);
     try {
@@ -643,6 +649,7 @@ for (const mode of ["beginner", "advanced"]) {
       expect(await free({ x: target.x + off.x, y: target.y + off.y }), "the reference box's middle is on the open canvas").toBe(true);
       const from = { x: d0.x + off.x, y: d0.y + off.y };
       await touch(cdp, "touchStart", [from]);
+      await held(p, mode);
       await touchTo(cdp, from, { x: target.x + off.x, y: target.y + off.y });
       await touch(cdp, "touchEnd", []);
       await expect.poll(() => pivotNow(p)).not.toEqual(centreOf(b1));
@@ -655,6 +662,7 @@ for (const mode of ["beginner", "advanced"]) {
       for (const how of ["second finger", "cancel"]) {
         const d1 = await dotClient(p), start = { x: d1.x + off.x, y: d1.y + off.y }, away = { x: start.x - 70, y: start.y + 30 };
         await touch(cdp, "touchStart", [start]);
+        await held(p, mode);
         await touchTo(cdp, start, away);
         await expect.poll(() => pivotNow(p), { message: how + ": it follows the finger" }).not.toEqual(centreOf(b2));
         if (how === "second finger") {

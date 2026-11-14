@@ -102,7 +102,7 @@ test("query parameter chooses and stores a face, then is removed", async ({ page
 
 test("Keep Simple stores the choice and dismisses the card", async ({ page }, info) => {
   await boot(page, info, { face: false });
-  await page.click("#face-card-keep");
+  await page.click(mobile(info) ? "#try-simple-close" : "#face-card-keep"); // a phone shows the card as one line, where the x keeps Simple
   await expect(face(page)).toHaveAttribute("data-face", "simple");
   expect(await storedFace(page)).toBe("simple");
   await reload(page);
@@ -179,7 +179,7 @@ test("the switch never puts the Original top bar on a second row; Settings › L
     await page.setViewportSize({ width, height: 880 });
     await expect.poll(oneRow, { message: `Original at ${width}px is one row` }).toBe(true);
     await expect(page.locator("#face-simple"), `the switch shows at ${width}px`).toBeVisible();
-    // below 1120 px Original shows only the Simple half (the way back); Autosave, Keyboard shortcuts and Full screen move into Customize › Workspace
+    // below 1120 px Original shows only the Simple half (the way back); Crash recovery, Keyboard shortcuts and Full screen move into Customize › Workspace
     if (width >= 1120) await expect(page.locator("#face-original")).toBeVisible(); else await expect(page.locator("#face-original")).toBeHidden();
     if (width < 1440) { await expect(page.locator(".topbar #btn-autosave")).toBeHidden(); await page.click("#btn-theme"); await expect(page.locator("#cz-autosave")).toBeVisible(); await page.click("#btn-theme"); await expect(page.locator("#menu-theme")).toBeHidden(); }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
