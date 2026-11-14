@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets.js";
 import { startJob } from "./overhang.js";
+import { initPhoneSheet } from "./phonesheet.js";
+import { initPhoneFit } from "./phonefit.js";
+import { initA11yNames } from "./a11ynames.js";
 import { startPlateJob, fitsPlate, flatness, verdict } from "./printcheck.js";
 import { ICON } from "./icons.js";
 import { showSimpleAbout } from "./simpleabout.js";
@@ -128,7 +131,7 @@ function initPlate(app) {
   panel.querySelector(".simple-print-footer").addEventListener("keydown", toolKeys);
   $("simple-print").onclick = () => { if ($("menu-export").hidden) $("btn-export").click(); document.querySelector('#menu-export button[data-act="stl"]')?.click(); };
   $("simple-export-more").onclick = () => $("btn-export").click();
-  $("simple-sheet-handle").onclick = () => { const expanded = panel.classList.toggle("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", expanded); };
+  const sheet = initPhoneSheet(app, panel);
   const inspector = $("inspector"), oldParent = inspector.parentNode, placeholder = document.createComment("inspector position");
   oldParent.insertBefore(placeholder, inspector.nextSibling);
   const label = document.createElement("button"); label.id = "simple-plate-label"; label.onclick = () => app.plateView.open(); $("viewport").append(label);
@@ -144,7 +147,7 @@ function initPlate(app) {
     $("simple-multi").hidden = selected.length < 2;
     const ungroup = $("simple-multi").querySelector('[data-for="bb-ungroup"]'); ungroup.hidden = selected.length < 2 || $("bb-ungroup")?.disabled;
     $("simple-fixes").querySelector('[data-for="bb-fillopen"]').hidden = !selected.some(b => b.node.t === "mesh" || b.node.t === "step");
-    if (!selected.length) { panel.classList.remove("expanded"); $("simple-sheet-handle").setAttribute("aria-expanded", "false"); }
+    sheet.sync(selected);
   }
   const cache = new WeakMap();
   function setText(state, text) {
@@ -309,11 +312,15 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { displa
 @media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { --simple-panel-w: 236px; grid-template-columns: 80px minmax(0, 1fr) 236px; } }
 @media (max-width: 640px) {
  html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
- html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: absolute; z-index: 35; grid-column: 1 / -1; grid-row: 1; left: 0; right: 0; bottom: 58px; height: 40vh; max-height: calc(100% - 58px); border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: none; position: relative; z-index: 35; grid-column: 1 / -1; grid-row: 1; align-self: end; max-height: 100%; overflow: hidden; border: 1px solid var(--line); border-bottom: 0; border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px #0002; }
  html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.has-selection { display: flex; }
- html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { height: 80vh; }
- #simple-sheet-handle { display: block; flex: none; min-height: 44px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
- #simple-panel:not(.expanded) .simple-print-footer { display: none; }
+ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel.expanded { grid-row: 1 / 3; height: min(var(--sheet-open-h, 50%), 100%); overflow-y: auto; overscroll-behavior: contain; }
+ #simple-panel:not(.expanded) > :not(#simple-sheet-handle) { display: none !important; }
+ #simple-panel :is(.simple-panel-scroll, .simple-print-footer) { flex: none; overflow: visible; }
+ #simple-sheet-handle { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; position: sticky; top: 0; z-index: 2; flex: none; min-height: 52px; padding: 8px 16px; border: 0; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; touch-action: none; }
+ #simple-sheet-handle .sheet-grip { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--line); }
+ #simple-sheet-handle .sheet-name { font: 600 14px/1.2 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ #simple-sheet-handle .sheet-size { font: 13px/1.2 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
 }
 
 #simple-rail, .simple-panel { display: none; }
@@ -374,7 +381,7 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-undo, #btn-redo) { display: inline-flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .menu-wrap:has(#btn-theme) { display: block; }
-html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #menu-theme { position: fixed; right: 12px; top: calc(var(--topbar-h, 46px) + 6px); max-height: calc(100dvh - var(--topbar-h, 46px) - 20px); }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #menu-theme { position: fixed; right: 12px; top: calc(var(--topbar-h, 46px) + 6px); max-height: calc(100dvh - var(--topbar-h, 46px) - env(safe-area-inset-bottom, 0px) - 32px); }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent-2); color: #fff; border-radius: 6px; padding: 6px 12px; font-weight: 600; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export:hover { background: var(--accent); }
 html[data-ui="contrast"][data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) #btn-export { background: var(--accent); color: #000; }
@@ -438,6 +445,7 @@ export function initSimpleMode(app) {
   const $ = (id) => document.getElementById(id);
   const plate = initPlate(app);
   const collapse = initCollapse(app, plate);
+  initPhoneFit(); initA11yNames();
   const row = document.createElement("div");
   row.className = "faceswitch-row";
   row.innerHTML = `<div class="faceswitch" role="group" aria-label="App look"><button id="face-simple" aria-pressed="false" title="Simple: big tools on the left, your shape and a print check on the right; every other tool under More">Simple</button><button id="face-original" aria-pressed="true" title="Original: JumpStart 3D as J.Siwek ships it, every button on the bar">Original</button></div>`;
