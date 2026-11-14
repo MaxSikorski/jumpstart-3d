@@ -122,9 +122,10 @@ test("Save, Undo, Redo, the view buttons, the cube arrows and the units control 
       .filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== "hidden")
       .map((e) => { const r = e.getBoundingClientRect(); return { name: e.id || e.className, w: r.width, h: r.height, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }));
     for (const t of targets) {
-      // Original's phone bar has no room for 44 px wide Save, Undo and Redo (Export would wrap onto a new row): they get the height
+      // Original's phone top bar has no room for 44 px wide Save, Undo and Redo (Export would wrap onto a new row): they get the height;
+      // and its phone status bar stays the compact 28 px bar (Architect's panels are laid out against it)
       if (!(face === "Original" && /^btn-(save|undo|redo)$/.test(t.name))) expect(t.w, `${face}: ${t.name} width`).toBeGreaterThanOrEqual(43.5);
-      expect(t.h, `${face}: ${t.name} height`).toBeGreaterThanOrEqual(43.5);
+      if (!(face === "Original" && t.name === "unit-toggle")) expect(t.h, `${face}: ${t.name} height`).toBeGreaterThanOrEqual(43.5);
     }
     const names = targets.map((t) => t.name);
     for (const must of ["btn-save", "btn-undo", "nav-home", "nav-fit", "nav-ortho", "nav-light", "unit-toggle", "cube-arrow r", "cube-roll cw"]) expect(names, face).toContain(must);
@@ -210,6 +211,12 @@ test("opening the sheet over a shape low in the view moves the view so the shape
 
 test.describe("a touch tablet", () => {
   test.use({ viewport: { width: 1024, height: 768 }, screen: { width: 1024, height: 768 } });
+  test("More keeps the place and height Simple gives it beside the rail", async ({ page }) => {
+    await page.locator("#sr-more").tap();
+    const m = await page.evaluate(() => ({ max: document.getElementById("simple-more").style.maxHeight, rail: document.getElementById("simple-rail").offsetHeight + "px", bottom: document.getElementById("simple-more").style.bottom }));
+    expect(m.max).toBe(m.rail);
+    expect(m.bottom).not.toBe("");
+  });
   test("the view-cube arrows and view buttons are 44 px, apart, and inside the window", async ({ page }) => {
     for (const face of ["simple", "original"]) {
       await page.evaluate((f) => window.__app.setFace(f, true), face);

@@ -26,9 +26,17 @@ const CSS = `
  :root .navbtns { display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 44px); gap: 2px; direction: rtl; top: var(--nav-top); max-height: calc(100% - var(--nav-top) - 8px); }
  :root .navbtns > * { direction: ltr; }
  :root .navbtns button { min-width: 44px; min-height: 44px; }
- :root :is(#unit-toggle, #snap-toggle, #snap-more, .status select) { min-height: 44px; }
- :root .status .busy-btn { min-height: 44px; min-width: 44px; height: auto; }
- :root .status { height: auto; min-height: 28px; }
+}
+/* status-bar controls are 44 px on a touch tablet (its bar is already 56 px tall) and in Simple on a phone, where the bar grows to fit them;
+   Original keeps its compact 28 px phone bar, like its top bar (Architect's panels are laid out against it) */
+@media (pointer: coarse) and (min-width: 601px) {
+ :root .status :is(#unit-toggle, #snap-toggle, #snap-more, select, .busy-btn) { min-height: 44px; }
+ :root .status .busy-btn { min-width: 44px; height: auto; }
+}
+@media (pointer: coarse) and (max-width: 600px) {
+ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status { height: auto; min-height: 28px; }
+ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status :is(#unit-toggle, #snap-toggle, #snap-more, select, .busy-btn) { min-height: 44px; }
+ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status .busy-btn { min-width: 44px; height: auto; }
 }
 @media (pointer: coarse) and (max-width: 860px) { :root .viewport { --cube: 72px; } }
 /* a phone's small lesson panel (left: 8 px) stops short of the cube and its arrows: 40 + 72 + 36 px from the right edge, plus gaps */
@@ -49,11 +57,13 @@ export function initPhoneFit() {
   probe.style.cssText = "position: fixed; visibility: hidden; pointer-events: none; padding-bottom: env(safe-area-inset-bottom, 0px)";
   document.body.append(probe);
   const update = (menu) => menu.classList.toggle("more-below", menu.scrollHeight - menu.clientHeight - menu.scrollTop > 2);
+  const phone = matchMedia("(max-width: 640px)");
   const visibleBottom = () => (window.visualViewport ? visualViewport.height + visualViewport.offsetTop : innerHeight);
   const cap = (menu) => {
     if (!menu.getClientRects().length) return;
     if (menu.id === "simple-more") {
-      // anchored at its foot above the tool strip: when a phone keyboard covers that foot (typing in Find a tool), lift it above the keyboard
+      if (!phone.matches) { update(menu); return; } // wider, Simple places it beside the rail with its own inline sizes
+      // on a phone it is anchored at its foot above the tool strip: when a keyboard covers that foot (typing in Find a tool), lift it above the keyboard
       menu.style.bottom = ""; menu.style.maxHeight = "";
       const r = menu.getBoundingClientRect(), bottom = visibleBottom() - 4;
       if (r.bottom > bottom + 0.5) {
