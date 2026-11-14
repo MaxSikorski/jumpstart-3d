@@ -4,6 +4,7 @@
 // opens a project this rebuilds it from known fields only: pictures that are embedded raster data (never an address
 // to fetch), whole-number ids, hex colours, true/false where the app keeps true/false, and every number inside the
 // range Layerscape's own controls allow. A project without a safe photo, or whose sizes do not add up, is refused.
+// A project whose layers need too much memory is refused with an Error explaining why; anything else unusable returns null.
 import { isSafeMediaSrc } from "./safeurl.js";
 
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -12,7 +13,7 @@ const OWNER = /^-?\d+:\d+(?:,-?\d+:\d+)*$/;
 const MAX_SIDE = 4000; // Layerscape shrinks a photo to 2,000 px on its long side
 const MAX_ID = 32767; // its pixel owners are an Int16Array
 const MAX_ASPECT = 20; // a long thin photo makes its backdrop artwork huge (20:1 keeps it under about 300 MB)
-const MAX_LAYERS = 256, LAYER_PIXELS = 3e8; // more than that is refused, never cut short: every layer is a full-size canvas
+const MAX_LAYERS = 256, LAYER_PIXELS = 6e7; // every layer a piece uses becomes a full-size canvas plus a mask (5 bytes a pixel), so at most about 300 MB; layers no piece uses are dropped
 const int = (v) => Number.isInteger(v);
 const fin = (v) => typeof v === "number" && Number.isFinite(v);
 const clamp = (v, lo, hi, def) => (fin(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -53,7 +54,7 @@ export function cleanLayerscape(d) {
   const image = pic(d.image);
   if (!image || !int(d.W) || !int(d.H) || d.W < 1 || d.H < 1 || d.W > MAX_SIDE || d.H > MAX_SIDE || Math.max(d.W, d.H) > MAX_ASPECT * Math.min(d.W, d.H)) return null;
   if (Array.isArray(d.pieces) && d.pieces.length > MAX_ID + 1) return null;
-  if (isObj(d.layers) && Array.isArray(d.layers.list) && (d.layers.list.length > MAX_LAYERS || d.layers.list.length * d.W * d.H > LAYER_PIXELS)) return null;
+  if (isObj(d.layers) && Array.isArray(d.layers.list) && d.layers.list.length > MAX_LAYERS) return null;
   if (typeof d.owner !== "string" || d.owner.length > 16 * d.W * d.H || !OWNER.test(d.owner) || ownerPixels(d.owner) !== d.W * d.H) return null;
   const pieces = [], ids = new Set();
   for (const p of Array.isArray(d.pieces) ? d.pieces : []) {
@@ -71,9 +72,11 @@ export function cleanLayerscape(d) {
   for (const q of pieces) if (q.cloneOf != null && !ids.has(q.cloneOf)) q.cloneOf = null;
   let layers = null;
   if (isObj(d.layers) && Array.isArray(d.layers.list)) {
+    const list = d.layers.list, used = new Set(pieces.map((q) => q.layer).filter((i) => i !== undefined && i < list.length));
+    if (used.size * d.W * d.H > LAYER_PIXELS) throw new Error(`It has ${used.size} picture layers of ${d.W} × ${d.H} pixels, more than Layerscape can hold safely (at most ${Math.floor(LAYER_PIXELS / (d.W * d.H))} at that size).`);
     const at = (v, side) => (int(v) && Math.abs(v) <= side ? v : 0);
     layers = {
-      list: d.layers.list.map((s) => (isObj(s) ? { name: name(s.name, ""), x: at(s.x, d.W), y: at(s.y, d.H), png: pic(s.png) } : null)),
+      list: list.map((s, i) => (used.has(i) && isObj(s) ? { name: name(s.name, ""), x: at(s.x, d.W), y: at(s.y, d.H), png: pic(s.png) } : null)),
       bg: pic(d.layers.bg),
     };
   }
