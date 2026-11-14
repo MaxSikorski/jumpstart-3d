@@ -10,6 +10,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
+| `apicontract.js` | Versioned scripting API call and property manifest |
 | `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it); it drops layers no piece uses and throws an Error saying why when the used layers would need more than about 300 MB. `layerscape.js` keeps a refused or unreadable diorama in the design until the user agrees to replace it |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
@@ -50,6 +51,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `simpleabout.js` | Community About dialog, update check, help and support links |
+| `phonefit.js` | Long menus scroll inside the window with a fade while more items are below; 44 px touch targets on touch screens for Save, Undo, Redo, view buttons, view-cube arrows and status-bar controls |
+| `phonesheet.js` | Simple’s selected-shape sheet on a phone opens collapsed with the name and size; tap or pull to open it, sized to keep the shape in view |
+| `a11ynames.js` | Icon-only buttons or controls with a tooltip but no name get the tooltip as an aria-label, at start and when controls are added later |
 | `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
