@@ -1,4 +1,4 @@
-// Plays the seven batch-2 community lessons (c4-*) the way a student would: starts each from the Tutorials list, follows the
+// Plays the seven batch-2 community lessons (c4-*) and the batch-5 ones (c5-*) the way a student would: starts each from the Tutorials list, follows the
 // lesson text through the real buttons, boxes and canvas clicks, and asserts that each step's own check ticks and that the
 // lesson finishes. tutorials.spec.mjs only proves the targets exist; this proves the instructions work and the checks can tick.
 import { test, expect } from "@playwright/test";
@@ -23,7 +23,7 @@ const next = () => page.click("#tut-next");
 
 async function startLesson(id, mode) {
   await page.evaluate(() => window.__app.tutorials.close());
-  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.(?:c4-|c-first-print)/.test(k) || /^p\.(?:c4-|c-first-print)/.test(k)) localStorage.removeItem(k); });
+  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.(?:c4-|c5-|c-first-print)/.test(k) || /^p\.(?:c4-|c5-|c-first-print)/.test(k)) localStorage.removeItem(k); });
   await loadDoc(page, newDoc("Untitled", mode));
   await page.click("#btn-tutorials");
   await page.click("#tut-tab-" + mode);
@@ -448,5 +448,115 @@ for (const [lesson, title, kind, size, cutter, cutSize, z, extra] of holeCases) 
     expect((await cur()).step).toBe(step + 1);
     await noErrors();
     await page.evaluate(() => window.__app.tutorials.close());
+  });
+}
+
+// Tutorials batch 5 (every toolbar button): the laser cut file in Beginner, and the 3D Print Sim's own toolbar in Advanced.
+// Each is played in Original and in Simple, with the buttons each face shows.
+const downloadOf = async (click) => {
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), click()]);
+  const chunks = [];
+  for await (const chunk of await dl.createReadStream()) chunks.push(chunk);
+  return { name: dl.suggestedFilename(), text: Buffer.concat(chunks).toString("utf8") };
+};
+async function inFace(face, fn) {
+  const before = await page.evaluate(() => document.documentElement.dataset.face || "original");
+  await page.evaluate((f) => window.__app.setFace(f, true), face);
+  try { await fn(); } finally {
+    await page.evaluate(() => window.__app.tutorials.close());
+    await page.evaluate((f) => window.__app.setFace(f, true), before);
+  }
+}
+// Advanced Primitives: open the item, type into the boxes the step names, OK
+async function primitive(id, fields) {
+  await page.click("#ad-prims"); await page.click("#" + id);
+  for (const [k, v] of Object.entries(fields)) { await page.locator("#" + k).fill(String(v)); await page.keyboard.press("Tab"); }
+  await page.click("#cmd-ok"); await waitIdle(page);
+}
+const psim = () => page.evaluate(() => { const s = window.__app.advanced.printSim.st; return { view: s.view, lastG: !!s.lastG }; });
+
+for (const face of ["original", "simple"]) {
+  test(`c5-laser-tag in ${face}: a 3 mm tag with a hole, saved as laser SVG and DXF files`, async () => {
+    await inFace(face, async () => {
+      await startLesson("c5-laser-tag", "beginner");
+      await addTile("box", false, { w: 60, d: 30, h: 3 });
+      await ticks(1, "thin plate"); await next();
+      await addTile("cylinder", true, { w: 6, d: 6, h: 10, x: -22, z: -2 });
+      if (face === "original") { await page.mouse.click(700, 120); await page.keyboard.press("Control+a"); }
+      else await dragBoxAround(-30, -15, 30, 15);
+      expect((await page.evaluate(() => [...window.__app.sel])).length, "both shapes selected").toBe(2);
+      await page.click(face === "simple" ? "#sr-group" : "#bb-group"); await waitIdle(page);
+      await ticks(2, "the hole goes through the tag");
+      const bs = await bodies(page);
+      expect(bs.length).toBe(1);
+      expect(bs[0].volume).toBeCloseTo(60 * 30 * 3 - Math.PI * 3 * 3 * 3, -1); // 5400 minus the 6 mm hole through 3 mm: about 5315
+      await next();
+      await page.evaluate(() => window.__app.select([]));
+      // Simple: More > Workshop > Laser cut file; Original: Open/Export > Laser cut file .svg
+      const svg = await downloadOf(async () => {
+        if (face === "simple") { await page.click("#sr-more"); await page.click('#simple-more button[data-for="exp-laser-svg"]'); }
+        else { await page.click("#btn-export"); await page.click("#exp-laser-svg"); }
+      });
+      expect(svg.name).toMatch(/^Lopez, Maria, Laser Tag.* laser\.svg$/);
+      expect(svg.text).toContain("<svg");
+      expect(svg.text, "the cut lines are red").toMatch(/stroke="?(#ff0000|#f00|red)/i);
+      await ticks(3, "laser file");
+      const dxf = await downloadOf(async () => { await page.click("#btn-export"); await page.click("#exp-laser-dxf"); });
+      expect(dxf.name).toMatch(/ laser\.dxf$/);
+      expect(dxf.text).toContain("CUT");
+      expect(await page.evaluate(() => window.__app.mode)).toBe("beginner");
+      expect(await page.evaluate(() => document.documentElement.dataset.face || "original")).toBe(face);
+      await next();
+      await finishLesson();
+    });
+  });
+
+  test(`c5-print-plate in ${face}: two parts arranged, turned and sliced in the 3D Print Sim`, async () => {
+    await inFace(face, async () => {
+      await startLesson("c5-print-plate", "advanced");
+      await primitive("ad-box", { "pr-w": 40, "pr-d": 20, "pr-h": 10 });
+      await primitive("ad-cyl", { "pr-pos0": 40 });
+      await ticks(1, "two parts"); await next();
+      await page.click("#ws-print"); await expect(page.locator("#ps-r-arrange")).toBeVisible();
+      await ticks(2, "Print Sim open"); await next();
+      await page.click("#ps-r-arrange");
+      await ticks(3, "arranged"); await next();
+      await page.click("#ps-r-rx");
+      await ticks(4, "turned");
+      await page.click("#ps-r-auto");
+      await next();
+      await page.click("#ps-r-slice");
+      await ticks(5, "sliced");
+      expect((await psim()).view).toBe("layers");
+      await page.click("#ps-r-prepare"); await expect.poll(async () => (await psim()).view).toBe("model");
+      await page.click("#ps-r-preview"); await expect.poll(async () => (await psim()).view).toBe("layers");
+      await next();
+      await finishLesson();
+    });
+  });
+
+  test(`c5-print-watch in ${face}: layers, strength, the print played and its G-code saved`, async () => {
+    test.setTimeout(120_000);
+    await inFace(face, async () => {
+      await startLesson("c5-print-watch", "advanced");
+      await primitive("ad-box", { "pr-w": 30, "pr-d": 30, "pr-h": 20 });
+      await ticks(1, "block"); await next();
+      await page.click("#ws-print"); await page.click("#ps-r-layers");
+      await ticks(2, "layers"); await next();
+      await page.click("#ps-r-strength");
+      await ticks(3, "strength");
+      await page.click("#ps-r-model"); await expect.poll(async () => (await psim()).view).toBe("model");
+      await next();
+      await expect.poll(async () => { await page.click("#ps-r-play"); return page.evaluate(() => document.getElementById("ps-play")?.getAttribute("aria-pressed")); }, { timeout: 30_000 }).toBe("true"); // Play waits for the slice ("Still slicing")
+      await ticks(4, "playing");
+      await page.click("#ps-play"); await expect(page.locator("#ps-play")).toHaveAttribute("aria-pressed", "false");
+      await next();
+      const g = await downloadOf(() => page.click("#ps-r-gcode"));
+      expect(g.name).toMatch(/\.gcode$/);
+      expect(g.text).toMatch(/^G1 /m);
+      await ticks(5, "G-code saved");
+      await next();
+      await finishLesson();
+    });
   });
 }
