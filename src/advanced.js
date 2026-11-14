@@ -328,12 +328,15 @@ export function initAdvanced(app) {
     vp.handler = def.handler || defaultHandler;
     panel.hidden = false;
     panel.classList.toggle("wide", !!def.wide);
+    // jumpstart-3d: why OK is off. While OK is greyed out because something is missing (not while a preview builds or fails), say what in one line
+    const showWhy = () => { const w = $("cmd-why"), b = $("cmd-ok"); if (!w || app.command !== def) return; const t = b && b.disabled && !def.buildError && !def.error && def.why ? def.why() : ""; w.textContent = t || ""; w.hidden = !t; };
     def.render = () => {
       panel.innerHTML = "";
       panel.append(el("header", {}, el("h4", {}, def.title), el("button", { class: "xbtn", "aria-label": "Cancel", html: ICON.close, onclick: () => closeCmd(false) })));
       const body = el("div", { class: "body" });
       def.build(body);
       if (def.error) body.append(el("div", { class: "err-msg" }, def.error));
+      if (def.why) body.append(el("div", { class: "hint", id: "cmd-why", role: "status", hidden: true, style: { padding: 0 } })); // jumpstart-3d: why OK is off
       panel.append(body);
       const ok = el("button", { class: def.okLabel === "Cancel" ? "btn" : "btn primary", id: "cmd-ok", disabled: def.canOk ? !def.canOk() : false, onclick: () => def.ok() }, def.okLabel || "OK");
       const foot = el("footer", {});
@@ -341,10 +344,11 @@ export function initAdvanced(app) {
       if (def.okLabel !== "Cancel" && def.okLabel !== "Done") foot.append(el("button", { class: "btn", onclick: () => closeCmd(false) }, "Cancel"));
       foot.append(ok);
       panel.append(foot);
+      showWhy(); // jumpstart-3d: why OK is off
       app.status(); // jumpstart-3d: stale hint. every redraw of a tool panel refreshes the status bar, since a hint can depend on what the panel just changed (Align: Moving face / Target face)
     };
     def.render();
-    def.refreshOk = () => { const b = $("cmd-ok"); if (b) b.disabled = (def.canOk ? !def.canOk() : false) || !!def.buildError; };
+    def.refreshOk = () => { const b = $("cmd-ok"); if (b) b.disabled = (def.canOk ? !def.canOk() : false) || !!def.buildError; showWhy(); }; // jumpstart-3d: why OK is off (showWhy)
     if (def.start) def.start();
     app.refreshUI("command");
   }
@@ -1149,6 +1153,11 @@ export function initAdvanced(app) {
     return Object.keys(WORLD_AXES).filter((k) => Math.abs(n.dot(new THREE.Vector3(...WORLD_AXES[k]))) < 1e-6);
   }
   function extrudeCmd(kind = "extrude", editing = null, opts = {}) {
+    // jumpstart-3d: why OK is off. Opened from the ribbon or E with only one visible sketch that has a drawn closed shape: start from that sketch, as E does inside it (not while Show sketches is off)
+    if (kind === "extrude" && !editing && !opts.sketch && !opts.region && scene.showSketches) {
+      const drawn = (store.doc.sketches || []).filter((s) => { if (s.hidden || !(s.ents || []).some((x) => !x.proj)) return false; const proj = new Set((s.ents || []).filter((x) => x.proj).map((x) => x.id)); return regionOwners(s).some((o) => o.startsWith("u:")) || regionsFor(s).some((r) => !r.ents.some((id) => proj.has(id))); }); // jumpstart-3d: why OK is off
+      if (drawn.length === 1) opts = { ...opts, sketch: drawn[0].id };
+    }
     // a new extrude starts at 0, like Fusion 360: picking a profile only highlights it; the
     // body appears once the arrow is dragged or a distance typed
     const arrowZoom = () => { if (def.arrow) drawArrow(); }; // jumpstart-3d: preserve face hover when no arrow is shown.
@@ -1172,6 +1181,7 @@ export function initAdvanced(app) {
         const drawn = groups.length === 1 ? regs.map((r, i) => [r, i]).filter(([, i]) => own[i] === groups[0]) : [];
         const pick = opts.regionKeys ? fresh : drawn.length ? drawn : mine.length === 1 ? mine : regs.length === 1 ? [[regs[0], 0]] : [];
         for (const [r, i] of pick) st.profiles.set(profileKey(sk.id, i), { index: i, ref: { key: r.key, pt: r.pt } });
+        if (st.profiles.size) { st.autoPicked = true; if (kind === "extrude" && !st.dist) st.dist = 10; } // jumpstart-3d: why OK is off. A shape picked for you starts 10 mm up, so OK works at once (Beginner already does); a shape you click yourself still starts at 0
         scene.state.forceSketch = sk.id;
         scene.syncSketches(store.view);
         if (!regs.length) app.toast("That sketch has no closed shapes to extrude yet.");
@@ -1211,6 +1221,7 @@ export function initAdvanced(app) {
       title: (editing ? "Edit " : "") + KIND_NAME[kind],
       valid: () => st.profiles.size > 0 && (kind === "extrude" ? Math.abs(st.dist) > 1e-6 || st.mode === "two" : kind === "sweep" ? sweepHasPath(st) : !!st.axis && st.angle > 0),
       canOk: () => def.valid(),
+      why: () => !st.profiles.size ? (!scene.showSketches && !scene.regionMeshes().length ? "Sketches are hidden: turn on Show sketches to pick a shape" + (kind === "extrude" ? ", or click a flat face of a body." : ".") : kind !== "extrude" || scene.regionMeshes().length ? `Click inside a closed shape to choose what to ${kind}.` : "No closed shape to extrude yet: draw one in a sketch, or click a flat face of a body.") : kind === "extrude" ? "Drag the arrow or type a distance: it is 0 now." : kind === "sweep" ? "Pick the path: click a sketch line or arc, or body edges." : !st.axis ? "Pick the axis: click a straight sketch line, or X, Y or Z." : "Set an angle larger than 0.", // jumpstart-3d: why OK is off
       apply(doc) {
         const node = featureNode(st);
         if (pendingSketch && pendingSketch.id === st.sketchId && !findSketch(doc, pendingSketch.id)) {
@@ -1346,6 +1357,7 @@ export function initAdvanced(app) {
           const r = hits[0].object.userData.region;
           const skc = findSk(store.doc, r.sketch);
           if (!skc) return;
+          st.autoPicked = false; // jumpstart-3d: why OK is off
           if (st.sketchId && st.sketchId !== r.sketch) st.profiles.clear();
           st.sketchId = r.sketch;
           const regsC = regionsFor(skc);
@@ -1416,6 +1428,7 @@ export function initAdvanced(app) {
           }
           const r = hits[0].object.userData.region;
           const k = profileKey(r.sketch, r.index);
+          if (st.autoPicked) { st.autoPicked = false; st.profiles.clear(); } // jumpstart-3d: why OK is off. What Extrude picked by itself is a suggestion: the first click picks exactly the piece clicked (the same shape stays picked; "click the ring so only it is picked" works)
           if (st.sketchId && st.sketchId !== r.sketch) { st.profiles.clear(); st.axis = null; st.axisLine = null; }
           st.sketchId = r.sketch;
           // a click picks (or drops) just the piece under the pointer, as before; a double-click takes
@@ -7826,7 +7839,7 @@ export function initAdvanced(app) {
       }));
     const close = () => { menu.remove(); anchor.setAttribute("aria-expanded", "false"); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
     const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) close(); };
-    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus(); } };
+    const esc = (e) => { if (e.key === "Escape" && !document.querySelector(".modal-back")) { e.stopPropagation(); close(); anchor.focus(); } }; // jumpstart-3d: Escape and dialogs. a dialog opened over the menu (? from the menu) takes the Escape first
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", esc, true);
     document.body.append(menu);
@@ -8486,7 +8499,7 @@ export function initAdvanced(app) {
     }
     const close = () => { menu.remove(); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
     const outside = (ev) => { if (!menu.contains(ev.target)) close(); };
-    const esc = (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+    const esc = (ev) => { if (ev.key === "Escape" && !document.querySelector(".modal-back")) { ev.stopPropagation(); close(); } }; // jumpstart-3d: Escape and dialogs. a dialog opened over the menu takes the Escape first
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", esc, true);
     document.body.append(menu);

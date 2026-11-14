@@ -6,7 +6,7 @@ export function showSimpleAbout(app, trigger) {
   const back = make("div", "", "modal-back"), modal = make("div", "", "modal about"), header = make("header"), body = make("div", "", "mbody");
   modal.setAttribute("role", "dialog"); modal.setAttribute("aria-modal", "true"); modal.setAttribute("aria-label", "JumpStart 3D Community Build");
   const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } };
-  const close = () => { document.removeEventListener("keydown", onKey, true); back.remove(); trigger.focus(); };
+  const close = () => { back.remove(); trigger.focus(); };
   const x = make("button", "×", "xbtn"); x.type = "button"; x.setAttribute("aria-label", "Close"); x.onclick = close;
   header.append(make("h2", "JumpStart 3D Community Build"), x);
   body.append(make("p", `Version ${VERSION} · build ${BUILD}`), make("p", "Max Sikorski's community build: free 3D design in your browser, from first shapes to real CAD and 3D printing."));
@@ -21,6 +21,6 @@ export function showSimpleAbout(app, trigger) {
   actions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:4px 0 8px";
   modal.append(header, body); back.append(modal); document.body.append(back);
   back.addEventListener("click", e => { if (e.target === back) close(); });
-  document.addEventListener("keydown", onKey, true); // capture: the app's own key handler would see Esc first
+  back.addEventListener("keydown", onKey); // on its own backdrop: an Escape from elsewhere is sent here by escapekey.js
   x.focus();
 }

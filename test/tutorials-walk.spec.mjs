@@ -23,7 +23,7 @@ const next = () => page.click("#tut-next");
 
 async function startLesson(id, mode) {
   await page.evaluate(() => window.__app.tutorials.close());
-  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.c4-/.test(k) || k.startsWith("p.c4-")) localStorage.removeItem(k); });
+  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.(?:c4-|c-first-print)/.test(k) || /^p\.(?:c4-|c-first-print)/.test(k)) localStorage.removeItem(k); });
   await loadDoc(page, newDoc("Untitled", mode));
   await page.click("#btn-tutorials");
   await page.click("#tut-tab-" + mode);
@@ -74,6 +74,82 @@ async function ctrlAGroup() {
   await waitIdle(page);
 }
 const noErrors = async () => expect((await bodies(page)).filter((b) => b.error)).toEqual([]);
+
+async function dragBoxAround(x0, y0, x1, y1) {
+  const points = [];
+  for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [-10, 30]) points.push(await screenOf(x, y, z));
+  const left = Math.min(...points.map((p) => p[0])) - 30, right = Math.max(...points.map((p) => p[0])) + 30;
+  const top = Math.min(...points.map((p) => p[1])) - 30, bottom = Math.max(...points.map((p) => p[1])) + 30;
+  for (const point of [[left, bottom], [right, top]]) {
+    expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y) === window.__app.vp.canvas, point), "drag endpoint is on the canvas").toBe(true);
+  }
+  await page.mouse.move(left, bottom); await page.mouse.down(); await page.mouse.move(right, top, { steps: 10 }); await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.__app.sel.length)).toBe(2);
+}
+
+// The short first print (Grok review, larger item 8): the first card in Beginner, played in Simple and in Original
+// as the text says, never leaving Beginner (and, in Simple, never switching to Original).
+for (const face of ["original", "simple"]) {
+  test(`c-first-print in ${face}: first in the Beginner list, a box with a hole, saved and exported`, async () => {
+    const before = await page.evaluate(() => document.documentElement.dataset.face || "original");
+    await page.evaluate((f) => window.__app.setFace(f, true), face);
+    try {
+      // the card leads the Beginner list
+      await page.evaluate(() => window.__app.tutorials.close());
+      await page.click("#btn-tutorials"); await page.click("#tut-tab-beginner");
+      await expect(page.locator("#tut-cards .tut-card").first()).toHaveAttribute("id", "tut-c-first-print");
+      await expect(page.locator("#tut-c-first-print")).toContainText("3-5 min");
+      await page.keyboard.press("Escape"); await expect(page.locator(".tut-modal")).toHaveCount(0);
+      await startLesson("c-first-print", "beginner");
+      // step 2: Objects, then the Box tile
+      await page.click("#dock-objects"); await page.locator('#shapes .tile[data-kind="box"]').click(); await waitIdle(page);
+      await ticks(1, "box"); await next();
+      // step 3: Holes > Cylinder, the four sizes, select both, Group
+      await addTile("cylinder", true, { w: 8, d: 8, h: 30, z: -5 });
+      // select both as the text says: Ctrl+A in Original; in Simple drag a box around them (start and end on empty ground)
+      if (face === "original") { await page.mouse.click(700, 120); await page.keyboard.press("Control+a"); }
+      else await dragBoxAround(-20, -20, 20, 20);
+      expect((await page.evaluate(() => [...window.__app.sel])).length, "both shapes selected").toBe(2);
+      await page.click(face === "simple" ? "#sr-group" : "#bb-group"); await waitIdle(page);
+      await ticks(2, "the hole cuts the box");
+      const bs = await bodies(page);
+      expect(bs.length).toBe(1);
+      expect(bs[0].volume).toBeCloseTo(20 * 20 * 20 - Math.PI * 4 * 4 * 20, -1); // 8000 minus the 8 mm hole through 20 mm: about 6995
+      expect(await page.evaluate(() => window.__app.mode)).toBe("beginner");
+      expect(await page.evaluate(() => document.documentElement.dataset.face || "original")).toBe(face);
+      await next();
+      await finishLesson();
+    } finally {
+      await page.evaluate(() => window.__app.tutorials.close());
+      await page.evaluate((f) => window.__app.setFace(f, true), before);
+    }
+  });
+}
+
+test("c-first-print: a pocket that stops short of the bottom does not count as a hole through the box", async () => {
+  await startLesson("c-first-print", "beginner");
+  await next(); // to the hole step (index 2); the box step is not what this checks
+  expect((await cur()).step).toBe(2);
+  const ids = await page.evaluate(async () => {
+    const box = JS3D.add("box", { size: { w: 20, d: 20, h: 20 }, at: [0, 0, 0] });
+    const cut = JS3D.add("cylinder", { size: { w: 8, d: 8, h: 30 }, at: [0, 0, 5], hole: true }); // 5 to 35: a 15 mm deep pocket with a 5 mm floor
+    const miss = JS3D.add("cylinder", { size: { w: 8, d: 8, h: 30 }, at: [13.5, 13.5, -5], hole: true }); // tall enough, but just off a corner (its square outline overlaps the box's, the round one misses): it must not stand in for the pocket
+    JS3D.group([box, cut, miss]); await JS3D.ready();
+    return [box, cut, miss];
+  });
+  await waitIdle(page);
+  expect((await bodies(page))[0].volume, "the pocket did remove material").toBeLessThan(8000 - 600);
+  // Next runs the step's check at once on a strict step: it must refuse, so the check said no with the volume known
+  await next();
+  expect((await cur()).step, "Next moved on from a pocket").toBe(2);
+  await expect(page.locator("#toasts")).toContainText("does not go all the way through");
+  expect(await doneHas(2), "a pocket with a floor ticked the through-hole step").toBeFalsy();
+  // the lesson's numbers: Z (bottom) -5
+  await page.evaluate(async (ids) => { JS3D.undo(); JS3D.moveTo(ids[1], [0, 0, -5]); JS3D.group(ids); await JS3D.ready(); }, ids);
+  await waitIdle(page);
+  await ticks(2, "the hole goes all the way through");
+  await page.evaluate(() => window.__app.tutorials.close());
+});
 
 test("c4-roofs: three houses, three roofs", async () => {
   await startLesson("c4-roofs", "beginner");
@@ -149,7 +225,7 @@ test("c4-top-bar: every button in the tour does something and the lesson stays a
   await startLesson("c4-top-bar", "beginner");
   await addTile("box", false, { w: 20, d: 20, h: 10 }); await ticks(1, "block"); await next();
   const auto = page.locator("#btn-autosave");
-  // below 1440 px Original keeps Autosave and Keyboard shortcuts in Customize › Workspace (room for the Simple | Original switch)
+  // below 1440 px Original keeps Crash recovery and Keyboard shortcuts in Customize › Workspace (room for the Simple | Original switch)
   const top = async (id, cz) => { if (await page.locator("#" + id).isVisible()) return page.click("#" + id); await page.click("#btn-theme"); await page.click("#" + cz); };
   if ((await auto.textContent()).includes("Off")) await top("btn-autosave", "cz-autosave");
   await expect(auto).toContainText("On"); await next();
@@ -187,10 +263,10 @@ test("c4-top-bar: every button in the tour does something and the lesson stays a
 });
 
 // ---- Advanced lessons: dialogs and canvas clicks. A sketch point is clicked where the camera shows it on screen.
-const screenOf = (x, y) => page.evaluate(([x, y]) => {
-  const vp = window.__app.vp, V = vp.camera.position.constructor, p = vp.project(new V(x, y, 0)), r = vp.canvas.getBoundingClientRect();
+const screenOf = (x, y, z = 0) => page.evaluate(([x, y, z]) => {
+  const vp = window.__app.vp, V = vp.camera.position.constructor, p = vp.project(new V(x, y, z)), r = vp.canvas.getBoundingClientRect();
   return [r.left + p[0], r.top + p[1], r.width, r.height, p[0], p[1]];
-}, [x, y]);
+}, [x, y, z]);
 async function clickSketch(x, y) {
   const [px, py, w, h, lx, ly] = await screenOf(x, y);
   expect(lx > 0 && ly > 0 && lx < w && ly < h, `sketch point (${x}, ${y}) is on screen at ${Math.round(lx)}, ${Math.round(ly)} of ${w} x ${h}`).toBe(true);

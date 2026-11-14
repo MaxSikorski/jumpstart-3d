@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { PRINTERS, plateDims, getPlatePref, onPlatePref } from "./printerpresets.js";
-import { startJob } from "./overhang.js";
-import { startPlateJob, fitsPlate, flatness, verdict } from "./printcheck.js";
+import { startJob, BED_TOUCH } from "./overhang.js";
+import { startPlateJob, fitsPlate, flatness, verdict, curvedBottom } from "./printcheck.js";
 import { ICON } from "./icons.js";
+import { store } from "./store.js";
 import { showSimpleAbout } from "./simpleabout.js";
 
 const TOOLS = {
@@ -33,6 +34,8 @@ function initPlate(app) {
     const b = document.createElement("button"); b.type = "button"; b.id = id; b.innerHTML = (ICON[icon] || "") + `<span>${label}</span>`; b.title = label; return b;
   }
   const shapeButton = special("sr-shapes", "Shapes", "box"), move = special("sr-move", "Move", "select"), moreButton = special("sr-more", "More", "more");
+  move.title = "Move: drag the selected shape anywhere on the plate"; move.setAttribute("aria-pressed", "false");
+  if (app.beginner) app.beginner.onArm = armed => move.setAttribute("aria-pressed", String(armed));
   moreButton.querySelector("span").insertAdjacentHTML("beforebegin", '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>');
   for (const [b, panel] of [[shapeButton, shapes], [moreButton, more]]) { b.setAttribute("aria-haspopup", "dialog"); b.setAttribute("aria-expanded", "false"); b.setAttribute("aria-controls", panel.id); }
   rail.append(shapeButton, proxy("sketch", "sr-sketch"), proxy("import", "sr-import"), move, proxy("hole", "sr-hole"), proxy("group", "sr-group"), proxy("align", "sr-align"), proxy("fillet", "sr-fillet"), proxy("measure", "sr-measure"), moreButton);
@@ -45,6 +48,7 @@ function initPlate(app) {
   shapes.innerHTML = '<h2>Shapes and parts</h2><p>Basic shapes and holes are in the strip at the bottom</p><div class="simple-grid"><button type="button" data-dock="objects">Shapes</button><button type="button" data-dock="holes">Holes</button></div>';
   group(shapes, "Parts", PARTS); group(shapes, "Makers", MAKERS);
   more.innerHTML = '<input id="simple-find" type="search" placeholder="Find a tool" aria-label="Find a tool"><p id="simple-empty" hidden>No tool by that name</p>';
+  const ai = group(more, "AI", [], "simple-ai");
   group(more, "Arrange", ["align", "fillet", "measure"], "simple-arrange");
   group(more, "Shape it", ["sketch3d", "extrude", "facebox", "pattern", "mirror", "shell"]);
   group(more, "Edit", ["dup", "del", "copy", "paste", "ungroup", "solid", "lock", "multi"]);
@@ -54,6 +58,8 @@ function initPlate(app) {
   for (const [id, label, phone] of [["btn-projects", "Designs"], ["btn-autosave", "Autosave"], ["btn-chat", "AI chat"], ["btn-keys", "Keyboard shortcuts"], ["btn-full", "Full screen"], ["mode-chisel", "Chisel"], ["mode-arch", "Architect"], ["btn-about", "Original app info"], ["btn-tutorials", "Learn", true], ["mode-beginner", "Beginner", true], ["mode-advanced", "Advanced", true]]) {
     const b = document.createElement("button"); b.type = "button"; b.dataset.for = id; b.textContent = label; if (phone) b.className = "face-phone"; appGroup.querySelector(".simple-grid").append(b);
   }
+  ai.querySelector(".simple-grid").append(appGroup.querySelector('[data-for="btn-chat"]'));
+  { const b = appGroup.querySelector('[data-for="btn-autosave"]'); b.textContent = "Crash recovery"; b.title = "Your design is already saved in this browser after every change. Crash recovery keeps extra copies you can go back to."; }
   // J.Siwek 2.9.8.x tools that live in Original's menus. activate() clicks the element named by data-for, so each one gets a hidden runner.
   const runners = document.createElement("div"); runners.hidden = true; document.body.append(runners);
   const workshop = group(more, "Workshop", []).querySelector(".simple-grid");
@@ -102,7 +108,16 @@ function initPlate(app) {
   }
   function toggle(panel, button) { const opening = panel.hidden; close(); if (opening) { sync(); panel.hidden = false; if (panel === more && !matchMedia("(max-width: 640px)").matches) { panel.style.bottom = (work.clientHeight - rail.offsetTop - rail.offsetHeight) + "px"; panel.style.maxHeight = rail.offsetHeight + "px"; } else { panel.style.bottom = ""; panel.style.maxHeight = ""; } button.setAttribute("aria-expanded", "true"); } }
   shapeButton.onclick = () => toggle(shapes, shapeButton); moreButton.onclick = () => toggle(more, moreButton);
-  move.onclick = () => { if (app.sel.length) { $("insp-pos0")?.focus(); app.toast("Drag the shape on the plate, or type where it goes here."); } else app.toast("Pick a shape first, then drag it on the plate."); };
+  move.onclick = () => {
+    if (!app.sel.length) { app.toast("Select a shape first, then Move."); return; }
+    if (app.beginner && app.beginner.armMove) { const on = !app.beginner.moveArmed; if (!app.beginner.armMove(on) && on) app.toast("That shape is locked. Unlock it first (Ctrl+L)."); }
+  };
+  // Escape stops Move. On the document in the bubble phase, added before the app's own key handler: a tool, panel, dialog or drag that
+  // handles Escape stops it (or marks it handled) before it gets here, and the app's handler, which would also clear the selection, never sees it
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented || !app.beginner?.moveArmed || app.beginner.busy || app.command || app.sketcher?.active || document.querySelector(".modal-back") || !more.hidden || !shapes.hidden || e.target.closest?.("input, textarea, select, [contenteditable]:not([contenteditable=\"false\"])") || e.target.isContentEditable) return;
+    e.preventDefault(); e.stopImmediatePropagation(); app.beginner.armMove(false);
+  });
   function activate(e) {
     const b = e.target.closest("button"); if (!b) return;
     if (b.dataset.dock) { $("dock-" + b.dataset.dock)?.click(); close(); return; }
@@ -176,19 +191,20 @@ function initPlate(app) {
   function check(g) {
     const selected = new Set(app.sel), views = [...app.scene.views].filter(([id,v]) => (!selected.size || selected.has(id)) && v.data && v.mesh && v.body && !v.body.hole && !v.body.cmdPreview && !v.body.cutPreview && !v.pending && v.group.visible && !app.scene.state.ghost.has(id));
     if (!views.length) { setText("empty", "Add a shape to check it."); return; }
-    const pref = getPlatePref(), dims = plateDims(pref.printer); let minZ = Infinity, contact = 0, fit = true, area = 0, large = false, index = 0, current = null;
+    const pref = getPlatePref(), dims = plateDims(pref.printer); let minZ = Infinity, contact = 0, fit = true, area = 0, large = false, round = false, index = 0, current = null;
     const matrix = new THREE.Matrix4(), local = new THREE.Matrix4();
     function finish() {
-      const flat = flatness(minZ, contact), state = verdict({ flat: flat?.type, fit: fit === true, overhang: large ? "large" : area > 0 });
-      const heading = state === "ready" ? "✓ Ready to print" : state === "warn" ? "Check before printing" : "Not ready yet";
+      const flat = flatness(minZ, contact), state = verdict({ flat: flat?.type, fit: fit === true, overhang: large ? "large" : area > 0 || round });
+      const heading = state === "ready" ? "✓ Ready to print" : state === "warn" ? (!large && (area > 0 || round) ? "Needs a little support" : "Check before printing") : "Not ready yet";
       const lines = [];
       const line = (text, action, buttonText) => lines.push({ text, action, buttonText });
       if (state === "ready") line(`Sits flat, ${dims ? `fits the ${plateName()} plate` : "no printer picked"}, 0 overhangs.`);
       else {
-        if (flat) line(flat.type === "point" ? "Touches the plate only at a point or edge" : `${flat.type === "float" ? "Floats" : "Goes"} ${Number(flat.value.toFixed(2))} mm ${flat.type === "float" ? "above" : "below"} the plate`, flat.type === "float" && selected.size ? "bb-drop" : null, "Lay flat");
+        if (flat && !(flat.type === "point" && round)) line(flat.type === "point" ? "Touches the plate only at a point or edge" : `${flat.type === "float" ? "Floats" : "Goes"} ${Number(flat.value.toFixed(2))} mm ${flat.type === "float" ? "above" : "below"} the plate`, flat.type === "float" && selected.size ? "bb-drop" : null, "Lay flat");
+        if (round && flat?.type !== "float" && flat?.type !== "below") line("Round bottoms always need some support; a flat base prints without.");
         if (fit !== true) line(fit === "size" ? `Too big for the ${plateName()} plate` : "Reaches past the plate edge");
         if (!dims) line("No printer picked");
-        if (large) line("Too detailed to check here — use Print check", "bb-printsim", "Details"); else if (area > 0) line(`${Math.round(area)} mm² leans more than ${pref.angle}° — may need supports`, "bb-printsim", "Details");
+        if (large) line("Too detailed to check here — use Print check", "bb-printsim", "Details"); else if (area > 0) line(`${Math.round(area)} mm² leans more than ${pref.angle}°.`, "bb-printsim", "Details");
       }
       const signature = JSON.stringify([heading, lines]);
       if (ready.dataset.verdict !== signature) {
@@ -215,6 +231,9 @@ function initPlate(app) {
         if (c.plate) { if (!c.plate.step(Math.max(0, deadline - performance.now()))) break; c.saved = { signature: c.signature, pos: c.pos, indices: c.indices, plate: c.plate.result() }; c.plate = null; cache.set(c.geo, c.saved); }
         if (!c.applied) { const p = c.saved.plate, f = fitsPlate(p.bounds, dims); minZ = Math.min(minZ, p.minZ); contact += p.contactArea; if (!f.ok && (fit === true || f.why === "size")) fit = f.why; c.applied = true; }
         if (c.indices.length / 3 > 300000) { large = true; current = null; continue; }
+        // a round bottom rests on the plate on a small patch (a meshed sphere's flat pole is a few mm², a flat base most of the footprint)
+        if (c.saved.round === undefined) { const p = c.saved.plate, b = p.bounds, foot = (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]); c.saved.round = Math.abs(p.minZ) <= BED_TOUCH && p.contactArea < 0.1 * foot && curvedBottom(c.pos, c.indices, c.m, p.minZ, b.max[2]); }
+        round ||= c.saved.round;
         if (c.saved.angle === pref.angle) { area += c.saved.area; current = null; continue; }
         if (!c.overhang) c.overhang = startJob(c.pos, c.indices, c.m, pref.angle);
         if (!c.overhang.step(Math.max(0, deadline - performance.now()))) break;
@@ -224,7 +243,8 @@ function initPlate(app) {
     }
     setTimeout(step, 0);
   }
-  const refresh = app.refreshUI; app.refreshUI = function (...args) { const result = refresh.apply(this, args); const active = document.documentElement.dataset.face === "simple" && app.mode === "beginner"; if (active) { sync(); layout(); schedule(); } else if (inspector.parentNode !== oldParent) { layout(); schedule(); } return result; };
+  let lastMode = app.mode;
+  const refresh = app.refreshUI; app.refreshUI = function (...args) { const result = refresh.apply(this, args); const active = document.documentElement.dataset.face === "simple" && app.mode === "beginner"; if (app.beginner?.moveArmed && (!app.sel.length || !active)) app.beginner.armMove(false); if (lastMode === "beginner" && app.mode !== "beginner" && app.beginner?.busy) app.beginner.handler.cancel(); lastMode = app.mode; /* a switch out of Beginner in the middle of a drag (a second finger on a mode button) ends that drag; Advanced borrows Beginner's resize handles, so only the switch counts */ if (active) { sync(); layout(); schedule(); } else if (inspector.parentNode !== oldParent) { layout(); schedule(); } return result; };
   const sceneRefresh = app.onSceneRefresh; app.onSceneRefresh = function (...args) { sceneRefresh?.apply(this, args); if (document.documentElement.dataset.face === "simple" && app.mode === "beginner") { layout(); schedule(); } };
   onPlatePref(() => { updateLabel(); schedule(); }); updateLabel();
 
@@ -320,7 +340,7 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-panel { display: fle
 #simple-print { color: white; background: var(--accent-2); border: 0; } #simple-export-more { color: var(--ink); background: transparent; border: 0; }
 #simple-sheet-handle { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { display: block; position: absolute; top: 14px; left: 14px; z-index: 6; padding: 8px 12px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
-#viewport:has(.try-simple) #simple-plate-label { display: none !important; }
+@media (max-width: 640px) { #viewport:has(.try-simple) #simple-plate-label { display: none !important; } }
 @media (min-width: 641px) and (max-width: 1100px) { html[data-face="simple"] #app[data-mode="beginner"] .work { --simple-panel-w: 236px; grid-template-columns: 80px minmax(0, 1fr) 236px; } }
 @media (max-width: 640px) {
  html[data-face="simple"] #app[data-mode="beginner"] .work { grid-template-columns: 0 minmax(0, 1fr) 0; }
@@ -345,6 +365,7 @@ html[data-face="simple"] #app[data-mode="beginner"] #ribbon { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-rail { display: flex; grid-column: 1; grid-row: 1; width: 80px; min-height: 0; box-sizing: border-box; flex-direction: column; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
 #simple-rail button, .simple-panel button { font: 600 12px/1.2 var(--f-ui); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 #simple-rail button { flex: 1 0 44px; min-height: 44px; padding: 4px 2px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }
+#simple-rail button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 #simple-rail button svg, .simple-panel button svg { width: 22px; height: 22px; flex: none; }
 #simple-rail #sr-more { margin-top: auto; flex-grow: 0; }
 #simple-rail button:hover, .simple-panel button:hover { background: var(--accent-soft); color: var(--accent); }
@@ -432,17 +453,20 @@ html[data-face="simple"] #menu-theme :is([data-layout], .layout-note) { display:
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) { min-width: 44px; min-height: 44px; justify-content: center; }
 }
-.try-simple { position: absolute; left: 14px; top: 14px; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
+.try-simple { position: absolute; left: 14px; bottom: 56px; top: auto; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
 .try-simple p { margin: 0 0 10px; }
-@media (max-width: 560px) {
-  .try-simple { left: 8px; top: 8px; max-width: calc(100% - 120px); padding: 7px 26px 7px 10px; font-size: 12px; }
-  .try-simple p { margin: 0 0 6px; }
-  .try-simple button { padding: 5px 9px; font-size: 12px; }
-}
 .try-simple button { font: 600 13px/1 var(--f-ui); cursor: pointer; border: 0; border-radius: 6px; padding: 7px 10px; }
 .try-simple .ts-yes { background: #ffd66b; color: #1b1407; }
 .try-simple .ts-no { background: transparent; color: var(--ink); }
 .try-simple .ts-x { position: absolute; top: 5px; right: 5px; padding: 4px 7px; background: transparent; color: var(--ink-2); font-size: 18px; }
+@media (max-width: 640px) {
+  .try-simple { top: 50px; left: 8px; right: 118px; bottom: auto; max-width: none; display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 28px 4px 8px; font-size: 12px; }
+  .try-simple p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .try-simple div { margin: 0; display: flex; gap: 6px; }
+  .try-simple .ts-more, .try-simple .ts-wide, .try-simple #face-card-keep { display: none; }
+  .try-simple button { padding: 5px 8px; font-size: 12px; }
+  .try-simple .ts-x { top: 50%; transform: translateY(-50%); }
+}
 `;
 
 export function initSimpleMode(app) {
@@ -479,12 +503,15 @@ export function initSimpleMode(app) {
   caret.innerHTML = '<path d="m6 9 6 6 6-6"/>';
   // Enter and Space press our buttons; the app's own key handler must not also see them (it submits an open tool)
   for (const el of [row, wrap]) el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
-  let stored = null;
+  let stored = null, seen = false;
+  try { seen = localStorage.getItem("jumpstart.simple.card") === "seen"; } catch (e) { /* storage may be unavailable */ }
   try { stored = localStorage.getItem("jumpstart.face"); } catch (e) { /* storage may be unavailable */ }
   const url = new URL(location.href), hasParam = url.searchParams.has("face"), param = url.searchParams.get("face");
   let face;
   let card = null, lessonInOriginal = false;
+  function dismissCard() { if (!card) return; card.remove(); card = null; try { localStorage.setItem("jumpstart.simple.card", "seen"); } catch (e) { /* storage may be unavailable */ } }
   function apply(name) {
+    if (name !== "simple" && app.beginner?.moveArmed) app.beginner.armMove(false); // Move is Simple's: Original never stays armed
     face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); plate.layout(); plate.schedule();
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
@@ -495,7 +522,7 @@ export function initSimpleMode(app) {
     if (name !== "simple" && name !== "original") return;
     apply(name);
     if (!lesson) { lessonInOriginal = false; try { localStorage.setItem("jumpstart.face", face); } catch (e) { /* storage may be unavailable */ } }
-    plate.close(); if (card) { card.remove(); card = null; }
+    plate.close(); dismissCard();
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     if (!quiet) app.toast(face === "simple" ? "Simple: the main tools on the left, your shape on the right. Everything else is under More. Switch back any time." : "Original: JumpStart 3D's full top bar, every button where J.Siwek put it.");
   }
@@ -505,16 +532,18 @@ export function initSimpleMode(app) {
   if (param === "simple" || param === "original") {
     setFace(param, true); url.searchParams.delete("face"); history.replaceState(history.state, "", url.href);
   } else apply(stored === "original" ? "original" : "simple");
-  app.trySimpleShown = stored === null && !hasParam;
+  app.trySimpleShown = stored === null && !hasParam && !seen;
   if (app.trySimpleShown) {
     card = document.createElement("aside"); card.className = "try-simple"; card.id = "try-simple"; card.setAttribute("role", "region"); card.setAttribute("aria-label", "Choose app look");
-    card.innerHTML = '<p><b>Prefer the full toolbar?</b> You\'re in Simple: big tools on the left, your shape on the right.</p><div><button id="face-card-original" class="ts-yes">Switch to Original</button><button id="face-card-keep" class="ts-no">Keep Simple</button></div><button id="try-simple-close" class="ts-x" aria-label="Close">×</button>';
+    card.innerHTML = '<p><b>Prefer the full toolbar?</b><span class="ts-more"> You\'re in Simple: big tools on the left, your shape on the right.</span></p><div><button id="face-card-original" class="ts-yes"><span class="ts-wide">Switch to </span>Original</button><button id="face-card-keep" class="ts-no">Keep Simple</button></div><button id="try-simple-close" class="ts-x" aria-label="Close">×</button>';
     card.addEventListener("click", (e) => {
-      if (e.target.id === "face-card-original") setFace("original"); else if (e.target.id === "face-card-keep" || e.target.id === "try-simple-close") setFace("simple", true); else return;
+      const button = e.target.closest("button");
+      if (button?.id === "face-card-original") setFace("original"); else if (button?.id === "face-card-keep" || button?.id === "try-simple-close") setFace("simple", true); else return;
       [$("face-simple"), $("face-original"), $("btn-theme"), $("btn-export")].find((b) => b.getClientRects().length)?.focus(); // Return focus to a visible top-bar control.
     });
     $("viewport").append(card);
   }
+  store.on(() => { if (card && store.doc.bodies.length) dismissCard(); });
   // A lesson whose steps point at top-bar buttons that Simple moved into More runs in Original, and Simple comes back when it ends (tutorials.js calls these)
   const MOVED = ["btn-autosave", "btn-chat", "btn-about", "btn-keys", "btn-full", "btn-projects", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
   const narrow = matchMedia("(max-width: 640px)");
