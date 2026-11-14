@@ -102,7 +102,7 @@ test("query parameter chooses and stores a face, then is removed", async ({ page
 
 test("Keep Simple stores the choice and dismisses the card", async ({ page }, info) => {
   await boot(page, info, { face: false });
-  await page.click("#face-card-keep");
+  await page.click(mobile(info) ? "#try-simple-close" : "#face-card-keep"); // a phone shows the card as one line, where the x keeps Simple
   await expect(face(page)).toHaveAttribute("data-face", "simple");
   expect(await storedFace(page)).toBe("simple");
   await reload(page);

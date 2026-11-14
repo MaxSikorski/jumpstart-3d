@@ -1348,6 +1348,7 @@ app.status = function () {
   else if (app.sketcher.active) hint = app.sketchHint();
   else if (app.command) hint = app.command.hint ? app.command.hint() : "";
   else if (app.directEdit && app.directEdit.hint()) hint = app.directEdit.hint(); // jumpstart-3d: direct edit
+  else if (app.mode === "beginner" && app.beginner && app.beginner.hint && app.beginner.hint()) hint = app.beginner.hint(); // jumpstart-3d: grok move. the pivot drag and Simple's Move say what a drag does
   else if (app.mode === "beginner") hint = app.vp.touchMode ? "Drag shapes onto the workplane. Drag empty space to orbit, two fingers to pan and zoom." : (IS_MAC ? "Drag shapes onto the workplane. Option-drag (or two-finger click and drag) to orbit, Option+Shift-drag to pan, pinch or scroll to zoom." : "Drag shapes onto the workplane. Right-drag to orbit, Shift+right-drag or middle-drag to pan, scroll to zoom.");
   else if (app.sel.length === 1 && !app.isLocked(app.sel[0])) hint = "Drag the white handles to scale the body. Double-click a body or timeline item to edit it.";
   else hint = app.vp.touchMode ? "Start with Sketch, or add a primitive. Drag to orbit, two fingers to pan and zoom, double-tap to edit." : (IS_MAC ? "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Option-drag orbits, Option+Shift-drag pans, pinch zooms." : "Start with Create Sketch, or add a primitive. Drag across empty space to select (right: window, left: crossing). Right-drag orbits, middle-drag pans.");
