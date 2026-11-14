@@ -1,0 +1,15 @@
+{
+  "spec": 1,
+  "name": "Hex standoff",
+  "units": "mm",
+  "source": { "kind": "drawing", "projection": "third", "scale": "dimensioned" },
+  "checks": [
+    { "id": "size", "kind": "size", "value": [14.6647, 12.7, 25.4], "tol": 0.127, "from": "stated", "note": "drawn in inches: .500 across flats (12.7), 1.000 long (25.4); across corners 12.7*2/sqrt(3) = 14.6647; tolerance +-.005 in = 0.127" },
+    { "id": "holes-6.35", "kind": "holes", "dia": 6.35, "count": 1, "axis": "z", "through": true, "at": [[7.3323, 6.35]], "tol": 0.127, "from": "stated", "note": "Ø.250 THRU" },
+    { "id": "AF", "kind": "distance", "a": { "near": [7.3323, 0, 12.7] }, "b": { "near": [7.3323, 12.7, 12.7] }, "value": 12.7, "tol": 0.127, "from": "stated" },
+    { "id": "volume", "kind": "volume", "value": 2743.53, "tol": "1%", "from": "derived", "note": "(sqrt(3)/2)*12.7^2*25.4 - pi*3.175^2*25.4" },
+    { "id": "solids", "kind": "solids", "value": 1 }
+  ],
+  "assumed": [],
+  "questions": []
+}

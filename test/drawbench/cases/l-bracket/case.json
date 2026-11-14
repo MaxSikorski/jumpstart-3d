@@ -1,0 +1,35 @@
+{
+  "drawbench": 1,
+  "id": "l-bracket",
+  "title": "L-bracket",
+  "wave": 1,
+  "set": "development",
+  "input": { "kind": "drawing", "picture": "drawing.png", "request": "Build this part." },
+  "overlap": 0.98,
+  "editable": [
+    { "id": "edit-L", "param": 60, "to": 70, "size": [70, 40, 40] }
+  ],
+  "drawing": {
+    "title": "L-BRACKET",
+    "units": "mm",
+    "projection": "third",
+    "views": ["top", "front", "right"],
+    "notes": ["ALL SIZES IN MM", "TOLERANCE ±0.1 UNLESS STATED"],
+    "dims": [
+      { "view": "top", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 40], "at": -12, "text": "40" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 17.5], "to": [15, 17.5], "at": 50, "text": "15" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 17.5], "to": [45, 17.5], "at": 60, "text": "45" },
+      { "view": "top", "type": "linear", "along": "y", "from": [60, 0], "to": [45, 17.5], "at": 72, "text": "17.5" },
+      { "view": "top", "type": "leader", "point": [15, 17.5], "r": 3.25, "to": [-20, 50], "text": "2X Ø6.5 THRU" },
+      { "view": "front", "type": "linear", "along": "x", "from": [0, 0], "to": [60, 0], "at": -12, "text": "60" },
+      { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 5], "at": -12, "text": "5" },
+      { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [15, 25], "at": -24, "text": "25" },
+      { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 40], "at": -36, "text": "40" },
+      { "view": "front", "type": "leader", "point": [45, 25], "r": 2.5, "to": [62, -16], "text": "2X Ø5 THRU" },
+      { "view": "right", "type": "linear", "along": "x", "from": [35, 40], "to": [40, 40], "at": 50, "text": "5" }
+    ]
+  },
+  "wrong": [
+    { "recipe": "wrong-features.recipe.json", "why": "same box and volume, but one Ø7.07 hole in the upright instead of two Ø5", "fails": ["holes-5", "holes-total"] }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "drawbench": 1,
+  "id": "flanged-bushing",
+  "title": "Flanged bushing",
+  "wave": 1,
+  "set": "qualification",
+  "input": { "kind": "drawing", "picture": "drawing.png", "request": "Build this part." },
+  "overlap": 0.98,
+  "editable": [
+    { "id": "edit-D", "param": 40, "to": 44, "size": [44, 44, 25] },
+    { "id": "edit-H", "param": 25, "to": 30, "size": [40, 40, 30] }
+  ],
+  "drawing": {
+    "title": "FLANGED BUSHING",
+    "units": "mm",
+    "projection": "third",
+    "views": ["top", "front"],
+    "notes": ["ALL SIZES IN MM", "TOLERANCE ±0.1 UNLESS STATED", "4 FLANGE HOLES ON THE X AND Y CENTRE LINES"],
+    "dims": [
+      { "view": "top", "type": "centre", "point": [20, 20], "r": 6 },
+      { "view": "top", "type": "leader", "point": [20, 20], "r": 6, "to": [-14, 48], "text": "Ø12 THRU" },
+      { "view": "top", "type": "leader", "point": [35.5, 20], "r": 2.25, "to": [56, 46], "text": "4X Ø4.5 THRU ON Ø31" },
+      { "view": "front", "type": "linear", "along": "x", "from": [0, 0], "to": [40, 0], "at": -10, "text": "Ø40" },
+      { "view": "front", "type": "linear", "along": "x", "from": [9, 25], "to": [31, 25], "at": 33, "text": "Ø22" },
+      { "view": "front", "type": "linear", "along": "y", "from": [40, 0], "to": [40, 5], "at": 50, "text": "5" },
+      { "view": "front", "type": "linear", "along": "y", "from": [40, 0], "to": [31, 25], "at": 60, "text": "25" }
+    ]
+  },
+  "wrong": [
+    { "recipe": "wrong-bolt-circle.recipe.json", "why": "flange holes on a Ø32 circle instead of Ø31 (each 0.5 mm out)", "fails": ["holes-4.5"] }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "drawbench": 1,
+  "id": "plate-holes",
+  "title": "Mounting plate",
+  "wave": 1,
+  "set": "development",
+  "input": { "kind": "drawing", "picture": "drawing.png", "request": "Build this part." },
+  "overlap": 0.98,
+  "editable": [
+    { "id": "edit-W", "param": 80, "to": 90, "size": [90, 50, 6] },
+    { "id": "edit-T", "param": 6, "to": 8, "size": [80, 50, 8] }
+  ],
+  "drawing": {
+    "title": "MOUNTING PLATE",
+    "units": "mm",
+    "projection": "third",
+    "views": ["top", "front"],
+    "notes": ["ALL SIZES IN MM", "TOLERANCE ±0.1 UNLESS STATED", "ALL FOUR CORNERS R6"],
+    "dims": [
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 0], "to": [80, 0], "at": -12, "text": "80" },
+      { "view": "top", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 50], "at": -12, "text": "50" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 42], "to": [8, 42], "at": 60, "text": "8" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 20], "to": [30, 20], "at": 70, "text": "30" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 42], "to": [72, 42], "at": 80, "text": "72" },
+      { "view": "top", "type": "linear", "along": "y", "from": [80, 0], "to": [72, 8], "at": 92, "text": "8" },
+      { "view": "top", "type": "linear", "along": "y", "from": [80, 0], "to": [30, 20], "at": 102, "text": "20" },
+      { "view": "top", "type": "linear", "along": "y", "from": [80, 0], "to": [72, 42], "at": 112, "text": "42" },
+      { "view": "top", "type": "leader", "point": [72, 8], "r": 2.75, "to": [96, -16], "text": "4X Ø5.5 THRU" },
+      { "view": "top", "type": "leader", "point": [30, 20], "r": 5, "to": [-22, -16], "text": "Ø10 THRU" },
+      { "view": "top", "type": "centre", "point": [30, 20], "r": 5 },
+      { "view": "front", "type": "linear", "along": "y", "from": [80, 0], "to": [80, 6], "at": 92, "text": "6" }
+    ]
+  },
+  "wrong": [
+    { "recipe": "wrong-big.recipe.json", "why": "10 percent too big (every size times 1.1)", "fails": ["size", "holes-5.5", "holes-10", "T", "R", "volume", "overlap", "edit-W", "edit-T"] },
+    { "recipe": "wrong-moved.recipe.json", "why": "the Ø10 hole moved 0.5 mm along x", "fails": ["holes-10"] },
+    { "recipe": "wrong-names.recipe.json", "why": "right shape, but built from plain numbers: no named size drives it", "fails": ["edit-W", "edit-T"] }
+  ]
+}
