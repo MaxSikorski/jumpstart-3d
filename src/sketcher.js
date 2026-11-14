@@ -287,7 +287,7 @@ export class Sketcher {
   // so grid lines never get closer than ~12 px. Sketch points snap to it.
   gridSpacing() {
     const inch = getUnit() === "in";
-    const base = this.app.gridStep() || +document.getElementById("snap").value || (inch ? 25.4 / 16 : 1);
+    const base = this.app.gridStep() || +this.app.snapSize() || (inch ? 25.4 / 16 : 1); // jumpstart-3d: move step. the last chosen size while Off · free
     const pxPerMm = 1 / Math.max(1e-9, this.px());
     for (const m of inch ? [1, 2, 4, 8, 16, 32, 64, 160, 320, 800, 1600] : [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]) if (base * m * pxPerMm >= 12) return base * m;
     return base * 10000;

@@ -66,10 +66,10 @@ test("inspect: size, volume, area, weight, totals and errors", async () => {
   expect(Math.abs(r.two.total.volume - (V + 7200))).toBeLessThan(0.1);
   expect(r.two.total.bbox.max[2]).toBe(43);
   expect(r.two.total.bbox.min).toEqual([-30, -20, 0]);
-  expect(r.wood).toBe('unknown material "wood"; valid materials: pla, plaplus, petg, abs, asa, nylon, pc, cfpla, cfnylon, peek, tpu');
-  expect(r.d0).toBe("density must be a number of g/cm3 from 0.1 to 25");
-  expect(r.d30).toBe("density must be a number of g/cm3 from 0.1 to 25");
-  expect(r.none).toBe("no body nope");
+  expect(r.wood).toContain('unknown material "wood"; valid materials:');
+  expect(r.d0).toContain("density must be a number of g/cm3 from 0.1 to 25, got 0");
+  expect(r.d30).toContain("density must be a number of g/cm3 from 0.1 to 25, got 30");
+  expect(r.none).toMatch(/^no body "nope"/);
 });
 
 test("printCheck: plate, overhang, bed and height", async () => {
@@ -119,9 +119,9 @@ test("printCheck: plate, overhang, bed and height", async () => {
   expect(r.a1.issues[0].text).toMatch(/^Tall is 300 mm tall; the .* prints at most 256 mm\.$/);
   expect(r.none.bed).toBeNull();
   expect(r.none.ok).toBe(true);
-  expect(r.zz).toBe('unknown printer "zz"; valid: generic, none, a1, x1, p1s, mk4, mini, ender3, u1 (or any 3D Print Sim printer id)');
-  expect(r.five).toBe("angle must be a number of degrees from 10 to 80");
-  expect(r.ninety).toBe("angle must be a number of degrees from 10 to 80");
+  expect(r.zz).toContain('unknown printer "zz"; valid:');
+  expect(r.five).toContain("angle must be a number of degrees from 10 to 80, got 5");
+  expect(r.ninety).toContain("angle must be a number of degrees from 10 to 80, got 90");
 });
 
 test("collisions: touch, overlap, apart, near", async () => {
@@ -152,8 +152,8 @@ test("collisions: touch, overlap, apart, near", async () => {
   expect(r.near.pairs[0]).toMatchObject({ state: "near", overlap: null });
   expect(Math.abs(r.near.pairs[0].distance - 1)).toBeLessThan(1e-3);
   expect(r.one).toEqual({ pairs: [], checked: 1, skipped: [] });
-  expect(r.neg).toBe("gap must be a number of mm from 0 to 50");
-  expect(r.big).toBe("gap must be a number of mm from 0 to 50");
+  expect(r.neg).toContain("gap must be a number of mm from 0 to 50, got -1");
+  expect(r.big).toContain("gap must be a number of mm from 0 to 50, got 51");
 });
 
 test("measure: points, bodies, flat faces and the mesh", async () => {
@@ -191,12 +191,12 @@ test("measure: points, bodies, flat faces and the mesh", async () => {
   expect(r.faceBody).toMatchObject({ kind: "mesh", exact: false });
   expect(r.faceBody.distance).toBeGreaterThan(0);
   const target = "must be a point [x, y, z], a body id, or {body, face} or {body, near}";
-  expect(r.bad).toBe("no body nope");
-  expect(r.nul).toBe("a " + target);
-  expect(r.badPoint).toBe("a must be [x, y, z] in mm");
-  expect(r.far).toMatch(/^face must be a whole number from 0 to \d+ \(Box has \d+ faces\)$/);
-  expect(r.same).toBe("a and b are the same body");
-  expect(r.obj).toBe("a " + target);
+  expect(r.bad).toMatch(/^no body "nope"/);
+  expect(r.nul).toContain("a " + target + ", got null");
+  expect(r.badPoint).toContain("a must be [x, y, z] in mm, got [1,2]");
+  expect(r.far).toMatch(/^face must be a whole number from 0 to \d+ \("Box" has \d+ faces\), got 9999/);
+  expect(r.same).toContain("a and b are the same body, got ");
+  expect(r.obj).toContain("a " + target + ", got ");
 });
 
 test("measure: two sheets of one plate give its thickness", async () => {
@@ -258,13 +258,13 @@ test("section: loops, holes, shifted plane, points", async () => {
   expect(r.miss.bodies).toEqual([]);
   expect(r.miss.area).toBe(0);
   expect(Math.abs(r.tilt.area - 384)).toBeLessThan(1e-3);
-  expect(r.both).toBe(plane);
-  expect(r.none).toBe(plane);
-  expect(r.axis).toBe(plane);
-  expect(r.at).toBe("at must be a number (mm along y)");
-  expect(r.nan).toBe("at must be a number (mm along y)");
-  expect(r.zero).toBe("normal must not be [0, 0, 0]");
-  expect(r.point).toBe("origin must be [x, y, z] in mm");
+  expect(r.both).toContain(plane);
+  expect(r.none).toContain(plane);
+  expect(r.axis).toContain(plane);
+  expect(r.at).toContain("at must be a number (mm along y), got undefined");
+  expect(r.nan).toContain('at must be a number (mm along y), got "high"');
+  expect(r.zero).toContain("normal must not be [0, 0, 0]");
+  expect(r.point).toContain("origin must be [x, y, z] in mm, got [0,0]");
 });
 
 test("section picture: PNG, section view put back, Arch mode refused", async () => {
@@ -286,9 +286,9 @@ test("section picture: PNG, section view put back, Arch mode refused", async () 
   expect(r.head).toBe("data:image/png;base64,");
   expect(r.width).toBe(400);
   expect(r.afterPicture).toBeNull();
-  expect(r.badWidth).toBe("width must be a number of pixels between 1 and 8192");
+  expect(r.badWidth).toMatch(/^width must be a number of pixels between 1 and 8192/);
   expect(r.afterBad).toBeNull();
-  expect(r.arch).toMatch(/^section pictures need Beginner or Advanced mode \(now \w+\)$/);
+  expect(r.arch).toMatch(/^section pictures need Beginner or Advanced mode \(now \w+\)/);
   expect(Math.abs(r.archArea - 384)).toBeLessThan(1e-3);
 });
 
@@ -383,8 +383,8 @@ test("wire-only STEP bodies give plain answers", async () => {
   expect(r.inspect.bodies[0]).toMatchObject({ volume: 0, area: 0, bbox: null, error: null });
   expect(r.inspect.bodies[0].note).toMatch(/wire-only/);
   expect(r.check.issues.find((x) => x.code === "wire_only").text).toMatch(/^Ring is a wire-only shape/);
-  expect(r.measure).toMatch(/^Ring is a wire-only shape/);
-  expect(r.point).toMatch(/^Ring is a wire-only shape/);
+  expect(r.measure).toMatch(/^"Ring" is a wire-only shape/);
+  expect(r.point).toMatch(/^"Ring" is a wire-only shape/);
 });
 
 test("section picture: always from Home, and the user's camera comes back", async () => {

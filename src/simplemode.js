@@ -410,7 +410,7 @@ html[data-face="simple"] #app[data-mode="beginner"] .simple-panel:not([hidden]) 
 .menu .face-look button[aria-checked="true"] { background: #ffd66b; border-color: #ffd66b; color: #1b1407; }
 .menu .face-look button[aria-checked="true"]::after { content: none; }
 :root[data-ui="contrast"] .menu .face-look button[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #000; }
-html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-autosave, #btn-chat, #btn-about, #btn-keys, #btn-full, #btn-projects, #mode-chisel, #mode-arch) { display: none; }
+html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) :is(#btn-autosave, #btn-chat, #btn-about, #btn-keys, #btn-full, #mode-chisel, #mode-arch) { display: none; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .face-more-wrap { display: block; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: flex; }
 html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-undo, #btn-redo) { display: inline-flex; }
@@ -426,6 +426,11 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 @media (min-width: 861px) {
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar #btn-save .lbl { display: inline; }
 }
+@media (min-width: 1280px) {
+  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar #btn-projects .lbl { display: inline; }
+}
+/* Your designs joined the Simple bar: Customize and About show only their icons below 1100 px so the bar stays one row at 1024 px, and a 375 px phone drops the logo for the room */
+@media (min-width: 761px) and (max-width: 1099px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) .lbl { display: none; } }
 @media (max-width: 1100px) { .faceswitch button { padding: 4px 9px; font-size: 12px; } }
 html:not([data-face="simple"]) .faceswitch button, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .faceswitch button { padding: 4px 9px; font-size: 12px; }
 @media (min-width: 561px) and (max-width: 1480px) { html:not([data-face="simple"]) .topbar, html[data-face="simple"] #app:is([data-mode="chisel"], [data-mode="arch"]) .topbar { gap: 4px; } }
@@ -458,6 +463,8 @@ html[data-face="simple"] #menu-theme :is([data-layout], .layout-note) { display:
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) { min-width: 44px; min-height: 44px; justify-content: center; }
 }
+@media (max-width: 400px), (min-width: 641px) and (max-width: 920px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar .brand { display: none !important; } } /* and from 641 to 920 px, where Designs would push Print / Export onto a second row (a 768 px tablet) */
+@media (min-width: 641px) and (max-width: 920px) { html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar { padding-left: 6px; padding-right: 6px; } }
 .try-simple { position: absolute; left: 14px; bottom: 56px; top: auto; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
 .try-simple p { margin: 0 0 10px; }
 .try-simple button { font: 600 13px/1 var(--f-ui); cursor: pointer; border: 0; border-radius: 6px; padding: 7px 10px; }
@@ -492,6 +499,8 @@ export function initSimpleMode(app) {
   wrap.innerHTML = '<button class="tb-btn" id="face-more" title="About this build" aria-label="About this build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg><span class="lbl">About</span></button>';
   $("btn-export").closest(".menu-wrap").before(wrap);
   const themeWrap = $("btn-theme").closest(".menu-wrap"), themePlace = document.createComment("Customize position"); themeWrap.before(themePlace);
+  const projectsBtn = $("btn-projects"), projectsPlace = document.createComment("Designs position"); projectsBtn.before(projectsPlace);
+  projectsBtn.setAttribute("aria-label", "Your designs"); // the label is hidden on narrower bars, so the name must not depend on it
   const themeLabel = document.createElement("span"); themeLabel.className = "lbl"; themeLabel.textContent = "Customize"; $("btn-theme").append(themeLabel);
   $("menu-theme").querySelector(".menu-head").insertAdjacentHTML("afterend", `<div class="face-look" role="group" aria-label="Look"><span class="menu-head">Look</span><button id="face-menu-simple" role="menuitemradio" aria-checked="false">Simple</button><button id="face-menu-original" role="menuitemradio" aria-checked="false">Original</button></div>`);
   // Original below 1440 px: the Simple | Original pill takes the room of Autosave and Keyboard shortcuts, which move into Customize
@@ -519,7 +528,7 @@ export function initSimpleMode(app) {
   function dismissCard() { if (!card) return; card.remove(); card = null; try { localStorage.setItem("jumpstart.simple.card", "seen"); } catch (e) { /* storage may be unavailable */ } }
   function apply(name) {
     if (name !== "simple" && app.beginner?.moveArmed) app.beginner.armMove(false); // Move is Simple's: Original never stays armed
-    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); if (face === "simple") plate.sync(); plate.layout(); plate.schedule(); // sync: the rail last mirrored the tools while Simple was showing, so its buttons were stale after a switch from Original
+    face = name; document.documentElement.dataset.face = face; if (name === "simple") { $("btn-tutorials").after(themeWrap); $("btn-save").after(projectsBtn); } else { themePlace.after(themeWrap); projectsPlace.after(projectsBtn); } collapse.activate(face === "simple"); if (face === "simple") plate.sync(); plate.layout(); plate.schedule(); // sync: the rail last mirrored the tools while Simple was showing, so its buttons were stale after a switch from Original
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
@@ -552,7 +561,7 @@ export function initSimpleMode(app) {
   }
   store.on(() => { if (card && store.doc.bodies.length) dismissCard(); });
   // A lesson whose steps point at top-bar buttons that Simple moved into More runs in Original, and Simple comes back when it ends (tutorials.js calls these)
-  const MOVED = ["btn-autosave", "btn-chat", "btn-about", "btn-keys", "btn-full", "btn-projects", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
+  const MOVED = ["btn-autosave", "btn-chat", "btn-about", "btn-keys", "btn-full", "mode-chisel", "mode-arch"], MOVED_NARROW = ["btn-tutorials", "mode-beginner", "mode-advanced"];
   const narrow = matchMedia("(max-width: 640px)");
   const moved = (q) => (narrow.matches ? [...MOVED, ...MOVED_NARROW] : MOVED).some((id) => new RegExp("#" + id + "(?![\\w-])").test(q));
   const needsOriginal = (tut) => tut.steps.some((st) => { const parts = ((st.show && st.show.sel) || "").split(",").map((q) => q.trim()).filter(Boolean); return parts.length && parts.every(moved); });

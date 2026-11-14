@@ -1,3 +1,4 @@
+import { show } from "./teach.js";
 // jumpstart-3d: compression springs. One dialog (and JS3D.spring) that makes a round-wire coil spring from the wire thickness, the
 // outside diameter, the free length and the number of turns, with open ends or ends cut flat. The result is the app's own Coil
 // shape (a circular section swept along a helix, sitting inside the outside diameter), so it shows in the timeline and undoes in one
@@ -26,22 +27,22 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 export function resolve(spec) {
   spec = spec ?? {};
   const w = spec.wire == null ? 2 : spec.wire;
-  if (!inRange(w, 0.4, 10)) throw new Error("wire must be a number from 0.4 to 10 (mm)");
+  if (!inRange(w, 0.4, 10)) throw new Error(("wire must be a number from 0.4 to 10 (mm)") + `, got ${show(w)}. Example: JS3D.spring({}).`);
   const O = spec.outside == null ? 20 : spec.outside;
-  if (!inRange(O, 2, 200)) throw new Error("outside must be a number from 2 to 200 (mm)");
-  if (O < 5 * w - 1e-9) throw new Error(`outside must be at least five wire diameters (${r3(5 * w)} mm for this wire)`);
+  if (!inRange(O, 2, 200)) throw new Error(("outside must be a number from 2 to 200 (mm)") + `, got ${show(O)}. Example: JS3D.spring({}).`);
+  if (O < 5 * w - 1e-9) throw new Error((`outside must be at least five wire diameters (${r3(5 * w)} mm for this wire)`) + `, got ${show(O)}. Example: JS3D.spring({}).`);
   const L = spec.freeLength == null ? 30 : spec.freeLength;
-  if (!inRange(L, 1, 300)) throw new Error("freeLength must be a number from 1 to 300 (mm)");
+  if (!inRange(L, 1, 300)) throw new Error(("freeLength must be a number from 1 to 300 (mm)") + `, got ${show(L)}. Example: JS3D.spring({}).`);
   const N = spec.turns == null ? 5 : spec.turns;
-  if (!inRange(N, 2, MAX_TURNS) || Math.abs(N * 2 - Math.round(N * 2)) > 1e-9) throw new Error(`turns must be a number from 2 to ${MAX_TURNS}, in steps of a half`);
+  if (!inRange(N, 2, MAX_TURNS) || Math.abs(N * 2 - Math.round(N * 2)) > 1e-9) throw new Error((`turns must be a number from 2 to ${MAX_TURNS}, in steps of a half`) + `, got ${show(N)}. Example: JS3D.spring({}).`);
   const hand = spec.hand == null ? "right" : spec.hand;
-  if (hand !== "right" && hand !== "left") throw new Error('hand must be "right" or "left"');
+  if (hand !== "right" && hand !== "left") throw new Error(('hand must be "right" or "left"') + `, got ${show(hand)}. Example: JS3D.spring({}).`);
   const ends = spec.ends == null ? "open" : spec.ends;
-  if (ends !== "open" && ends !== "flat") throw new Error('ends must be "open" or "flat"');
+  if (ends !== "open" && ends !== "flat") throw new Error(('ends must be "open" or "flat"') + `, got ${show(ends)}. Example: JS3D.spring({}).`);
   const color = spec.color == null ? "#7d8a96" : spec.color;
-  if (typeof color !== "string" || !COLOR.test(color)) throw new Error('color must look like "#rrggbb"');
+  if (typeof color !== "string" || !COLOR.test(color)) throw new Error(('color must look like "#rrggbb"') + `, got ${show(color)}. Example: JS3D.spring({}).`);
   const at = spec.at == null ? [0, 0, 0] : spec.at;
-  if (!vec3(at)) throw new Error("at must be [x, y, z] in mm");
+  if (!vec3(at)) throw new Error(("at must be [x, y, z] in mm") + `, got ${show(at)}. Example: JS3D.spring({}).`);
   const given = spec.name == null ? "" : String(spec.name).trim();
   const name = given || `Spring ${r3(O)} x ${r3(L)}`;
   const R = (O - w) / 2, C = 2 * Math.PI * R;

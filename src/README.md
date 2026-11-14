@@ -11,6 +11,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | File | What it does |
 |---|---|
 | `apicontract.js` | Versioned scripting API call and property manifest |
+| `teach.js` | Short, safe values for API error messages |
+| `kernelhints.js` | Suggestions for recognized geometry-engine errors |
+| `embed.js` | Cross-origin temporary-design message channel |
 | `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it); it drops layers no piece uses and throws an Error saying why when the used layers would need more than about 300 MB. `layerscape.js` keeps a refused or unreadable diorama in the design until the user agrees to replace it |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
@@ -48,14 +51,14 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `combinesplit.js` | Group and Combine leave one body per new piece, and say so when a cut removed nothing (`cutRemovedNothing`) |
 | `pieces.js` | What counts as a near-empty film among the pieces of a cut (thickness test) |
 | `directedit.js` | Direct edit: a finished sketch's shape lights up under the pointer; a click opens Extrude on it, a drag pulls it up or down (a shape drawn on a body, pulled down, cuts it); the idle handlers of both modes call it, the Extrude panel does the work |
-| `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
+| `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot (its gizmo moves by `app.moveStep()`), status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `simpleabout.js` | Community About dialog, update check, help and support links |
 | `phonefit.js` | Long menus scroll inside the window with a fade while more items are below; 44 px touch targets on touch screens for Save, Undo, Redo, view buttons, view-cube arrows and status-bar controls |
 | `phonesheet.js` | Simple’s selected-shape sheet on a phone opens collapsed with the name and size; tap or pull to open it, sized to keep the shape in view |
 | `a11ynames.js` | Icon-only buttons or controls with a tooltip but no name get the tooltip as an aria-label, at start and when controls are added later |
-| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
-| `simpleadvanced.js` | Simple Advanced rail, sketch rail, More and workspaces; Browser and Timeline panel, section controls and phone sheet |
+| `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar with Customize and Your designs, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
+| `simpleadvanced.js` | Simple Advanced rail, sketch rail, More and workspaces; Browser and Timeline panel, section controls and phone sheet; in Simple, a lesson's panel moves below a studio window's toolbar (the Lathe's) while one is open |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
 | `drawingprojection.js` | Bodies as DXF drawing, the geometry (runs in the worker and in Node): OpenCascade's exact hidden-line removal (`HLRBRep_Algo`) per view (Top, Front, Right), keeping visible sharp edges and silhouettes; lines, circles and arcs stay true, other curves become polylines (0.01 mm); `cleanCurves` (run on the page) drops duplicates and merges touching collinear lines; over `FACE_LIMIT` (1500) faces a drawing is refused before it starts. `kernel.js` `drawingViews` and a `drawing` worker message (with a `drawingView` progress message per view) are marked blocks |
@@ -72,6 +75,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations; `curvedBottom` (a round bottom resting on the plate: a sphere, a cylinder on its side, a cone tip down) |
 | `placebeside.js` | Where a clicked shape goes when its drop spot is taken: beside the rightmost shape, 5 mm apart, on the plate; pure |
+| `facesnap.js`, `facedrag.js` | Face snap: a Beginner drag lands on the face under the pointer (top: rests on it; side: turns to stand out of it). `facesnap.js` is the pure maths (no DOM, no three.js); `facedrag.js` is the glue the move drag calls |
 | `escapekey.js` | Escape closes the dialog in front, or an open menu or Simple panel, and nothing else (Grok review, build 36); full-window studios keep their own Escape |
 | `codecad.js` | Code CAD dialog and `JS3D.codeCad`: replicad code builds one solid in a temporary worker and is added as a STEP body that keeps its recipe as inert text; runs again only on Update |
 | `codecad-worker.js` | Code CAD, worker side: locks the temporary worker down (no network, storage or extra scripts), builds one closed solid and proves its STEP reads back; not a full sandbox |

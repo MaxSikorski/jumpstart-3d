@@ -68,12 +68,12 @@ test("plane bases", () => {
   close(Math.hypot(...u), 1); close(Math.hypot(...v), 1);
   close(u[0] * v[0] + u[1] * v[1] + u[2] * v[2], 0);
   closeAll([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], n);
-  assert.throws(() => G.planeBasis({ origin: [0, 0, 0], normal: [0, 0, 0] }), { message: "normal must not be [0, 0, 0]" });
-  assert.throws(() => G.planeBasis({ axis: "z" }), { message: "at must be a number (mm along z)" });
-  const both = 'give axis ("x", "y" or "z") and at, or origin [x, y, z] and normal [x, y, z]';
-  assert.throws(() => G.planeBasis({}), { message: both });
-  assert.throws(() => G.planeBasis({ axis: "q", at: 1 }), { message: both });
-  assert.throws(() => G.planeBasis({ axis: "z", at: 1, origin: [0, 0, 0] }), { message: both });
+  assert.throws(() => G.planeBasis({ origin: [0, 0, 0], normal: [0, 0, 0] }), { message: "normal must not be [0, 0, 0]. Try [0, 0, 1]." });
+  assert.throws(() => G.planeBasis({ axis: "z" }), { message: 'at must be a number (mm along z), got undefined. Example: { axis: "z", at: 5 }.' });
+  const both = (p) => `give axis ("x", "y" or "z") and at, or origin [x, y, z] and normal [x, y, z], got ${JSON.stringify(p)}. Example: { axis: "z", at: 5 }.`;
+  assert.throws(() => G.planeBasis({}), { message: both({}) });
+  assert.throws(() => G.planeBasis({ axis: "q", at: 1 }), { message: both({ axis: "q", at: 1 }) });
+  assert.throws(() => G.planeBasis({ axis: "z", at: 1, origin: [0, 0, 0] }), { message: both({ axis: "z", at: 1, origin: [0, 0, 0] }) });
 });
 
 test("section of a tube: outer loop, hole loop, net area", () => {
@@ -211,4 +211,13 @@ test("section: joins seams across rounded bucket boundaries", () => {
   assert.equal(cut.loops.length, 1);
   assert.equal(cut.loops[0].closed, true);
   close(cut.area, 99.995, 0.0002);
+});
+
+test('plane diagnostics do not format successful input and give usable examples', () => {
+  let calls = 0;
+  const plane = { axis: 'z', at: 5, toJSON() { calls++; this.at = 99; } };
+  assert.deepEqual(G.planeBasis(plane).origin, [0, 0, 5]);
+  assert.equal(calls, 0);
+  assert.throws(() => G.planeBasis({ origin: [0, 0], normal: [0, 0, 1] }), /Example: \[0, 0, 0\]/);
+  assert.throws(() => G.planeBasis({ origin: [0, 0, 0], normal: [0, 0] }), /Example: \[0, 0, 1\]/);
 });
