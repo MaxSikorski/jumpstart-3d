@@ -61,8 +61,8 @@ test("selected shape panel keeps the inspector and proxies", async ({ page }, in
   await waitIdle(page);
   const panel = page.locator("#simple-panel");
   await expect(panel).toBeVisible();
+  if (info.project.name === "mobile") await page.click("#simple-sheet-handle"); // a phone opens the sheet collapsed to its handle
   await expect(panel.locator("#inspector")).toBeVisible();
-  if (info.project.name === "mobile") await page.click("#simple-sheet-handle");
   await expectVerdict(panel.locator("#simple-ready"), "ready");
   for (const id of ["drop", "dup", "mirror", "shell", "fillet", "del"]) await expect(panel.locator(`[data-for="bb-${id}"]`)).toHaveCount(1);
   await page.locator("#insp-w").fill("30"); await page.locator("#insp-w").press("Enter"); await waitIdle(page);

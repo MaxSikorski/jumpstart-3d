@@ -203,7 +203,9 @@ const offlineStillWorks = async (context, page, server) => {
   expect(await meshes(page)).toBe(1);
 };
 
+// quarantined: the offline reload ends in "WebKit encountered an internal error" under Playwright on Linux, as in the second-visit test above (run 43450984696)
 test("an upgrade from the previous service worker installs the fonts and works offline", async ({ browser }, info) => {
+  quarantine(info, ["site-webkit"], "WebKit's internal error on reload with a service worker");
   test.skip(buildOf(info) !== "site", NOT_SINGLE);
   test.setTimeout(240_000);
   const live = mkdtempSync(join(tmpdir(), "js3d-live-"));
@@ -233,7 +235,9 @@ test("an upgrade from the previous service worker installs the fonts and works o
   }
 });
 
+// quarantined: the offline reload ends in "WebKit encountered an internal error" under Playwright on Linux, as in the second-visit test above (run 43450984696)
 test("one font failing to download keeps the previous install working offline", async ({ browser }, info) => {
+  quarantine(info, ["site-webkit"], "WebKit's internal error on reload with a service worker");
   test.skip(buildOf(info) !== "site", NOT_SINGLE);
   test.setTimeout(240_000);
   const live = mkdtempSync(join(tmpdir(), "js3d-live-"));
