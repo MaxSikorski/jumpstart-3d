@@ -2,7 +2,48 @@
 // Tool actions without a durable design check are ticked by hand, like the base lessons.
 import { nameStep, saveStep, exportStep, FIELDS, TABS } from "./tutorial_data.js";
 
+// c-first-print: a cut counts only when one hole shape in the group has its middle inside a solid shape's outline and reaches from
+// that solid's bottom to its top (a pocket with a floor is not "a hole all the way through"). Boxes of plain shapes, in the group's own frame.
+const span = (c) => {
+  const p = c.node.p || {}, m = c.m || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const x of [-p.w / 2, p.w / 2]) for (const y of [-p.d / 2, p.d / 2]) for (const z of [0, p.h]) for (let k = 0; k < 3; k++) {
+    const v = m[k] * x + m[4 + k] * y + m[8 + k] * z + m[12 + k];
+    lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v);
+  }
+  return { hole: !!c.hole, lo, hi };
+};
+const goesThrough = (g) => {
+  const boxes = (g.node.children || []).filter((c) => c.node.t === "prim").map(span);
+  return boxes.some((s) => !s.hole && boxes.some((h) => h.hole && h.lo[2] <= s.lo[2] + 0.01 && h.hi[2] >= s.hi[2] - 0.01
+    && [0, 1].every((k) => { const mid = (h.lo[k] + h.hi[k]) / 2; return mid > s.lo[k] + 0.01 && mid < s.hi[k] - 0.01; })));
+};
+
 export const COMMUNITY_TUTORIALS = [
+  // The first lesson in the Beginner list (first: true, sorted first in tutorials.js): a printable part in about three minutes,
+  // in Simple (left rail and bottom strip) and in Original Beginner, without the Advanced ribbon (Grok review, larger item 8).
+  {
+    id: "c-first-print", mode: "beginner", level: "Easy", minutes: "3-5", first: true, item: "First Print",
+    title: "Your first print: a box with a hole",
+    blurb: "The quickest start: add a box, cut a hole through it and export it as an STL file for printing.",
+    learn: ["Box", "Holes", "Group", "Export STL"],
+    steps: [
+      nameStep("First Print", "Lopez, Maria, First Print"),
+      { title: "Add a box", tool: "Box", icon: "box", show: { tile: "box" },
+        how: ["Click <b>Objects</b> in the strip at the bottom, then the <b>Box</b> tile.", "A 20 mm box appears on the plate."],
+        when: "Most prints start from simple shapes. A box is the easiest one.",
+        check: (t) => t.prim("box").length > 0 },
+      { title: "Cut a hole through it", tool: "Holes → Cylinder, then Group", icon: "holeToggle", show: { tile: "cylinder", hole: true },
+        how: ["Click <b>Holes</b> in the strip at the bottom, then the <b>Cylinder</b> tile. A see-through cylinder appears in the same spot as the box.",
+          FIELDS, "Set Width <b>8</b>, Depth <b>8</b> and Height <b>30</b>. Under Position, set Z (bottom) to <b>-5</b>. The cylinder now sticks out above and below the box.",
+          "Click an empty spot in the 3D view, then press <b>Ctrl+A</b> to select both shapes (or drag a rectangle around them).",
+          "On a touch screen: tap an empty spot, turn on <b>Multi-select</b> (in Simple it is under <b>More</b>), tap the cylinder and then a corner of the box, and turn Multi-select off.",
+          "Click <b>Group</b>. The box now has a round hole all the way through."],
+        when: "A see-through shape is a hole. Group a hole with a solid and the hole is cut out of the solid.",
+        check: (t) => t.groups().some((g) => t.cuts(g) && goesThrough(g)),
+        strict: "The hole does not go all the way through the box yet: undo, put the cylinder over the box with Height 30 and Z (bottom) -5, then Group again." },
+      saveStep(), exportStep(),
+    ],
+  },
   {
     id: "c-overhang", mode: "beginner", level: "Easy", minutes: "6-8", minWidth: 421, /* phone tutorials: below this width a button this lesson points at is hidden; the chooser and Show me say so */ item: "Overhang Test",
     title: "Will my printer manage it? (plate and overhangs)",
@@ -906,17 +947,17 @@ export const COMMUNITY_TUTORIALS = [
   {
     id: "c4-top-bar", mode: "beginner", level: "Easy", minutes: "7-9", minWidth: 801, item: "Tour Block",
     title: "Tour the top bar",
-    blurb: "Find the buttons across the top: autosave, your saved designs, the three modes, help, full screen and the tutorials list.",
-    learn: ["Autosave", "Your designs", "Modes", "Help", "Full screen", "Tutorials"],
+    blurb: "Find the buttons across the top: crash recovery, your saved designs, the three modes, help, full screen and the tutorials list.",
+    learn: ["Crash recovery", "Your designs", "Modes", "Help", "Full screen", "Tutorials"],
     steps: [
       nameStep("Tour Block", "Lopez, Maria, Tour Block"),
       { title: "Make something to keep", tool: "Box", icon: "box", show: { tile: "box" },
         how: ["Click the <b>Box</b> tile.", FIELDS, "Set Width 20, Depth 20 and Height 10 mm."],
-        when: "A small block gives the autosave and your designs list something to hold.",
+        when: "A small block gives crash recovery and your designs list something to hold.",
         check: (t) => t.prim("box").some((b) => t.near(b.node.p.w, 20, 1) && t.near(b.node.p.h, 10, 1)) },
-      { title: "Turn on autosave", tool: "Autosave", icon: "finish", show: { sel: "#btn-autosave, #cz-autosave", via: "#btn-theme" },
-        how: ["Click <b>Autosave: Off</b> in the top bar (on a smaller screen it is in <b>Customize</b>, under Workspace). It changes to <b>On</b>. If it already says On, leave it."],
-        when: "Autosave keeps backup copies every few moments and offers them back if the app closes before you save.",
+      { title: "Turn on crash recovery", tool: "Crash recovery", icon: "finish", show: { sel: "#btn-autosave, #cz-autosave", via: "#btn-theme" },
+        how: ["Click <b>Recovery: Off</b> in the top bar (on a smaller screen it is in <b>Customize</b>, under Workspace). It changes to <b>On</b>. If it already says On, leave it."],
+        when: "Your design is already saved in this browser after every change. Crash recovery also keeps extra copies every few moments and offers them back if the app closes unexpectedly.",
         tip: "Backups are separate from your own Save versions." },
       { title: "Open your designs", tool: "Your designs", icon: "import", show: { sel: "#btn-projects" },
         how: ["Click <b>Designs</b> (the four squares) in the top bar.", "The list shows saved designs, autosaves and ways to open or import files. Close it when you have looked."],

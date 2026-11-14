@@ -66,6 +66,10 @@ const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (M
 
 test("Advanced: distance zero has a visible handle beyond the profile", async () => {
   await open();
+  // a shape Extrude picks by itself starts 10 mm up (grok-extrude.spec): type 0 for the zero-distance handle
+  await page.locator("#ex-dist").fill("0");
+  await page.locator("#ex-dist").press("Tab");
+  await settle();
   expect(Number(await page.locator("#ex-dist").inputValue())).toBe(0);
   const a = await arrow();
   expect(distance(a.head, a.origin)).toBeGreaterThanOrEqual(60);
