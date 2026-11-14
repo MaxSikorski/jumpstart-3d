@@ -19,7 +19,10 @@ test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
 const cur = () => page.evaluate(() => window.__app.tutorials.current);
 const doneHas = async (i) => (await cur())?.done.includes(i);
 const ticks = (i, what) => expect.poll(() => doneHas(i), { message: `step ${i + 1} (${what}) ticks itself off`, timeout: 8000 }).toBe(true);
-const next = () => page.click("#tut-next");
+const next = async () => { // a lesson panel that Show me made small opens again first, as a student does (one click on its line)
+  if (await page.locator("#tut-panel .tut-mini-line").count()) await page.click("#tut-panel .tut-mini-line");
+  await page.click("#tut-next");
+};
 
 async function startLesson(id, mode) {
   await page.evaluate(() => window.__app.tutorials.close());
