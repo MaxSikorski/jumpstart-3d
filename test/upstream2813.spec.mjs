@@ -254,7 +254,7 @@ test("an extra Text font (Bangers) builds a body that differs from the Rounded s
   await expect(page.locator("#insp-font")).toHaveValue("bangers");
   await run(() => window.__app.select([]));
   // the Name plate stays with the three classic fonts, in its dialog and through the page API, extra fonts loaded or not
-  expect(await page.evaluate(() => { try { JS3D.namePlate({ text: "A", font: "bangers" }); return null; } catch (e) { return e.message; } })).toBe('font must be "sans", "serif" or "mono"');
+  expect(await page.evaluate(() => { try { JS3D.namePlate({ text: "A", font: "bangers" }); return null; } catch (e) { return e.message; } })).toMatch(/^font must be "sans", "serif" or "mono", got "bangers"\./); // the first words stay; since API 1.13.1 the message also names the wrong font and a call that works
   await run(() => window.__app.advanced.namePlate());
   await expect(page.locator("#np-font option")).toHaveCount(3);
   await page.click('#cmd button[aria-label="Cancel"]');
