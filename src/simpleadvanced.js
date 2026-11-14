@@ -1,3 +1,4 @@
+import { embedActive } from "./embedmode.js";
 import { ICON } from "./icons.js";
 import { store } from "./store.js";
 
@@ -10,11 +11,12 @@ export function initSimpleAdvanced(app, plate, collapse) {
   work.append(panel);
   const sheet = $('sap-sheet'), handle = $('simple-collapse-panel');
   let sections = { browser: true, timeline: true };
-  try { const saved = JSON.parse(localStorage.getItem('jumpstart.simple.adv.sections')); for (const key of Object.keys(sections)) if (typeof saved?.[key] === 'boolean') sections[key] = saved[key]; } catch (e) { /* storage may be unavailable */ }
+  const remember = !embedActive(); // a framed app is a temporary workspace: it keeps nothing
+  if (remember) try { const saved = JSON.parse(localStorage.getItem('jumpstart.simple.adv.sections')); for (const key of Object.keys(sections)) if (typeof saved?.[key] === 'boolean') sections[key] = saved[key]; } catch (e) { /* storage may be unavailable */ }
   function setSection(key, open) {
     sections[key] = open; const section = $('sap-' + key), head = section.querySelector('.sap-head');
     head.setAttribute('aria-expanded', String(open)); head.querySelector('.sap-arrow').textContent = open ? '▾' : '▸'; section.querySelector('.sap-slot').hidden = !open;
-    try { localStorage.setItem('jumpstart.simple.adv.sections', JSON.stringify(sections)); } catch (e) { /* storage may be unavailable */ }
+    if (remember) try { localStorage.setItem('jumpstart.simple.adv.sections', JSON.stringify(sections)); } catch (e) { /* storage may be unavailable */ }
   }
   for (const key of Object.keys(sections)) { setSection(key, sections[key]); $('sap-' + key).querySelector('.sap-head').onclick = () => setSection(key, !sections[key]); }
   function setSheet(open) { panel.classList.toggle('expanded', open); sheet.setAttribute('aria-expanded', String(open)); sheet.setAttribute('aria-label', open ? 'Close Browser and Timeline' : 'Show Browser and Timeline'); }

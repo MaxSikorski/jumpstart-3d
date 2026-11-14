@@ -277,15 +277,15 @@ test("Simple's More reaches Layerscape, Rib, Keyhole slot, Jig Maker, Helmet Mak
   try {
     await page.click("#sr-more");
     const more = page.locator("#simple-more");
-    for (const label of ["Layerscape", "Rib", "Keyhole slot", "Jig Maker", "Helmet Maker", "Colour lithophane", "Laser cut file"]) await expect(more.locator("button[data-for]", { hasText: label }).first()).toBeVisible();
+    for (const label of ["Layerscape", "Rib", "Keyhole slot", "Jig Maker", "Helmet Maker", "Colour lithophane", "Laser cut file"]) await expect(more.locator("button[data-for]:visible", { hasText: label }).first()).toBeVisible(); // :visible: More also holds hidden Advanced-only copies (Simple step 4)
     await page.fill("#simple-find", "jig");
     await expect(more.locator("button[data-for]:visible")).toHaveText(["Jig Maker"]);
-    await more.locator("button[data-for]", { hasText: "Jig Maker" }).click();
+    await more.locator("button[data-for]:visible", { hasText: "Jig Maker" }).click();
     await expect.poll(() => run(() => window.__app.command?.title || "")).toBe("Jig Maker");
     await run(() => window.__app.advanced.cancel());
     await page.click("#sr-more"); await page.fill("#simple-find", "");
     await run(() => window.__app.select(["pl"]));
-    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), more.locator("button[data-for]", { hasText: "Laser cut file" }).click()]);
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), more.locator("button[data-for]:visible", { hasText: "Laser cut file" }).click()]);
     expect(dl.suggestedFilename()).toMatch(/laser\.svg$/);
   } finally {
     await run(() => window.__app.setFace("original", true));
