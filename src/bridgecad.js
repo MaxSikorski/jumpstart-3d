@@ -59,12 +59,12 @@ export function initBridgeCad(app, { edit, need, ready }) {
   async function target(id, solid = true) {
     edit();
     const body = need(id);
-    if (solid && body.hole) throw new Error(`${body.name} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
+    if (solid && body.hole) throw new Error(`${show(body.name)} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
     await ready();
     const failure = app.scene.errors.get(id);
-    if (failure) throw new Error(`${body.name} has a build error: ${failure}. Check the body in JS3D.list() and fix its geometry.`);
+    if (failure) throw new Error(`${show(body.name)} has a build error: ${failure}. Check the body in JS3D.list() and fix its geometry.`);
     const base = baseOf(app, id);
-    if (!base) throw new Error(body.hidden ? `${body.name} is hidden and has not been built; show it first. Then retry the call.` : `${body.name} could not be built. Check its geometry in JS3D.list().`);
+    if (!base) throw new Error(body.hidden ? `${show(body.name)} is hidden and has not been built; show it first. Then retry the call.` : `${show(body.name)} could not be built. Check its geometry in JS3D.list().`);
     return base;
   }
 
@@ -104,17 +104,17 @@ export function initBridgeCad(app, { edit, need, ready }) {
   // the indices a selector (text, an index, a list of indices) gives; throws when none match
   function pick(topo, kind, sel) {
     const text = typeof sel === "string" ? sel : Number.isInteger(sel) ? `${kind} ${sel}` : Array.isArray(sel) && sel.length && sel.every(Number.isInteger) ? sel.map((i) => `${kind} ${i}`).join(" or ") : null;
-    if (text === null) throw new Error(`${kind}s must be a selector such as ${kind === "face" ? '"top"' : '"edges of top"'}, a ${kind} index or a list of indices, got ${show(sel)}. Call JS3D.${kind === "face" ? "faces" : "edges"}(id) to inspect them.`);
+    if (text === null) throw new Error(`${kind}s must be a selector such as ${kind === "face" ? '"top"' : '"edges of top"'}, ${kind === "edge" ? "an" : "a"} ${kind} index or a list of indices, got ${show(sel)}. Call JS3D.${kind === "face" ? "faces" : "edges"}(id) to inspect them.`);
     const found = selectItems(parseSelector(text, kind), topo, kind);
-    if (!found.length) throw new Error(`no ${kind}s match ${show(sel)} on ${topo.name}. Call JS3D.${kind === "face" ? "faces" : "edges"}(id) to inspect them.`);
+    if (!found.length) throw new Error(`no ${kind}s match ${show(sel)} on ${show(topo.name)}. Call JS3D.${kind === "face" ? "faces" : "edges"}(id) to inspect them.`);
     return found;
   }
   const faceView = ({ edges, ...f }) => rounded({ ...f, edgeCount: edges.length });
   const one = (topo, sel, why) => {
     const [i, ...rest] = pick(topo, "face", sel);
-    if (rest.length) throw new Error(`face ${show(sel)} on ${topo.name} matches ${rest.length + 1} faces; ${why} needs exactly one. Use an index from JS3D.faces(id).`);
+    if (rest.length) throw new Error(`face ${show(sel)} on ${show(topo.name)} matches ${rest.length + 1} faces; ${why} needs exactly one. Use an index from JS3D.faces(id).`);
     const f = topo.faces[i];
-    if (f.type !== "plane" || !f.normal) throw new Error(`face ${show(sel)} on ${topo.name} is not flat (it is a ${f.type === "other" ? "curved surface" : f.type}). Choose a plane from JS3D.faces(id).`);
+    if (f.type !== "plane" || !f.normal) throw new Error(`face ${show(sel)} on ${show(topo.name)} is not flat (it is a ${f.type === "other" ? "curved surface" : f.type}). Choose a plane from JS3D.faces(id).`);
     return i;
   };
 
@@ -183,9 +183,9 @@ export function initBridgeCad(app, { edit, need, ready }) {
     const sk = typeof sid === "string" && findSketch(store.doc, sid);
     if (!sk) throw new Error(`no sketch ${show(sid)}. Use the sketch id returned by JS3D.sketch().`);
     const target_ = op === "new" ? null : need(body);
-    if (target_ && target_.hole) throw new Error(`${target_.name} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
+    if (target_ && target_.hole) throw new Error(`${show(target_.name)} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
     const regions = regionsFor(sk);
-    if (!regions.length) throw new Error(`${sk.name} has no closed shapes to extrude. Create a sketch with a closed shape.`);
+    if (!regions.length) throw new Error(`${show(sk.name)} has no closed shapes to extrude. Create a sketch with a closed shape.`);
     if (profiles !== undefined && !Array.isArray(profiles)) throw new Error(`profiles must be a list of [x, y] points in the sketch, got ${show(profiles)}. Use points from the JS3D.sketch() result.`);
     const picked = profiles && profiles.length ? pickProfiles(regions, profiles, sk.name) : defaultProfiles(regions);
     return { sk, op, name, body: target_, refs: picked.map((r) => ({ key: r.key, pt: r.pt })) };
@@ -229,7 +229,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
       if (up > 1e-6 && down > 1e-6) { mode = "two"; dist = { v: round3(up + 1) }; dist2 = { v: round3(down + 1) }; }
       else if (down > 1e-6) dist = { v: -round3(down + 1) };
       else if (up > 1e-6) dist = { v: round3(up + 1) };
-      else throw new Error(`${s.body.name} does not reach the sketch plane. Place the sketch on or through the body.`);
+      else throw new Error(`${show(s.body.name)} does not reach the sketch plane. Place the sketch on or through the body.`);
     } else {
       dist = quantity(o.dist, "dist", ["a number of mm, not 0, or an expression", (v) => Math.abs(v) > 1e-6]);
     }
@@ -250,10 +250,10 @@ export function initBridgeCad(app, { edit, need, ready }) {
       stored = axis.toUpperCase();
       if (Math.abs(n.dot(new THREE.Vector3(...AXES[axis.toLowerCase()]))) >= 1e-6) {
         const ok = Object.keys(AXES).filter((k) => Math.abs(n.dot(new THREE.Vector3(...AXES[k]))) < 1e-6).map((k) => k.toUpperCase());
-        throw new Error(`axis ${show(axis)} is not in the plane of ${s.sk.name}; ${ok.length ? "use " + ok.join(" or ") : "use the id of a line in the sketch"}.`);
+        throw new Error(`axis ${show(axis)} is not in the plane of ${show(s.sk.name)}; ${ok.length ? "use " + ok.join(" or ") : "use the id of a line in the sketch"}.`);
       }
     } else {
-      if (!s.sk.ents.some((e) => e.id === axis && e.t === "line")) throw new Error(`axis ${show(axis)} is not a line of ${s.sk.name}. Use a line id returned by JS3D.sketch().`);
+      if (!s.sk.ents.some((e) => e.id === axis && e.t === "line")) throw new Error(`axis ${show(axis)} is not a line of ${show(s.sk.name)}. Use a line id returned by JS3D.sketch().`);
       stored = axis;
     }
     const angle = o.angle === undefined ? { v: 360 } : quantity(o.angle, "angle", ["more than 0 and at most 360 (degrees)", (v) => v > 0 && v <= 360], true);
@@ -297,15 +297,15 @@ export function initBridgeCad(app, { edit, need, ready }) {
   function pattern(id, o) {
     edit();
     const body = need(id);
-    if (body.hole) throw new Error(`${body.name} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
+    if (body.hole) throw new Error(`${show(body.name)} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
     o = o ?? {};
     const wholeShape = Array.isArray(o.features) && o.features.length === 1 && o.features[0] === "shape";
     if (!Array.isArray(o.features) || !o.features.length || (!wholeShape && !o.features.every((f) => typeof f === "string" && f !== "shape"))) throw new Error(`features must be a list of feature ids, or ["shape"], got ${show(o.features)}. Use a feature id returned by a feature call.`);
     const mods = body.node.mods || [];
     if (!wholeShape) for (const fid of o.features) {
       const m = mods.find((x) => x.id === fid);
-      if (!m) throw new Error(`feature ${show(fid)} is not on ${body.name}. Use a feature id returned by a feature call on this body.`);
-      if (!featOK(m)) throw new Error(`feature ${show(fid)} (a ${m.t}) cannot be patterned; holes, extrude, revolve and sweep cuts or joins, and embossed text can. Choose a supported feature.`);
+      if (!m) throw new Error(`feature ${show(fid)} is not on ${show(body.name)}. Use a feature id returned by a feature call on this body.`);
+      if (!featOK(m)) throw new Error(`feature ${show(fid)} (${/^[aeiou]/i.test(m.t) ? "an" : "a"} ${m.t}) cannot be patterned; holes, extrude, revolve and sweep cuts or joins, and embossed text can. Choose a supported feature.`);
     }
     if (o.type !== "rect" && o.type !== "circle") throw new Error(`type must be "rect" or "circle", got ${show(o.type)}. Choose one of those values.`);
     const circle = o.type === "circle", Bi = M4(body.m).invert(), mirrored = M4(body.m).determinant() < 0;

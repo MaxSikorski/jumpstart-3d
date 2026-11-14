@@ -263,16 +263,16 @@ test("editing a part from the dialog keeps the print offset the Thread print off
 
 test("JS3D.fastener refuses bad input with plain messages and adds nothing", async () => {
   await fresh();
-  expect(await failure(() => JS3D.fastener(null))).toBe('type must be "bolt", "nut", "rod" or "cutter"');
-  expect(await failure(() => JS3D.fastener({ type: "screw", size: "M8", length: 20 }))).toBe('type must be "bolt", "nut", "rod" or "cutter"');
-  expect(await failure(() => JS3D.fastener())).toBe('type must be "bolt", "nut", "rod" or "cutter"');
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M7", length: 20 }))).toMatch(/^unknown size "M7"; sizes: M2\.5, M3, M4, .*, 1\/2-13, 1\/2-20$/);
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "#4-40", length: 20 }))).toMatch(/^unknown size "#4-40"/);
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 3 }))).toBe("length must be a number of at least 3.75 mm for M8");
-  expect(await failure(() => JS3D.fastener({ type: "bolt", size: "M8" }))).toBe("length must be a number of at least 3.75 mm for M8");
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: 0.2 }))).toBe("clear must be a number from -1 to 0 (mm)");
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: -2 }))).toBe("clear must be a number from -1 to 0 (mm)");
-  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, left: "yes" }))).toBe("left must be true or false");
+  expect(await failure(() => JS3D.fastener(null))).toContain('type must be "bolt", "nut", "rod" or "cutter"');
+  expect(await failure(() => JS3D.fastener({ type: "screw", size: "M8", length: 20 }))).toContain('type must be "bolt", "nut", "rod" or "cutter"');
+  expect(await failure(() => JS3D.fastener())).toContain('type must be "bolt", "nut", "rod" or "cutter"');
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M7", length: 20 }))).toMatch(/^unknown size, got "M7"; sizes: M2\.5, M3, M4, .*, 1\/2-13, 1\/2-20/);
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "#4-40", length: 20 }))).toMatch(/^unknown size, got "#4-40"/);
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 3 }))).toContain("length must be a number of at least 3.75 mm for M8");
+  expect(await failure(() => JS3D.fastener({ type: "bolt", size: "M8" }))).toContain("length must be a number of at least 3.75 mm for M8");
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: 0.2 }))).toContain("clear must be a number from -1 to 0 (mm)");
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, clear: -2 }))).toContain("clear must be a number from -1 to 0 (mm)");
+  expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, left: "yes" }))).toContain("left must be true or false");
   expect(await failure(() => JS3D.fastener({ type: "rod", size: "M8", length: 20, at: [1, 2] }))).toContain("at must be [x, y, z] in mm");
   // a name that is not text is made into text, as add does
   expect(await run(() => JS3D.list().length)).toBe(0);

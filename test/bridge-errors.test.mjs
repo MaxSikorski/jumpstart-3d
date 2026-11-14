@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { bridge } from './bridgenode.mjs';
+const { initFasteners } = await import('../src/fasteners.js');
+const { initGears } = await import('../src/gears.js');
+const { initNamePlate } = await import('../src/nameplate.js');
+const { initKnurl } = await import('../src/knurl.js');
+const { initSpring } = await import('../src/spring.js');
+const advanced = {
+  addFastener: initFasteners({}, {STD: [['M8 × 1.25', 8, 1.25, 'iso']]}).add,
+  addGear: initGears({}, {}).add,
+  addNamePlate: initNamePlate({}, {}).add,
+  addKnurl: initKnurl({}, {}).add,
+  addSpring: initSpring({}, {}).add,
+};
 const existing = [
   ['get', a => a.get('b9'), ['no body', '"b9"']],
   ['kind', a => a.add('bad'), ['kind', '"bad"']],
@@ -91,13 +103,64 @@ cases.push(
   {name: 'print angle', run: a => a.printCheck({angle: 0}), mentions: ['angle', '0'], allowed: /10.*80/},
   {name: 'collision gap', run: a => a.collisions({gap: -1}), mentions: ['gap', '-1'], allowed: /0.*50/},
 );
+
+const generatorCases = [
+  ['fastener type', 'fastener', {type:'bad'}, 'type', '"bad"'],
+  ['fastener size', 'fastener', {type:'bolt',size:'bad'}, 'size', '"bad"'],
+  ['fastener length', 'fastener', {type:'bolt',size:'M8',length:1}, 'length', '1'],
+  ['fastener turns', 'fastener', {type:'bolt',size:'M8',length:1000}, 'length', '1000'],
+  ...[['clear',1],['left','bad'],['at',[1,2]]].map(([k,v]) => [`fastener ${k}`, 'fastener', {type:'bolt',size:'M8',length:20,[k]:v}, k, JSON.stringify(v)]),
+  ...[['kind','bad'],['module',0],['teeth',1],['angle',20],['mate',20],['width',0],['base',0],['bore',99],['keyway','bad'],['clear',1],['at',[1,2]]].map(([k,v]) => [`single gear ${k}`, 'gear', {module:2,teeth:20,[k]:v}, k, JSON.stringify(v)]),
+  ...[['mate',1],['width',20]].map(([k,v]) => [`bevel ${k}`, 'gear', {kind:'bevel',module:2,teeth:20,[k]:v}, k, JSON.stringify(v)]),
+  ...[['angle',1],['hand','bad'],['width',100]].map(([k,v]) => [`helical ${k}`, 'gear', {kind:'helical',module:2,teeth:20,[k]:v}, k, JSON.stringify(v)]),
+  ['rack base','gear',{kind:'rack',module:2,teeth:20,base:0},'base','0'],
+  ['rack bore','gear',{kind:'rack',module:2,teeth:20,bore:5},'bore','5'],
+  ['gear small bore','gear',{module:.3,teeth:12,bore:5},'bore','5'],
+  ['gear keyway kind','gear',{kind:'helical',module:2,teeth:20,bore:5,keyway:true},'keyway','true'],
+  ['gear keyway bore','gear',{module:2,teeth:20,bore:5,keyway:true},'bore','5'],
+  ['gear keyway fit','gear',{module:2,teeth:12,bore:12,keyway:true},'keyway','12'],
+  ...[['text',''],['text','A\nB'],['text','A'.repeat(41)],['font','bad'],['text','Ł'],['size',1],['style','bad'],['depth',.1],['thickness',.5],['margin',1],['shape','bad'],['holes','bad'],['holeDia',100],['color','red'],['textColor','red'],['at',[1,2]]].map(([k,v],i) => [`nameplate ${k} ${i}`, 'namePlate', {text:'Max',[k]:v}, k, JSON.stringify(v).slice(0,20)]),
+  ['nameplate thin','namePlate',{text:'Max',style:'cut',thickness:.7,depth:.2},'plate','0.7'],
+  ['nameplate depth','namePlate',{text:'Max',style:'cut',depth:3},'depth','3'],
+  ['nameplate hole unused','namePlate',{text:'Max',holes:'none',holeDia:4},'holeDia','4'],
+  ['nameplate text color unused','namePlate',{text:'Max',style:'cut',textColor:'red'},'textColor','"red"'],
+  ...[['diameter',5],['length',0],['grooves',7],['depth',10],['bore','bad'],['boreSize',5],['at',[1,2]]].map(([k,v])=>[`knurl ${k}`,'knurl',{[k]:v},k,JSON.stringify(v)]),
+  ['knurl shallow','knurl',{grooves:8,depth:.5},'depth','0.5'],
+  ['knurl bore size','knurl',{bore:'round',boreSize:100},'boreSize','100'],
+  ['knurl small','knurl',{diameter:6,depth:1.5,bore:'hex'},'knob','6'],
+  ...[['wire',.3],['outside',1],['freeLength',0],['turns',1],['hand','bad'],['ends','bad'],['color','red'],['at',[1,2]]].map(([k,v])=>[`spring ${k}`,'spring',{[k]:v},k,JSON.stringify(v)]),
+  ['spring outside','spring',{wire:5,outside:20},'outside','20'],
+  ['spring coils','spring',{freeLength:10,turns:5},'coils','touch'],
+  ['spring steep','spring',{outside:10,freeLength:100,turns:2},'spring','steep'],
+  ['spring wire limit','spring',{wire:.4,outside:20,freeLength:40,turns:10},'spring','wire'],
+  ['nameplate small hole','namePlate',{text:'-',size:2,margin:1.5},'text','2'],
+];
+for (const [name, method, spec, input, value] of generatorCases) cases.push({name, run: a => a[method](spec), mentions: [input, value]});
+cases.push(
+  ...[['duplicate','offset'],['move','delta'],['moveTo','pos']].map(([method,input])=>({name:method+' vector',setup:body,run:(a,id)=>a[method](id,[1,2]),mentions:[input,'[1,2]']})),
+  {name:'pattern features',setup:body,run:(a,id)=>a.pattern(id,{features:[]}),mentions:['features','[]']},
+  {name:'pattern feature id',setup:body,run:(a,id)=>a.pattern(id,{features:['bad']}),mentions:['feature','"bad"']},
+  {name:'pattern type',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'bad'}),mentions:['type','"bad"']},
+  {name:'pattern count',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'rect',count:0}),mentions:['count','0']},
+  {name:'pattern both',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'rect',count:2,both:'bad'}),mentions:['both','"bad"']},
+  {name:'pattern spacing',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'rect',count:2,spacing:0}),mentions:['spacing','0']},
+  {name:'pattern axis',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'rect',count:2,spacing:1,axis:'bad'}),mentions:['axis','"bad"']},
+  {name:'pattern count2',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'rect',count:2,count2:0}),mentions:['count2','0']},
+  {name:'pattern spacing2',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'rect',count:2,count2:2,spacing:1,axis2:'y',spacing2:0}),mentions:['spacing2','0']},
+  {name:'pattern circle count',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'circle',count:1}),mentions:['count','1']},
+  {name:'pattern angle',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'circle',count:2,angle:400}),mentions:['angle','400']},
+  {name:'pattern center',setup:body,run:(a,id)=>a.pattern(id,{features:['shape'],type:'circle',count:2,center:[1,2]}),mentions:['center','[1,2]']},
+  {name:'gear set bevel angle',run:a=>a.gearSet({type:'bevel',angle:20}),mentions:['angle','bevel']},
+  {name:'texture object key',setup:body,run:(a,id)=>a.texture(id,{texture:{bad:1}}),mentions:['texture','{"bad":1}']},
+);
+
 for (const {name, run, mentions, allowed, setup, app, dynamicId} of cases) test(name, async () => {
-  const {api, app: instance, store} = bridge({kernel: {ready: true, inflight: false, queue: new Set()}, ...app});
+  const {api, app: instance, store} = bridge({kernel: {ready: true, inflight: false, queue: new Set()}, advanced, ...app});
   const value = setup?.(api, instance, store);
   await assert.rejects(async () => run(api, value), error => {
     for (const part of [...mentions, ...(dynamicId ? [JSON.stringify(value)] : [])]) assert.ok(error.message.includes(part), error.message);
     if (allowed) assert.match(error.message, allowed);
-    assert.match(error.message, /(?:Example:|\b(?:Call|Try|Use|Leave|Press|Close|Wait|Pass|Give|Remove|Rename|Pick|Check|Undo|Open|Add|Show)\b)/);
+    assert.match(error.message, /(?:Example:|\b(?:Call|Try|Use|Leave|Press|Close|Wait|Pass|Give|Remove|Rename|Pick|Check|Undo|Open|Add|Show|Choose|Set|Delete|Switch|Increase|Reduce)\b)/i);
     assert.ok(error.message.length < 300);
     if (!mentions.some(part => /undefined|\[object Object\]|NaN/.test(part))) assert.doesNotMatch(error.message, /undefined|\[object Object\]|NaN/);
     return true;

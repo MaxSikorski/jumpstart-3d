@@ -131,7 +131,7 @@ test("whole-body textures change exported mesh and keep a dialog layer", async (
   expect(await run(() => __store.doc.bodies[0].textures[0])).toMatchObject({ id: result.texture, faces: "all", ...layer });
   expect(await triangles()).toBeGreaterThan(plain*10);
   const steps = await undoCount();
-  expect(await failure((id) => JS3D.texture(id, { texture: "nope" }), id)).toBe(`unknown texture "nope"; list_textures (JS3D.textures()) gives the ${LIB.length} keys`);
+  expect(await failure((id) => JS3D.texture(id, { texture: "nope" }), id)).toBe(`unknown texture "nope"; there are ${LIB.length} texture keys. Call JS3D.textures() (list_textures over MCP) and use one of its keys.`);
   expect(await undoCount()).toBe(steps);
   const hole = await run(() => JS3D.add("box", { hole: true, name: "Cutter" }));
   expect(await failure((id) => JS3D.texture(id), hole)).toContain("Cutter is marked as a hole; textures go on solid bodies");

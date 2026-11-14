@@ -1,3 +1,4 @@
+import { show } from "./teach.js";
 // jumpstart-3d: knurled knobs. One dialog (and JS3D.knurl) that makes a straight (axial) knurled cylinder: V grooves all round, with an
 // optional round, hex or D-shaped bore. The result is ordinary nodes: one hidden sketch (2N lines alternating between the tip radius
 // and the root radius, plus the bore) and the app's own Extrude, so it is a true solid that exports to STEP, shows in the timeline
@@ -27,30 +28,30 @@ const autoGrooves = (D) => Math.min(120, Math.max(8, Math.round(Math.PI * D))); 
 function resolve(spec) {
   spec = spec ?? {};
   const D = spec.diameter == null ? 20 : spec.diameter;
-  if (!inRange(D, 6, 150)) throw new Error("diameter must be a number from 6 to 150 (mm)");
+  if (!inRange(D, 6, 150)) throw new Error(("diameter must be a number from 6 to 150 (mm)") + `, got ${show(D)}. Example: JS3D.knurl({diameter: 20}).`);
   const L = spec.length == null ? 15 : spec.length;
-  if (!inRange(L, 1, 200)) throw new Error("length must be a number from 1 to 200 (mm)");
+  if (!inRange(L, 1, 200)) throw new Error(("length must be a number from 1 to 200 (mm)") + `, got ${show(L)}. Example: JS3D.knurl({diameter: 20}).`);
   const N = spec.grooves == null ? autoGrooves(D) : spec.grooves;
-  if (!Number.isInteger(N) || N < 8 || N > 120) throw new Error("grooves must be a whole number from 8 to 120");
+  if (!Number.isInteger(N) || N < 8 || N > 120) throw new Error(("grooves must be a whole number from 8 to 120") + `, got ${show(N)}. Example: JS3D.knurl({diameter: 20}).`);
   const R = D / 2, maxDepth = floor3(R / 2);
   const depth = spec.depth == null ? autoDepth(D, N) : spec.depth;
-  if (!inRange(depth, 0.1, maxDepth)) throw new Error(`depth must be a number from 0.1 to ${fmt(maxDepth, 3)} mm for this diameter (the grooves can reach at most half way to the middle)`);
+  if (!inRange(depth, 0.1, maxDepth)) throw new Error((`depth must be a number from 0.1 to ${fmt(maxDepth, 3)} mm for this diameter (the grooves can reach at most half way to the middle)`) + `, got ${show(depth)}. Example: JS3D.knurl({diameter: 20}).`);
   // shallower than this the root vertex lies outside the chord between two tips, the flanks come nearer the centre than the root does,
   // and the bore limit below (measured from the root) would be wrong
   const minDepth = ceil3(R * (1 - Math.cos(Math.PI / N)));
-  if (depth < minDepth - 1e-9) throw new Error(`depth must be at least ${fmt(minDepth, 3)} mm for ${N} grooves on this diameter; shallower grooves vanish`);
+  if (depth < minDepth - 1e-9) throw new Error((`depth must be at least ${fmt(minDepth, 3)} mm for ${N} grooves on this diameter; shallower grooves vanish`) + `, got ${show(depth)}. Example: JS3D.knurl({diameter: 20}).`);
   const bore = spec.bore == null ? "none" : spec.bore;
-  if (!BORES.some((b) => b[0] === bore)) throw new Error('bore must be "none", "round", "hex" or "d"');
-  if (bore === "none" && spec.boreSize != null) throw new Error('boreSize is only for a bore "round", "hex" or "d"');
+  if (!BORES.some((b) => b[0] === bore)) throw new Error(('bore must be "none", "round", "hex" or "d"') + `, got ${show(bore)}. Example: JS3D.knurl({diameter: 20}).`);
+  if (bore === "none" && spec.boreSize != null) throw new Error(('boreSize is only for a bore "round", "hex" or "d"') + `, got ${show(spec.boreSize)}. Example: JS3D.knurl({diameter: 20}).`);
   const root = R - depth, bs = bore === "none" ? 0 : spec.boreSize == null ? BORE_DEFAULT[bore] : spec.boreSize;
   if (bore !== "none") {
     // the largest corner of the bore (a hex's corners, a D's round part) stays WALL under the grooves; with depth >= minDepth the root is the nearest point of the outline
     const max = floor3(bore === "hex" ? Math.sqrt(3) * (root - WALL) : 2 * (root - WALL));
-    if (max < 1) throw new Error("this knob is too small for a bore: use a larger diameter, or bore \"none\"");
-    if (!inRange(bs, 1, max)) throw new Error(`boreSize must be a number from 1 to ${fmt(max, 3)} mm for this knob (it leaves ${WALL} mm under the grooves)${bore === "hex" ? ", measured across flats" : ""}`);
+    if (max < 1) throw new Error(("this knob is too small for a bore") + `, got diameter ${show(D)}. Example: JS3D.knurl({diameter: 20}).`);
+    if (!inRange(bs, 1, max)) throw new Error((`boreSize must be a number from 1 to ${fmt(max, 3)} mm for this knob (it leaves ${WALL} mm under the grooves)${bore === "hex" ? ", measured across flats" : ""}`) + `, got ${show(bs)}. Example: JS3D.knurl({diameter: 20}).`);
   }
   const at = spec.at == null ? [0, 0, 0] : spec.at;
-  if (!vec3(at)) throw new Error("at must be [x, y, z] in mm");
+  if (!vec3(at)) throw new Error(("at must be [x, y, z] in mm") + `, got ${show(at)}. Example: JS3D.knurl({diameter: 20}).`);
   const given = spec.name == null ? "" : String(spec.name).trim();
   const name = given || `Knurled knob ${fmt(D, 3)} x ${fmt(L, 3)}`;
   const pitch = Math.PI * D / N;

@@ -7,7 +7,7 @@ import { LIB, TEXTURE_DEFAULTS } from "./texture.js";
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const given = (v) => v !== undefined && v !== null;
 const quoteOr = (a) => a.length === 1 ? `"${a[0]}"` : a.slice(0, -1).map((v) => `"${v}"`).join(", ") + ` or "${a.at(-1)}"`;
-function only(o, keys) { for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option "${k}"; options: ${keys.join(", ")}. Remove or correct that option.`); }
+function only(o, keys) { for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`unknown option ${show(k).length > 30 ? show(k).slice(0, 29) + "…" : show(k)}; options: ${keys.join(", ")}. Remove it.`); }
 function num(o, k, lo, hi, unit = "mm") {
   if (!given(o[k])) return;
   if (!isNum(o[k]) || o[k] < lo || o[k] > hi) throw new Error(`${k} must be a number from ${lo} to ${hi}${unit ? ` (${unit})` : ""}, got ${show(o[k])}. Try ${lo}.`);
@@ -61,7 +61,7 @@ export function gearSetOptions(opts = {}) {
   pick(opts, "type", ["pair", "rack", "ring", "planet", "bevel", "helical"]);
   const type = opts.type ?? "pair", lib = !["bevel", "helical"].includes(type);
   const allowed = { pair: "teeth teeth2 backlash pressureAngle boreShape joints", rack: "teeth backlash pressureAngle boreShape joints rackLength rackHeight", ring: "teeth teeth2 backlash pressureAngle boreShape joints", planet: "sunTeeth planetTeeth planets backlash pressureAngle boreShape joints", bevel: "teeth teeth2 clear", helical: "teeth teeth2 clear angle hand" };
-  for (const k of Object.keys(opts)) if (given(opts[k]) && !("type module width bore at " + allowed[type]).split(" ").includes(k)) throw new Error(`${k} is not used for type "${type}"`);
+  for (const k of Object.keys(opts)) if (given(opts[k]) && !("type module width bore at " + allowed[type]).split(" ").includes(k)) throw new Error(`${k} is not used for type "${type}". Remove ${show(k)} or choose another type.`);
   const m = num(opts, "module", 0.3, 10) ?? 2, at = at3(opts.at), width = num(opts, "width", 0.5, 200);
   if (!lib) {
     const teeth = opts.teeth ?? 20, teeth2 = opts.teeth2 ?? teeth, max = type === "bevel" ? 90 : 30;
@@ -96,7 +96,7 @@ export function gearSetOptions(opts = {}) {
 export function textureOptions(opts = {}) {
   only(opts, "texture faces size depth dir rotation mapping edgeBlend invert once".split(" "));
   const tex = opts.texture ?? TEXTURE_DEFAULTS.tex, item = LIB.find((t) => t.key === tex);
-  if (!item) throw new Error(`unknown texture "${tex}"; list_textures (JS3D.textures()) gives the ${LIB.length} keys`);
+  if (!item) throw new Error(`unknown texture ${show(tex)}; there are ${LIB.length} texture keys. Call JS3D.textures() (list_textures over MCP) and use one of its keys.`);
   num(opts, "size", 0.5, 100); num(opts, "depth", 0.05, 3); num(opts, "rotation", -180, 180, "degrees"); num(opts, "edgeBlend", 0, 10);
   pick(opts, "dir", ["raise", "engrave", "both"]); pick(opts, "mapping", ["auto", "planar", "cylindrical", "triplanar"]);
   flag(opts, "invert"); flag(opts, "once");

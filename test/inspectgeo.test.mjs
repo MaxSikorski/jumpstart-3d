@@ -212,3 +212,12 @@ test("section: joins seams across rounded bucket boundaries", () => {
   assert.equal(cut.loops[0].closed, true);
   close(cut.area, 99.995, 0.0002);
 });
+
+test('plane diagnostics do not format successful input and give usable examples', () => {
+  let calls = 0;
+  const plane = { axis: 'z', at: 5, toJSON() { calls++; this.at = 99; } };
+  assert.deepEqual(G.planeBasis(plane).origin, [0, 0, 5]);
+  assert.equal(calls, 0);
+  assert.throws(() => G.planeBasis({ origin: [0, 0], normal: [0, 0, 1] }), /Example: \[0, 0, 0\]/);
+  assert.throws(() => G.planeBasis({ origin: [0, 0, 0], normal: [0, 0] }), /Example: \[0, 0, 1\]/);
+});

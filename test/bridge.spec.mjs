@@ -174,7 +174,7 @@ test("a hole in a group cuts the block; ungroup gives the two bodies back", asyn
   const before = await run(() => JSON.stringify(JS3D.doc()));
   await run((c) => __store.update((d) => { d.bodies.find((b) => b.id === c).node.mods.push({ id: "f1", seq: 99, t: "fillet", r: 1, edges: [] }); }, "Add fillet"), c);
   const withFillet = await run(() => JSON.stringify(JS3D.doc()));
-  expect(await failure((c) => JS3D.ungroup(c), c)).toMatch(/has features \(fillets, holes...\); remove them before ungrouping/);
+  expect(await failure((c) => JS3D.ungroup(c), c)).toMatch(/has features \(fillets, holes...\) and cannot be ungrouped/);
   expect(await run(() => JSON.stringify(JS3D.doc()))).toBe(withFillet);
   expect(withFillet).not.toBe(before);
 

@@ -8,7 +8,7 @@ export function historyCalls({ store, snapshot, edit, app }) {
   const metadata = ({ id, label, bodies, at }) => ({ id, label, bodies, at });
   const find = (id) => {
     const saved = kept.find((c) => c.id === id);
-    if (!saved) throw new Error(`no checkpoint ${show(id)}. Call JS3D.checkpoints() to see checkpoint ids.`);
+    if (!saved) throw new Error(`no checkpoint ${show(id)}. ${!kept.length ? "There are none; call JS3D.checkpoint() first." : kept.length <= 8 ? `Retained checkpoint ids: ${kept.map((c) => c.id).join(", ")}.` : `${kept.length} checkpoints are retained; call JS3D.checkpoints() to see their ids.`}`);
     return saved;
   };
   return {
@@ -25,13 +25,13 @@ export function historyCalls({ store, snapshot, edit, app }) {
     checkpoints: () => kept.map(metadata),
     diff(fromId, toId) {
       const from = find(fromId), to = toId === undefined ? null : find(toId);
-      for (const [id, c] of [[fromId, from], [toId, to]]) if (c && c.doc.id !== store.doc.id) throw new Error(`checkpoint ${show(id)} belongs to another design; checkpoints are kept per design. Call JS3D.checkpoints() and pick one from this design.`);
+      for (const [id, c] of [[fromId, from], [toId, to]]) if (c && c.doc.id !== store.doc.id) throw new Error(`checkpoint ${show(id)} belongs to another design; checkpoints are kept per design. Switch back to its original design, or call JS3D.checkpoint() to make one for this design.`);
       return designDiff(from.doc, to ? to.doc : snapshot({ shareAssets: true }));
     },
     rollback(id) {
       edit();
       const saved = find(id);
-      if (saved.doc.id !== store.doc.id) throw new Error(`checkpoint ${show(id)} belongs to another design; checkpoints are kept per design. Call JS3D.checkpoints() and pick one from this design.`);
+      if (saved.doc.id !== store.doc.id) throw new Error(`checkpoint ${show(id)} belongs to another design; checkpoints are kept per design. Switch back to its original design, or call JS3D.checkpoint() to make one for this design.`);
       if (app && app.simLock) throw new Error("undo is off in the 3D Print Sim. Close the 3D Print Sim and retry.");
       const { assets, ...rest } = saved.doc, copy = structuredClone(rest);
       store.update((doc) => {

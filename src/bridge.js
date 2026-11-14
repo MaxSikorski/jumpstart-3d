@@ -37,7 +37,7 @@
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
 import * as THREE from "three";
 import { show } from "./teach.js";
-import { withKernelHint } from "./kernelhints.js";
+import { withKernelHint, kernelHint } from "./kernelhints.js";
 import { initBridgeGen } from "./bridgegen.js"; // jumpstart-3d: generator calls
 import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
 import { VERSION } from "./version.js";
@@ -77,7 +77,7 @@ export function initBridge(app) {
   // every call that changes the design starts here. Chisel and CosForge keep their own copy (the shapes, the costume) and write it back into whatever
   // design is open when you leave, so nothing may be edited or loaded under them.
   const edit = () => {
-    if (app.mode === "chisel") throw new Error("leave Chisel mode first: edits do not work while it is open. Press Esc or click the Chisel button, then try again.");
+    if (app.mode === "chisel") throw new Error('leave Chisel mode first: edits do not work while it is open. Call JS3D.setMode("beginner"), then try again.');
     if (app.cosforge && app.cosforge.isOpen) throw new Error("close CosForge first: edits do not work while it is open. Close it and retry."); // jumpstart-3d: CosForge
     if (app.carve && app.carve.active) throw new Error("close Chip Carving first: edits do not work while it is open. Close it and retry."); // jumpstart-3d: Chip Carving (same reason as CosForge)
     if (app.command) app.command.cancel();
@@ -145,7 +145,7 @@ export function initBridge(app) {
   // and guessing would make the result depend on timing.
   function centreOf(ids) {
     const boxes = ids.map((id) => {
-      if (!built(id)) throw new Error(`${need(id).name} is still being built or has a build error. Wait with await JS3D.ready() and check JS3D.list(), or pass opts.about.`);
+      if (!built(id)) throw new Error(`${show(need(id).name)} is still being built or has a build error. Wait with await JS3D.ready() and check JS3D.list(), or pass opts.about.`);
       return app.scene.bodyTightBox(id);
     });
     return boxes.reduce((a, b) => a.union(b)).getCenter(new THREE.Vector3()).toArray();
@@ -343,7 +343,7 @@ export function initBridge(app) {
       const mods = b.node.mods || [];
       if (mods.length && !(mods.length === 1 && mods[0].t === "scale")) throw new Error("this group has features (fillets, holes...) and cannot be ungrouped. Remove all its features with JS3D.undo() or delete them in the Advanced tree first.");
       const out = ungroupBody(id);
-      if (!out.length) throw new Error("this group was stretched at an angle, so it cannot be split back into shapes. Undo the scale with JS3D.undo() until the group can be ungrouped.");
+      if (!out.length) throw new Error("this group was stretched at an angle, so it cannot be split back into shapes. Delete the Scale feature in the Advanced tree, or use JS3D.undo() if the scale is in this session’s history.");
       return out;
     },
 
@@ -423,7 +423,7 @@ export function initBridge(app) {
       // like the Export menu with nothing selected: every shown solid (named bodies too: holes and hidden ones are left out)
       const bodies = (opts.ids ? idList(opts.ids).map(need) : store.doc.bodies).filter((b) => !b.hole && !b.hidden);
       const failed = bodies.find((b) => app.scene.errors.has(b.id));
-      if (failed) throw new Error(`"${failed.name}" has a build error (${withKernelHint(app.scene.errors.get(failed.id))}). Check JS3D.list() for it, then fix it or leave it out with opts.ids and export again.`);
+      if (failed) throw new Error(`${show(failed.name)} has a build error (${show(app.scene.errors.get(failed.id))}). ${kernelHint(app.scene.errors.get(failed.id))} Check JS3D.list() for it, then fix it or leave it out with opts.ids and export again.`);
       const items = bodies.length && (kind === "stl" || kind === "3mf") ? await app.projects.exportItems(bodies) : bodies;
       const bytes = bodies.length ? await app.projects[FILES[kind]](items) : null;
       if (!bytes) throw new Error("nothing to export: holes and hidden shapes are left out. Show a solid body and retry.");

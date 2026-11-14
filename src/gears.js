@@ -1,3 +1,4 @@
+import { show } from "./teach.js";
 // jumpstart-3d: gears. One dialog (and JS3D.gear) that makes a spur gear, a straight bevel gear or a rack from a module and a tooth
 // count: involute teeth (ISO 53 basic rack, 20 degrees), a print clearance, and for spur and bevel gears an optional bore (a DIN 6885
 // keyway on spur gears). The result is ordinary sketches of straight lines plus the app's own Extrude (a straight Loft for a bevel
@@ -65,72 +66,72 @@ function rackPoints(n, m, clear, base) {
 export function resolve(spec) {
   spec = spec ?? {};
   const kind = spec.kind == null ? "spur" : spec.kind;
-  if (!KINDS.some((k) => k[0] === kind)) throw new Error('kind must be "spur", "helical", "bevel" or "rack"');
+  if (!KINDS.some((k) => k[0] === kind)) throw new Error(('kind must be "spur", "helical", "bevel" or "rack"') + `, got ${show(kind)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   const m = spec.module;
-  if (!isNum(m) || m < 0.3 - 1e-9 || m > 10 + 1e-9) throw new Error("module must be a number from 0.3 to 10 (mm)");
+  if (!isNum(m) || m < 0.3 - 1e-9 || m > 10 + 1e-9) throw new Error(("module must be a number from 0.3 to 10 (mm)") + `, got ${show(m)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   const z = spec.teeth, [zMin, zMax] = TEETH[kind];
-  if (!Number.isInteger(z) || z < zMin || z > zMax) throw new Error(`teeth must be a whole number from ${zMin} to ${zMax} for ${kind === "rack" ? "a rack" : `a ${kind} gear`}`);
+  if (!Number.isInteger(z) || z < zMin || z > zMax) throw new Error((`teeth must be a whole number from ${zMin} to ${zMax} for ${kind === "rack" ? "a rack" : `a ${kind} gear`}`) + `, got ${show(z)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   let beta = 0, hand = "right", twist = 0, sections = 0, mt = m, alphaT = ALPHA;
-  if ((spec.angle != null || spec.hand != null) && kind !== "helical") throw new Error("angle and hand are only for helical gears");
+  if ((spec.angle != null || spec.hand != null) && kind !== "helical") throw new Error(("angle and hand are only for helical gears") + `, got ${spec.angle != null ? `angle ${show(spec.angle)}` : `hand ${show(spec.hand)}`}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   let mate = 0, H = 0;
-  if (spec.mate != null && kind !== "bevel") throw new Error("mate is only for bevel gears");
+  if (spec.mate != null && kind !== "bevel") throw new Error(("mate is only for bevel gears") + `, got ${show(spec.mate)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   if (kind === "bevel") {
     mate = spec.mate == null ? z : spec.mate;
-    if (!Number.isInteger(mate) || mate < 12 || mate > 200) throw new Error("mate must be a whole number from 12 to 200 (the partner bevel gear's teeth)");
+    if (!Number.isInteger(mate) || mate < 12 || mate > 200) throw new Error(("mate must be a whole number from 12 to 200 (the partner bevel gear's teeth)") + `, got ${show(mate)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
     H = m * mate / 2; // the cone's tip, above the big end
   }
   let width = spec.width;
   if (kind === "helical") {
     const a = spec.angle == null ? 20 : spec.angle;
-    if (!isNum(a) || a < HANGLE[0] - 1e-9 || a > HANGLE[1] + 1e-9) throw new Error(`angle must be a number from ${HANGLE[0]} to ${HANGLE[1]} (degrees of helix angle)`);
+    if (!isNum(a) || a < HANGLE[0] - 1e-9 || a > HANGLE[1] + 1e-9) throw new Error((`angle must be a number from ${HANGLE[0]} to ${HANGLE[1]} (degrees of helix angle)`) + `, got ${show(a)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
     hand = spec.hand == null ? "right" : spec.hand;
-    if (hand !== "right" && hand !== "left") throw new Error('hand must be "right" or "left"');
+    if (hand !== "right" && hand !== "left") throw new Error(('hand must be "right" or "left"') + `, got ${show(hand)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
     beta = a * Math.PI / 180;
     mt = m / Math.cos(beta);
     alphaT = Math.atan(Math.tan(ALPHA) / Math.cos(beta));
   }
   if (width == null) width = kind === "bevel" ? Math.min(6, Math.floor(H / 3 * 10 + 1e-9) / 10) : 6;
-  if (!isNum(width) || width <= 0) throw new Error("width must be a positive number of mm");
+  if (!isNum(width) || width <= 0) throw new Error(("width must be a positive number of mm") + `, got ${show(width)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   if (kind === "helical") {
     twist = width * Math.tan(beta) / (mt * z / 2); // radians turned over the whole width
     const step = HSTEP * 360 / z; // degrees of twist between sections
     sections = Math.max(2, Math.ceil(twist * 180 / Math.PI / step - 1e-9) + 1);
     if (linesOf(z) * (sections - 1) > HFACES) {
       const maxWidth = floor3((Math.floor(HFACES / linesOf(z)) * step * Math.PI / 180) * (mt * z / 2) / Math.tan(beta));
-      throw new Error(`width must be a positive number of mm, at most ${fmt(maxWidth, 3)} for this helical gear (a wider one needs too many sections and would take too long to build)`);
+      throw new Error((`width must be a positive number of mm, at most ${fmt(maxWidth, 3)} for this helical gear (a wider one needs too many sections and would take too long to build)`) + `, got ${show(width)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
     }
   }
-  if (kind === "bevel" && width > H / 3 + 1e-9) throw new Error(`width must be a positive number of mm, at most ${fmt(floor3(H / 3), 3)} for this bevel gear (a third of the way to the cone's tip)`);
+  if (kind === "bevel" && width > H / 3 + 1e-9) throw new Error((`width must be a positive number of mm, at most ${fmt(floor3(H / 3), 3)} for this bevel gear (a third of the way to the cone's tip)`) + `, got ${show(width)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   let base = 0;
-  if (spec.base != null && kind !== "rack") throw new Error("base is only for racks");
+  if (spec.base != null && kind !== "rack") throw new Error(("base is only for racks") + `, got ${show(spec.base)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   if (kind === "rack") {
     base = spec.base == null ? 5 : spec.base;
-    if (!isNum(base) || base <= 0) throw new Error("base must be a positive number of mm");
+    if (!isNum(base) || base <= 0) throw new Error(("base must be a positive number of mm") + `, got ${show(base)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   }
   let bore = 0, keyway = false, wall = 0;
   if (kind === "rack") {
-    if (spec.bore != null || spec.keyway != null) throw new Error("bore and keyway are not used for a rack");
+    if (spec.bore != null || spec.keyway != null) throw new Error(("bore and keyway are not used for a rack") + `, got ${spec.bore != null ? `bore ${show(spec.bore)}` : `keyway ${show(spec.keyway)}`}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   } else {
     bore = spec.bore == null ? 0 : spec.bore;
     wall = Math.max(1, m);
     const rf = m * z / 2 - 1.25 * m, rIn = kind === "bevel" ? rf * (1 - width / H) : rf; // under the teeth, at the small end for a bevel gear
     const max = 2 * (rIn - wall);
     if (!isNum(bore) || bore < 0 || (bore > 0 && (bore < 1 - 1e-9 || bore > max + 1e-9))) {
-      throw new Error(max < 1 ? "this gear is too small for a bore" : `bore must be 0 (none) or from 1 to ${fmt(floor3(max), 3)} mm for this gear (it leaves ${fmt(wall, 3)} mm under the teeth)`);
+      throw new Error((max < 1 ? "this gear is too small for a bore" : `bore must be 0 (none) or from 1 to ${fmt(floor3(max), 3)} mm for this gear (it leaves ${fmt(wall, 3)} mm under the teeth)`) + `, got bore ${show(bore)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
     }
-    if (spec.keyway != null && typeof spec.keyway !== "boolean") throw new Error("keyway must be true or false");
+    if (spec.keyway != null && typeof spec.keyway !== "boolean") throw new Error(("keyway must be true or false") + `, got ${show(spec.keyway)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
     if (spec.keyway) {
-      if (kind !== "spur") throw new Error("keyway is for spur gears only");
-      if (bore < 6 || bore > 58) throw new Error("keyway needs a bore from 6 to 58 mm (DIN 6885)");
-      if (bore / 2 + keyFor(bore)[2] > rIn - wall + 1e-9) throw new Error(`the keyway does not fit: it must leave ${fmt(wall, 3)} mm under the teeth`);
+      if (kind !== "spur") throw new Error(("keyway is for spur gears only") + `, got ${show(spec.keyway)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
+      if (bore < 6 || bore > 58) throw new Error(("keyway needs a bore from 6 to 58 mm (DIN 6885)") + `, got ${show(bore)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
+      if (bore / 2 + keyFor(bore)[2] > rIn - wall + 1e-9) throw new Error((`the keyway does not fit: it must leave ${fmt(wall, 3)} mm under the teeth`) + `, got ${show(bore)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
       keyway = true;
     }
   }
   const cmax = Math.min(0.5, m / 4);
   const clear = spec.clear == null ? Math.min(0.1, m / 4) : spec.clear;
-  if (!isNum(clear) || clear < 0 || clear > cmax + 1e-9) throw new Error(`clear must be a number from 0 to ${fmt(floor3(cmax), 3)} mm for module ${fmt(m, 3)}`);
+  if (!isNum(clear) || clear < 0 || clear > cmax + 1e-9) throw new Error((`clear must be a number from 0 to ${fmt(floor3(cmax), 3)} mm for module ${fmt(m, 3)}`) + `, got ${show(clear)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   const at = spec.at == null ? [0, 0, 0] : spec.at;
-  if (!vec3(at)) throw new Error("at must be [x, y, z] in mm");
+  if (!vec3(at)) throw new Error(("at must be [x, y, z] in mm") + `, got ${show(at)}. Example: JS3D.gear({kind: "spur", module: 2, teeth: 20}).`);
   const given = spec.name == null ? "" : String(spec.name).trim();
   const name = given || `${NOUN[kind]} ${z} teeth m${fmt(m, 3)}`;
   return { kind, m, z, mate, H, width, base, bore, keyway, clear, at, name, beta, hand, twist, sections, mt, alphaT };
