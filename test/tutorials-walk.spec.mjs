@@ -571,3 +571,87 @@ for (const face of ["original", "simple"]) {
     });
   });
 }
+
+// Batch 5, makers with their own window. Layerscape (an iframe over the app) covers the lesson panel, so
+// c5-slot-puzzle's Layerscape step is one step read before the window opens; Next is pressed once Layerscape has closed.
+for (const face of ["original", "simple"]) {
+  test(`c5-slot-puzzle in ${face}: a ball cut into 100 mm slot-together ribs by Layerscape, the ball deleted`, async () => {
+    test.setTimeout(240_000);
+    await inFace(face, async () => {
+      await startLesson("c5-slot-puzzle", "beginner");
+      await addTile("sphere", false, { w: 40, d: 40, h: 40, x: 100 });
+      await ticks(1, "ball to the side"); await next();
+      expect(await showMe(), "Show me points at Layerscape (Simple: at More, which holds it)").toBe(face === "simple" ? "sr-more" : "bb-layerscape");
+      if (face === "simple") { // as a student: open More, press Show me again (it scrolls to Layerscape and makes the lesson panel small when it covers it), then click
+        await page.click("#sr-more");
+        expect(await showMe()).toBe("for:bb-layerscape");
+        await page.click('#simple-more button[data-for="bb-layerscape"]');
+      }
+      else await page.click("#bb-layerscape");
+      const frame = page.frameLocator("#layerscape iframe");
+      await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 120_000 }).toBe(true);
+      await frame.locator('#lsMode [data-mode="puzzle"]').click();
+      await frame.locator('#pzKind [data-k="slot"]').click();
+      await frame.locator("#pz_design").click();
+      await expect.poll(() => frame.locator("body").evaluate(() => window.__layerscape.puzzle?.model?.kind), { timeout: 90_000 }).toBe("slot");
+      const seq = await frame.locator("body").evaluate(() => window.__layerscape.puzzle.seq);
+      await frame.locator("#pz_size").fill("100"); await frame.locator("#pz_size").press("Enter");
+      await expect.poll(() => frame.locator("body").evaluate(() => window.__layerscape.puzzle.seq), { message: "the puzzle is rebuilt at Size 100", timeout: 30_000 }).toBeGreaterThan(seq);
+      await frame.locator("#pzXDesign").click();
+      await expect(page.locator("#layerscape")).toHaveCount(0, { timeout: 90_000 });
+      await waitIdle(page);
+      await ticks(2, "pieces in the design");
+      const parts = (await bodies(page)).filter((b) => b.name !== "Sphere 1");
+      expect(parts.length, "slot-together ribs").toBeGreaterThanOrEqual(4);
+      expect(parts.filter((b) => b.error || !(b.volume > 0)), "every rib is a solid").toEqual([]);
+      const longest = await page.evaluate(() => { const app = window.__app, box = app.scene.bodyTightBox(window.__store.doc.bodies.find((b) => b.node.t === "mesh").id).clone(); for (const b of window.__store.doc.bodies) if (b.node.t === "mesh") box.union(app.scene.bodyTightBox(b.id)); const s = box.getSize(box.min.clone()); return Math.max(s.x, s.y, s.z); });
+      expect(longest, "the puzzle's longest side is the Size typed in Layerscape").toBeCloseTo(100, -1);
+      await next();
+      // the ball, beside the 100 mm puzzle: click it, then Delete (in Simple, the quick-fix Delete)
+      // the app fits the view to the new pieces on a timer after they are built, so the ball can move under the pointer: aim again until it is picked
+      await expect(async () => {
+        const [bx, by] = await screenOf(100, 0, 20);
+        await page.mouse.click(bx, by);
+        expect(await page.evaluate(() => window.__app.sel.map((id) => window.__store.doc.bodies.find((b) => b.id === id)?.node.kind))).toEqual(["sphere"]);
+      }).toPass({ timeout: 15_000 });
+      await page.click(face === "simple" ? '#simple-fixes button[data-for="bb-del"]' : "#bb-del"); await waitIdle(page);
+      await ticks(3, "ball deleted");
+      expect(await page.evaluate(() => window.__store.doc.bodies.some((b) => b.node.kind === "sphere"))).toBe(false);
+      await next();
+      await finishLesson();
+    });
+  });
+
+  test(`c5-maker-tour in ${face}: a bin from Simulate, then Layerscape, the Helmet Maker and Color lithophane open and close`, async () => {
+    test.setTimeout(180_000);
+    await inFace(face, async () => {
+      await startLesson("c5-maker-tour", "advanced");
+      expect(await showMe(), "before the Simulate tab is open, Show me points at it").toBe("ws-simulate");
+      await page.click("#ws-simulate");
+      expect(await showMe(), "with Simulate open, Show me points at Bin & Box Maker").toBe("sim-bins");
+      await page.click("#sim-bins"); await page.click("#cmd-ok"); await waitIdle(page);
+      await ticks(1, "bin"); await next();
+      expect(await showMe()).toBe("sim-layerscape");
+      await page.click("#sim-layerscape");
+      await ticks(2, "Layerscape open");
+      const frame = page.frameLocator("#layerscape iframe");
+      await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 120_000 }).toBe(true);
+      await frame.locator("#lsBack").click();
+      await expect(page.locator("#layerscape")).toHaveCount(0);
+      await next();
+      expect(await showMe()).toBe("sim-helmet");
+      await page.click("#sim-helmet");
+      await ticks(3, "Helmet Maker open");
+      await page.click("#cf-back"); await expect(page.locator("#cosforge")).toHaveCount(0);
+      await next();
+      expect(await showMe(), "before the 3D Print Sim is open, Show me points at its tab").toBe("ws-print");
+      await page.click("#ws-print");
+      expect(await showMe()).toBe("ps-r-litho");
+      await page.click("#ps-r-litho");
+      await ticks(4, "Color Lithophane Studio open");
+      await page.click("#cl-close"); await expect(page.locator("#clitho")).toHaveCount(0);
+      await next();
+      await finishLesson();
+    });
+  });
+}

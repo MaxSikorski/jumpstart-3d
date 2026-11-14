@@ -1,0 +1,35 @@
+{
+  "drawbench": 1,
+  "id": "counterbored-block",
+  "title": "Counterbored block (first angle)",
+  "wave": 1,
+  "set": "qualification",
+  "input": { "kind": "drawing", "picture": "drawing.png", "request": "Build this part." },
+  "overlap": 0.98,
+  "editable": [
+    { "id": "edit-W", "param": 50, "to": 60, "size": [60, 30, 20] },
+    { "id": "edit-H", "param": 20, "to": 25, "size": [50, 30, 25] }
+  ],
+  "drawing": {
+    "title": "COUNTERBORED BLOCK",
+    "units": "mm",
+    "projection": "first",
+    "views": ["top", "front"],
+    "notes": ["ALL SIZES IN MM", "TOLERANCE ±0.1 UNLESS STATED"],
+    "dims": [
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 0], "to": [50, 0], "at": -10, "text": "50" },
+      { "view": "top", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 30], "at": -10, "text": "30" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 15], "to": [10, 15], "at": -20, "text": "10" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 15], "to": [40, 15], "at": -30, "text": "40" },
+      { "view": "top", "type": "linear", "along": "y", "from": [50, 0], "to": [40, 15], "at": 60, "text": "15" },
+      { "view": "top", "type": "leader", "point": [40, 15], "r": 5.5, "to": [62, 36], "text": "2X Ø6.6 THRU, C'BORE Ø11 × 6.5 DEEP" },
+      { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 20], "at": -10, "text": "20" },
+      { "view": "front", "type": "linear", "along": "x", "from": [0, 10], "to": [25, 10], "at": 28, "text": "25" },
+      { "view": "front", "type": "linear", "along": "y", "from": [50, 0], "to": [25, 10], "at": 60, "text": "10" },
+      { "view": "front", "type": "leader", "point": [25, 10], "r": 2.5, "to": [66, 26], "text": "Ø5 × 10 DEEP" }
+    ]
+  },
+  "wrong": [
+    { "recipe": "wrong-small-hole.recipe.json", "why": "the through holes 0.3 mm too small (Ø6.3)", "fails": ["holes-6.6"] }
+  ]
+}

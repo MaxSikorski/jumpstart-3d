@@ -19,6 +19,10 @@ copies keep those terms.
 The bundled libraries and fonts keep their own licenses (see "Third-party
 software" below).
 
+The drawing bench's reference cases (`test/drawbench/cases/`: test pictures, truth files and
+recipes) are dedicated to the public domain under CC0 1.0; see
+[test/drawbench/cases/SOURCES.md](test/drawbench/cases/SOURCES.md).
+
 ## Credit
 
 JumpStart 3D was created by **J.Siwek**. His own versions up to 1.93.8 said so

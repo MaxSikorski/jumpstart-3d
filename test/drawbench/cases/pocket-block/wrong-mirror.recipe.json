@@ -1,0 +1,15 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["W", "60"] },
+    { "call": "setParam", "args": ["D", "40"] },
+    { "call": "setParam", "args": ["H", "15"] },
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Block", "shapes": [{ "type": "rect", "center": [30, 20], "size": ["W", "D"] }] }], "as": "block" },
+    { "call": "extrude", "args": [{ "sketch": "$block.sketch", "dist": "H", "name": "Pocket block" }], "as": "part" },
+    { "call": "sketch", "args": [{ "on": { "body": "$part.body", "face": "top" }, "name": "Pocket", "shapes": [{ "type": "rect", "center": [35, 22], "size": [30, 16] }] }], "as": "pocket" },
+    { "call": "extrude", "args": [{ "sketch": "$pocket.sketch", "dist": -8, "op": "cut", "body": "$part.body" }] },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[10, 8, 15], [10, 32, 15]], "dia": 5 }] }
+  ]
+}

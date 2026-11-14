@@ -18,6 +18,8 @@ const goesThrough = (g) => {
     && [0, 1].every((k) => { const mid = (h.lo[k] + h.hi[k]) / 2; return mid > s.lo[k] + 0.01 && mid < s.hi[k] - 0.01; })));
 };
 
+// c5-slot-puzzle: Layerscape's pieces are mesh bodies, counted inside groups too (its toast suggests grouping them)
+const meshParts = (t) => { let n = 0; const go = (node) => { if (node.t === "mesh") n++; for (const c of node.children || []) go(c.node); }; for (const b of t.bodies()) go(b.node); return n; };
 // c5-print-plate: a 3D Print Sim placement that turns the part, not just moves it (the 3 x 3 part of a THREE.Matrix4 is not identity)
 const turned = (M) => !!M && [0, 1, 2, 4, 5, 6, 8, 9, 10].some((i) => Math.abs(M.elements[i] - (i % 5 === 0 ? 1 : 0)) > 1e-6);
 
@@ -1142,6 +1144,59 @@ export const COMMUNITY_TUTORIALS = [
         how: ["First look at the <b>Printer</b> box in the panel on the left and pick your printer there: the file is made for that printer.", "Click <b>Export G-code</b>. The .gcode file is saved like any download. Copy it to the printer's SD card or USB stick, or send it with the printer's app."],
         when: "G-code is the list of moves and temperatures a printer follows. A slicer usually makes it; the sim can make it too.",
         check: (t) => t.exported("gcode") },
+      saveStep(), exportStep(),
+    ],
+  },
+  // Batch 5: J.Siwek's makers that open in their own window (2.9.8.x): Layerscape's puzzle maker in Beginner, and where the others live in Advanced.
+  {
+    id: "c5-slot-puzzle", mode: "beginner", level: "Easy", minutes: "6-8", item: "Slot Puzzle",
+    title: "Turn a ball into a slot-together puzzle",
+    blurb: "Layerscape's Puzzle maker cuts a shape into flat ribs that slot into each other, like a wooden dinosaur kit. Make one from a ball and add the pieces to your design.",
+    learn: ["Sphere", "Layerscape", "Puzzle maker", "Delete"],
+    steps: [
+      nameStep("Slot Puzzle", "Lopez, Maria, Slot Puzzle"),
+      { title: "A ball to cut up", tool: "Sphere", icon: "sphere", show: { tile: "sphere" },
+        how: ["Click <b>Objects</b> in the strip at the bottom, then the <b>Sphere</b> tile.", FIELDS, "Set Width, Depth and Height to <b>40</b>. Under Position, set X to <b>100</b>."],
+        when: "Layerscape builds the puzzle in the middle of the plate. With the ball off to the side, the two do not get in each other's way.",
+        check: (t) => t.prim("sphere").some((b) => t.near(b.node.p.w, 40, 1) && t.box(b.id) && t.box(b.id).min.x > 60) },
+      { title: "Make the puzzle in Layerscape", tool: "Layerscape → Puzzle maker", icon: "layerscape", show: { sel: "#bb-layerscape" },
+        how: ["Read this step first: Layerscape opens in its own window over this lesson, which comes back when Layerscape closes.",
+          "Click <b>Layerscape</b> in the toolbar (in Simple it is under <b>More</b>, in Parts and makers). The first time it takes a moment.",
+          "Click <b>Puzzle maker</b> at the top right, then <b>3D slot-together</b>, then <b>From my design</b>. Your ball appears cut into flat ribs.",
+          "Set <b>Size (longest side)</b> to <b>100</b>.",
+          "Scroll down to <b>Add to my JumpStart 3D design</b> and click <b>Add to my design</b>. Layerscape closes and the pieces stand on the plate, slotted together."],
+        when: "Each rib is a flat piece with slots cut half way, so the ribs across and the ribs along push into each other. Each one is its own part you can colour, move or export.",
+        check: (t) => meshParts(t) >= 4 },
+      { title: "Keep only the puzzle", tool: "Delete", icon: "select", show: { sel: "#bb-del" },
+        how: ["Click the ball beside the puzzle, then click <b>Delete</b> (or press the Delete key).", "If the ball is off the screen, zoom out with the mouse wheel (or pinch on a touch screen)."],
+        when: "The ball was only the pattern for the puzzle. The export now holds just the pieces.",
+        check: (t) => !t.prim("sphere").length && meshParts(t) >= 4 },
+      saveStep(), exportStep(),
+    ],
+  },
+  {
+    id: "c5-maker-tour", mode: "advanced", level: "Easy", minutes: "6-8", item: "Maker Tour",
+    title: "Find the makers: bins, Layerscape, helmets and colour lithophanes",
+    blurb: "Some of the biggest tools open in a window of their own. Make a storage bin, then open Layerscape, the Helmet Maker and the Color Lithophane Studio, and come back each time.",
+    learn: ["Bin & Box Maker", "Layerscape", "Helmet Maker", "Color lithophane"],
+    steps: [
+      nameStep("Maker Tour", "Lopez, Maria, Maker Tour"),
+      { title: "A storage bin", tool: "Simulate → Bin & Box Maker", icon: "box", show: { sel: "#sim-bins, #ws-simulate" }, anim: false,
+        how: ["Click the <b>Simulate</b> tab, then <b>Bin & Box Maker</b>.", "Set Style to <b>Bin</b> and leave the sizes as they are. Click the plate to place it, then click OK."],
+        when: "The Box Maker builds bins, drawers and whole cabinets from a few numbers. Double-click the bin later to change it.",
+        check: (t) => t.bodies().some((b) => b.bin) },
+      { title: "Layerscape", tool: "Simulate → Layerscape", icon: "layerscape", show: { sel: "#sim-layerscape, #ws-simulate" },
+        how: ["Click <b>Layerscape</b>. It turns a photo into a layered diorama, or a shape into a puzzle, to laser cut or 3D print.", "It opens over this lesson. Look at the example scenes at the top, then click <b>← JumpStart 3D</b> at the top left to come back."],
+        when: "Layerscape keeps its work with your design, so it is still there when you open it again.",
+        check: () => !!document.getElementById("layerscape") },
+      { title: "The Helmet Maker", tool: "Simulate → Helmet Maker", icon: "helmet", show: { sel: "#sim-helmet, #ws-simulate" },
+        how: ["Click <b>Helmet Maker</b>. It builds a sci-fi helmet sized to a real head, with a visor, details and finishes.", "It opens in its own window. Look round it (drag this lesson aside if it is in the way), then click <b>← Back to JumpStart 3D</b>."],
+        when: "When a helmet is ready, the Helmet Maker cuts it into pieces that fit on a printer.",
+        check: () => !!document.getElementById("cosforge") },
+      { title: "A colour lithophane", tool: "3D Print Sim → Color lithophane", icon: "image", show: { sel: "#ps-r-litho, #ws-print" },
+        how: ["Click the <b>3D Print Sim</b> tab, then <b>Color lithophane</b>.", "It turns a photo into a thin plate printed with white, cyan, magenta and yellow filament: held up to a light, the photo appears in colour.", "Click <b>Close</b> to come back."],
+        when: "A lithophane looks plain until light shines through it from behind.",
+        check: () => !!document.getElementById("clitho") },
       saveStep(), exportStep(),
     ],
   },
