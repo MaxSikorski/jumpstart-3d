@@ -33,7 +33,7 @@ const saveStep = () => ({
     "Look at the name: it now ends in <b>v1</b>. Each time you save this design again, the number goes up: v2, v3…",
   ],
   when: "Save whenever you finish a step you're proud of, and always before you close the app. Older saves keep their own number, so you can tell your versions apart.",
-  tip: "Autosave (top bar) keeps extra backup copies named \"… autosave v1\", \"… autosave v2\" in case the app closes by accident. Find them under Your designs → Autosaves.",
+  tip: "Your design is already kept in this browser after every change; Save adds a numbered version. Crash recovery, when it is on, also keeps extra copies named \"… autosave v1\", \"… autosave v2\" in case the app closes by accident. Find them under Your designs → Autosaves.", // jumpstart-3d: the Autosave button is labelled Crash recovery now
   check: (t) => t.saved(),
 });
 const exportStep = () => ({

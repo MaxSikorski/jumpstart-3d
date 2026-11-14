@@ -511,7 +511,7 @@ export class Viewport {
       // Mac: Control-click is a right-click (orbit, or the menu when it doesn't move);
       // Option-drag orbits and Option-Shift-drag pans, for a trackpad with one button
       const btn = IS_MAC && e.button === 0 && e.ctrlKey && !e.metaKey ? 2 : e.button;
-      const nav = btn === 2 || btn === 1 || (btn === 0 && e.altKey);
+      const nav = btn === 2 || btn === 1 || (btn === 0 && e.altKey && !(this.handler && this.handler.wantsAlt && this.handler.wantsAlt(e))); // jumpstart-3d: grok move. let the pivot dot receive Alt-drag
       if (!nav && btn === 0 && this.handler && this.handler.down && this.handler.down(e) !== false) {
         drag = { mode: "tool" };
         c.setPointerCapture(e.pointerId);

@@ -452,6 +452,7 @@ export class Sketcher {
     if (t === "mirror") return sketchMirror.click(this, raw); // jumpstart-3d: sketch mirror
     const s = this.snap(raw, this.state && this.state.anchor);
     this.click(s, e);
+    this.app.status && this.app.status(); // jumpstart-3d: stale hint. the status line follows every click (after the first corner it asks for the opposite one)
     return true;
   }
   move(e) {
@@ -571,7 +572,7 @@ export class Sketcher {
         st.lastPid = b;
       });
       st.segs = (st.segs || 0) + 1;
-      if (closes) { this.state = null; this.hideInput(); this.redraw(); return; }
+      if (closes) return this.done();
       st.anchor = p;
       this.locked = [false, false];
       for (const f of this.input.fields) f.inp.value = "";
@@ -664,9 +665,12 @@ export class Sketcher {
     }
   }
   done() {
+    const wasLine = this.tool === "line" && this.state && this.state.segs > 0;
     this.state = null;
     this.hideInput();
     this.vp.canvas.focus();
+    // a finished line puts the Line tool down: pick it again (or press L) for the next one
+    if (wasLine) { this.setTool("select"); this.app.status && this.app.status(); return; }
     this.redraw();
     this.app.status && this.app.status();
   }

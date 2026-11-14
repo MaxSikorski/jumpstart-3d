@@ -18,7 +18,23 @@ export const BIN_DEFAULTS = {
   across: 1, sideLock: "dovetail",
   // a door catch: bumps the door's free edge has to push past, so it stays shut until pulled
   doorCatch: "light",
+  // lock clips: small plates on the back that bridge two boxes joined by dovetails, their pegs in
+  // holes in both backs, so the boxes can't slide apart along the rails when you grab one
+  clips: "none",
+  // rail plates: plates with dovetail grooves that slide onto the open rails of two boxes, joining
+  // them: across the tops of two cases side by side, or up the right side of two stacked boxes
+  plates: "none", plateFit: "snug",
+  // groove plates: the other way round, plates with dovetail rails that slide into the open
+  // grooves of two boxes: under two cases side by side, or up the left side of a stack
+  gplates: "none",
+  // how the dovetails fit: the gap all round each rail in its groove
+  dvFit: "normal",
 };
+// the gap all round a rail inside a plate's groove: snug slides on with a firm push and stays put
+// dovetail fit: Normal is the set's own clearance (0.25 unless changed)
+export const DV_FITS = { snug: 0.15, loose: 0.4 };
+export const dvGap = (o) => DV_FITS[o.dvFit] ?? Math.max(0, o.clear ?? 0.25);
+export const PLATE_FITS = { tight: 0.08, snug: 0.12, loose: 0.2 };
 export const BIN_STYLES = [["bin", "Open bin"], ["drawer", "Drawer"], ["tilt", "Tilt-out bin"], ["door", "Door"]];
 export const BIN_LOCKS = [["dovetail", "Dovetail rails"], ["pegs", "Pegs"], ["none", "None"]];
 
@@ -128,8 +144,10 @@ function path(items) {
 const PLANE_SIDE = { o: [0, 0, 0], x: [0, 0, 1], n: [0, 1, 0] }; // a profile in Z (across) and +X (out), extruded along +Y
 const SDV = { neck: 7, head: 10, h: 3 }, SPEG = { d: 6, h: 3 };
 export const sideDepth = (lock, cl) => (lock === "dovetail" ? SDV.h + cl + 0.2 : lock === "pegs" ? SPEG.h + 0.6 : 0);
+// the heights of the side rails on a box whose sides run from z0 to H
+const sideZs = (H, z0 = 0) => { const h = H - z0; return h >= 45 ? [z0 + h * 0.3, z0 + h * 0.72] : [z0 + h * 0.5]; };
 function sideJoints(W, D, H, lock, cl, z0 = 0) {
-  const out = [], h = H - z0, zs = h >= 45 ? [z0 + h * 0.3, z0 + h * 0.72] : [z0 + h * 0.5];
+  const out = [], zs = sideZs(H, z0);
   if (lock === "dovetail") for (const z of zs) {
     out.push(kid(extr(dovetailXZ(SDV.neck, SDV.head, SDV.h), PLANE_SIDE, D - 3), T(W / 2 - 0.01, -D / 2 + 3, z)));
     out.push(kid(extr(dovetailXZ(SDV.neck, SDV.head, SDV.h + 0.01, cl), PLANE_SIDE, D - 2 + cl), T(-W / 2 - 0.01, -D / 2 + 3 - cl, z), true));
@@ -139,6 +157,95 @@ function sideJoints(W, D, H, lock, cl, z0 = 0) {
     out.push(kid(rodX(SPEG.h + 0.6, SPEG.d + 2 * cl), T(-W / 2 + (SPEG.h + 0.6) / 2 - 0.01, y, z), true));
   }
   return out;
+}
+// ------------------------------------------------------------------ lock clips
+// A clip is a flat plate with two pegs; it lies on the back of two boxes across the seam between
+// them, a peg in a hole in each back. Dovetails let boxes slide front to back; the clip stops that.
+// Holes sit e in from the box's edge (clear of rounded corners, rails and grooves); a clip's pegs are
+// 2e apart. Pegs are a snug push fit (0.15 bigger holes) and chamfered so they start easily.
+export const CLIP = { peg: 4, fit: 0.15, plate: 2, wide: 9, backT: 3.2, depth: 2.4 };
+const clipE = (R) => Math.max(7, R + 3);
+// where the clips go along a seam of length L (centred, avoiding the stack rails at ±L/4)
+const clipSpots = (L) => (L >= 110 ? [-(L / 2 - 14), 0, L / 2 - 14] : L >= 70 ? [-(L / 2 - 12), L / 2 - 12] : [0]);
+// one clip, lying as printed: the plate on the bed (in X, Y; along Y), the pegs pointing up
+function clipNode(e) {
+  const L = 2 * e + CLIP.wide, pl = CLIP.depth - 0.3;
+  const k = [kid(prim("box", { w: CLIP.wide, d: L, h: CLIP.plate, rv: 2.5 }))];
+  for (const y of [-e, e]) k.push(kid(prim("cylinder", { w: CLIP.peg, d: CLIP.peg, h: pl + 0.4, c: 0.4 }), T(0, y, CLIP.plate - 0.4)));
+  return group(k);
+}
+// turned to stand on a box's back (y = yb), pegs pointing forward (-Y), plate along Z (vertical
+// seam) or along X (side seam)
+const clipUp = (x, yb, z) => [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, r6(x), r6(yb + CLIP.plate), r6(z), 1];
+const clipSide = (x, yb, z) => [0, 0, -1, 0, 1, 0, 0, 0, 0, -1, 0, 0, r6(x), r6(yb + CLIP.plate), r6(z), 1];
+// the holes in one box's back: along the top and bottom edges for stacking, the sides for side by side
+function clipHoles(W, D, H, R, z0, stackSeams, sideSeams) {
+  const e = clipE(R), out = [], d = CLIP.peg + CLIP.fit, hole = (x, z) => out.push(kid(rodY(CLIP.depth + 0.01, d), T(x, D / 2 - CLIP.depth, z), true));
+  if (stackSeams) for (const x of clipSpots(W)) { hole(x, z0 + e); hole(x, H - e); }
+  if (sideSeams) for (const z of clipSpots(H - z0)) { hole(-W / 2 + e, z0 + (H - z0) / 2 + z); hole(W / 2 - e, z0 + (H - z0) / 2 + z); }
+  return out;
+}
+// ------------------------------------------------------------------ rail plates
+// A plate with two dovetail grooves (the same as a case's grooves, closed at the front, open at the
+// back) slides on from the back over a rail of each of two boxes and holds them together.
+const PLATE_ROOF = 1.4, PLATE_EDGE = 8;
+// on top: over the right rail of the left case and the left rail of the right case (rails at ±W/4);
+// made at the left case, its underside at z = 0 (the case top)
+function topPlate(W, D, cl) {
+  const DV = { neck: 7, head: 10, h: 3 }, pt = DV.h + cl + PLATE_ROOF, x0 = W / 4 - PLATE_EDGE, x1 = (3 * W) / 4 + PLATE_EDGE;
+  const k = [kid(prim("box", { w: x1 - x0, d: D - 1, h: pt, rv: 2 }), T((x0 + x1) / 2, 0.5, 0))];
+  for (const x of [W / 4, (3 * W) / 4]) k.push(kid(extr(dovetailXZ(DV.neck, DV.head, DV.h + 0.01, cl), PLANE_XZ, D - 2 + cl), T(x, D / 2 + 1, -0.01), true));
+  return { node: group(k), pt };
+}
+// on the right side: over the top rail of the lower box and the bottom rail of the one above (the
+// next one up is "pitch" higher); made at the lower box, against its right side
+function sidePlate(W, D, cl, zs, pitch) {
+  const pt = SDV.h + cl + PLATE_ROOF, zA = Math.max(...zs), zB = pitch + Math.min(...zs);
+  const z0 = zA - SDV.head / 2 - PLATE_EDGE, z1 = zB + SDV.head / 2 + PLATE_EDGE;
+  const k = [kid(prim("box", { w: pt, d: D - 1, h: z1 - z0, rv: 0 }), T(W / 2 + pt / 2, 0.5, z0))];
+  for (const z of [zA, zB]) k.push(kid(extr(dovetailXZ(SDV.neck, SDV.head, SDV.h + 0.01, cl), PLANE_SIDE, D - 2 + cl), T(W / 2 - 0.01, -D / 2 + 3 - cl, z), true));
+  return { node: group(k), pt, z0, z1 };
+}
+// rail plates for grooves: a 2.4 plate with two dovetail rails. g = how much bigger than the plain
+// dovetail each rail is: the boxes' grooves are grown by their own clearance, so a rail grown by
+// (that clearance - the plate fit) leaves the plate-fit gap all round
+const RAIL_BACK = 2.4;
+const railXZ = (n, hd, h, g) => line([[-n / 2 - g, -0.05], [n / 2 + g, -0.05], [hd / 2 + g, h + g], [-hd / 2 - g, h + g]]);
+// underneath: in the right groove of the left case and the left groove of the right case; made at
+// the left case, its top at z = 0 (the case bottom)
+function underPlate(W, D, g) {
+  const DV = { neck: 7, head: 10, h: 3 }, x0 = W / 4 - PLATE_EDGE, x1 = (3 * W) / 4 + PLATE_EDGE;
+  const k = [kid(prim("box", { w: x1 - x0, d: D - 1, h: RAIL_BACK, rv: 2 }), T((x0 + x1) / 2, 0.5, -RAIL_BACK))];
+  for (const x of [W / 4, (3 * W) / 4]) k.push(kid(extr(railXZ(DV.neck, DV.head, DV.h, g), PLANE_XZ, D - 3), T(x, D / 2, 0)));
+  return { node: group(k) };
+}
+// on the left side: in the top side groove of the lower box and the bottom one of the box above
+function leftPlate(W, D, g, zs, pitch) {
+  const zA = Math.max(...zs), zB = pitch + Math.min(...zs), z0 = zA - SDV.head / 2 - PLATE_EDGE, z1 = zB + SDV.head / 2 + PLATE_EDGE;
+  const k = [kid(prim("box", { w: RAIL_BACK, d: D - 1, h: z1 - z0 }), T(-W / 2 - RAIL_BACK / 2, 0.5, z0))];
+  for (const z of [zA, zB]) k.push(kid(extr(railXZ(SDV.neck, SDV.head, SDV.h, g), PLANE_SIDE, D - 3), T(-W / 2, -D / 2 + 3, z)));
+  return { node: group(k), z0, z1 };
+}
+function addGroovePlates(parts, o, { across, units, pitch, W, D, g, under, side, zs }) {
+  let n = 0;
+  const add = (node, dx, z, flat) => { n++; parts.push({ key: "gplate" + n, name: "Plate in grooves " + n, node, z, dx, color: "#a3968c", kind: "plate", flat }); };
+  if (under) { const P = underPlate(W, D, g); for (let c = 0; c + 1 < across; c++) add(P.node, c * W, 0, group([kid(P.node, T(-W / 2, 0, RAIL_BACK))])); }
+  if (side) { const P = leftPlate(W, D, g, zs, pitch); for (let r = 0; r + 1 < units; r++) add(P.node, 0, r * pitch, group([kid(P.node, [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, (P.z0 + P.z1) / 2, 0, W / 2 + RAIL_BACK, 1])])); }
+  return n;
+}
+// add the plates of a set; top plates need rails on top (cases with dovetail stacking) and side
+// plates rails on the right sides (dovetails side by side) of a column two or more high
+function addPlates(parts, o, { across, units, pitch, W, D, cl, top, side, zs }) {
+  let n = 0;
+  const add = (node, dx, z, kind, flat) => { n++; parts.push({ key: "plate" + n, name: "Plate over rails " + n, node, z, dx, color: "#8c96a3", kind: "plate", flat }); };
+  if (top) { const P = topPlate(W, D, cl); for (let c = 0; c + 1 < across; c++) add(P.node, c * W, (units - 1) * pitch + o.h, "top", group([kid(P.node, [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, -W / 2, 0, P.pt, 1])])); }
+  if (side) { const P = sidePlate(W, D, cl, zs, pitch); for (let r = 0; r + 1 < units; r++) add(P.node, (across - 1) * W, r * pitch, "side", group([kid(P.node, [0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, -(P.z0 + P.z1) / 2, 0, W / 2 + P.pt, 1])])); }
+  return n;
+}
+// laid out for printing: flat, grooves up, in a row behind everything else
+function platesFlat(parts, o) {
+  let x = 0;
+  for (const q of parts) if (q.kind === "plate") { q.node = q.flat; q.dx = x; q.dy = 1.5 * o.d + 40; q.z = 0; x += Math.max(o.w * 0.5 + 16 + 10, o.h * 1.2 + 10); }
 }
 const COLS = "ABCDEFGH";
 
@@ -152,54 +259,87 @@ export function binSet(o0) {
   const grid = across > 1, label = (q) => (grid ? COLS[q.c] + (q.r + 1) : String(q.r + 1));
   const many = cells.length > 1;
   if (o.style === "bin" || !o.style) {
-    const sd = sideDepth(side, Math.max(0, o.clear));
+    const sd = sideDepth(side, side === "dovetail" ? dvGap(o) : Math.max(0, o.clear));
     // joined side by side, the walls are thick enough for the grooves
     const one = binParts(sd ? { ...o, wall: Math.max(o.wall, sd + 1.2) } : o), parts = [];
     const foot = o.stack ? Math.max(1, Math.min(o.foot, o.h / 3)) : 0, pitch = Math.max(5, o.h) - foot;
-    const node = sd ? group([kid(one.bin), ...sideJoints(o.w, o.d, o.h, side, Math.max(0, o.clear), foot + 1)]) : one.bin;
+    const clipSide = side === "dovetail" && o.clips === "back";
+    const R = Math.max(0, Math.min(o.radius, o.w / 2 - 0.5, o.d / 2 - 0.5));
+    const node = sd ? group([kid(one.bin), ...sideJoints(o.w, o.d, o.h, side, side === "dovetail" ? dvGap(o) : Math.max(0, o.clear), foot + 1), ...(clipSide ? clipHoles(o.w, o.d, o.h, R, foot, false, true) : [])]) : one.bin;
     for (const q of cells) parts.push({ key: q.k ? "bin" + q.k : "main", name: many ? "Bin " + label(q) : "Bin", node, z: q.r * pitch, dx: q.c * o.w, color: "#5b8fd6", kind: "bin" });
     if (one.lid) parts.push({ key: "lid", name: "Lid", node: one.lid, z: 0, dx: across * o.w + 12, color: "#e0a43a", kind: "lid" });
-    if (o.layout === "print") parts.forEach((q, i) => { if (q.kind === "bin") { q.dx = i * (o.w + 10); q.z = 0; } else q.dx = cells.length * (o.w + 10); });
-    return { parts, cell: one.cell, info: sd ? `Side by side they join with ${side === "dovetail" ? "dovetail rails (slide the one on the right on from the front)" : "pegs"}; the walls are ${(Math.max(o.wall, sd + 1.2)).toFixed(1)} thick for it.` : "" };
+    if (clipSide) addClips(parts, o, across, units, pitch, R, foot, false, true);
+    const np = side === "dovetail" && /side|both/.test(o.plates || "") && units > 1 ? addPlates(parts, o, { across, units, pitch, W: o.w, D: o.d, cl: PLATE_FITS[o.plateFit] ?? PLATE_FITS.snug, top: false, side: true, zs: sideZs(o.h, foot + 1) }) : 0;
+    const ng = side === "dovetail" && /side|both/.test(o.gplates || "") && units > 1 ? addGroovePlates(parts, o, { across, units, pitch, W: o.w, D: o.d, g: dvGap(o) - (PLATE_FITS[o.plateFit] ?? PLATE_FITS.snug), under: false, side: true, zs: sideZs(o.h, foot + 1) }) : 0;
+    if (o.layout === "print") parts.forEach((q, i) => { if (q.kind === "bin") { q.dx = i * (o.w + 10); q.z = 0; } else if (q.kind === "lid") q.dx = cells.length * (o.w + 10); });
+    if (o.layout === "print") { clipsFlat(parts, o); platesFlat(parts, o); }
+    const nc = parts.filter((q) => q.kind === "clip").length;
+    return { parts, cell: one.cell, info: (ng ? `${ng} plate${ng > 1 ? "s" : ""} in grooves slide${ng > 1 ? "" : "s"} into the left side grooves from the back, joining each bin to the one above. ` : "") + (np ? `${np} plate${np > 1 ? "s" : ""} over rails slide${np > 1 ? "" : "s"} onto the side rails from the back, joining each bin to the one above. ` : "") + (nc ? `${nc} lock clip${nc > 1 ? "s" : ""} press${nc > 1 ? "" : "es"} onto the backs across the joins, so the bins can't slide apart. ` : "") + (sd ? `Side by side they join with ${side === "dovetail" ? "dovetail rails (slide the one on the right on from the front)" : "pegs"}; the walls are ${(Math.max(o.wall, sd + 1.2)).toFixed(1)} thick for it.` : "") };
   }
-  const c = caseParts({ ...o, side }), parts = [];
+  // lock clips across the dovetail seams: stacked (top to bottom) and side by side
+  const clipStack = o.clips === "back" && units > 1 && o.lock === "dovetail", clipSide = o.clips === "back" && across > 1 && side === "dovetail";
+  const c = caseParts({ ...o, side, clipStack, clipSide }), parts = [];
   for (const q of cells) {
     const nm = many ? " " + label(q) : "";
     parts.push({ key: q.k ? "case" + q.k : "main", name: "Case" + nm, node: c.shell, z: q.r * o.h, dx: q.c * o.w, color: "#5b8fd6", kind: "case" });
     parts.push({ key: "front" + q.k, name: (o.style === "drawer" ? "Drawer" : o.style === "tilt" ? "Tilt bin" : "Door") + nm, node: c.front, z: q.r * o.h, dx: q.c * o.w, color: "#e0a43a", kind: o.style });
   }
+  const R = Math.max(0, Math.min(o.radius, Math.max(30, o.w) / 2 - 1, Math.max(30, o.d) / 2 - 1));
+  if (clipStack || clipSide) addClips(parts, o, across, units, o.h, R, 0, clipStack, clipSide);
+  const pTop = /top|both/.test(o.plates || "") && o.lock === "dovetail" && across > 1, pSide = /side|both/.test(o.plates || "") && side === "dovetail" && units > 1;
+  const np = pTop || pSide ? addPlates(parts, o, { across, units, pitch: o.h, W: Math.max(30, o.w), D: Math.max(30, o.d), cl: PLATE_FITS[o.plateFit] ?? PLATE_FITS.snug, top: pTop, side: pSide, zs: sideZs(Math.max(20, o.h), 0) }) : 0;
+  const gUnder = /under|both/.test(o.gplates || "") && o.lock === "dovetail" && across > 1, gSide = /side|both/.test(o.gplates || "") && side === "dovetail" && units > 1;
+  const ng = gUnder || gSide ? addGroovePlates(parts, o, { across, units, pitch: o.h, W: Math.max(30, o.w), D: Math.max(30, o.d), g: dvGap(o) - (PLATE_FITS[o.plateFit] ?? PLATE_FITS.snug), under: gUnder, side: gSide, zs: sideZs(Math.max(20, o.h), 0) }) : 0;
   // laid out for printing: each case in a row, its drawer, bin or door in a row in front
-  if (o.layout === "print") parts.forEach((q, i) => {
+  if (o.layout === "print") { clipsFlat(parts, o); platesFlat(parts, o); }
+  if (o.layout === "print") parts.filter((q) => q.kind !== "clip" && q.kind !== "plate").forEach((q, i) => {
     const k = Math.floor(i / 2); q.dx = k * (o.w + 10); q.z = 0; if (q.kind !== "case") q.dy = -(o.d + 15);
     // a door is turned to lie on its flat back, the pull up
     if (q.kind === "door" && c.flat) { const f = c.flat; q.node = group([kid(q.node, Rx(-Math.PI / 2, 0, -(f.z0 + f.fh / 2), f.y0 + f.td / 2))]); }
   });
-  return { parts, cell: c.cell, info: c.info };
+  const nc = parts.filter((q) => q.kind === "clip").length;
+  return { parts, cell: c.cell, info: c.info + (ng ? ` ${ng} plate${ng > 1 ? "s" : ""} in grooves slide${ng > 1 ? "" : "s"} into the open dovetail grooves from the back${gUnder ? ", under cases side by side" : ""}${gSide ? (gUnder ? " and" : ",") + " up the left side of cases stacked" : ""}.` : "") + (np ? ` ${np} plate${np > 1 ? "s" : ""} over rails slide${np > 1 ? "" : "s"} onto the open dovetail rails from the back${pTop ? ", across the tops of cases side by side" : ""}${pSide ? (pTop ? " and" : ",") + " up the right side of cases stacked" : ""}.` : "") + (nc ? ` ${nc} lock clip${nc > 1 ? "s" : ""} press${nc > 1 ? "" : "es"} onto the backs across the dovetail joins, so the cases can't slide apart.` : "") };
+}
+
+// the clips of a set: one on each spot of every dovetail seam, standing on the backs
+function addClips(parts, o, across, units, pitch, R, z0, stack, side) {
+  const W = o.style === "bin" || !o.style ? o.w : Math.max(30, o.w), D = o.style === "bin" || !o.style ? o.d : Math.max(30, o.d), H = o.h;
+  const e = clipE(R), node = clipNode(e); let n = 0;
+  const add = (m, dx, z) => { n++; parts.push({ key: "clip" + n, name: "Clip " + n, node: group([kid(node, m)]), z, dx, color: "#8c96a3", kind: "clip" }); };
+  if (stack) for (let c = 0; c < across; c++) for (let r = 0; r + 1 < units; r++) for (const x of clipSpots(W)) add(clipUp(x, D / 2, 0), c * o.w, (r + 1) * pitch);
+  if (side) for (let c = 0; c + 1 < across; c++) for (let r = 0; r < units; r++) for (const z of clipSpots(H - z0)) add(clipSide(W / 2, D / 2, z0 + (H - z0) / 2 + z), c * o.w, r * pitch);
+}
+// laid out for printing: the clips flat in a row behind the boxes, pegs up
+function clipsFlat(parts, o) {
+  let i = 0;
+  for (const q of parts) if (q.kind === "clip") { const e = clipE(Math.max(0, Math.min(o.radius, o.w / 2 - 1, o.d / 2 - 1))); q.node = clipNode(e); q.dx = i++ * (CLIP.wide + 6); q.dy = o.d / 2 + e + 20; q.z = 0; }
 }
 
 export function caseParts(o) {
   const W = Math.max(30, o.w), D = Math.max(30, o.d), H = Math.max(20, o.h), cl = Math.max(0, o.clear);
+  const dcl = dvGap(o); // the dovetails' own fit (Snug, Normal or Loose)
   const t = Math.max(1.2, o.caseT || 2.4), wall = Math.max(0.6, o.wall), fl = Math.max(0.6, o.floor), div = Math.max(0.6, o.divider);
   const R = Math.max(0, Math.min(o.radius, W / 2 - 1, D / 2 - 1));
   const lock = o.lock || "none";
   // stacking features (rails or pegs on top, grooves or holes underneath)
   const DV = { neck: 7, head: 10, h: 3 }, PEG = { d: 6, h: 3, inset: 10 };
-  const lockDepth = lock === "dovetail" ? DV.h + cl + 0.2 : lock === "pegs" ? PEG.h + 0.6 : 0;
-  const tb = Math.max(t, lockDepth ? lockDepth + 1.2 : 0), tt = t, tback = t;
+  const lockDepth = lock === "dovetail" ? DV.h + dcl + 0.2 : lock === "pegs" ? PEG.h + 0.6 : 0;
+  const tb = Math.max(t, lockDepth ? lockDepth + 1.2 : 0), tt = t, tback = o.clipStack || o.clipSide ? Math.max(t, CLIP.backT) : t;
   // side walls: thicker when cases join side by side (the grooves are cut into the left one)
-  const sd = sideDepth(o.side || "none", cl), ts = Math.max(t, sd ? sd + 1.2 : 0);
+  const sd = sideDepth(o.side || "none", o.side === "dovetail" ? dcl : cl), ts = Math.max(t, sd ? sd + 1.2 : 0);
   const iw = W - 2 * ts, ih = H - tb - tt, idp = D - tback;
   if (iw < 15 || ih < 10 || idp < 15) throw new Error("The case is too small inside: make it bigger, or the walls thinner");
   // ---- the case
   const ck = [kid(prim("box", { w: W, d: D, h: H, rv: R }))];
   ck.push(kid(prim("box", { w: iw, d: idp + 1, h: ih }), T(0, -D / 2 + (idp + 1) / 2 - 1, tb), true));
-  if (sd) ck.push(...sideJoints(W, D, H, o.side, cl, 0));
+  if (sd) ck.push(...sideJoints(W, D, H, o.side, o.side === "dovetail" ? dcl : cl, 0));
+  if (o.clipStack || o.clipSide) ck.push(...clipHoles(W, D, H, R, 0, o.clipStack, o.clipSide));
   const xs = [-W / 4, W / 4], pegXY = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => [i * (W / 2 - PEG.inset), j * (D / 2 - PEG.inset)]);
   if (lock === "dovetail") for (const x of xs) {
     // rails stop 3 short of the front, so the case above slides on from the front and stops flush
     ck.push(kid(extr(dovetailXZ(DV.neck, DV.head, DV.h), PLANE_XZ, D - 3), T(x, D / 2, H - 0.01)));
     // the groove is open at the back and closed at the front: the case above stops flush
-    ck.push(kid(extr(dovetailXZ(DV.neck, DV.head, DV.h + 0.01, cl), PLANE_XZ, D - 2 + cl), T(x, D / 2 + 1, -0.01), true));
+    ck.push(kid(extr(dovetailXZ(DV.neck, DV.head, DV.h + 0.01, dcl), PLANE_XZ, D - 2 + dcl), T(x, D / 2 + 1, -0.01), true));
   }
   if (lock === "pegs") for (const [x, y] of pegXY) {
     ck.push(kid(prim("cylinder", { w: PEG.d, d: PEG.d, h: PEG.h + 0.01, c: 0.6 }), T(x, y, H - 0.01)));
@@ -257,11 +397,14 @@ export function caseParts(o) {
     const td = 3.2, setback = 2, hs = o.hinge === "right" ? 1 : -1, pin = 3;
     const xh = hs * (W / 2 - ts - cl - td / 2), y0 = -D / 2 + setback + td / 2, z0 = tb + cl;
     const dw = fw - td / 2;
+    const pinTop = Math.max(0.6, tt * 0.7 + cl - 0.8), pinBot = tb * 0.7 + cl, pr = 0.6;
     const dk = [
       kid(prim("box", { w: dw, d: td, h: fh }), T(xh - hs * (dw / 2), 0, 0)),
       kid(prim("cylinder", { w: td, d: td, h: fh }), T(xh, 0, 0)),
-      kid(prim("cylinder", { w: pin, d: pin, h: tt * 0.7 + cl }), T(xh, 0, fh - 0.01)),
-      kid(prim("cylinder", { w: pin, d: pin, h: tb * 0.7 + cl }), T(xh, 0, -(tb * 0.7 + cl) + 0.01)),
+      // the pins (nubs): the top one 0.8 shorter than before (easier to snap in), both with their
+      // tips rounded; each runs pr into the door so the rounded root edge is buried in it
+      kid(prim("cylinder", { w: pin, d: pin, h: pinTop + pr, r: pr }), T(xh, 0, fh - pr)),
+      kid(prim("cylinder", { w: pin, d: pin, h: pinBot + pr, r: pr }), T(xh, 0, -pinBot)),
     ];
     // the pull, near the free edge: a knob, a finger hole through the door, or a bar
     const px = xh - hs * (dw - Math.min(12, dw * 0.15)), pz = fh * 0.5, pull = o.doorPull || "knob";
