@@ -84,7 +84,7 @@ function initPlate(app) {
     const q = find.value.trim().toLowerCase(); more.classList.toggle("searching", !!q); let count = 0;
     for (const section of more.querySelectorAll("section")) {
       let found = 0;
-      for (const b of section.querySelectorAll("button[data-for]")) { b.hidden = !$(b.dataset.for) || !(`${b.textContent} ${b.title}`.toLowerCase().includes(q)); if (!b.hidden) found++; }
+      for (const b of section.querySelectorAll("button[data-for]")) { b.hidden = !$(b.dataset.via || b.dataset.for) || !(`${b.textContent} ${b.title}`.toLowerCase().includes(q)); if (!b.hidden) found++; }
       section.hidden = !found; if (!section.classList.contains("simple-arrange") || q || matchMedia("(max-width: 640px)").matches) count += found;
     }
     $("simple-empty").hidden = !!count;
@@ -127,7 +127,7 @@ function initPlate(app) {
     if (b.dataset.dock) { $("dock-" + b.dataset.dock)?.click(); close(); return; }
     if (!b.dataset.for) return;
     if (b.id === "sr-hole" && !app.sel.length) { $("dock-holes")?.click(); app.toast("Drag a hole shape onto a solid, then Group them to cut it."); return; }
-    close(); $(b.dataset.for)?.click(); sync();
+    close(); if (b.dataset.via && !$(b.dataset.for)) $(b.dataset.via)?.click(); $(b.dataset.for)?.click(); sync();
   }
   function toolKeys(e) { if (e.key !== "Enter" && e.key !== " ") return; if (app.command) e.preventDefault(); else e.stopPropagation(); }
   rail.addEventListener("keydown", toolKeys);
@@ -150,7 +150,7 @@ function initPlate(app) {
     const proxies = [...work.querySelectorAll('button[data-for]')].filter((b) => b.dataset.for === id);
     const visible = proxies.find((b) => b.getClientRects().length); if (visible) return visible;
     if (!moreButton.getClientRects().length) return null;
-    return proxies.some((b) => b.closest("#simple-more")) ? moreButton : proxies.some((b) => b.closest("#simple-shapes")) ? shapeButton : null;
+    return proxies.some((b) => b.closest("#simple-more") && $(b.dataset.via || b.dataset.for)) ? moreButton : proxies.some((b) => b.closest("#simple-shapes")) ? shapeButton : null;
   }
   const panel = document.createElement("aside"); panel.id = "simple-panel"; panel.setAttribute("aria-label", "Selected shape");
   panel.innerHTML = '<button id="simple-sheet-handle" aria-expanded="false" aria-label="Expand selected shape panel">━━</button><div class="simple-panel-scroll"><div id="simple-inspector-slot"></div><div id="simple-plate-empty"><h2>The plate</h2><p>Pick a shape on the plate, or drag one in from the strip below.</p></div><div id="simple-actions"><div id="simple-multi" class="simple-grid"></div><h3>Quick fixes</h3><div id="simple-fixes" class="simple-grid"></div></div></div><div class="simple-print-footer"><div id="simple-ready" role="status" data-state="empty">Add a shape to check it.</div><button id="simple-print">Export STL for printing</button><button id="simple-export-more">Send to slicer (3MF) · more formats</button></div>';
@@ -302,7 +302,6 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 #simple-collapse-rail { left: 0; top: 40%; } #simple-collapse-panel { right: 0; bottom: 12px; }
 #simple-collapse-top { top: 0; left: 50%; transform: translateX(-50%); } #simple-collapse-bottom { bottom: 0; left: 8px; }
 #simple-collapse-panel.selected::after { content: ""; position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
-html[data-face="simple"] #app[data-mode="advanced"] #simple-collapse-rail { display: none; }
 html[data-face="simple"][data-simple-hide~="top"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .topbar { display: none; }
 html[data-face="simple"][data-simple-hide~="bottom"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] #shapes { transition: none; }
@@ -363,11 +362,6 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { displa
 }
 
 #simple-rail, .simple-panel { display: none; }
-/* Advanced keeps its own tools, with More available for app actions. */
-html[data-face="simple"] #app[data-mode="advanced"] #simple-rail { display: flex; position: absolute; z-index: 40; left: 0; bottom: 8px; }
-html[data-face="simple"] #app[data-mode="advanced"] #simple-rail button:not(#sr-more) { display: none; }
-html[data-face="simple"] #app[data-mode="advanced"] #simple-more:not([hidden]) { display: block; position: absolute; z-index: 41; left: 55px; bottom: 8px; width: min(380px, calc(100% - 55px)); max-height: 70%; overflow: auto; box-sizing: border-box; padding: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; }
-@media (max-width: 640px) { html[data-face="simple"] #app[data-mode="advanced"] #simple-more:not([hidden]) { left: 0; bottom: 55px; width: 100%; } }
 html[data-face="simple"] #app[data-mode="beginner"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
 html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; grid-row: 1; }
 html[data-face="simple"] #app[data-mode="beginner"] > .work { grid-column: 1; grid-row: 2; }

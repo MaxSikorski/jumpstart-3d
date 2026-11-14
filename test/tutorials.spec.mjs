@@ -123,17 +123,25 @@ test("tutorial checks: none throws, on an empty design or on real designs with g
 // keepLathe: the next step is also a Lathe step, so the Lathe stays open (opening it takes seconds in the test browser)
 async function normalize({ keepLathe = false } = {}) {
   if (keepLathe && (await visible("#lathe-cancel, .lathe-done-back"))) return;
-  const dirty = await page.evaluate(() => [".lathe-done-back", "#lathe-start", "#lathe-cancel", "#sk-finish", "#ribbon-menu"].some((s) => { const e = document.querySelector(s); return e && e.getClientRects().length; }));
+  const dirty = await page.evaluate(() => [".lathe-done-back", "#lathe-start", "#lathe-cancel", "#sk-finish", '#simple-rail [data-for="sk-finish"]', "#ribbon-menu"].some((s) => { const e = document.querySelector(s); return e && e.getClientRects().length; }));
   if (!dirty) { await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove())); return; }
   for (let k = 0; k < 4; k++) {
     if (await visible(".lathe-done-back")) { await page.evaluate(() => [...document.querySelectorAll(".lathe-done-back button")].find((b) => b.textContent === "Keep turning").click()); continue; }
     if (await visible("#lathe-start")) { await page.evaluate(() => [...document.querySelectorAll(".s3d-modal-btns button")].find((b) => b.textContent === "Cancel").click()); continue; }
     if (await visible("#lathe-cancel")) { await page.click("#lathe-cancel"); continue; }
+    if (await visible('#simple-rail [data-for="sk-finish"]')) { await page.click('#simple-rail [data-for="sk-finish"]'); continue; }
     if (await visible("#sk-finish")) { await page.click("#sk-finish"); continue; }
     if (await visible("#ribbon-menu")) { await page.keyboard.press("Escape"); continue; }
     break;
   }
   await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove()));
+}
+
+async function tool(id, via) {
+  if (process.env.JS3D_FACE !== "simple") { if (via) await page.click(via); await page.click("#" + id); return; }
+  const rail = page.locator('#simple-rail [data-for="' + id + '"]:visible');
+  if (await rail.count()) await rail.first().click();
+  else { await page.click('#sr-more'); await page.locator('#simple-more [data-for="' + id + '"]:visible').first().click(); }
 }
 
 // a box through the real buttons: the shape tile in Beginner, Primitives > Box in Advanced
@@ -143,15 +151,15 @@ async function addBox(mode) {
     return;
   }
   if (mode === "beginner") { await page.click("#dock-objects"); await page.locator('.tile[data-kind="box"]').click(); }
-  else { await page.click("#ad-prims"); await page.click("#ad-box"); await page.click("#cmd-ok"); }
+  else { await tool("ad-box", "#ad-prims"); await page.click("#cmd-ok"); }
 }
 
 // A step whose target only exists after earlier steps: do those earlier steps' work through the real buttons.
 async function prepareFor(sel, mode) {
-  if (/#sk-/.test(sel)) { await page.click("#ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line"); return "sketch open"; }
+  if (/#sk-/.test(sel)) { await tool("ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line", { state: "attached" }); return "sketch open"; }
   if (/#lathe-/.test(sel)) {
     await normalize(); // whatever stage the Lathe is at, start from the closed Lathe
-    await page.click("#ad-workshop"); await page.click("#ad-lathe"); // 2.8.1.9: the Lathe is in Advanced's Workshop menu; 2.9.6 took it off the Beginner ribbon, so every Lathe lesson is in Advanced
+    await tool("ad-lathe", "#ad-workshop"); // 2.8.1.9: the Lathe is in Advanced's Workshop menu; 2.9.6 took it off the Beginner ribbon, so every Lathe lesson is in Advanced
     await page.waitForSelector("#lathe-start");
     if (/lathe-start/.test(sel)) return "lathe asks what to turn";
     await page.click("#lathe-start"); await page.waitForSelector("#lathe-done");

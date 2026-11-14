@@ -566,7 +566,7 @@ face coverage and mesh closure. Browser export coverage is authored but must be 
 separately; no Playwright run was authorized during implementation.
 
 - `simple-collapse.spec.mjs`: Simple panel handles, viewport resizing, whole-plate restoration across reload, Home framing, keyboard shortcut, Original visibility and horizontal overflow on desktop and mobile.
-- `simple-advanced.spec.mjs`: Simple Advanced Browser and Timeline moves, selection and editing, section persistence, panel controls, workspace and mode switches, reveal, and desktop and phone fit.
+- `simple-advanced.spec.mjs`: Simple Advanced rail and More coverage, sketch tools, workspaces, Browser and Timeline panel, section persistence, reveal, and desktop and phone fit.
 
 ### Checkpoint tests
 

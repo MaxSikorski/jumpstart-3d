@@ -496,7 +496,7 @@ export function initTutorials(app) {
       if (app.face === "simple") app.simple?.reveal(e); // jumpstart-3d: reveal the target before measuring it
       if (e && e.getClientRects().length) return e;
       // jumpstart-3d: Simple mode redirects hidden ribbon targets to their proxies or menu buttons
-      if (app.face === "simple" && e && e.id) { const p = app.simple?.proxyFor(e.id); if (p) return p; }
+      if (app.face === "simple") { const id = e ? e.id : (/^#([\w-]+)$/.exec(s) || [])[1]; const p = id && app.simple?.proxyFor(id); if (p) return p; }
     }
     if (show.via) { const v = document.querySelector(show.via); if (v && v.getClientRects().length) return v; }
     return null;
