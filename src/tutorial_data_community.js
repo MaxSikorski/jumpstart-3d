@@ -2,8 +2,8 @@
 // Tool actions without a durable design check are ticked by hand, like the base lessons.
 import { nameStep, saveStep, exportStep, FIELDS, TABS } from "./tutorial_data.js";
 
-// c-first-print: a cut counts only when one hole shape in the group sits over a solid shape in it and reaches from that solid's
-// bottom to its top (a pocket with a floor is not "a hole all the way through"). Boxes of plain shapes, in the group's own frame.
+// c-first-print: a cut counts only when one hole shape in the group has its middle inside a solid shape's outline and reaches from
+// that solid's bottom to its top (a pocket with a floor is not "a hole all the way through"). Boxes of plain shapes, in the group's own frame.
 const span = (c) => {
   const p = c.node.p || {}, m = c.m || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const x of [-p.w / 2, p.w / 2]) for (const y of [-p.d / 2, p.d / 2]) for (const z of [0, p.h]) for (let k = 0; k < 3; k++) {
@@ -15,7 +15,7 @@ const span = (c) => {
 const goesThrough = (g) => {
   const boxes = (g.node.children || []).filter((c) => c.node.t === "prim").map(span);
   return boxes.some((s) => !s.hole && boxes.some((h) => h.hole && h.lo[2] <= s.lo[2] + 0.01 && h.hi[2] >= s.hi[2] - 0.01
-    && [0, 1].every((k) => Math.min(h.hi[k], s.hi[k]) - Math.max(h.lo[k], s.lo[k]) > 0.01)));
+    && [0, 1].every((k) => { const mid = (h.lo[k] + h.hi[k]) / 2; return mid > s.lo[k] + 0.01 && mid < s.hi[k] - 0.01; })));
 };
 
 export const COMMUNITY_TUTORIALS = [

@@ -133,7 +133,7 @@ test("c-first-print: a pocket that stops short of the bottom does not count as a
   const ids = await page.evaluate(async () => {
     const box = JS3D.add("box", { size: { w: 20, d: 20, h: 20 }, at: [0, 0, 0] });
     const cut = JS3D.add("cylinder", { size: { w: 8, d: 8, h: 30 }, at: [0, 0, 5], hole: true }); // 5 to 35: a 15 mm deep pocket with a 5 mm floor
-    const miss = JS3D.add("cylinder", { size: { w: 8, d: 8, h: 30 }, at: [60, 0, -5], hole: true }); // tall enough, but beside the box: it must not stand in for the pocket
+    const miss = JS3D.add("cylinder", { size: { w: 8, d: 8, h: 30 }, at: [13.5, 13.5, -5], hole: true }); // tall enough, but just off a corner (its square outline overlaps the box's, the round one misses): it must not stand in for the pocket
     JS3D.group([box, cut, miss]); await JS3D.ready();
     return [box, cut, miss];
   });
