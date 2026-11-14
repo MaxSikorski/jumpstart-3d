@@ -474,9 +474,21 @@ async function inFace(face, fn) {
     await page.evaluate((f) => window.__app.setFace(f, true), before);
   }
 }
-// Advanced Primitives: open the item, type into the boxes the step names, OK
-async function primitive(id, fields) {
-  await page.click("#ad-prims"); await page.click("#" + id);
+// A toolbar button as each face shows it. Original: J.Siwek's own button. Simple: his ribbon is hidden, so the button is on the Simple rail,
+// or else in More, opened first as a student does. With show, Show me must point at it first (in Simple: at More, then at the button inside it).
+// simple: the id Simple's button stands for, when Simple shows another button for the same thing (Colour lithophane serves the Print Sim's and the Workshop's).
+async function press(face, id, { show = false, simple = id } = {}) {
+  if (face !== "simple") { if (show) expect(await showMe(), `Show me points at #${id}`).toBe(id); await page.click("#" + id); return; }
+  const rail = page.locator(`#simple-rail [data-for="${simple}"]:visible`);
+  if (await rail.count()) { if (show) expect(await showMe(), `Show me points at ${simple} on the rail`).toBe("sar-" + simple); await rail.first().click(); return; }
+  if (show) expect(await showMe(), `Show me points at More, which holds ${simple}`).toBe("sr-more");
+  await page.click("#sr-more");
+  if (show) expect(await showMe(), `with More open, Show me points at ${simple}`).toBe("for:" + simple);
+  await page.locator(`#simple-more [data-for="${simple}"]:visible`).click();
+}
+// Advanced Primitives: open the item (in Simple from the rail's Primitives), type into the boxes the step names, OK
+async function primitive(face, id, fields) {
+  await (face === "simple" ? page.click('#simple-rail [data-for="ad-prims"]:visible') : page.click("#ad-prims")); await page.click("#ribbon-menu #" + id);
   for (const [k, v] of Object.entries(fields)) { await page.locator("#" + k).fill(String(v)); await page.keyboard.press("Tab"); }
   await page.click("#cmd-ok"); await waitIdle(page);
 }
@@ -504,7 +516,7 @@ for (const face of ["original", "simple"]) {
           expect(await showMe()).toBe("sr-more");
           await page.click("#sr-more");
           expect(await showMe()).toBe("for:exp-laser-svg");
-          await page.click('#simple-more button[data-for="exp-laser-svg"]');
+          await page.locator('#simple-more button[data-for="exp-laser-svg"]:visible').click(); // Advanced's Workshop group has one too, hidden in Beginner
         }
         else { await page.click("#btn-export"); await page.click("#exp-laser-svg"); }
       });
@@ -525,21 +537,21 @@ for (const face of ["original", "simple"]) {
   test(`c5-print-plate in ${face}: two parts arranged, turned and sliced in the 3D Print Sim`, async () => {
     await inFace(face, async () => {
       await startLesson("c5-print-plate", "advanced");
-      await primitive("ad-box", { "pr-w": 40, "pr-d": 20, "pr-h": 10 });
-      await primitive("ad-cyl", { "pr-pos0": 40 });
+      await primitive(face, "ad-box", { "pr-w": 40, "pr-d": 20, "pr-h": 10 });
+      await primitive(face, "ad-cyl", { "pr-pos0": 40 });
       await ticks(1, "two parts"); await next();
-      await page.click("#ws-print"); await expect(page.locator("#ps-r-arrange")).toBeVisible();
+      await press(face, "ws-print"); await expect(page.locator(face === "simple" ? '#simple-rail [data-for="ps-r-arrange"]' : "#ps-r-arrange")).toBeVisible();
       await ticks(2, "Print Sim open"); await next();
-      await page.click("#ps-r-arrange");
+      await press(face, "ps-r-arrange");
       await ticks(3, "arranged"); await next();
-      await page.click("#ps-r-rx");
+      await press(face, "ps-r-rx");
       await ticks(4, "turned"); await next();
-      await page.click("#ps-r-auto");
-      await page.click("#ps-r-slice");
+      await press(face, "ps-r-auto");
+      await press(face, "ps-r-slice");
       await ticks(5, "sliced");
       expect((await psim()).view).toBe("layers");
-      await page.click("#ps-r-prepare"); await expect.poll(async () => (await psim()).view).toBe("model");
-      await page.click("#ps-r-preview"); await expect.poll(async () => (await psim()).view).toBe("layers");
+      await press(face, "ps-r-prepare"); await expect.poll(async () => (await psim()).view).toBe("model");
+      await press(face, "ps-r-preview"); await expect.poll(async () => (await psim()).view).toBe("layers");
       await next();
       await finishLesson();
     });
@@ -549,20 +561,20 @@ for (const face of ["original", "simple"]) {
     test.setTimeout(120_000);
     await inFace(face, async () => {
       await startLesson("c5-print-watch", "advanced");
-      await primitive("ad-box", { "pr-w": 30, "pr-d": 30, "pr-h": 20 });
+      await primitive(face, "ad-box", { "pr-w": 30, "pr-d": 30, "pr-h": 20 });
       await ticks(1, "block"); await next();
-      await page.click("#ws-print"); await page.click("#ps-r-layers");
+      await press(face, "ws-print"); await press(face, "ps-r-layers");
       await ticks(2, "layers"); await next();
-      await page.click("#ps-r-strength");
+      await press(face, "ps-r-strength");
       await ticks(3, "strength");
-      await page.click("#ps-r-model"); await expect.poll(async () => (await psim()).view).toBe("model");
+      await press(face, "ps-r-model"); await expect.poll(async () => (await psim()).view).toBe("model");
       await next();
       const playing = () => page.evaluate(() => document.getElementById("ps-play")?.getAttribute("aria-pressed") === "true");
-      await expect.poll(async () => { if (!(await playing())) await page.click("#ps-r-play"); return playing(); }, { timeout: 30_000 }).toBe(true); // Play waits for the slice ("Still slicing"): press it again only while it is not playing
+      await expect.poll(async () => { if (!(await playing())) await press(face, "ps-r-play"); return playing(); }, { timeout: 30_000 }).toBe(true); // Play waits for the slice ("Still slicing"): press it again only while it is not playing
       await ticks(4, "playing");
-      await page.click("#ps-r-play"); await expect.poll(playing).toBe(false); // the lesson says: Play print again pauses it
+      await press(face, "ps-r-play"); await expect.poll(playing).toBe(false); // the lesson says: Play print again pauses it
       await next();
-      const g = await downloadOf(() => page.click("#ps-r-gcode"));
+      const g = await downloadOf(() => press(face, "ps-r-gcode"));
       expect(g.name).toMatch(/\.gcode$/);
       expect(g.text).toMatch(/^G1 /m);
       await ticks(5, "G-code saved");
@@ -626,28 +638,28 @@ for (const face of ["original", "simple"]) {
     test.setTimeout(180_000);
     await inFace(face, async () => {
       await startLesson("c5-maker-tour", "advanced");
-      expect(await showMe(), "before the Simulate tab is open, Show me points at it").toBe("ws-simulate");
-      await page.click("#ws-simulate");
-      expect(await showMe(), "with Simulate open, Show me points at Bin & Box Maker").toBe("sim-bins");
-      await page.click("#sim-bins"); await page.click("#cmd-ok"); await waitIdle(page);
+      if (face === "simple") await press(face, "sim-bins", { show: true }); // Simple: More holds Bin & Box Maker, and opens Simulate for it
+      else {
+        expect(await showMe(), "before the Simulate tab is open, Show me points at it").toBe("ws-simulate");
+        await page.click("#ws-simulate");
+        expect(await showMe(), "with Simulate open, Show me points at Bin & Box Maker").toBe("sim-bins");
+        await page.click("#sim-bins");
+      }
+      await page.click("#cmd-ok"); await waitIdle(page);
       await ticks(1, "bin"); await next();
-      expect(await showMe()).toBe("sim-layerscape");
-      await page.click("#sim-layerscape");
+      await press(face, "sim-layerscape", { show: true });
       await ticks(2, "Layerscape open");
       const frame = page.frameLocator("#layerscape iframe");
       await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 120_000 }).toBe(true);
       await frame.locator("#lsBack").click();
       await expect(page.locator("#layerscape")).toHaveCount(0);
       await next();
-      expect(await showMe()).toBe("sim-helmet");
-      await page.click("#sim-helmet");
+      await press(face, "sim-helmet", { show: true });
       await ticks(3, "Helmet Maker open");
       await page.click("#cf-back"); await expect(page.locator("#cosforge")).toHaveCount(0);
       await next();
-      expect(await showMe(), "before the 3D Print Sim is open, Show me points at its tab").toBe("ws-print");
-      await page.click("#ws-print");
-      expect(await showMe()).toBe("ps-r-litho");
-      await page.click("#ps-r-litho");
+      if (face !== "simple") await press(face, "ws-print", { show: true }); // before the 3D Print Sim is open, Show me points at its tab
+      await press(face, "ps-r-litho", { show: true, simple: "simple-run-litho" }); // Simple: More holds Colour lithophane, which needs no Print Sim
       await ticks(4, "Color Lithophane Studio open");
       await page.click("#cl-close"); await expect(page.locator("#clitho")).toHaveCount(0);
       await next();

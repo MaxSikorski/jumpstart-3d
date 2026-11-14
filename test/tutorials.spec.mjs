@@ -16,6 +16,8 @@ import { ICON } from "../src/icons.js";
 import { boot, watchErrors, loadDoc, newDoc, waitIdle, bodies, quarantine } from "./helpers.mjs";
 
 let page, errors, project;
+// JS3D_FACE=simple walks every lesson in Simple (read once here, so a CI run can switch it with one edit of this line)
+const SIMPLE = process.env.JS3D_FACE === "simple";
 const quarantined = new Set();
 const tutorials = []; // { id, mode, title, steps }, read from the running app so the test sees exactly what users see
 const exportedIn = new Set(), savedIn = new Set(), startedIds = new Set(); // exportedIn and savedIn: "<mode>:<repeat index>", so --repeat-each runs each time
@@ -28,7 +30,7 @@ test.beforeAll(async ({ browser }, info) => {
   page.on("dialog", (d) => d.accept()); // the Lathe asks "Start over?" before it throws work away
   await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
   await page.emulateMedia({ reducedMotion: "reduce" }); // the "Next" button pulses when a step is done; reduced motion turns that off, so plain clicks do not wait for it
-  if (process.env.JS3D_FACE === "simple") await page.addInitScript(() => { try { localStorage.setItem("jumpstart.face", "simple"); } catch {} });
+  if (SIMPLE) await page.addInitScript(() => { try { localStorage.setItem("jumpstart.face", "simple"); } catch {} });
   await boot(page, info);
   const list = await page.evaluate(() => window.__app.tutorials.list.map((t) => ({
     id: t.id, mode: t.mode, level: t.level, title: t.title, item: t.item, learn: t.learn, minutes: t.minutes,
@@ -123,17 +125,25 @@ test("tutorial checks: none throws, on an empty design or on real designs with g
 // keepLathe: the next step is also a Lathe step, so the Lathe stays open (opening it takes seconds in the test browser)
 async function normalize({ keepLathe = false } = {}) {
   if (keepLathe && (await visible("#lathe-cancel, .lathe-done-back"))) return;
-  const dirty = await page.evaluate(() => [".lathe-done-back", "#lathe-start", "#lathe-cancel", "#sk-finish", "#ribbon-menu"].some((s) => { const e = document.querySelector(s); return e && e.getClientRects().length; }));
+  const dirty = await page.evaluate(() => [".lathe-done-back", "#lathe-start", "#lathe-cancel", "#sk-finish", '#simple-rail [data-for="sk-finish"]', "#ribbon-menu"].some((s) => { const e = document.querySelector(s); return e && e.getClientRects().length; }));
   if (!dirty) { await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove())); return; }
   for (let k = 0; k < 4; k++) {
     if (await visible(".lathe-done-back")) { await page.evaluate(() => [...document.querySelectorAll(".lathe-done-back button")].find((b) => b.textContent === "Keep turning").click()); continue; }
     if (await visible("#lathe-start")) { await page.evaluate(() => [...document.querySelectorAll(".s3d-modal-btns button")].find((b) => b.textContent === "Cancel").click()); continue; }
     if (await visible("#lathe-cancel")) { await page.click("#lathe-cancel"); continue; }
+    if (await visible('#simple-rail [data-for="sk-finish"]')) { await page.click('#simple-rail [data-for="sk-finish"]'); continue; }
     if (await visible("#sk-finish")) { await page.click("#sk-finish"); continue; }
     if (await visible("#ribbon-menu")) { await page.keyboard.press("Escape"); continue; }
     break;
   }
   await page.evaluate(() => document.querySelectorAll(".modal-back").forEach((b) => b.remove()));
+}
+
+async function tool(id, via) {
+  if (!SIMPLE) { if (via) await page.click(via); await page.click("#" + id); return; }
+  const rail = page.locator('#simple-rail [data-for="' + id + '"]:visible');
+  if (await rail.count()) await rail.first().click();
+  else { await page.click('#sr-more'); await page.locator('#simple-more [data-for="' + id + '"]:visible').first().click(); }
 }
 
 // a box through the real buttons: the shape tile in Beginner, Primitives > Box in Advanced
@@ -143,15 +153,15 @@ async function addBox(mode) {
     return;
   }
   if (mode === "beginner") { await page.click("#dock-objects"); await page.locator('.tile[data-kind="box"]').click(); }
-  else { await page.click("#ad-prims"); await page.click("#ad-box"); await page.click("#cmd-ok"); }
+  else { await tool("ad-box", "#ad-prims"); await page.click("#cmd-ok"); }
 }
 
 // A step whose target only exists after earlier steps: do those earlier steps' work through the real buttons.
 async function prepareFor(sel, mode) {
-  if (/#sk-/.test(sel)) { await page.click("#ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line"); return "sketch open"; }
+  if (/#sk-/.test(sel)) { await tool("ad-sketch"); await page.locator("#plane-seg button").first().click(); await page.waitForSelector("#sk-line", { state: "attached" }); return "sketch open"; }
   if (/#lathe-/.test(sel)) {
     await normalize(); // whatever stage the Lathe is at, start from the closed Lathe
-    await page.click("#ad-workshop"); await page.click("#ad-lathe"); // 2.8.1.9: the Lathe is in Advanced's Workshop menu; 2.9.6 took it off the Beginner ribbon, so every Lathe lesson is in Advanced
+    await tool("ad-lathe", "#ad-workshop"); // 2.8.1.9: the Lathe is in Advanced's Workshop menu; 2.9.6 took it off the Beginner ribbon, so every Lathe lesson is in Advanced
     await page.waitForSelector("#lathe-start");
     if (/lathe-start/.test(sel)) return "lathe asks what to turn";
     await page.click("#lathe-start"); await page.waitForSelector("#lathe-done");
@@ -181,7 +191,7 @@ async function prepareFor(sel, mode) {
     return "ground made";
   }
   if (/param-expr/.test(sel)) { await page.click("#browser .param-add"); return "one parameter added"; }
-  if (/#ps-r-/.test(sel)) { await page.click("#ws-print"); await page.waitForSelector("#ps-r-arrange"); return "3D Print Sim open"; } // the Print Sim's own toolbar shows once its tab is open (c5-print-plate, c5-print-watch)
+  if (/#ps-r-/.test(sel)) { await tool("ws-print"); await page.waitForSelector("#ps-r-arrange", { state: "attached" }); return "3D Print Sim open"; } // the Print Sim's own toolbar shows once its tab is open (c5-print-plate, c5-print-watch)
   if (/#bn-/.test(sel)) { // J.Siwek 2.9.8.9.x Box Maker lessons: the step before opens the Box Maker; its joins and plates show for a dovetailed set of drawers two wide and two high
     await page.evaluate((plates) => { try { if (plates) localStorage.setItem("jumpstart3d.bins", JSON.stringify({ style: "drawer", units: 2, across: 2, lock: "dovetail", sideLock: "dovetail" })); } catch {} window.__app.advanced.openBins(); try { localStorage.removeItem("jumpstart3d.bins"); } catch {} }, /bn-(lock|plates)/.test(sel));
     await page.waitForSelector(sel.split(",")[0].trim(), { state: "attached" });
@@ -191,9 +201,11 @@ async function prepareFor(sel, mode) {
 }
 
 // What "Show me" does for this step, checked from the outside. It must highlight an element that is the one the data asks for.
+// J.Siwek's buttons that run the same command as another one: Simple shows one button for both (the canonical list in src/simpleadvanced.js), so Show me may point at that one
+const SIMPLE_SAME = { "ad-hole-m": "ad-hole", "ad-fastbtn": "ad-fasteners", "ad-ins-fast": "ad-fasteners", "ad-ins-hinge": "ad-hinge", "ad-ins-gear": "ad-gears", "ps-r-litho": "simple-run-litho" };
 async function checkShowMe(tutId, i, show, mode) {
   const at = `${tutId} step ${i + 1}`;
-  const showMe = () => page.evaluate(({ sel, via, tile }) => {
+  const showMe = () => page.evaluate(({ sel, via, tile, same }) => {
     document.querySelector("#tut-panel .tut-mini-line")?.click(); // Show me can make the lesson panel small when it covers the target (jumpstart-3d: phone tutorials); the next press opens it first
     document.getElementById("tut-show").click(); // the same handler a mouse click runs
     const e = document.querySelector(".tut-spot");
@@ -203,9 +215,9 @@ async function checkShowMe(tutId, i, show, mode) {
       id: e.id, onScreen: e.getClientRects().length > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight,
       bubble: !!document.querySelector("#tut-bubble"),
       isTile: tile ? e.dataset.kind === tile.kind && e.classList.contains("tile") && e.classList.contains("hole") === tile.hole : false,
-      isSel: sel ? e.matches(sel) || (document.documentElement.dataset.face === "simple" && (sel.split(",").some((s) => s.trim() === "#" + e.dataset.for) || ["sr-more", "sr-shapes"].includes(e.id))) : false, isVia: via ? e.matches(via) : false,
+      isSel: sel ? e.matches(sel) || (document.documentElement.dataset.face === "simple" && (sel.split(",").some((s) => s.trim() === "#" + e.dataset.for || (e.dataset.for && same[s.trim().slice(1)] === e.dataset.for)) || ["sr-more", "sr-shapes"].includes(e.id))) : false, isVia: via ? e.matches(via) : false,
     };
-  }, { sel: show.sel || null, via: show.via || null, tile: show.tile ? { kind: show.tile, hole: !!show.hole } : null });
+  }, { sel: show.sel || null, via: show.via || null, tile: show.tile ? { kind: show.tile, hole: !!show.hole } : null, same: SIMPLE_SAME });
   let spot = await showMe(), prepared = null;
   if (!spot) { // the target only exists after earlier work: do that work, then wait for the step's own target to appear
     prepared = await prepareFor(show.sel || "", mode);
@@ -418,7 +430,7 @@ function referenced() {
 }
 
 test("every toolbar and menu button is used by a tutorial, or is a known gap in test/tutorial-gaps.json", async () => {
-  test.skip(process.env.JS3D_FACE === "simple", "Button coverage runs in Original");
+  test.skip(SIMPLE, "Button coverage runs in Original");
   const universe = await collectUniverse();
   const used = referenced();
   const gapsFile = new URL("./tutorial-gaps.json", import.meta.url);
@@ -438,4 +450,28 @@ test("every toolbar and menu button is used by a tutorial, or is a known gap in 
   expect(newGaps, "buttons with no tutorial that are not in test/tutorial-gaps.json: add a tutorial step that uses them, or (if they truly need none) list them in the file").toEqual([]);
   expect(fixed, "buttons now used by a tutorial: remove them from test/tutorial-gaps.json").toEqual([]);
   expect(gone, "ids in test/tutorial-gaps.json that no longer exist in the app: remove them").toEqual([]);
+});
+
+
+test('Simple Advanced Show me follows rail and More proxies', async ({}, info) => {
+  test.skip(info.project.name === 'mobile', 'The desktop rail shows Revolve.');
+  await normalize(); await page.evaluate(() => window.__app.setFace('simple', true));
+  const go = async (id, selector) => {
+    await page.evaluate(({ id, selector }) => {
+      const app = window.__app; app.tutorials.start(id);
+      const target = app.tutorials.list.find(t => t.id === id).steps.findIndex(s => s.show.sel === selector);
+      if (target < 0) throw new Error('Lesson step not found: ' + selector);
+      for (let i = 0; i < target; i++) document.getElementById('tut-next').click();
+      document.querySelector('#tut-panel .tut-mini-line')?.click();
+      document.getElementById('tut-show').click();
+    }, { id, selector });
+  };
+  await go('a-pawn', '#ad-revolve');
+  await expect(page.locator('#sar-ad-revolve')).toHaveClass(/tut-spot/);
+  await go('a-spring', '#ad-combine');
+  await expect(page.locator('#sr-more')).toHaveClass(/tut-spot/);
+  await page.click('#sr-more');
+  await page.evaluate(() => { document.querySelector('#tut-panel .tut-mini-line')?.click(); document.getElementById('tut-show').click(); });
+  await expect(page.locator('#simple-more [data-for="ad-combine"]')).toHaveClass(/tut-spot/);
+  await page.evaluate(() => window.__app.tutorials.close());
 });
