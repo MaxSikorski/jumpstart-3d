@@ -243,8 +243,8 @@ other edit.
 | OpenAI-style (OpenAI, OpenRouter, Groq, oMLX…) | `https://api.openai.com/v1` (change it for the others) | yes |
 | Anthropic | `https://api.anthropic.com/v1` | yes |
 
-Use **List models** to fill the model box from the server. Tick **Model can see images** if yours
-can. For a local model, pick one that supports tools; 9B or larger works best.
+Use **List models** to fill the model box from the server, and **Test connection** (under the address) to check
+that the server answers. Tick **Model can see images** if yours can. For a local model, pick one that supports tools; 9B or larger works best.
 
 ### Let a local model connect
 
@@ -260,12 +260,14 @@ A local model server has to allow the JumpStart 3D page to talk to it, once.
   `lms server start --cors`), then start the server.
 
 If Chrome asks whether the site may reach devices on your local network, allow it. Safari may block
-the website from reaching `localhost`; use the single file there.
+the website from reaching `localhost`; use the single file there. When a model server on your
+computer does not answer, the chat says so in one line ("No model is answering at localhost:11434");
+these steps are under **More help** below it.
 
 ### Chat keys and scripts
 
 Your key stays in this browser and is saved only if you tick **Remember key in this browser**.
-Nothing is sent until you press Send. **Allow scripts** is off unless you tick it: with it on, the
+Nothing is sent until you press Send, List models or Test connection. **Allow scripts** is off unless you tick it: with it on, the
 model can run any JavaScript in the page, the same trust as Open/Export › Run script….
 
 ## Use it with an AI agent

@@ -10,6 +10,7 @@ import { el } from "./util.js";
 
 const KEY = "jumpstart.chat";
 const MAX_CALLS = 30; // tool calls per Send; the person can send another message to go on
+const TEST_SECONDS = 10; // Test connection gives up after this long
 
 const SYSTEM = `You are an assistant inside JumpStart 3D, a CAD app that runs in the browser. You change the open design only through your tools; the person watches it update.
 Lengths are millimetres, angles degrees, positions [x, y, z] with z up.
@@ -100,9 +101,11 @@ export function initChat(app) {
     for (const [id, { key, ...v }] of Object.entries(per)) out[id] = s.remember && key ? { ...v, key } : v; // unticking drops every key on this save
     try { localStorage.setItem(KEY, JSON.stringify({ provider: current, remember: s.remember, scripts: s.scripts, per: out })); } catch (e) { /* storage blocked: settings last until reload */ }
   };
-  const clearTest = () => { testVersion++; testResult.textContent = ""; };
+  // a changed provider, address or key makes an earlier answer (or a test still waiting) meaningless
+  const clearTest = () => { testVersion++; testResult.textContent = ""; testBtn.disabled = false; };
   f.provider.addEventListener("change", () => { clearTest(); collect(); current = f.provider.value; show(current); save(); });
   f.url.addEventListener("input", clearTest);
+  f.key.addEventListener("input", clearTest);
   for (const e of Object.values(f)) if (e !== f.provider) e.addEventListener(e.type === "checkbox" ? "change" : "input", save);
 
   // ---- conversations: one per design, kept in memory only
@@ -278,23 +281,22 @@ export function initChat(app) {
   });
 
   testBtn.addEventListener("click", async () => {
-    const s = settings(), version = testVersion;
+    const s = settings(), version = ++testVersion;
+    let host = s.url, timer;
+    try { host = new URL(s.url).host; } catch (e) { /* use the entered address */ }
     testBtn.disabled = true;
     testResult.textContent = "Testing…";
+    // a server that accepts the connection and never answers would keep the button off for good
+    const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error(`No answer from ${host} within ${TEST_SECONDS} seconds.`)), TEST_SECONDS * 1000); });
     try {
-      const ids = await PROVIDERS[s.provider].listModels({ url: s.url, model: s.model, key: s.key });
+      const ids = await Promise.race([PROVIDERS[s.provider].listModels({ url: s.url, model: s.model, key: s.key }), late]);
       if (version === testVersion) testResult.textContent = `Connected: ${ids.length} ${ids.length === 1 ? "model" : "models"}`;
     } catch (err) {
-      if (version === testVersion) {
-        let message = localFailure(err, s.provider, s.url);
-        if (!message && err.network) {
-          let host = s.url;
-          try { host = new URL(s.url).host; } catch (e) { /* use the entered address */ }
-          message = `Could not reach ${host}: ${err.message}`;
-        }
-        testResult.textContent = message || err.message || String(err);
-      }
-    } finally { testBtn.disabled = false; }
+      if (version === testVersion) testResult.textContent = localFailure(err, s.provider, s.url) || (err.network ? `Could not reach ${host}: ${err.message}` : err.message || String(err));
+    } finally {
+      clearTimeout(timer);
+      if (version === testVersion) testBtn.disabled = false;
+    }
   });
 
   $("chat-list").addEventListener("click", async () => {

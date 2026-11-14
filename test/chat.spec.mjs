@@ -302,6 +302,28 @@ test("Test connection asks only when clicked: Connected with a server that answe
   await expect(page.locator("#chat-test-result")).toHaveText("");
 });
 
+test("Test connection to a server that never answers: changing the address or key frees the button, and it gives up after 10 seconds", async ({ browser }, info) => {
+  const port = await closedPort(), base = `http://localhost:${port}`;
+  await open(browser, info, stored("ollama", { url: base, model: "", vision: false }, { remember: false }));
+  await page.click("#chat-settings > summary");
+  await page.route(base + "/api/tags", () => {}); // accepted, never answered
+  const result = page.locator("#chat-test-result"), button = page.locator("#chat-test");
+  await button.click();
+  await expect(result).toHaveText("Testing…");
+  await expect(button).toBeDisabled();
+  await page.fill("#chat-url", base + "/");
+  await expect(result).toHaveText("");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(button).toBeDisabled();
+  await page.fill("#chat-key", "k-new");
+  await expect(result).toHaveText("");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(result).toHaveText(`No answer from localhost:${port} within 10 seconds.`, { timeout: 15_000 });
+  await expect(button).toBeEnabled();
+});
+
 test("Stop ends the run at once: one shape, a Stopped note, the Send button back", async ({ browser }, info) => {
   test.setTimeout(180_000);
   await open(browser, info, anthropic());
