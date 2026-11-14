@@ -1,0 +1,38 @@
+{
+  "drawbench": 1,
+  "id": "pocket-block",
+  "title": "Block with a blind pocket",
+  "wave": 1,
+  "set": "qualification",
+  "input": { "kind": "drawing", "picture": "drawing.png", "request": "Build this part." },
+  "overlap": 0.98,
+  "editable": [
+    { "id": "edit-W", "param": 60, "to": 70, "size": [70, 40, 15] },
+    { "id": "edit-H", "param": 15, "to": 18, "size": [60, 40, 18] }
+  ],
+  "drawing": {
+    "title": "POCKET BLOCK",
+    "units": "mm",
+    "projection": "third",
+    "views": ["top", "front"],
+    "notes": ["ALL SIZES IN MM", "TOLERANCE ±0.1 UNLESS STATED", "POCKET HAS SQUARE CORNERS"],
+    "dims": [
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 0], "to": [60, 0], "at": -10, "text": "60" },
+      { "view": "top", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 40], "at": -10, "text": "40" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 30], "to": [10, 30], "at": 48, "text": "10" },
+      { "view": "top", "type": "linear", "along": "x", "from": [10, 30], "to": [40, 30], "at": 48, "text": "30" },
+      { "view": "top", "type": "linear", "along": "x", "from": [0, 32], "to": [50, 32], "at": 58, "text": "50" },
+      { "view": "top", "type": "linear", "along": "y", "from": [60, 0], "to": [50, 8], "at": 70, "text": "8" },
+      { "view": "top", "type": "linear", "along": "y", "from": [60, 0], "to": [40, 14], "at": 80, "text": "14" },
+      { "view": "top", "type": "linear", "along": "y", "from": [40, 14], "to": [40, 30], "at": 80, "text": "16" },
+      { "view": "top", "type": "linear", "along": "y", "from": [60, 0], "to": [50, 32], "at": 90, "text": "32" },
+      { "view": "top", "type": "leader", "point": [50, 32], "r": 2.5, "to": [72, 52], "text": "2X Ø5 THRU" },
+      { "view": "top", "type": "leader", "point": [25, 22], "to": [-18, 52], "text": "POCKET 8 DEEP" },
+      { "view": "front", "type": "linear", "along": "y", "from": [60, 0], "to": [60, 15], "at": 70, "text": "15" }
+    ]
+  },
+  "wrong": [
+    { "recipe": "wrong-no-pocket.recipe.json", "why": "the pocket is missing", "fails": ["pocket-depth", "pocket-w", "pocket-l", "pocket-x", "pocket-y", "volume", "overlap"] },
+    { "recipe": "wrong-mirror.recipe.json", "why": "a mirror image: no turn makes it match", "fails": ["pocket-l", "pocket-y", "overlap"] }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "drawbench": 1,
+  "id": "hex-standoff",
+  "title": "Hex standoff (inch)",
+  "wave": 1,
+  "set": "qualification",
+  "input": { "kind": "drawing", "picture": "drawing.png", "request": "Build this part." },
+  "overlap": 0.98,
+  "editable": [
+    { "id": "edit-L", "param": 25.4, "to": 31.75, "size": [14.6647, 12.7, 31.75] }
+  ],
+  "drawing": {
+    "title": "HEX STANDOFF",
+    "units": "in",
+    "projection": "third",
+    "views": ["top", "front"],
+    "notes": ["ALL SIZES IN INCHES", "TOLERANCE ±.005 UNLESS STATED", "HEX .500 ACROSS FLATS"],
+    "dims": [
+      { "view": "top", "type": "linear", "along": "y", "from": [7.3323, 0], "to": [7.3323, 12.7], "at": -5, "text": ".500" },
+      { "view": "top", "type": "centre", "point": [7.3323, 6.35], "r": 3.175 },
+      { "view": "top", "type": "leader", "point": [7.3323, 6.35], "r": 3.175, "to": [20, 18], "text": "Ø.250 THRU" },
+      { "view": "front", "type": "linear", "along": "y", "from": [14.6647, 0], "to": [14.6647, 25.4], "at": 20, "text": "1.000" }
+    ]
+  },
+  "wrong": [
+    { "recipe": "wrong-inches.recipe.json", "why": "inch sizes read as millimetres", "fails": ["size", "holes-6.35", "AF", "volume", "overlap", "edit-L"] }
+  ]
+}

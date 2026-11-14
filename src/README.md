@@ -10,7 +10,11 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
-| `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it) |
+| `apicontract.js` | Versioned scripting API call and property manifest |
+| `teach.js` | Short, safe values for API error messages |
+| `kernelhints.js` | Suggestions for recognized geometry-engine errors |
+| `embed.js` | Cross-origin temporary-design message channel |
+| `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it); it drops layers no piece uses and throws an Error saying why when the used layers would need more than about 300 MB. `layerscape.js` keeps a refused or unreadable diorama in the design until the user agrees to replace it |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
 | `meshdetail.js` | Mesh detail menu: Normal, Fine, Extra fine, custom up to 32x |
@@ -82,7 +86,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 Edit only as short `// jumpstart-3d:` blocks next to his code. Most markers: `advanced.js` 153, `projects.js` 60, `app.js` 94, `beginner.js` 43, `index.html` 49, `kernel.js` 21, `printsim.js` 15, `viewport.js` 13, `kernelClient.js` 12, `store.js` 10, `sketcher.js` 14.
 `fasteners.js` (since 2.8.1.3 his Fasteners parts library, `fastenerCmd` in `advanced.js`): our marked blocks add UNF sizes, the tap cutter, left-hand threads and the ISO minor-diameter nut bore, and at the bottom our `JS3D.fastener` builder (bolt, nut, threaded rod, tap cutter: its own tested shapes); the dialog's print offset per part, hand, turns guard and F8 spacing are marked blocks in `fastenerCmd`.
 Few markers (1 to 5): `layerscape.js`, `layerscape.html` and `lsimport.js` (Layerscape, from 2.9.8.9: the on-demand page and `lsguard.js` checks), `dxf.js` (body drawing: inch units and TEXT in `writeDXF`), `inflate.js`, `icons.js`, `tutorials.js`, `tutorial_data.js`, `dims.js`, `facepat.js`, `meshimport.js`, `ops.js`, `voxel.js`, `constraints.js`, `lathe.js`, `recovery.js`, `scene.js`, `worker.js`, `version.js`.
-`kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`); `version.js` holds the community build number that `/ship` bumps.
+`kernel.js` also holds our boolean fix (with one in replicad's `operations.ts`) and exports STEP as bytes through replicad's `exportShapeSTEPBytes` (our block in its `export.ts`: Safari cannot read a Blob made inside the single file's engine worker); `version.js` holds the community build number that `/ship` bumps.
 
 ## 3. J.Siwek's, untouched
 No markers. On a port, take his new version whole. Do not "tidy" these.

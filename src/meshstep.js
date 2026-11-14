@@ -25,7 +25,7 @@ export function initMeshStep(app) {
     // jumpstart-3d: helper pages load on demand (the pop-out button below uses the page once it has arrived)
     const note = helperLoadingNote(() => close());
     let page = null;
-    helperPage("meshstep").then((html) => { if (frame && ifr.isConnected) { page = html; note.done(); ifr.srcdoc = html; } }, (e) => { if (frame && ifr.isConnected) { close(); app.toast(helperFailText("Mesh to STEP", e), "err"); } });
+    helperPage("meshstep").then((html) => { if (frame && ifr.isConnected) { page = html; note.done(); ifr.srcdoc = html; } }, (e) => { note.done(); if (frame && ifr.isConnected) { close(); app.toast(helperFailText("Mesh to STEP", e), "err"); } });
     // a pop-out copy in its own browser tab (where allowed); downloads work there
     const pop = document.createElement("button");
     pop.className = "btn meshstep-pop";

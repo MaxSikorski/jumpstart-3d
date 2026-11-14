@@ -100,12 +100,12 @@ test("connect sends a hello; list, export and errors round-trip; disconnect clos
     expect(bytes.length).toBe(84 + 50 * bytes.readUInt32LE(80));
 
     // errors come back as messages; unknown names, internals, invoke itself and non-calls are refused
-    expect((await srv.ask("get", ["nope"])).error).toBe("no body nope");
-    expect((await srv.ask("nope")).error).toBe('unknown call "nope"');
-    expect((await srv.ask("internals")).error).toBe('unknown call "internals"');
-    expect((await srv.ask("invoke", ["list"])).error).toBe('unknown call "invoke"');
-    expect((await srv.ask("version")).error).toBe('unknown call "version"');
-    expect((await srv.ask("toString")).error).toBe('unknown call "toString"');
+    expect((await srv.ask("get", ["nope"])).error).toMatch(/^no body "nope"/);
+    expect((await srv.ask("nope")).error).toMatch(/^unknown call "nope"/);
+    expect((await srv.ask("internals")).error).toMatch(/^unknown call "internals"/);
+    expect((await srv.ask("invoke", ["list"])).error).toMatch(/^unknown call "invoke"/);
+    expect((await srv.ask("version")).error).toMatch(/^unknown call "version"/);
+    expect((await srv.ask("toString")).error).toMatch(/^unknown call "toString"/);
     expect((await srv.ask("add", ["teapot"])).error).toMatch(/unknown kind "teapot"/);
 
     // calls run one at a time, in the order they arrive: the slow export comes first and must also answer first

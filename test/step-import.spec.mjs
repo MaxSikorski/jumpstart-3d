@@ -11,7 +11,7 @@
 //   step-2-touching-cubes.step  an assembly of two 10 mm cubes that touch face to face; fused they are one 20x10x10 block
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, bodies, newDoc, body, prim, IDENTITY, browserOf, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, bodies, newDoc, body, prim, IDENTITY, browserOf } from "./helpers.mjs";
 
 const UNREADABLE = "Could not read this STEP file (it may be damaged or not a STEP file).";
 const NO_SHAPES = "This STEP file has no solids or surfaces in it, so there is nothing to import.";
@@ -126,9 +126,7 @@ test("a STEP file that holds no solids or surfaces says so in plain words", asyn
 // Before the fix: 49 s in Chromium on a 2023 Mac (the scout saw 7 minutes in Firefox, which the watchdog stops at 2 minutes). After: about 4 s.
 // The limit is generous for a slow runner and far under the 120 s watchdog; Firefox and WebKit run the engine several times slower. loadDoc gives up
 // waiting at 90 s, so a limit above that could never decide: 75 s does.
-// quarantined: the single file in WebKit cannot read the STEP blob back out of the engine worker (see booleans.spec.mjs)
 test("a file with 200 parts loads in seconds and keeps every part", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
   const parts = 200, side = 15;
   const grid = newDoc("200 boxes", "advanced", {
     bodies: Array.from({ length: parts }, (_, i) => {
