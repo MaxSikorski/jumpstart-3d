@@ -10,6 +10,7 @@ async function openHost(page, hostOrigin = host, src = `${app}/?embed=${encodeUR
   await page.route(`${hostOrigin}/__embed-host.html`, (route) => route.fulfill({contentType:'text/html', body:`<iframe src="${src}"></iframe><script>window.messages=[];addEventListener('message',e=>messages.push(e.data));</script>`}));
   await page.goto(`${hostOrigin}/__embed-host.html`);
 }
+async function designs(page) { return (await page.evaluate(() => __app.projects._store.list())).map(d => [d.id, d.name, d.mode]); } // the page's own autosave and thumbnail land later and change rev, updated and thumb
 async function call(page, id, name, ...args) {
   await page.evaluate(({id,name,args,app}) => document.querySelector('iframe').contentWindow.postMessage({type:'js3d-call',protocol:1,id,call:name,args}, app), {id,name,args,app});
   await expect.poll(() => page.evaluate((id) => window.messages.find(m => m.type === 'js3d-result' && m.id === id), id)).toBeTruthy();
@@ -43,8 +44,7 @@ test('scratch edits do not write designs and a different load closes the channel
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
   await page.evaluate(async () => { JS3D.add('box'); await __app.projects.saveNow(); });
-  await expect.poll(() => page.evaluate(async () => (await __app.projects._store.list()).every(d => d.thumb)), {timeout: 30000}).toBe(true); // the page's own thumbnail save comes a moment later
-  const before = await page.evaluate(() => __app.projects._store.list());
+  const before = await designs(page);
   const normalKeys = await page.evaluate(() => Object.keys(localStorage));
   await openHost(page);
   await expect.poll(() => page.evaluate(() => messages.some(m => m.type === 'js3d-ready'))).toBe(true);
@@ -57,7 +57,7 @@ test('scratch edits do not write designs and a different load closes the channel
   await frame.evaluate(() => { const doc = structuredClone(__store.doc); doc.id = 'different-design'; __store.load(doc); });
   await expect.poll(() => page.evaluate(() => messages.some(m => m.reason === 'design-changed'))).toBe(true);
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
-  expect(await page.evaluate(() => __app.projects._store.list())).toEqual(before);
+  expect(await designs(page)).toEqual(before);
 });
 test('unlisted parent gets no reply', async ({page}, info) => {
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
@@ -72,8 +72,7 @@ test('framed without ?embed: a temporary workspace that no website controls and 
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
   await page.evaluate(async () => { JS3D.add('box'); await __app.projects.saveNow(); localStorage.setItem('top-level-probe', '1'); });
-  await expect.poll(() => page.evaluate(async () => (await __app.projects._store.list()).every(d => d.thumb)), {timeout: 30000}).toBe(true); // the page's own thumbnail save comes a moment later
-  const before = await page.evaluate(() => __app.projects._store.list());
+  const before = await designs(page);
   expect(before.length).toBeGreaterThan(0);
   const normalKeys = await page.evaluate(() => Object.keys(localStorage));
   await openHost(page, host, `${app}/`);
@@ -101,7 +100,7 @@ test('framed without ?embed: a temporary workspace that no website controls and 
   expect(await frame.evaluate(() => [JS3D.list().length, localStorage.getItem('frame-only')])).toEqual([0, null]);
   // and the person's own designs and settings were never touched
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
-  expect(await page.evaluate(() => __app.projects._store.list())).toEqual(before);
+  expect(await designs(page)).toEqual(before);
   expect(await page.evaluate(() => [localStorage.getItem('top-level-probe'), localStorage.getItem('frame-only')])).toEqual(['1', null]);
 });
 test('top-level embed parameter does not activate', async ({page}, info) => {
