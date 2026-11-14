@@ -178,7 +178,7 @@ test("bad input: each bridge error text, and nothing is added", async () => {
     [{ freeLength: 10, turns: 5, ends: "flat" }, "The coils would touch. Increase the free length, use fewer turns, or use thinner wire."],
   ];
   for (const [spec, text] of bad) {
-    expect(await failure((s) => JS3D.spring(s), spec), JSON.stringify(spec)).toBe(text);
+    expect(await failure((s) => JS3D.spring(s), spec), JSON.stringify(spec)).toContain(text);
     expect(await counts(), JSON.stringify(spec)).toEqual(before);
   }
 });

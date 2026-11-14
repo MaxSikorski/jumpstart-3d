@@ -835,8 +835,12 @@ The app's own objects, for people who know this code. Unsupported: anything reac
 - Lengths are in **mm**, angles in **degrees**, positions are `[x, y, z]`, z up.
   The page's mm/inch switch does not change anything here.
 - An argument called `ids` takes one id (a string) or an array of ids.
-- A call that names a body that does not exist throws `Error("no body <id>")`.
-  Bad input throws an `Error` with a plain message that says what to change.
+**Errors.** A failing call throws an `Error` whose message names the bad input,
+what is allowed, and one next step. Over WebSocket and MCP, the message arrives
+as the tool error text. Wording may improve in any release, so match the call’s
+outcome rather than its exact message. A body that fails to build reports its
+error in `JS3D.list()`, with a hint when one is known.
+
 - While Chisel mode is open, every call that edits or loads throws `leave Chisel mode first` (`setMode` is how you leave it).
 - Everything is synchronous except `ready`, `export`, `screenshot`,
   `screenshotDataURL`, `load`, `newDesign`, `run`, `invoke`, `codeCad`, `holePattern`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `texture` and `drawing`, which return promises.

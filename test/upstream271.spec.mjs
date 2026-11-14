@@ -233,7 +233,7 @@ test.describe("version 2.7.1", () => {
       }
       return out;
     });
-    expect(tries).toEqual({ newDesign: "close CosForge first", add: "close CosForge first" });
+    expect(tries.newDesign).toMatch(/^close CosForge first/); expect(tries.add).toMatch(/^close CosForge first/);
     expect(await snap()).toBe(before);
     expect(await cf(() => window.__store.doc.name)).toBe("Upstream 2.7.1 api");
     await closeCosForge();

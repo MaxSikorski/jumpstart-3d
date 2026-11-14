@@ -185,7 +185,7 @@ test("Chip Carving opens from Advanced → Workshop and closes without work or e
   await page.locator("#ad-chipcarve").click();
   await expect(page.getByRole("dialog", { name: "Choose what to carve" })).toBeVisible();
   expect(await run(() => window.__app.carve.active)).toBe(true);
-  expect(await run(() => { try { JS3D.newDesign(); return "allowed"; } catch (e) { return e.message; } })).toBe("close Chip Carving first");
+  expect(await run(() => { try { JS3D.newDesign(); return "allowed"; } catch (e) { return e.message; } })).toMatch(/^close Chip Carving first/);
   await run(() => window.__app.carve.close());
   expect(await run(() => window.__app.carve.active)).toBe(false);
   await expect(page.locator(".s3d-modal-back")).toHaveCount(0);

@@ -11,6 +11,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | File | What it does |
 |---|---|
 | `apicontract.js` | Versioned scripting API call and property manifest |
+| `teach.js` | Short, safe values for API error messages |
+| `kernelhints.js` | Suggestions for recognized geometry-engine errors |
 | `embed.js` | Cross-origin temporary-design message channel |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
