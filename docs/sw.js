@@ -1,11 +1,11 @@
 // jumpstart-3d: offline. The hosted site's service worker: keeps the page, the app, the worker, the geometry engine and the helper pages on this computer, so the next visit opens at once and works without a connection.
 // Never remove sw.js from the site: a 404 on the update check keeps the old worker serving its cache forever; to retire it, publish a sw.js that calls self.registration.unregister().
-const VERSION = "13395ff566"; // build.mjs replaces this line with a hash of the files below, the fonts and the helper pages
+const VERSION = "e2c5aaae19"; // build.mjs replaces this line with a hash of the files below, the fonts and the helper pages
 const CACHE = "jumpstart-3d-" + VERSION;
 const FILES = ["./", "app.js", "worker.js", "occt-gz.wasm"];
 const FONTS = ["fonts/barlow-condensed-500.woff2","fonts/barlow-condensed-600.woff2","fonts/barlow-condensed-700.woff2","fonts/chakra-petch-500.woff2","fonts/chakra-petch-600.woff2","fonts/chakra-petch-700.woff2","fonts/ibm-plex-mono-400.woff2","fonts/ibm-plex-mono-500.woff2","fonts/ibm-plex-sans-400.woff2","fonts/ibm-plex-sans-500.woff2","fonts/ibm-plex-sans-600.woff2","fonts/ibm-plex-sans-condensed-500.woff2","fonts/ibm-plex-sans-condensed-600.woff2"]; // build.mjs puts the font files (fonts/*.woff2) here: offline, the page keeps its own lettering
 const HELPERS = ["helpers/chisel.html","helpers/flexigen.html","helpers/meshstep.html","helpers/helper-three.html","helpers/fonts_more.js"]; // build.mjs puts the helper files saved at install (helpers/*, mode "precache") here: the app fetches them on first use, so they must be here for offline use
-const ON_USE = ["helpers/floorplan.html","helpers/neon.html"]; // build.mjs puts the helper files saved on first use (mode "on-use") here: not part of the install, kept the first time the app fetches them
+const ON_USE = ["helpers/floorplan.html","helpers/layerscape.html","helpers/neon.html"]; // build.mjs puts the helper files saved on first use (mode "on-use") here: not part of the install, kept the first time the app fetches them
 const urls = () => FILES.concat(FONTS, HELPERS).map((f) => new URL(f, self.registration.scope).href);
 const onUse = () => ON_USE.map((f) => new URL(f, self.registration.scope).href);
 self.addEventListener("install", (e) => {

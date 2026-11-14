@@ -4,6 +4,7 @@
 // (horns, spikes, fins, ears, gems, goggles...). Everything is regenerated from its settings, so a
 // part re-fits when the body's measurements change. Sizes in mm.
 import * as THREE from "three";
+import { radiusAt } from "./photo3d.js";
 import { segPoint, segSection, segDistance } from "./cosbody.js";
 import { buildShell, surfaceAt, SD, smooth, shapePoly, lathe, extrude, tube, box, merge, weld, TL } from "./cosmesh.js";
 
@@ -13,7 +14,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const clampI = (v, a, b) => Math.max(a, Math.min(b, Math.round(v)));
 
 export const THEMES = [
-  { id: "scifi", name: "Sci-Fi" }, { id: "modern", name: "Modern Sci-Fi" }, { id: "fantasy", name: "Fantasy" }, { id: "hero", name: "Comic Hero" },
+  { id: "helmets", name: "Helmet Maker" }, { id: "scifi", name: "Sci-Fi" }, { id: "modern", name: "Modern Sci-Fi" }, { id: "fantasy", name: "Fantasy" }, { id: "hero", name: "Comic Hero" },
   { id: "steam", name: "Steampunk" }, { id: "samurai", name: "Samurai" }, { id: "military", name: "Military" }, { id: "medieval", name: "Medieval Plate" }, { id: "roman", name: "Roman Legion" }, { id: "greek", name: "Ancient Greek" }, { id: "norse", name: "Norse" }, { id: "spaceop", name: "Space Opera" }, { id: "superhero", name: "Superhero Armor" }, { id: "basic", name: "Basic forms" },
 ];
 // where each kind of part goes; sided parts come as a left and right pair
@@ -123,6 +124,8 @@ const SHAPERS = {
     const depth = rad(S.depth ?? 112), back = rad(S.back ?? 18);
     const desc = domeDesc({ ...hd, e1: V3(0, -1, 0), e2: V3(1, 0, 0), e3: V3(0, 0, 1), th1: depth + back, gap: S.gap ?? 12, mode: "arc", res });
     const Rm = desc.Rm, brow = rad(S.brow ?? 70) * Rm, fw = S.faceW ?? 120, fh = S.faceH ?? 40;
+    // a traced visor: points 0..1 across and down its box, centred on the face below the brow
+    const poly = S.face === "custom" && Array.isArray(S.facePoly) && S.facePoly.length >= 3 ? S.facePoly.map(([u, v]) => [(u - 0.5) * fw, brow + v * fh]) : null;
     const opening = (x, y) => {
       switch (S.face) {
         case "open": return SD.box(x, y, 0, brow + 400, fw / 2, 400, 16);
@@ -131,6 +134,10 @@ const SHAPERS = {
         case "tvisor": return Math.max(SD.box(x, y, 0, brow + 13, fw / 2, 13, 6), SD.box(x, y, 0, brow + 300, 18, 300, 6));
         case "slit": return SD.box(x, y, 0, brow + 7, fw / 2, 7, 6);
         case "eyes": { const eye = (sx) => SD.poly(x, y, [[sx * 12, brow + 10], [sx * fw * 0.4, brow - 2], [sx * fw * 0.47, brow + 9], [sx * fw * 0.36, brow + 18], [sx * 16, brow + 20]]); return Math.max(eye(1), eye(-1)); }
+        // Helmet Maker (v2.9.8.8): a wraparound band, a V (chevron) visor, and your own traced shape
+        case "wrap": return SD.poly(x, y, [[-fw / 2, brow + fh * 0.22], [-fw * 0.25, brow + 2], [0, brow], [fw * 0.25, brow + 2], [fw / 2, brow + fh * 0.22], [fw / 2, brow + fh * 0.62], [fw * 0.3, brow + fh * 0.86], [fw * 0.1, brow + fh], [-fw * 0.1, brow + fh], [-fw * 0.3, brow + fh * 0.86], [-fw / 2, brow + fh * 0.62]]);
+        case "chevron": return SD.poly(x, y, [[-fw / 2, brow - fh * 0.08], [-fw * 0.12, brow + fh * 0.22], [0, brow + fh * 0.3], [fw * 0.12, brow + fh * 0.22], [fw / 2, brow - fh * 0.08], [fw / 2, brow + fh * 0.42], [fw * 0.14, brow + fh * 0.86], [0, brow + fh], [-fw * 0.14, brow + fh * 0.86], [-fw / 2, brow + fh * 0.42]]);
+        case "custom": { if (!poly) return -1e9; const a = SD.poly(x, y, poly); return S.faceSym ? Math.max(a, SD.poly(-x, y, poly)) : a; }
         case "cowl": return Math.max(SD.ellipse(x, y, fw * 0.27, brow + 16, 24, 13), SD.ellipse(x, y, -fw * 0.27, brow + 16, 24, 13), SD.box(x, y, 0, brow + fh + 400, fw * 0.42, 400, 22));
         default: return -1e9;
       }
@@ -139,8 +146,8 @@ const SHAPERS = {
       const ph = (u - 0.5) * Math.PI * 2, lim = depth + back * (1 - Math.cos(ph)) / 2;
       return SD.sub(lim * Rm - y, opening(x, y));
     };
-    const lensOn = S.lens && (S.face === "visor" || S.face === "bigvisor");
-    const ctx = { wrapR: Rm, L: (depth + back) * Rm, W: Math.PI * Rm, brow, eye: brow + 16, top: 0, mid: brow * 0.5, emblemY: brow - 28 };
+    const lensOn = S.lens && ["visor", "bigvisor", "wrap", "chevron", "custom"].includes(S.face);
+    const ctx = { wrapR: Rm, L: (depth + back) * Rm, W: Math.PI * Rm, side: (Math.PI * Rm) / 2, brow, eye: brow + 16, top: 0, mid: brow * 0.5, emblemY: brow - 28, chin: brow + Math.max(fh, 40) + 26 };
     return { desc, mask, ctx, lens: lensOn ? (x, y) => opening(x, y) + 5 : null };
   },
   mask(B, S, res) {
@@ -647,6 +654,26 @@ export function generatePart(inst, B, res = 3) {
     const base = desc.point, fd = [0, 0, 0], F = inst.form, cl = desc.closedU;
     desc.point = (u, v, out) => { base(u, v, out); formD(F, cl ? ((u % 1) + 1) % 1 : Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v)), cl, fd); out.x += fd[0]; out.y += fd[1]; out.z += fd[2]; return out; };
   }
+  // Helmet Maker from photos (v2.9.8.9.5): the photos' helmet shape, scaled to just fit around the
+  // usual shell, pushes the shell out to it (never in: the helmet still fits the head)
+  if (slot === "helmet" && inst.photo && inst.photo.map && inst.photo.on !== false) {
+    const M = inst.photo.map, C = B.head.C, base2 = desc.point, str = inst.photo.strength ?? 1, size = inst.photo.size ?? 1, pt = new THREE.Vector3(), ratios = [];
+    for (let j = 0; j <= 12; j++) for (let i = 0; i < 24; i++) {
+      base2(i / 24, j / 12, pt);
+      const dx = pt.x - C.x, dy = pt.y - C.y, dz = pt.z - C.z, r0 = Math.hypot(dx, dy, dz) || 1, ru = radiusAt(M, dx / r0, dy / r0, dz / r0);
+      if (ru > 1e-3) ratios.push(r0 / ru);
+    }
+    ratios.sort((a, b) => a - b);
+    const sc = (ratios[Math.floor(ratios.length * 0.85)] || 1) * size;
+    inst._photoScale = sc;
+    desc.point = (u, v, out) => {
+      base2(u, v, out);
+      const dx = out.x - C.x, dy = out.y - C.y, dz = out.z - C.z, r0 = Math.hypot(dx, dy, dz) || 1;
+      const rp = radiusAt(M, dx / r0, dy / r0, dz / r0) * sc, r = Math.max(r0, r0 + (rp - r0) * str), k = r / r0;
+      out.set(C.x + dx * k, C.y + dy * k, C.z + dz * k);
+      return out;
+    };
+  }
   const ctx = { ...sh0.ctx, back: slot === "back", res };
   const closed = desc.closedU;
   const NU = closed ? desc.nu : desc.nu + 1, NV = desc.nv + 1;
@@ -777,6 +804,28 @@ function militarySet() {
   ];
 }
 // more Sci-Fi (v2.7.8): original designs, armor and gear only
+// Helmet Maker library (v2.9.8.8): contemporary sci-fi helmets, all original designs. Ideas from
+// the looks common to free printable sci-fi helmets: full-head shells, wraparound or V visors,
+// ear pods, low crests, panel lines and light strips.
+function helmetSet() {
+  const X = "helmets", W = "#eef1f4", K = "#22262c", GM = "#4a5058", O = "#ff7a1a", Cy = "#2fd3ff", R = "#e0313f", Y = "#ffc83a", Pk = "#ff3fa4", Tl = "#19c7b0", Gd = "#d9a93a", Bl = "#2f6fd6", Ol = "#5d6b3c", Sv = "#b9c1ca";
+  const clean = { lines: "panels", lineGap: 10, lineDepth: 0.8, edge: "trim", edgeSize: 4, edgeH: 1.2 };
+  const ear = (size = 26, k = "boss") => ({ k, x: "side", y: "brow+30", size, mirror: true, tag: "hm-ear" });
+  return [
+    withForm(helmForm(8, 6, 4, 4), t("hm-nova", "Nova Explorer", X, "helmet", { face: "wrap", faceW: 210, faceH: 58, brow: 72, lens: true, depth: 124, back: 14, round: 0.45 }, { ...clean, glow: true }, [ear(), { k: "antenna", x: "side-6", y: "brow+4", len: 46, tag: "hm-antenna" }], W, O)),
+    withForm(helmForm(12, 8, 8, 2), t("hm-vector", "Vector Racer", X, "helmet", { face: "chevron", faceW: 150, faceH: 52, brow: 74, lens: true, depth: 126, back: 12, round: 0.2 }, { ...clean, ridge: 3, ridgeW: 10, ridgeSharp: true, glow: true }, [{ k: "fin", path: "sagittal", from: "brow-20", to: "brow+40", h: 12, profile: "shark", w: 5, tag: "hm-fin" }, ear(22, "gauge")], K, R, false)),
+    withForm(helmForm(6, 4, 4, 4), t("hm-orbit", "Orbit Pilot", X, "helmet", { face: "bigvisor", faceW: 160, faceH: 96, brow: 64, lens: true, depth: 122, back: 12, round: 0.7 }, { edge: "roll", edgeSize: 6, edgeH: 1.8, lines: "inset", lineGap: 10, lineDepth: 0.7 }, [ear(30), { k: "gem", x: "side", y: "brow+30", size: 6, mirror: true, tag: "hm-light" }], W, Gd, false)),
+    withForm(helmForm(10, 10, 6, 0), t("hm-specter", "Specter Recon", X, "helmet", { face: "eyes", faceW: 132, brow: 78, lens: true, depth: 124, back: 10, round: 0.35 }, { lines: "chevron", lineGap: 12, lineDepth: 0.8, glow: true, edge: "bevel", edgeSize: 3 }, [{ k: "antenna", x: "side", y: "brow+12", len: 70, mirror: true, tag: "hm-antenna" }, ear(18)], K, Cy, false)),
+    withForm(helmForm(16, 12, 6, 2), t("hm-titan", "Titan Heavy", X, "helmet", { face: "tvisor", faceW: 120, brow: 72, lens: false, depth: 132, back: 22, round: 0.15, tall: 1.03 }, { ...clean, thick: 3, lineGap: 14, ridge: 4, ridgeW: 16 }, [{ k: "box", x: 0, y: "chin", size: 12, w: 46, len: 22, h: 10, tag: "hm-vent" }, ear(28, "gauge")], GM, Y, false)),
+    withForm(helmForm(6, 6, 4, 2), t("hm-runner", "Cyber Runner", X, "helmet", { face: "wrap", faceW: 230, faceH: 30, brow: 76, lens: true, depth: 116, back: 10, round: 0.4 }, { lines: "hbands", lineGap: 9, lineDepth: 0.7, glow: true, edge: "bevel", edgeSize: 2.5 }, [{ k: "fin", path: "sagittal", from: "brow-40", to: "brow+30", h: 9, profile: "blade", w: 10, accent: true, tag: "hm-fin" }], K, Pk, false)),
+    withForm(helmForm(12, 10, 6, 4), t("hm-drift", "Drift Trooper", X, "helmet", { face: "chevron", faceW: 136, faceH: 44, brow: 78, lens: true, depth: 128, back: 12, round: 0.35 }, { ...clean, lineGap: 12 }, [{ k: "gem", x: 0, y: "chin", size: 4, count: 5, rowAcross: true, step: 9, tag: "hm-vent" }, ear(22)], W, K, false)),
+    withForm(helmForm(8, 6, 8, 8), t("hm-aegis", "Aegis Guard", X, "helmet", { face: "slit", faceW: 150, brow: 76, lens: false, depth: 128, back: 18, round: 0.25, tall: 1.04 }, { ...clean, ridge: 3, ridgeW: 8, ridgeSharp: true }, [{ k: "fin", path: "sagittal", from: "brow-30", to: "brow+60", h: 22, profile: "rounded", w: 6, accent: true, tag: "hm-fin" }, ear(24)], Sv, Bl, false)),
+    withForm(helmForm(4, 4, 2, 6), t("hm-abyss", "Abyss Diver", X, "helmet", { face: "bigvisor", faceW: 150, faceH: 116, brow: 60, lens: true, depth: 130, back: 14, round: 0.9 }, { edge: "roll", edgeSize: 8, edgeH: 2.2, rivets: true, rivetInset: 8, rivetGap: 22 }, [ear(30, "gauge"), { k: "antenna", x: 0, y: "brow-46", len: 30, tag: "hm-antenna" }], Tl, Gd, false)),
+    withForm(helmForm(6, 4, 4, 6), t("hm-mech", "Mech Jockey", X, "helmet", { face: "visor", faceW: 160, faceH: 34, brow: 74, lens: true, depth: 120, back: 18, round: 0.45 }, { ...clean, glow: true }, [{ k: "goggles", x: 0, y: "brow-18", size: 15, tag: "hm-goggles" }, { k: "antenna", x: "side", y: "brow+6", len: 40, mirror: true, tag: "hm-antenna" }, ear(26, "gauge")], Ol, O, false)),
+    withForm(helmForm(14, 12, 10, 0), t("hm-stealth", "Stealth Ops", X, "helmet", { face: "chevron", faceW: 140, faceH: 36, brow: 80, lens: true, depth: 126, back: 12, round: 0, tall: 1.02 }, { lines: "grid", lineGap: 16, lineDepth: 0.6, glow: true, edge: "bevel", edgeSize: 3 }, [{ k: "fin", path: "sagittal", from: "brow-10", to: "brow+20", h: 6, profile: "blade", w: 4, tag: "hm-fin" }], K, R, false)),
+    withForm(helmForm(4, 4, 2, 4), t("hm-astro", "Astro Scout", X, "helmet", { face: "bigvisor", faceW: 170, faceH: 84, brow: 66, lens: true, depth: 120, back: 10, round: 0.75 }, { edge: "trim", edgeSize: 6, edgeH: 1.6, emblem: "star", emblemSize: 16, emblemH: 1.4 }, [ear(28), { k: "gem", x: "side", y: "brow-10", size: 5, mirror: true, tag: "hm-light" }], W, Bl, false)),
+  ];
+}
 function moreScifi() {
   const W = "#e8ecf1", G = "#3a4049", A = "#ff8a1f", Cy = "#39c0ff", V = "#8f5cf0", R = "#c8202f", Gn = "#5fd38a", S = "#9aa3ad";
   const tech = { lines: "panels", lineGap: 10, lineDepth: 0.9, glow: true, edge: "trim", edgeSize: 4, edgeH: 1.3 };
@@ -1057,6 +1106,7 @@ export const TEMPLATES = [
   t("horned-kabuto", "Horned Kabuto", "samurai", "helmet", { face: "open", faceW: 140, brow: 66, depth: 90, back: 42, round: 0.55, gap: 14 }, { tex: "ribs", texSize: 22, texDepth: 1.4, edge: "flare", edgeSize: 8, edgeH: 4 }, [{ k: "horn", x: 46, y: "brow-26", size: 9, len: 150, curl: 35, tilt: 20, ang: -90, mirror: true }], C.lacq, C.gold, false),
   t("tekko", "Tekko Hand Guard", "samurai", "handplate", {}, { tex: "hex", texSize: 8, texDepth: 1, edge: "roll", edgeSize: 3 }, [], C.black, C.gold),
   // Modern Sci-Fi (v2.8): sleek hard-surface armor with light lines; angular shapes come from preset form cages
+  ...helmetSet(),
   ...modernSet(),
   ...moreScifi(),
   // Military (v2.7.8)

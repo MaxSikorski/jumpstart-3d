@@ -13,6 +13,10 @@ import { MEASURES, PRESETS, POSES, makeBody, bodyGroup, bodyDistance, bodyAxisPo
 import { THEMES, SLOTS, REGIONS, TEMPLATES, tplById, generatePart, ADDONS, ADDON_NAMES, SCULPT_RES, ref, formD, cageUV } from "./cosparts.js";
 import { TL, displayGeometry, transformSolid, mirrorX, merge, weld, bounds, EMBLEMS, solidVolume, surfaceAt } from "./cosmesh.js";
 import { applyCuts, addJoints, autoCuts, fitBed, JOINTS, MAGNETS, PRINTERS, defaultJoint, centroid } from "./coscut.js";
+import { lookOf, matByKey, heightColors } from "./appearance.js";
+import { renderImage, LIGHT_TYPES, BACKGROUNDS, QUALITY, studioEnv } from "./render.js";
+import { traceImage } from "./trace.js";
+import { cutOut, helmetRadii, findVisor } from "./photo3d.js";
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 const rad = (d) => (d * Math.PI) / 180;
@@ -98,7 +102,7 @@ export function initCosForge(app) {
     return { v: 1, units: "cm", preset: "broad", meas: { ...PRESETS[0].m }, pose: 42, detail: "normal", exportDetail: "fine", printer: "256", parts: [], theme: "all", region: "all", bodyView: "solid", joint: defaultJoint(), orient: "worn", exportWhat: "all", exportFmt: "stl", withBody: false };
   }
   function serialize(st) {
-    const o = { ...st, parts: st.parts.map((p) => { const q = { ...p }; delete q._sv; q.sculpt = {}; for (const k of ["bulge", "emboss"]) if (p.sculpt && p.sculpt[k]) q.sculpt[k] = toB64(new Uint8Array(p.sculpt[k].buffer.slice(0))); return q; }) };
+    const o = { ...st, parts: st.parts.map((p) => { const q = { ...p }; delete q._sv; delete q._photoScale; q.sculpt = {}; for (const k of ["bulge", "emboss"]) if (p.sculpt && p.sculpt[k]) q.sculpt[k] = toB64(new Uint8Array(p.sculpt[k].buffer.slice(0))); return q; }) };
     return JSON.stringify(o);
   }
   function deserialize(json) {
@@ -130,7 +134,7 @@ export function initCosForge(app) {
     return { n: nl.divideScalar(l).toArray(), d: (d - n.dot(t)) / l, seed: seed ? seed.clone().applyMatrix4(F.clone().invert()).toArray() : null };
   }
   const genCache = new Map(), pieceCache = new Map();
-  function genKey(inst, res) { return JSON.stringify([inst.slot, inst.shape, inst.deco, inst.addons, inst.form, inst.import && inst.import.id, inst._sv, inst.id, res, ui.bodyKey]); }
+  function genKey(inst, res) { return JSON.stringify([inst.slot, inst.shape, inst.deco, inst.addons, inst.form, inst.import && inst.import.id, inst._sv, inst.id, res, ui.bodyKey, inst.photo && [inst.photo.on, inst.photo.strength, inst.photo.size, inst.photo.map && inst.photo.map.r.length, inst.photo.map && inst.photo.map.r[200], inst.photo.map && inst.photo.map.r[900], inst.photo.map && inst.photo.map.headZ]]); }
   function importedSolid(inst) {
     const u8 = fromB64(inst.import.data);
     const nv = new Uint32Array(u8.buffer.slice(0, 8));
@@ -186,10 +190,11 @@ export function initCosForge(app) {
   }
 
   // ----------------------------------------------------------------------------- open / close
-  function open() {
-    if (ui) return;
+  function open(opts = {}) {
+    if (ui) { if (opts.mode && opts.mode !== ui.mode) setMode(opts.mode); return; }
     const st = store.doc.cosforge ? safeLoad(store.doc.cosforge) : blank();
     buildUI(st);
+    if (opts.mode === "helmet") setMode("helmet");
   }
   function safeLoad(j) { try { return deserialize(j); } catch (e) { return blank(); } }
   function close() {
@@ -233,6 +238,7 @@ export function initCosForge(app) {
     const bar = el("header", { class: "cf-bar" },
       el("div", { class: "cf-brand" }, el("b", {}, "Cos", el("span", {}, "Forge")), el("small", {}, "Cosplay costume designer")),
       stepNav, el("div", { class: "cf-sp" }),
+      el("button", { class: "btn cf-mode", id: "cf-mode", title: "Switch between the Helmet Maker and the full costume designer", onclick: () => setMode(ui.mode === "helmet" ? "costume" : "helmet") }, "Helmet Maker"),
       el("div", { class: "cf-tools" },
         el("button", { class: "ibtn cf-tb", id: "cf-undo", title: "Undo (Ctrl+Z)", onclick: () => undo() }, "↶"),
         el("button", { class: "ibtn cf-tb", id: "cf-redo", title: "Redo (Ctrl+Y)", onclick: () => redo() }, "↷"),
@@ -264,7 +270,7 @@ export function initCosForge(app) {
     const helpers = new THREE.Group(); scene.add(helpers);
     const controls = makeOrbit(camera, canvas);
 
-    ui = { root, st, side, outfit, stepNav, canvas, hud, busy, renderer, scene, camera, controls, bodyMat, partMat, selMat, lensMat, partsGroup, helpers, step: "body", sel: null, explode: false, undo: [], redo: [], raf: 0, dirty: true, savedJson: store.doc.cosforge || null, built: new Map(), meshes: [], sculpt: { tool: "bulge", radius: 30, strength: 1, mirror: true }, cut: { axis: "z", tiltA: 0, tiltB: 0, pos: null, only: false }, form: { sel: new Set(), mode: "point", sym: true, soft: 0, step: 2, rotAxis: "z", show: true } };
+    ui = { root, st, side, outfit, stepNav, canvas, hud, busy, renderer, scene, camera, controls, bodyMat, partMat, selMat, lensMat, partsGroup, helpers, step: "body", mode: "costume", lookMats: new Map(), sel: null, explode: false, undo: [], redo: [], raf: 0, dirty: true, savedJson: store.doc.cosforge || null, built: new Map(), meshes: [], sculpt: { tool: "bulge", radius: 30, strength: 1, mirror: true }, cut: { axis: "z", tiltA: 0, tiltB: 0, pos: null, only: false }, form: { sel: new Set(), mode: "point", sym: true, soft: 0, step: 2, rotAxis: "z", show: true } };
     ui.savedJson = store.doc.cosforge ? serialize(st) : null;
     rebuildBody();
     renderSteps();
@@ -390,9 +396,9 @@ export function initCosForge(app) {
       ctrAll.add(c0);
       const tint = ui.fitTint ? fitTinter(p.deco && p.deco.thick || 2.5) : null;
       all.forEach((pc, i) => {
-        const geo = displayGeometry(pc.mesh, p.color, p.accent || p.color, "#f0b23c", tint);
-        const mesh = new THREE.Mesh(geo, pc.lens ? ui.lensMat : p.id === ui.sel ? ui.selMat : ui.partMat);
-        mesh.userData = { part: p.id, piece: i, side: pc.side };
+        const geo = displayGeometry(pc.mesh, tint ? p.color : baseColorFor(p), p.accent || p.color, "#f0b23c", tint);
+        const mesh = new THREE.Mesh(geo, pc.lens ? lensMatFor(p) : matFor(p, p.id === ui.sel));
+        mesh.userData = { part: p.id, piece: i, side: pc.side, lens: pc.lens };
         if (ui.explode && all.length > 1) {
           const c = centroid(pc.mesh), dir = c.clone().sub(c0);
           if (dir.lengthSq() < 1) dir.set(0, -1, 0);
@@ -413,8 +419,8 @@ export function initCosForge(app) {
     const r = build(p, res), g = ui.partsGroup;
     ui.meshes = ui.meshes.filter((m) => { if (m.userData.part !== p.id) return true; g.remove(m); m.geometry.dispose(); return false; });
     r.pieces.forEach((pc, i) => {
-      const mesh = new THREE.Mesh(displayGeometry(pc.mesh, p.color, p.accent || p.color), pc.lens ? ui.lensMat : p.id === ui.sel ? ui.selMat : ui.partMat);
-      mesh.userData = { part: p.id, piece: i, side: pc.side };
+      const mesh = new THREE.Mesh(displayGeometry(pc.mesh, baseColorFor(p), p.accent || p.color), pc.lens ? lensMatFor(p) : matFor(p, p.id === ui.sel));
+      mesh.userData = { part: p.id, piece: i, side: pc.side, lens: pc.lens };
       g.add(mesh); ui.meshes.push(mesh);
     });
     if (ui.step === "form") drawCage(res);
@@ -443,16 +449,18 @@ export function initCosForge(app) {
   function selPart() { return ui.st.parts.find((p) => p.id === ui.sel) || null; }
   function select(id) {
     ui.sel = id;
-    for (const m of ui.meshes) if (!(m.material === ui.lensMat)) m.material = m.userData.part === id ? ui.selMat : ui.partMat;
+    for (const m of ui.meshes) if (!m.userData.lens) { const q = ui.st.parts.find((x) => x.id === m.userData.part); m.material = q ? matFor(q, q.id === id) : m.userData.part === id ? ui.selMat : ui.partMat; }
     renderOutfit(); updateHud();
     if (ui.form) ui.form.sel.clear();
-    if (["shape", "form", "fit", "sculpt", "cut"].includes(ui.step)) showStep(ui.step);
+    if (["shape", "form", "fit", "sculpt", "cut", "hsize", "hstyle", "hphoto", "hvisor", "hdetail", "hlook"].includes(ui.step)) showStep(ui.step);
     ui.dirty = true;
   }
 
   // ----------------------------------------------------------------------------- camera
   function viewFrom(v, instant) {
-    const H = ui.B.H, t = V3(0, 0, H * 0.52), d = H * 1.75;
+    const H = ui.B.H;
+    let t = V3(0, 0, H * 0.52), d = H * 1.75;
+    if (ui.mode === "helmet") { const h = ui.B.head; t = h.C.clone().add(V3(0, 0, -h.c * 0.15)); d = ((h.c + 60) / Math.tan(rad(ui.camera.fov / 2))) * 1.25; }
     const dir = v === "front" ? V3(0, -1, 0.05) : v === "back" ? V3(0, 1, 0.05) : v === "side" ? V3(1, 0, 0.05) : V3(0.55, -1, 0.35);
     ui.controls.target.copy(t);
     ui.camera.position.copy(t).addScaledVector(dir.normalize(), d);
@@ -478,7 +486,7 @@ export function initCosForge(app) {
   // ----------------------------------------------------------------------------- steps
   function renderSteps() {
     ui.stepNav.textContent = "";
-    STEPS.forEach(([id, name, tip], i) => ui.stepNav.append(el("button", { class: "cf-step", id: "cf-step-" + id, "data-step": id, title: tip, "aria-pressed": String(ui.step === id), onclick: () => showStep(id) }, el("i", {}, String(i + 1)), name)));
+    (ui.mode === "helmet" ? HSTEPS : STEPS).forEach(([id, name, tip], i) => ui.stepNav.append(el("button", { class: "cf-step", id: "cf-step-" + id, "data-step": id, title: tip, "aria-pressed": String(ui.step === id), onclick: () => showStep(id) }, el("i", {}, String(i + 1)), name)));
   }
   function showStep(id) {
     ui.step = id;
@@ -487,7 +495,7 @@ export function initCosForge(app) {
     s.textContent = "";
     ui.helpers.clear();
     if (id !== "fit" && ui.fitTint) { ui.fitTint = false; schedule(0); }
-    ({ body: panelBody, parts: panelParts, shape: panelShape, form: panelForm, fit: panelFit, sculpt: panelSculpt, cut: panelCut, export: panelExport })[id]();
+    ({ body: panelBody, parts: panelParts, shape: panelShape, form: panelForm, fit: panelFit, sculpt: panelSculpt, cut: panelCut, export: panelExport, hsize: panelHSize, hstyle: panelHStyle, hphoto: panelHPhoto, hvisor: panelHVisor, hdetail: panelHDetail, hlook: panelHLook })[id]();
     ui.dirty = true;
   }
   const H = (t, sub) => el("div", { class: "cf-h" }, el("h3", {}, t), sub ? el("p", {}, sub) : null);
@@ -1402,6 +1410,482 @@ export function initCosForge(app) {
     return null;
   }
 
+  // ============================================================================= Helmet Maker
+  // A guided mode for one helmet: size it from head measurements, pick a style from the library,
+  // shape or trace the visor, add details, choose a finish and render it, then cut and export.
+  function setMode(m) {
+    if (!ui) return;
+    ui.mode = m === "helmet" ? "helmet" : "costume";
+    ui.root.classList.toggle("cf-helmet", ui.mode === "helmet");
+    const sm = ui.root.querySelector(".cf-brand small"); if (sm) sm.textContent = ui.mode === "helmet" ? "Helmet Maker" : "Cosplay costume designer";
+    const mb = ui.root.querySelector("#cf-mode"); if (mb) mb.textContent = ui.mode === "helmet" ? "Full costume" : "Helmet Maker";
+    renderSteps();
+    if (ui.mode === "helmet") { needHelm(); showStep("hsize"); } else showStep(ui.st.parts.length ? "parts" : "body");
+    viewFrom("iso");
+    refreshScene();
+  }
+  function helm() { const s = selPart(); if (s && s.slot === "helmet") return s; return ui.st.parts.find((p) => p.slot === "helmet" && !p.hidden) || null; }
+  function needHelm() {
+    let p = helm();
+    if (!p) { const t = tplById("hm-nova"); p = newInst(t); const q = p; change("Add " + t.name, () => ui.st.parts.push(q), { now: true }); }
+    if (ui.sel !== p.id) { ui.sel = p.id; renderOutfit(); schedule(0); }
+    return p;
+  }
+  const lensable = (face) => ["visor", "bigvisor", "wrap", "chevron", "custom"].includes(face);
+  // live materials for a part's finish (Look); plain paint uses the shared ones
+  function envMap() { if (!ui.env) { try { ui.env = studioEnv(ui.renderer); } catch (e) { ui.env = null; } } return ui.env; }
+  function baseColorFor(p) {
+    const L = p.look; if (!L || !L.mat || L.mat === "paint") return p.color;
+    const m = matByKey(L.mat); return m.fx ? "#ffffff" : m.tint ? p.color : m.color;
+  }
+  function matFor(p, sel) {
+    const L = p.look;
+    if (!L || !L.mat || L.mat === "paint") return sel ? ui.selMat : ui.partMat;
+    const key = p.id + "|" + (sel ? 1 : 0);
+    let m = ui.lookMats.get(key);
+    if (!m) { m = new THREE.MeshStandardMaterial({ vertexColors: true }); if (sel) { m.emissive = new THREE.Color(0x2a4f8f); m.emissiveIntensity = 0.18; } ui.lookMats.set(key, m); }
+    const lk = lookOf({ mat: L.mat, color: p.color, color2: p.accent });
+    m.metalness = lk.metal; m.roughness = Math.max(0.08, lk.rough);
+    const env = lk.metal > 0.3 ? envMap() : null;
+    if (m.envMap !== env) { m.envMap = env; m.needsUpdate = true; }
+    m.envMapIntensity = 1;
+    if (lk.fx) { const box = new THREE.Box3(); for (const q of ui.meshes) if (q.userData.part === p.id) box.expandByObject(q); const h = ui.B.head; heightColorsSafe(m, lk, box.isEmpty() ? h.C.z - h.c * 1.2 : box.min.z, box.isEmpty() ? h.C.z + h.c * 1.1 : box.max.z); }
+    else heightColorsSafe(m, lk, 0, 1);
+    return m;
+  }
+  function heightColorsSafe(m, lk, z0, z1) { try { heightColors(m, lk, z0, z1); } catch (e) { /* plain colour */ } }
+  function lensMatFor(p) {
+    const c = p.look && p.look.lens;
+    if (!c) return ui.lensMat;
+    let m = ui.lookMats.get("lens|" + c);
+    if (!m) { const mirror = c === "#c9a227"; m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.08, metalness: mirror ? 0.85 : 0.25, transparent: true, opacity: mirror ? 0.85 : 0.6, envMap: mirror ? envMap() : null }); ui.lookMats.set("lens|" + c, m); }
+    return m;
+  }
+  const HSTEPS = [["hsize", "Size", "Measure the head: the helmet is built around it"], ["hstyle", "Style", "Pick a helmet from the library"], ["hphoto", "Photos", "Build the shape from up to 4 photos of a helmet"], ["hvisor", "Visor", "Shape the visor, or draw or trace your own"], ["hdetail", "Details", "Panel lines, crests, ear pods and lights"], ["form", "Form", "Push and pull a control cage"], ["sculpt", "Sculpt", "Push, pull and emboss"], ["hlook", "Look", "Colours, finish and a rendered picture"], ["cut", "Cut & Join", "Split for the printer"], ["export", "Export", "Save or send to your design"]];
+  const HEAD_SIZES = [["child", "Child", 520], ["teen", "Teen", 545], ["s", "Small", 555], ["m", "Medium", 575], ["l", "Large", 595], ["xl", "X-Large", 615]];
+  const PADS = [["snug", "Snug", 6, "Thin foam or none"], ["comfort", "Comfort", 12, "6 to 10 mm foam pads"], ["foam", "Foam pads", 20, "Thick helmet foam all round"], ["headset", "Headset", 28, "Room for hair, a fan or headphones"]];
+  const VISORS = [["bigvisor", "Full visor"], ["visor", "Eye visor"], ["wrap", "Wraparound"], ["chevron", "V visor"], ["eyes", "Split eyes"], ["tvisor", "T visor"], ["slit", "Eye slit"], ["open", "Open face"], ["closed", "Closed"], ["custom", "Your own"]];
+  const FINISHES = [["paint", "Paint"], ["plastic-gloss", "Gloss"], ["plastic-matte", "Matte"], ["pla", "PLA"], ["petg", "PETG"], ["silk", "Silk PLA"], ["silk-rainbow", "Rainbow silk"], ["silk-two", "Two-tone silk"], ["chrome", "Chrome"], ["alu-brushed", "Brushed metal"], ["steel-satin", "Gunmetal"], ["titanium", "Titanium"], ["gold", "Gold"], ["carbon", "Carbon fibre"]];
+  const ACCENTS = [["glow", "Glowing"], ["paint", "Paint"], ["chrome", "Chrome"], ["gold", "Gold"], ["copper", "Copper"]];
+  const LENSES = [["", "Accent colour"], ["#3a4250", "Smoke"], ["#c9a227", "Gold mirror"], ["#2f8fe0", "Blue"], ["#e0313f", "Red"], ["#2fd39a", "Green"], ["#e8eef4", "Clear"]];
+  const DETAILS = [
+    ["hm-ear", "Ear pods", () => ({ k: "boss", x: "side", y: "brow+30", size: 26, mirror: true })],
+    ["hm-antenna", "Antenna", () => ({ k: "antenna", x: "side-6", y: "brow+4", len: 50 })],
+    ["hm-fin", "Top crest", () => ({ k: "fin", path: "sagittal", from: "brow-30", to: "brow+30", h: 12, profile: "shark", w: 5 })],
+    ["hm-vent", "Chin vents", () => ({ k: "gem", x: 0, y: "chin", size: 4, count: 5, rowAcross: true, step: 9 })],
+    ["hm-cheek", "Cheek vents", () => ({ k: "box", x: "side-46", y: "brow+56", size: 8, w: 12, len: 28, h: 6, mirror: true })],
+    ["hm-light", "Side lights", () => ({ k: "gem", x: "side", y: "brow-12", size: 5, mirror: true })],
+    ["hm-goggles", "Brow camera", () => ({ k: "goggles", x: 0, y: "brow-18", size: 14 })],
+  ];
+  const fmtLen = (mm) => { const u = ui.st.units, k = u === "in" ? 25.4 : 10; return (mm / k).toFixed(u === "in" ? 2 : 1) + " " + u; };
+
+  // --- Size
+  function panelHSize() {
+    const st = ui.st, s = ui.side, p = needHelm(), M = st.meas;
+    s.append(H("Size your helmet", "Measure the head. The helmet is built around it, with room for padding, so it fits the first time."));
+    s.append(el("div", { class: "cf-chips", id: "hm-sizes" }, ...HEAD_SIZES.map(([id, n, c]) => el("button", { class: "cf-chip", id: "hm-size-" + id, title: `About ${c / 10} cm (${(c / 25.4).toFixed(1)} in) around`, "aria-pressed": String(Math.abs(M.head - c) < 3 && !M.headLen && !M.headWid && !M.headTall), onclick: () => { change("Head size", () => { M.head = c; delete M.headLen; delete M.headWid; delete M.headTall; st.preset = "custom"; }, { body: true, now: true }); showStep("hsize"); } }, n))));
+    s.append(el("div", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Units"), segBtns([["cm", "cm"], ["in", "inches"]], st.units, (v) => { st.units = v; showStep("hsize"); }, "hm-units")));
+    const k = st.units === "in" ? 25.4 : 10, h = ui.B.head;
+    const auto = { head: M.head, headLen: h.b * 2, headWid: h.a * 2, headTall: (h.c * 2) / 1.06 };
+    const rows = [["head", "Around the head", "A tape measure around the head, just above the eyebrows and ears (the widest part)"], ["headLen", "Front to back", "From between the eyebrows to the back of the head (calipers, or two books and a ruler)"], ["headWid", "Ear to ear", "The widest part of the head, just above the ears"], ["headTall", "Chin to crown", "From under the chin to the top of the head"]];
+    for (const [key, name, tip] of rows) {
+      const isSet = key === "head" || M[key] > 0;
+      const inp = el("input", { type: "number", class: "num cf-num", id: "hm-m-" + key, step: st.units === "in" ? "0.125" : "0.5", min: "1", value: String(Math.round(((isSet ? M[key] : auto[key]) / k) * 100) / 100), title: tip });
+      inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (!(v > 0)) return; change("Head size", () => { M[key] = v * k; st.preset = "custom"; }, { body: true, now: true }); showStep("hsize"); });
+      s.append(el("label", { class: "cf-row", title: tip }, el("span", { class: "cf-lbl" }, name), inp, el("span", { class: "cf-unit" }, st.units),
+        key === "head" ? null : isSet ? el("button", { class: "ibtn cf-x", id: "hm-auto-" + key, title: "Go back to the size worked out from the distance around", onclick: (e) => { e.preventDefault(); change("Head size", () => { delete M[key]; }, { body: true, now: true }); showStep("hsize"); } }, "↺") : el("span", { class: "cf-auto" }, "auto")));
+    }
+    s.append(el("p", { class: "cf-tip" }, "Only the distance around is needed. Add the others for a closer fit: they're worked out until you type them."));
+    const sh = { ...defOf("helmet"), ...p.shape };
+    s.append(el("div", { class: "cf-sub" }, "Padding and shell"));
+    s.append(el("div", { class: "cf-chips", id: "hm-pads" }, ...PADS.map(([id, n, g, tip]) => el("button", { class: "cf-chip", id: "hm-pad-" + id, title: `${tip} (${g} mm)`, "aria-pressed": String(sh.gap === g), onclick: () => { change("Padding", () => { p.shape.gap = g; }, { now: true }); showStep("hsize"); } }, n))));
+    s.append(rng("Room for padding", sh.gap ?? 12, 0, 40, 0.5, "mm", (v) => { change("Padding", () => { p.shape.gap = v; }); updRead(); }, "hm-gap"));
+    s.append(rng("Shell thickness", p.deco.thick ?? 2.5, 1.2, 5, 0.1, "mm", (v) => { change("Thickness", () => { p.deco.thick = v; }); updRead(); }, "hm-thick"));
+    s.append(sizeReadout(p));
+    s.append(el("div", { class: "cf-sub" }, "Printing"));
+    s.append(el("label", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Printer"), el("select", { class: "cf-sel", id: "hm-printer", onchange: (e) => { st.printer = e.target.value; showStep("hsize"); } }, ...PRINTERS.map((q) => el("option", { value: q.id, selected: st.printer === q.id || null }, q.name)))));
+    s.append(el("div", { id: "hm-print" }));
+    s.append(el("div", { class: "cf-btnrow" },
+      el("button", { class: "btn", id: "hm-split", title: "Cut the helmet into a front and a back half with joints, so it can go over the head", onclick: () => helmSplit(p) }, "Split front / back"),
+      el("button", { class: "btn", id: "hm-autocut", title: "Cut the helmet until every piece fits your printer", onclick: () => doAuto([p]) }, "Auto-cut to fit")));
+    if (p.cuts.length) s.append(el("p", { class: "cf-tip" }, `${p.cuts.length} cut${p.cuts.length > 1 ? "s" : ""} so far. See Cut & Join to change joints or remove cuts.`));
+    printCheck(p);
+  }
+  function updRead() { const o = ui.side.querySelector("#hm-readout"), p = helm(); if (o && p) o.replaceWith(sizeReadout(p)); clearTimeout(ui.pcT); ui.pcT = setTimeout(() => ui && ui.step === "hsize" && helm() && printCheck(helm()), 600); }
+  function sizeReadout(p) {
+    const B = ui.B, sh = { ...defOf("helmet"), ...p.shape }, g = sh.gap ?? 12, t = p.deco.thick ?? 2.5, f = p.fit.scl;
+    const iw = (B.head.a + g) * 2 * f[0], il = (B.head.b + g) * 2 * f[1], ow = iw + 2 * t * f[0], ol = il + 2 * t * f[1];
+    return el("div", { class: "cf-hm-read", id: "hm-readout" },
+      el("div", {}, el("b", {}, "Head "), `${fmtLen(B.head.a * 2)} wide, ${fmtLen(B.head.b * 2)} front to back, ${fmtLen(ui.st.meas.head)} around`),
+      el("div", {}, el("b", {}, "Inside "), `${fmtLen(iw)} × ${fmtLen(il)}: ${Math.round(g)} mm of room all round for padding`),
+      el("div", {}, el("b", {}, "Outside "), `about ${fmtLen(ow)} × ${fmtLen(ol)}, before details`));
+  }
+  // the whole helmet against the printer, and whether a head gets through the bottom
+  function printCheck(p) {
+    const box = ui.side.querySelector("#hm-print");
+    if (!box) return;
+    let r; try { r = build(p, VIEW_RES[ui.st.detail] || 4); } catch (e) { return; }
+    box.textContent = "";
+    const bed = (PRINTERS.find((q) => q.id === ui.st.printer) || PRINTERS[0]).bed;
+    const bb = new THREE.Box3(); for (const pc of r.pieces) if (!pc.lens) bb.union(bounds(pc.mesh));
+    const sz = bb.getSize(V3());
+    const fits = (r.pieces.filter((q) => !q.lens)).every((pc) => { const z = bounds(pc.mesh).getSize(V3()); const a = [z.x, z.y, z.z].sort((x, y) => x - y), b = [...bed].sort((x, y) => x - y); return a[0] <= b[0] && a[1] <= b[1] && a[2] <= b[2]; });
+    box.append(el("div", { class: "cf-fitrow " + (fits ? "good" : "warn") }, el("b", {}, `${Math.round(sz.x)} × ${Math.round(sz.y)} × ${Math.round(sz.z)} mm`), el("span", {}, fits ? (r.pieces.length > 1 ? "Every piece fits your printer." : "Fits your printer in one piece.") : "Too big for your printer in one piece. Split it, or Auto-cut to fit.")));
+    const d = r.g.desc;
+    if (d && !p.cuts.length) {
+      const sh = { ...defOf("helmet"), ...p.shape }, v = (rad(sh.depth) - d.th0) / (d.th1 - d.th0);
+      const a = d.point(0.25, v, V3()), b = d.point(0.75, v, V3()), c = d.point(0.5, v, V3()), e = d.point(0, v, V3());
+      const sideW = a.distanceTo(b), depthW = c.distanceTo(e), hw = ui.B.head.a * 2, hd = ui.B.head.b * 2;
+      if (sideW < hw + 4 || depthW < hd + 4) box.append(el("div", { class: "cf-fitrow warn" }, el("b", {}, "Opening"), el("span", {}, `The bottom (${Math.round(sideW)} × ${Math.round(depthW)} mm) is smaller than the head, so it won't go on in one piece. Split it front / back: the joints let you put it together around your head.`)));
+    }
+  }
+  function helmSplit(p) {
+    const r = build(p, VIEW_RES[ui.st.detail] || 4), bb = new THREE.Box3();
+    for (const pc of r.pieces) if (!pc.lens) bb.union(bounds(pc.mesh));
+    Object.assign(ui.cut, { axis: "y", tiltA: 0, tiltB: 0, only: false, pos: Math.round(ui.B.head.C.y + ui.B.head.b * 0.15) });
+    doCut();
+    toast("Split into a front and a back half, with joints along the cut.");
+    showStep(ui.step);
+  }
+
+  // --- Style
+  function panelHStyle() {
+    const s = ui.side, p = needHelm(), f = ui.hmFilter || "helmets";
+    s.append(H("Pick a style", "Start from a helmet in the library. Your size, padding and thickness stay as they are. Every design here is original and free to print."));
+    s.append(el("div", { class: "cf-chips", id: "hm-filter" }, ...[["helmets", "Contemporary sci-fi"], ["scifi", "More sci-fi"], ["all", "All helmets"]].map(([id, n]) => el("button", { class: "cf-chip", id: "hm-f-" + id, "aria-pressed": String(f === id), onclick: () => { ui.hmFilter = id; showStep("hstyle"); } }, n))));
+    const SCI = ["scifi", "modern", "spaceop", "superhero"];
+    const list = TEMPLATES.filter((t) => t.slot === "helmet" && (f === "all" || (f === "helmets" ? t.theme === "helmets" : SCI.includes(t.theme))));
+    const grid = el("div", { class: "cf-cards", id: "hm-cards" });
+    for (const t of list) {
+      const cv = el("canvas", { width: 112, height: 112, class: "cf-thumb" });
+      grid.append(el("button", { class: "cf-card" + (p.tpl === t.id ? " on" : ""), id: "hm-tpl-" + t.id, "aria-pressed": String(p.tpl === t.id), title: "Use " + t.name, onclick: () => applyStyle(p, t) }, cv, el("b", {}, t.name), el("small", {}, THEMES.find((x) => x.id === t.theme).name)));
+      thumb(t, cv);
+    }
+    s.append(grid);
+    // a picture to match: shown behind the head
+    s.append(el("div", { class: "cf-sub" }, "Reference picture"));
+    s.append(el("p", { class: "cf-tip" }, "Put a drawing or photo of the helmet you want behind the head, from the front or the side, and match its shape and size. It isn't saved with the design."));
+    const file = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif,image/bmp", id: "hm-ref-file", style: { display: "none" }, onchange: async (e) => { const fl = e.target.files[0]; e.target.value = ""; if (!fl) return; try { const img = await loadPicture(fl); ui.ref = { img, view: "front", w: 320, dz: 0, op: 0.55, flip: false }; drawRef(); viewFrom("front"); showStep("hstyle"); } catch (err) { toast(err.message, "err"); } } });
+    s.append(file, el("div", { class: "cf-btnrow" }, el("button", { class: "btn", id: "hm-ref", onclick: () => file.click() }, ui.ref ? "Change picture…" : "Add a picture…"), ui.ref ? el("button", { class: "btn", id: "hm-ref-x", onclick: () => { ui.ref = null; drawRef(); showStep("hstyle"); } }, "Remove") : null));
+    if (ui.ref) {
+      const R = ui.ref;
+      s.append(el("div", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Seen from"), segBtns([["front", "Front"], ["side", "Side"]], R.view, (v) => { R.view = v; drawRef(); viewFrom(v); }, "hm-ref-view")));
+      s.append(rng("Picture width", R.w, 100, 700, 1, "mm", (v) => { R.w = v; drawRef(); }, "hm-ref-w"));
+      s.append(rng("Up or down", R.dz, -250, 250, 1, "mm", (v) => { R.dz = v; drawRef(); }, "hm-ref-dz"));
+      s.append(rng("See-through", R.op, 0.1, 1, 0.05, "", (v) => { R.op = v; drawRef(); }, "hm-ref-op"));
+      s.append(el("label", { class: "cf-chk" }, el("input", { type: "checkbox", id: "hm-ref-flip", checked: R.flip || null, onchange: (e) => { R.flip = e.target.checked; drawRef(); } }), "Flip left to right"));
+    }
+  }
+  function applyStyle(p, t) {
+    change("Style: " + t.name, () => {
+      const gap = p.shape.gap, thick = p.deco.thick;
+      Object.assign(p, { tpl: t.id, name: t.name, color: t.color, accent: t.accent, shape: clone(t.shape), deco: clone(t.deco), addons: clone(t.addons), sculpt: {} });
+      if (t.form) p.form = clone(t.form); else delete p.form;
+      if (gap != null) p.shape.gap = gap;
+      if (thick != null) p.deco.thick = thick;
+      p._sv = (p._sv || 0) + 1;
+    }, { now: true });
+    showStep("hstyle");
+    toast(`${t.name}: next, shape the visor, or go straight to Details or Look.`);
+  }
+  function loadPicture(file, max = 900) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(img.naturalWidth * k)); cv.height = Math.max(1, Math.round(img.naturalHeight * k));
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url); res(cv);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("That picture couldn't be opened.")); };
+      img.src = url;
+    });
+  }
+  function drawRef() {
+    if (ui.refMesh) { ui.scene.remove(ui.refMesh); ui.refMesh.geometry.dispose(); ui.refMesh.material.map && ui.refMesh.material.map.dispose(); ui.refMesh.material.dispose(); ui.refMesh = null; }
+    const R = ui.ref;
+    if (R) {
+      const cv = R.img, w = R.w, hgt = (w * cv.height) / cv.width, h = ui.B.head;
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: R.op, depthWrite: false, side: THREE.DoubleSide }));
+      m.rotation.order = "ZXY"; m.rotation.x = Math.PI / 2;
+      if (R.view === "side") { m.rotation.z = Math.PI / 2; m.position.set(-(h.a + 160), h.C.y, h.C.z + R.dz); }
+      else m.position.set(0, h.C.y + h.b + 160, h.C.z + R.dz);
+      if (R.flip) m.scale.x = -1;
+      m.renderOrder = -1;
+      ui.scene.add(m); ui.refMesh = m;
+    }
+    ui.dirty = true;
+  }
+
+  // --- Photos (v2.9.8.9.5): the helmet's shape from up to 4 photos (front, side, back, top)
+  // of a real helmet, a toy or a drawing. Each photo is cut out from its background; together
+  // they make the helmet's outside (a visual hull, rounded between the views), which is scaled
+  // to just fit around the usual shell for this head and pushes the shell out to it. The visor,
+  // details, look and cutting all work as before. The photos stay for this session; the shape
+  // they made is saved with the helmet.
+  const PHOTO_VIEWS = [["front", "Front", "Facing the helmet's face"], ["side", "Side", "From the left or right side"], ["back", "Back", "From behind"], ["top", "Top", "From straight above"]];
+  function panelHPhoto() {
+    const s = ui.side, p = needHelm(), P = (ui.hmPhotos = ui.hmPhotos || {}), o = (ui.hmPhOpt = ui.hmPhOpt || { headZ: 55, headY: 0, strength: 100, size: 0, boxy: 2.4, smooth: 2 });
+    if (p.photo && !ui.hmPhOptSet) { Object.assign(o, p.photo.opt || {}); ui.hmPhOptSet = true; }
+    s.append(H("Helmet from photos", "Take or choose up to 4 photos of a helmet (a real one, a toy, a model or a drawing): front, side, back and top. Each should show the whole helmet on a plain background. The shape is built from them and sized to fit your head."));
+    const grid = el("div", { class: "cf-hm-photos", id: "hm-photos" });
+    for (const [k, name, tip] of PHOTO_VIEWS) {
+      const v = P[k];
+      const cam = el("input", { type: "file", accept: "image/*", capture: "environment", id: "hm-ph-cam-" + k, style: { display: "none" }, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addPhoto(k, f); } });
+      const pick = el("input", { type: "file", accept: "image/*", id: "hm-ph-file-" + k, style: { display: "none" }, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addPhoto(k, f); } });
+      const cv = el("canvas", { width: 132, height: 100, class: "cf-hm-phcv", id: "hm-ph-cv-" + k });
+      drawPhoto(cv, v);
+      const card = el("div", { class: "cf-hm-ph" + (v ? " on" : ""), id: "hm-ph-" + k },
+        el("b", {}, name), el("small", {}, tip), cv, cam, pick,
+        el("div", { class: "cf-btnrow" },
+          el("button", { class: "btn", id: "hm-ph-take-" + k, title: "Take a photo with the camera (on a phone or tablet)", onclick: () => cam.click() }, "📷 Take"),
+          el("button", { class: "btn", id: "hm-ph-pick-" + k, title: "Choose a picture", onclick: () => pick.click() }, v ? "Change…" : "Choose…"),
+          v ? el("button", { class: "btn", id: "hm-ph-x-" + k, title: "Remove this photo", onclick: () => { delete P[k]; showStep("hphoto"); } }, "×") : null));
+      if (v) {
+        card.append(rng("Cut-out", v.sens, 0, 100, 1, "%", (x) => { v.sens = x; v.mask = cutOut(v.img, { mode: "auto", sens: x, smooth: 2 }); drawPhoto(document.getElementById("hm-ph-cv-" + k), v); }, "hm-ph-sens-" + k));
+        if (k === "side") card.append(el("div", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Its face is on the"), segBtns([["left", "Left"], ["right", "Right"]], v.faces, (x) => { v.faces = x; }, "hm-ph-faces")));
+        if (k === "top") card.append(el("div", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Its face is at the"), segBtns([["bottom", "Bottom"], ["top", "Top"]], v.front, (x) => { v.front = x; }, "hm-ph-topfront")));
+      }
+      grid.append(card);
+    }
+    s.append(grid);
+    s.append(el("div", { class: "cf-sub" }, "Fit and shape"));
+    s.append(rng("Head height in the helmet", o.headZ, 30, 80, 1, "%", (v) => { o.headZ = v; }, "hm-ph-headz"));
+    s.append(rng("Head forward / back", o.headY, -20, 20, 1, "%", (v) => { o.headY = v; }, "hm-ph-heady"));
+    s.append(rng("Round ↔ boxy", o.boxy, 2, 6, 0.1, "", (v) => { o.boxy = v; }, "hm-ph-boxy"));
+    s.append(rng("Smooth", o.smooth, 0, 6, 1, "", (v) => { o.smooth = v; }, "hm-ph-smooth"));
+    s.append(rng("Bigger than it needs", o.size, 0, 40, 1, "%", (v) => { o.size = v; if (p.photo) change("Photo helmet size", () => { p.photo.size = 1 + v / 100; p.photo.opt = { ...o }; }); }, "hm-ph-size"));
+    s.append(rng("Photo shape strength", o.strength, 0, 100, 5, "%", (v) => { o.strength = v; if (p.photo) change("Photo shape strength", () => { p.photo.strength = v / 100; p.photo.opt = { ...o }; }); }, "hm-ph-strength"));
+    const n = Object.keys(P).length;
+    s.append(el("div", { class: "cf-btnrow" },
+      el("button", { class: "btn primary", id: "hm-ph-build", disabled: !n || null, title: "Build the helmet's shape from the photos", onclick: () => buildFromPhotos(p) }, p.photo ? "Rebuild from the photos" : "Build from the photos"),
+      el("button", { class: "btn", id: "hm-ph-visor", disabled: !P.front || null, title: "Find the dark visor in the front photo and use its shape", onclick: () => visorFromPhoto(p) }, "Visor from the front photo")));
+    if (p.photo) s.append(el("div", { class: "cf-btnrow" },
+      el("label", { class: "cf-chk" }, el("input", { type: "checkbox", id: "hm-ph-on", checked: p.photo.on !== false || null, onchange: (e) => change("Photo shape", () => { p.photo.on = e.target.checked; }, { now: true }) }), "Use the photo shape"),
+      el("button", { class: "btn", id: "hm-ph-off", onclick: () => { change("Remove the photo shape", () => { delete p.photo; }, { now: true }); showStep("hphoto"); } }, "Remove it")));
+    s.append(el("p", { class: "cf-tip" }, n ? `${n} photo${n > 1 ? "s" : ""}. More views make a closer match: the front and side matter most. Then shape the visor, add details and cut it for your printer as usual.` : "Start with a front or side photo. Hold the camera level, at the helmet's middle, and fill the frame."));
+  }
+  function drawPhoto(cv, v) {
+    const g = cv.getContext("2d"), W = cv.width, H = cv.height;
+    for (let y = 0; y < H; y += 8) for (let x = 0; x < W; x += 8) { g.fillStyle = ((x + y) / 8) % 2 ? "#d9dde2" : "#f3f5f7"; g.fillRect(x, y, 8, 8); }
+    if (!v) { g.fillStyle = "#8a94a3"; g.font = "13px system-ui, sans-serif"; g.textAlign = "center"; g.fillText("No photo", W / 2, H / 2 + 4); return; }
+    const t = document.createElement("canvas"); t.width = v.img.width; t.height = v.img.height;
+    const id = new ImageData(new Uint8ClampedArray(v.img.data), v.img.width, v.img.height);
+    if (v.mask) for (let i = 0; i < v.mask.length; i++) if (!v.mask[i]) id.data[i * 4 + 3] = 35;
+    t.getContext("2d").putImageData(id, 0, 0);
+    const k = Math.min(W / t.width, H / t.height);
+    g.drawImage(t, (W - t.width * k) / 2, (H - t.height * k) / 2, t.width * k, t.height * k);
+  }
+  async function addPhoto(k, file) {
+    try {
+      const cv = await loadPicture(file, 360);
+      const img = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height);
+      const P = ui.hmPhotos, old = P[k];
+      P[k] = { img, canvas: cv, sens: 30, faces: (old && old.faces) || "left", front: (old && old.front) || "bottom" };
+      P[k].mask = cutOut(img, { mode: "auto", sens: 30, smooth: 2 });
+      if (!maskBoxOf(P[k])) toast("The helmet wasn't found in that photo: try a plainer background, or move the Cut-out slider.", "err");
+      // the front (or side) photo also goes behind the head as a reference
+      if (k === "front" || (k === "side" && !P.front)) { ui.ref = { img: cv, view: k === "front" ? "front" : "side", w: 330, dz: 0, op: 0.4, flip: false }; drawRef(); }
+      showStep("hphoto");
+    } catch (e) { toast(e.message || String(e), "err"); }
+  }
+  const maskBoxOf = (v) => { if (!v || !v.mask) return null; let any = false; for (let i = 0; i < v.mask.length; i++) if (v.mask[i]) { any = true; break; } return any; };
+  function buildFromPhotos(p) {
+    const P = ui.hmPhotos || {}, o = ui.hmPhOpt;
+    let map;
+    try { map = helmetRadii(P, { headZ: o.headZ / 100, headY: o.headY / 100, boxy: o.boxy, smooth: o.smooth }); }
+    catch (e) { toast(e.message, "err"); return; }
+    change("Helmet from photos", () => { p.photo = { map, strength: o.strength / 100, size: 1 + o.size / 100, on: true, views: Object.keys(P), opt: { ...o } }; }, { now: true });
+    showStep("hphoto");
+    toast(`Built the helmet from ${Object.keys(P).length} photo${Object.keys(P).length > 1 ? "s" : ""}. Turn it to check, then shape the visor or add details.`);
+  }
+  // the visor: the darkest big area of the front photo, sized like the photo's helmet
+  function visorFromPhoto(p) {
+    const P = ui.hmPhotos || {}, F = P.front;
+    const v = findVisor(F);
+    if (!v) { toast("No dark visor found in the front photo. Draw or trace one in the Visor step instead.", "err"); return; }
+    if (!p.photo) buildFromPhotos(p);
+    const map = p.photo && p.photo.map; if (!map) return;
+    // millimetres per unit of helmet height: from the scale the shell used, else from the head
+    let sc = p._photoScale;
+    if (!sc) { try { build(p, 6); sc = p._photoScale; } catch (e) { sc = 0; } }
+    if (!sc) sc = (ui.B.head.a * 2 + 40) / map.wx;
+    const [u0, w0, u1, w1] = v.box;
+    const faceW = Math.round((u1 - u0) * map.wx * sc), faceH = Math.round((w1 - w0) * sc);
+    const zTop = 1 - w0, brow = Math.round((Math.atan2(map.wy * 0.45, zTop - map.headZ) * 180) / Math.PI);
+    change("Visor from the front photo", () => {
+      Object.assign(p.shape, { face: "custom", facePoly: v.poly, faceW: Math.max(40, Math.min(260, faceW)), faceH: Math.max(10, Math.min(140, faceH)), brow: Math.max(50, Math.min(88, brow)), faceSym: false });
+      if (p.shape.lens === undefined) p.shape.lens = true;
+    }, { now: true });
+    showStep("hphoto");
+    toast(`Visor from the photo: ${Math.round(faceW)} × ${Math.round(faceH)} mm. Fine-tune it in the Visor step.`);
+  }
+
+  // --- Visor
+  function panelHVisor() {
+    const s = ui.side, p = needHelm(), sh = { ...defOf("helmet"), ...p.shape };
+    s.append(H("Visor", "Choose the opening and size it. Or draw your own shape, or trace one from a picture."));
+    s.append(el("div", { class: "cf-chips", id: "hm-visors" }, ...VISORS.map(([id, n]) => el("button", { class: "cf-chip", id: "hm-v-" + id, "aria-pressed": String(sh.face === id), onclick: () => { change("Visor", () => { p.shape.face = id; if (id === "wrap" && (sh.faceW ?? 0) < 170) p.shape.faceW = 210; }, { now: true }); showStep("hvisor"); } }, n))));
+    if (sh.face !== "open" && sh.face !== "closed") {
+      s.append(rng("Width", sh.faceW, 40, 260, 1, "mm", (v) => change("Visor size", () => { p.shape.faceW = v; }), "hm-v-w"));
+      if (["visor", "bigvisor", "wrap", "chevron", "custom", "cowl"].includes(sh.face)) s.append(rng("Height", sh.faceH, 10, 140, 1, "mm", (v) => change("Visor size", () => { p.shape.faceH = v; }), "hm-v-h"));
+    } else if (sh.face === "open") s.append(rng("Width", sh.faceW, 60, 220, 1, "mm", (v) => change("Visor size", () => { p.shape.faceW = v; }), "hm-v-w"));
+    s.append(rng("Height on the face", sh.brow, 50, 88, 1, "°", (v) => change("Visor size", () => { p.shape.brow = v; }), "hm-v-brow"));
+    if (lensable(sh.face)) s.append(el("label", { class: "cf-chk", title: "A separate clear piece that fills the visor: print it in clear PETG, or use it as a template to cut 1 to 2 mm PETG or acrylic sheet" }, el("input", { type: "checkbox", id: "hm-v-lens", checked: sh.lens || null, onchange: (e) => change("Visor lens", () => { p.shape.lens = e.target.checked; }, { now: true }) }), "Separate visor lens"));
+    // your own: draw or trace
+    s.append(el("div", { class: "cf-sub" }, "Your own visor"));
+    s.append(el("p", { class: "cf-tip" }, "Draw a closed outline (or colour the shape in) below, or trace a picture of a visor: dark shape on a light background. The biggest outline becomes the visor, sized by Width and Height."));
+    const pad = el("canvas", { class: "cf-hm-pad", id: "hm-pad", width: 280, height: 150, title: "Draw the visor shape here" });
+    const g = pad.getContext("2d");
+    const clearPad = () => { g.fillStyle = "#fff"; g.fillRect(0, 0, pad.width, pad.height); g.strokeStyle = "#dde3ea"; g.lineWidth = 1; g.beginPath(); g.moveTo(pad.width / 2, 0); g.lineTo(pad.width / 2, pad.height); g.stroke(); };
+    clearPad();
+    if (ui.hmPad) g.drawImage(ui.hmPad, 0, 0);
+    let last = null;
+    const at = (e) => { const r = pad.getBoundingClientRect(); return [((e.clientX - r.left) * pad.width) / r.width, ((e.clientY - r.top) * pad.height) / r.height]; };
+    pad.addEventListener("pointerdown", (e) => { e.preventDefault(); pad.setPointerCapture(e.pointerId); last = at(e); });
+    pad.addEventListener("pointermove", (e) => { if (!last) return; const q = at(e); g.strokeStyle = "#111"; g.lineWidth = 7; g.lineCap = g.lineJoin = "round"; g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(q[0], q[1]); g.stroke(); last = q; });
+    const up = () => { if (!last) return; last = null; const keep = document.createElement("canvas"); keep.width = pad.width; keep.height = pad.height; keep.getContext("2d").drawImage(pad, 0, 0); ui.hmPad = keep; ui.hmSrc = keep; traceVisor(p); };
+    pad.addEventListener("pointerup", up); pad.addEventListener("pointercancel", up);
+    pad.style.touchAction = "none";
+    s.append(pad);
+    const file = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif,image/bmp", id: "hm-trace-file", style: { display: "none" }, onchange: async (e) => { const fl = e.target.files[0]; e.target.value = ""; if (!fl) return; try { ui.hmSrc = await loadPicture(fl, 700); ui.hmPad = null; traceVisor(p); } catch (err) { toast(err.message, "err"); } } });
+    s.append(file, el("div", { class: "cf-btnrow" },
+      el("button", { class: "btn", id: "hm-pad-clear", onclick: () => { ui.hmPad = null; clearPad(); } }, "Clear drawing"),
+      el("button", { class: "btn", id: "hm-trace", onclick: () => file.click() }, "Trace a picture…")));
+    const tol = ui.hmTol ?? 2;
+    s.append(rng("Simplify", tol, 0.3, 8, 0.1, "%", (v) => { ui.hmTol = v; if (ui.hmSrc) traceVisor(p, true); }, "hm-tol"));
+    s.append(el("label", { class: "cf-chk", title: "Mirror the shape so both sides match" }, el("input", { type: "checkbox", id: "hm-sym", checked: sh.faceSym || null, onchange: (e) => change("Visor", () => { p.shape.faceSym = e.target.checked; }, { now: true }) }), "Make both sides match"));
+    if (Array.isArray(sh.facePoly)) {
+      const pv = el("canvas", { class: "cf-hm-prev", id: "hm-prev", width: 140, height: 80, title: "Your visor shape" });
+      const c = pv.getContext("2d"), P = sh.facePoly, w = 120, hh = Math.min(70, (w * (sh.faceH || 40)) / (sh.faceW || 120));
+      c.fillStyle = p.accent || "#39c0ff"; c.beginPath(); P.forEach(([u, v], i) => (i ? c.lineTo : c.moveTo).call(c, 10 + u * w, 5 + v * hh)); c.closePath(); c.fill();
+      if (sh.faceSym) { c.beginPath(); P.forEach(([u, v], i) => (i ? c.lineTo : c.moveTo).call(c, 10 + (1 - u) * w, 5 + v * hh)); c.closePath(); c.fill(); }
+      s.append(el("div", { class: "cf-row" }, el("span", { class: "cf-lbl" }, `Traced: ${P.length} points`), pv));
+    }
+  }
+  // the biggest outline of the drawing or picture becomes the visor, 0..1 across and down its box
+  function traceVisor(p, quiet) {
+    const cv = ui.hmSrc; if (!cv) return;
+    const img = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height);
+    const tol = ((ui.hmTol ?? 2) / 100) * Math.max(cv.width, cv.height);
+    let res;
+    try { res = traceImage(img, { tol: Math.max(0.5, tol), minArea: 0.004, maxRings: 20 }); } catch (e) { res = { rings: [] }; }
+    const ring = res.rings[0];
+    if (!ring || ring.length < 3) { toast("No shape found. Draw a closed outline, or use a darker picture on a light background.", "err"); return; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of ring) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+    let pts = ring.map(([x, y]) => [+((x - x0) / w).toFixed(4), +((y - y0) / h).toFixed(4)]);
+    while (pts.length > 160) pts = pts.filter((_, i) => i % 2 === 0);
+    change("Trace visor", () => {
+      p.shape.face = "custom"; p.shape.facePoly = pts;
+      const fw = p.shape.faceW ?? 120;
+      p.shape.faceH = Math.max(10, Math.min(140, Math.round((fw * h) / w)));
+      if (p.shape.lens === undefined) p.shape.lens = true;
+    }, { now: true });
+    if (!quiet) toast(`Traced a visor with ${pts.length} points.`);
+    showStep("hvisor");
+  }
+
+  // --- Details
+  function panelHDetail() {
+    const s = ui.side, p = needHelm(), D = p.deco;
+    s.append(H("Details", "Switch details on and off. Every detail can be fine-tuned in All settings."));
+    const has = (tag) => (p.addons || []).some((a) => a.tag === tag && !a.off);
+    s.append(el("div", { class: "cf-sub" }, "Add-ons"));
+    s.append(el("div", { class: "cf-chips", id: "hm-adds" }, ...DETAILS.map(([tag, n, mk]) => el("button", { class: "cf-chip", id: "hm-d-" + tag.slice(3), "aria-pressed": String(has(tag)), onclick: () => {
+      change(n, () => { p.addons = p.addons || []; if (has(tag)) p.addons = p.addons.filter((a) => a.tag !== tag); else { const ex = p.addons.find((a) => a.tag === tag); if (ex) ex.off = false; else p.addons.push({ ...mk(), tag }); } }, { now: true });
+      showStep("hdetail");
+    } }, n))));
+    s.append(el("div", { class: "cf-sub" }, "Surface"));
+    s.append(el("div", { class: "cf-chips", id: "hm-lines" }, ...[["none", "No lines"], ["panels", "Panels"], ["inset", "Inset"], ["chevron", "Chevrons"], ["hbands", "Bands"], ["grid", "Grid"]].map(([v, n]) => el("button", { class: "cf-chip", id: "hm-l-" + v, "aria-pressed": String((D.lines || "none") === v), onclick: () => { change("Panel lines", () => { D.lines = v; }, { now: true }); showStep("hdetail"); } }, n))));
+    if (D.lines && D.lines !== "none") s.append(rng("Line spacing", D.lineGap ?? 14, 3, 60, 0.5, "mm", (v) => change("Details", () => { D.lineGap = v; }), "hm-linegap"));
+    s.append(el("label", { class: "cf-chk" }, el("input", { type: "checkbox", id: "hm-glow", checked: D.glow || null, onchange: (e) => change("Details", () => { D.glow = e.target.checked; }, { now: true }) }), "Light lines (accent colour, for LED strips or paint)"));
+    s.append(rng("Centre ridge", D.ridge ?? 0, 0, 8, 0.1, "mm", (v) => change("Details", () => { D.ridge = v; }), "hm-ridge"));
+    s.append(el("label", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Edge"), el("select", { class: "cf-sel", id: "hm-edge", onchange: (e) => change("Details", () => { D.edge = e.target.value; }, { now: true }) }, ...[["none", "Plain"], ["trim", "Raised trim"], ["roll", "Rolled"], ["bevel", "Thin bevel"], ["flare", "Flared out"]].map(([v, n]) => el("option", { value: v, selected: (D.edge || "none") === v || null }, n)))));
+    s.append(el("label", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Texture"), el("select", { class: "cf-sel", id: "hm-tex", onchange: (e) => change("Details", () => { D.tex = e.target.value; }, { now: true }) }, ...[["none", "None"], ["hex", "Hex plates"], ["quilt", "Quilted"], ["hammered", "Hammered"], ["ribs", "Ribs"]].map(([v, n]) => el("option", { value: v, selected: (D.tex || "none") === v || null }, n)))));
+    s.append(el("label", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Forehead emblem"), el("select", { class: "cf-sel", id: "hm-emblem", onchange: (e) => change("Details", () => { D.emblem = e.target.value; if (!D.emblemSize) D.emblemSize = 18; if (!D.emblemH) D.emblemH = 1.5; }, { now: true }) }, ...EMBLEMS.map((v) => el("option", { value: v, selected: (D.emblem || "none") === v || null }, v === "none" ? "None" : v.charAt(0).toUpperCase() + v.slice(1))))));
+    s.append(el("label", { class: "cf-chk" }, el("input", { type: "checkbox", id: "hm-rivets", checked: D.rivets || null, onchange: (e) => change("Details", () => { D.rivets = e.target.checked; }, { now: true }) }), "Rivets around the edge"));
+    s.append(el("div", { class: "cf-btnrow" }, el("button", { class: "btn", id: "hm-all", title: "Every setting for the shape, surface and add-ons", onclick: () => showStep("shape") }, "All settings…"), el("button", { class: "btn", id: "hm-fit", title: "Move, turn or size the helmet on the head", onclick: () => showStep("fit") }, "Fit…")));
+  }
+
+  // --- Look
+  function panelHLook() {
+    const s = ui.side, p = needHelm(), L = p.look || {};
+    const setLook = (k, v) => { change("Look", () => { p.look = { ...(p.look || {}), [k]: v }; }, { now: true }); showStep("hlook"); };
+    s.append(H("Look", "Choose colours and a finish and see them on the helmet. Then render a photo-style picture to show it off."));
+    s.append(el("div", { class: "cf-row" }, el("span", { class: "cf-lbl" }, "Colours"),
+      el("input", { type: "color", id: "hm-color", value: p.color, title: "Main colour", oninput: (e) => change("Colour", () => { p.color = e.target.value; }) }),
+      el("input", { type: "color", id: "hm-accent", value: p.accent || p.color, title: "Accent colour: light lines, gems, trims and the lens", oninput: (e) => change("Colour", () => { p.accent = e.target.value; }) })));
+    s.append(el("div", { class: "cf-sub" }, "Finish"));
+    s.append(el("div", { class: "cf-chips", id: "hm-finish" }, ...FINISHES.map(([k, n]) => el("button", { class: "cf-chip", id: "hm-fin-" + k, "aria-pressed": String((L.mat || "paint") === k), onclick: () => setLook("mat", k) }, n))));
+    const fm = matByKey(L.mat || "paint");
+    if (!fm.tint && L.mat && L.mat !== "paint") s.append(el("p", { class: "cf-tip" }, fm.fx ? "Rainbow and two-tone silk change colour from bottom to top, like the print's layers (two-tone uses your two colours)." : fm.name + " has its own colour; your main colour is used for paint and plastic finishes."));
+    s.append(el("div", { class: "cf-sub" }, "Accents in the picture"));
+    s.append(el("div", { class: "cf-chips", id: "hm-accfin" }, ...ACCENTS.map(([k, n]) => el("button", { class: "cf-chip", id: "hm-acc-" + k, "aria-pressed": String((L.acc || "glow") === k), onclick: () => setLook("acc", k) }, n))));
+    if ((p.shape || {}).lens && lensable(p.shape.face)) {
+      s.append(el("div", { class: "cf-sub" }, "Visor lens"));
+      s.append(el("div", { class: "cf-chips", id: "hm-lens" }, ...LENSES.map(([c, n], i) => el("button", { class: "cf-chip", id: "hm-lens-" + i, "aria-pressed": String((L.lens || "") === c), onclick: () => setLook("lens", c) }, c ? el("i", { class: "cf-sw", style: { background: c } }) : null, n))));
+    }
+    // render
+    s.append(el("div", { class: "cf-sub" }, "Render a picture"));
+    const R = ui.hmRender || (ui.hmRender = { light: "threepoint", bg: "dark", q: "low", body: false });
+    const sel = (id, lbl, opts, val, on) => el("label", { class: "cf-row" }, el("span", { class: "cf-lbl" }, lbl), el("select", { class: "cf-sel", id, onchange: (e) => on(e.target.value) }, ...opts.map(([v, n]) => el("option", { value: v, selected: v === val || null }, n))));
+    s.append(sel("hm-r-light", "Light", Object.entries(LIGHT_TYPES).map(([k, v]) => [k, v.label]), R.light, (v) => { R.light = v; }));
+    s.append(sel("hm-r-bg", "Background", Object.entries(BACKGROUNDS).filter(([k]) => k !== "image").map(([k, v]) => [k, v.label]), R.bg, (v) => { R.bg = v; }));
+    s.append(sel("hm-r-q", "Quality", ["low", "medium", "high"].map((k) => [k, `${QUALITY[k].label} (${QUALITY[k].note})`]), R.q, (v) => { R.q = v; }));
+    s.append(el("label", { class: "cf-chk" }, el("input", { type: "checkbox", id: "hm-r-body", checked: R.body || null, onchange: (e) => { R.body = e.target.checked; } }), "Show it on the mannequin"));
+    s.append(el("p", { class: "cf-tip" }, "The picture is taken from the view you see now: turn the helmet first."));
+    s.append(el("div", { class: "cf-btnrow" }, el("button", { class: "btn primary", id: "hm-render", onclick: () => (ui.rendering ? ui.rendering.cancel() : renderHelmet(p)) }, ui.rendering ? "Stop" : "Render picture")));
+    const out = el("div", { id: "hm-render-out", class: "cf-hm-out" });
+    if (ui.lastRender) {
+      out.append(el("img", { src: ui.lastRender.url, alt: "Rendered helmet", class: "cf-hm-img" }),
+        el("button", { class: "btn", id: "hm-save-png", onclick: () => app.projects && app.projects.saveImage(fileName(p.name) + ".png", ui.lastRender.blob) }, "Save picture (PNG)"));
+    }
+    s.append(out);
+  }
+  // one geometry in two groups: the main colour, then everything else (trim, lights, gems)
+  function splitByColor(geo, hex) {
+    const c = new THREE.Color(hex), P = geo.attributes.position.array, N = geo.attributes.normal.array, C = geo.attributes.color.array, nT = P.length / 9;
+    const a = [], b = [];
+    for (let t = 0; t < nT; t++) { const o = t * 9; (Math.abs(C[o] - c.r) + Math.abs(C[o + 1] - c.g) + Math.abs(C[o + 2] - c.b) < 0.01 ? a : b).push(t); }
+    const P2 = new Float32Array(P.length), N2 = new Float32Array(N.length);
+    a.concat(b).forEach((t, i) => { P2.set(P.subarray(t * 9, t * 9 + 9), i * 9); N2.set(N.subarray(t * 9, t * 9 + 9), i * 9); });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(P2, 3)); g.setAttribute("normal", new THREE.BufferAttribute(N2, 3));
+    g.addGroup(0, a.length * 3, 0); g.addGroup(a.length * 3, b.length * 3, 1);
+    return g;
+  }
+  function renderHelmet(p) {
+    const R = ui.hmRender, L = p.look || {}, Q = QUALITY[R.q] || QUALITY.low;
+    let r; try { r = build(p, 3); } catch (e) { toast("Couldn't build the helmet: " + (e.message || e), "err"); return; }
+    const I = new THREE.Matrix4(), items = [], acc = L.acc || "glow";
+    for (const pc of r.pieces) {
+      if (pc.lens) { items.push({ geometry: displayGeometry(pc.mesh, "#ffffff"), matrix: I, materials: [{ look: { mat: "glass-tint", color: L.lens || p.accent || "#3a4250" } }] }); continue; }
+      const geo = splitByColor(displayGeometry(pc.mesh, p.color, p.accent || p.color), p.color);
+      items.push({ geometry: geo, matrix: I, materials: [{ look: { mat: L.mat || "paint", color: p.color, color2: p.accent } }, { look: { mat: acc === "glow" ? "paint" : acc, color: p.accent || p.color }, glow: acc === "glow" ? p.accent || p.color : null }], groups: [0, 1] });
+    }
+    if (R.body) {
+      const g = bodyGroup(ui.B, ui.bodyMat); g.updateMatrixWorld(true);
+      g.traverse((o) => { if (o.isMesh) items.push({ geometry: o.geometry, matrix: o.matrixWorld.clone(), materials: [{ look: { mat: "plastic-matte", color: "#c9bfb4" } }] }); });
+    }
+    const cam = ui.camera.clone(); const W = Q.width, Hh = Math.round(W / Math.max(0.3, ui.camera.aspect));
+    cam.aspect = W / Hh; cam.updateProjectionMatrix();
+    setBusy("Rendering…");
+    const job = renderImage({ items, camera: cam, width: W, height: Hh, samples: Q.samples, lightType: R.light, lightColor: "neutral", intensity: 1, background: R.bg, floor: R.body, onProgress: (n, tot) => { if (ui) setBusy(`Rendering… ${Math.round((n / tot) * 100)}%`); } });
+    ui.rendering = job;
+    if (ui.step === "hlook") showStep("hlook");
+    job.promise.then((res) => {
+      if (!ui) return;
+      const blob = res.blob || res;
+      if (ui.lastRender) URL.revokeObjectURL(ui.lastRender.url);
+      ui.lastRender = { blob, url: URL.createObjectURL(blob) };
+      toast("Rendered. Save the picture below the button.");
+    }).catch((e) => { if (ui && !(e && /cancel/i.test(String(e.message || e)))) toast("The render stopped: " + (e && e.message || e), "err"); })
+      .finally(() => { if (!ui) return; ui.rendering = null; setBusy(null); if (ui.step === "hlook") showStep("hlook"); });
+  }
+
   // ----------------------------------------------------------------------------- orbit (Z up)
   function makeOrbit(camera, dom) {
     const o = { target: V3(), enabled: true, onChange: null };
@@ -1452,6 +1936,6 @@ export function initCosForge(app) {
   return {
     open, close, get isOpen() { return !!ui; },
     // for tests
-    _t: () => ui && { st: ui.st, B: ui.B, sel: ui.sel, build: (p, res) => build(p, res || VIEW_RES[ui.st.detail]), addPart: (id) => addPart(tplById(id)), addSet, select, showStep, doCut, doAuto, setCut: (o) => Object.assign(ui.cut, o), refresh: (o) => refreshScene(o), meshes: ui.meshes, totals: ui.totals, lastExport: ui.lastExport, doExport, addToDesign, undo, redo, change, cutNormal, camera: ui.camera, controls: ui.controls, sculpt: ui.sculpt, busy: () => !ui.busy.hidden, ready: () => !timer_pending() && ui.busy.hidden && ui.st.parts.filter((p) => !p.hidden).every((p) => pieceCache.has(genKey(p, VIEW_RES[ui.st.detail] || 4) + JSON.stringify([p.fit, p.cuts, p.side]))), serialize: () => serialize(ui.st), form: ui.form, cage: () => ui.cage, formPickAt: (k) => { ui.form.sel.add(k); drawCage(); }, nudgeNormal, nudgeAxis, scaleSel, rotateSel, flattenSel, smoothSel, resetSel },
+    _t: () => ui && { st: ui.st, B: ui.B, sel: ui.sel, build: (p, res) => build(p, res || VIEW_RES[ui.st.detail]), addPart: (id) => addPart(tplById(id)), addSet, select, showStep, doCut, doAuto, setCut: (o) => Object.assign(ui.cut, o), refresh: (o) => refreshScene(o), meshes: ui.meshes, totals: ui.totals, lastExport: ui.lastExport, doExport, addToDesign, undo, redo, change, cutNormal, camera: ui.camera, controls: ui.controls, sculpt: ui.sculpt, busy: () => !ui.busy.hidden, ready: () => !timer_pending() && ui.busy.hidden && ui.st.parts.filter((p) => !p.hidden).every((p) => pieceCache.has(genKey(p, VIEW_RES[ui.st.detail] || 4) + JSON.stringify([p.fit, p.cuts, p.side]))), serialize: () => serialize(ui.st), setMode, mode: ui.mode, helm, photos: () => ui.hmPhotos, traceVisorFrom: (cv) => { ui.hmSrc = cv; traceVisor(helm()); }, renderHelmet: () => renderHelmet(helm()), lastRender: ui.lastRender, rendering: !!ui.rendering, applyStyle: (id) => applyStyle(helm(), tplById(id)), form: ui.form, cage: () => ui.cage, formPickAt: (k) => { ui.form.sel.add(k); drawCage(); }, nudgeNormal, nudgeAxis, scaleSel, rotateSel, flattenSel, smoothSel, resetSel },
   };
 }

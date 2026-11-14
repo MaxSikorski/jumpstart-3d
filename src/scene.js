@@ -8,7 +8,7 @@ import { resolveNode, bodyKey, regionsFor, sketchTexts } from "./store.js";
 import { textContours } from "./textgeo.js";
 import { resolveSketch, sampleCurve } from "./regions.js";
 import { applyTextures, matchTextureFaces } from "./texture.js";
-import { lookOf } from "./appearance.js";
+import { lookOf, heightColors } from "./appearance.js";
 import { syncMeshPreview, disposePreview, meshStretch } from "./meshpreview.js"; // jumpstart-3d: import preview
 
 // textured meshes are expensive to make: keep the last few
@@ -163,16 +163,22 @@ class BodyView {
   // colors and simulated materials (Advanced mode): the whole body and/or single faces
   applyAppearance(ap, base) {
     const env = ap && this.scene.vp.studioEnv ? this.scene.vp.studioEnv() : null;
+    let zr = null; // the body's bottom and top, for rainbow / gradient silk
+    const zRange = () => { if (!zr) { const g = this.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox(); this.mesh.updateMatrixWorld(); const b = g.boundingBox.clone().applyMatrix4(this.mesh.matrixWorld); zr = [b.min.z, b.max.z]; } return zr; };
     const setLook = (m, a) => {
       const L = lookOf(a);
       m.color.set(L.color);
       m.metalness = L.metal; m.roughness = L.rough;
-      m.envMap = env; m.envMapIntensity = L.metal > 0.5 ? 1.9 : 0.6;
+      m.envMap = env; m.envMapIntensity = L.env ?? (L.metal > 0.5 ? 1.9 : 0.6);
       if (L.opacity < 1) { m.transparent = true; m.opacity = L.opacity; m.depthWrite = false; }
+      if (L.fx) heightColors(m, L, ...zRange()); else heightColors(m, L, 0, 0);
       m.needsUpdate = true;
     };
     if (ap && ap.body) { setLook(base, ap.body); this.tinted = false; }
-    else if (base.metalness !== 0.04 || base.envMap) { base.metalness = 0.04; base.roughness = 0.62; base.envMap = null; base.needsUpdate = true; }
+    else {
+      if (base.userData.fxKey) heightColors(base, { fx: null }, 0, 0);
+      if (base.metalness !== 0.04 || base.envMap) { base.metalness = 0.04; base.roughness = 0.62; base.envMap = null; base.needsUpdate = true; }
+    }
     const faces = ap && ap.faces && ap.faces.length ? ap.faces : null;
     const sig = faces ? JSON.stringify(faces) + "|" + this.dataVer : "";
     if (sig !== this.apSig) {
@@ -185,6 +191,7 @@ class BodyView {
           const idx = matchTextureFaces(this.data, [f]);
           if (!idx.length) continue;
           const m = this.mats[0].clone();
+          m.userData.fxKey = null; m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => "";
           setLook(m, f);
           m.userData.look = f;
           this.mats.push(m);

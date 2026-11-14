@@ -28,3 +28,24 @@ test('combined plate job and stacked-body flatness', async () => {
   assert.deepEqual(flatness(Math.min(-2, 3), 0), { type: 'below', value: 2 });
   assert.deepEqual(flatness(3, 0), { type: 'float', value: 3 });
 });
+
+test('curved bottoms distinguish a sphere from a cube', async () => {
+  const { curvedBottom } = await import('../src/printcheck.js');
+  const vertices = [], triangles = [], columns = 24, rows = 12;
+  for (let j = 0; j <= rows; j++) {
+    const theta = Math.PI * j / rows;
+    for (let i = 0; i <= columns; i++) {
+      const phi = 2 * Math.PI * i / columns;
+      vertices.push(10 * Math.sin(theta) * Math.cos(phi), 10 * Math.sin(theta) * Math.sin(phi), 10 + 10 * Math.cos(theta));
+    }
+  }
+  for (let j = 0; j < rows; j++) for (let i = 0; i < columns; i++) {
+    const a = j * (columns + 1) + i, b = a + columns + 1;
+    triangles.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  assert.equal(curvedBottom(vertices, triangles, matrix(), 0, 20), true);
+  const t = Math.SQRT1_2, tilted = [t,0,-t,0,0,1,0,0,t,0,t,0,0,0,5*t,1];
+  const bounds = worldBounds(p, tilted);
+  assert.equal(curvedBottom(p, ix, tilted, bounds.min[2], bounds.max[2]), false);
+  assert.equal(curvedBottom(p, ix, matrix(), 0, 10), false);
+});

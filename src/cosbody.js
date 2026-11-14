@@ -82,7 +82,13 @@ export function makeBody(meas, poseDeg = 42) {
   const headH = 0.13 * H;
   const B = { M, H, pose: poseDeg, segs: {}, joints: {} };
   // head: an egg, a little deeper than wide, centred slightly back
-  const hk = 1.2, ha = ellA(M.head, hk), hb = ha * hk, hc = headH * 0.53;
+  // Helmet Maker: the head can also be measured with calipers (ear to ear, front to back,
+  // chin to crown); those win over the shape worked out from the distance around
+  const hk = 1.2;
+  let ha = ellA(M.head, hk), hb = ha * hk, hc = headH * 0.53;
+  if (M.headWid > 60) ha = M.headWid / 2;
+  if (M.headLen > 80) hb = M.headLen / 2;
+  if (M.headTall > 120) hc = M.headTall * 0.53;
   const hz = H - hc;
   B.head = { C: V3(0, hb * 0.06, hz), a: ha, b: hb, c: hc };
   // the head as a segment too (bottom to top), so parts can use the same tools
