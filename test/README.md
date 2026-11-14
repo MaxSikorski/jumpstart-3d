@@ -401,7 +401,9 @@ separately). Complete stdout/stderr, protocol, request, resolved profile,
 `measurements.json` and `summary.json` stay under `test-results/judge/`;
 failure artifacts keep all `test-results/` for seven days. Limits: install 8
 minutes, controls 5, judge 10 (process deadline 8), job 30. The FreeCAD batch
-has a 60-second startup and 20-second progress limit; slicer info/slice limits
+has a 60-second startup and 20-second progress limit, plus 2 seconds per MB of
+the file it is checking (spring.3mf, 66 MB since the 2.9.3 port, took longer
+than 20 s and the whole batch failed from 2026-11-06); slicer info/slice limits
 are 15/60 seconds. Tool, download, version, protocol and missing-output
 failures fail the existing check. Geometry failures never rewrite the
 baseline; they need a separate geometry/export fix.
