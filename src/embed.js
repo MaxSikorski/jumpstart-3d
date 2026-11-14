@@ -45,7 +45,7 @@ function validate(args) {
   if (new TextEncoder().encode(JSON.stringify(args)).length > MAX_ARGS) throw Error("arguments are too big");
 }
 
-export function createChannel({ api, allow, parent, post, now = Date.now, onState = () => {}, onCall = () => () => {}, setTimer = setTimeout, clearTimer = clearTimeout, isChisel = () => false }) {
+export function createChannel({ api, allow, parent, post, now = Date.now, onState = () => {}, onCall = () => () => {}, setTimer = setTimeout, clearTimer = clearTimeout, isChisel = () => false, isCurrent = () => true }) {
   const calls = Object.fromEntries(EMBED_CALLS.filter((n) => typeof api[n] === "function").map((n) => [n, api[n].bind(api)]));
   const ready = { type: "js3d-ready", protocol: 1, apiVersion: api.apiVersion ?? api.version, calls: Object.keys(calls) };
   let open = true, started = false, lastId = 0, lastHello = -Infinity, running = false;
@@ -64,6 +64,7 @@ export function createChannel({ api, allow, parent, post, now = Date.now, onStat
     if (running || !open) return;
     running = true;
     while (queue.length && open) {
+      if (!isCurrent()) { close("design-changed"); break; }
       const { id, call, args, origin } = queue.shift();
       try {
         if (isChisel() && !READ_CALLS.has(call)) throw Error("the person is using Chisel in this frame; try again after they leave it");
@@ -109,6 +110,7 @@ export function createChannel({ api, allow, parent, post, now = Date.now, onStat
     const t = now(); times = times.filter((v) => t - v < 1000);
     if (times.length >= 30) { fail(id, "too many calls per second", event.origin); return; }
     times.push(t);
+    if (typeof call !== "string") { fail(id, "call must be the name of a call as text", event.origin); return; }
     if (!Object.hasOwn(calls, call)) { fail(id, EMBED_CALLS.includes(call) ? "unknown call" : "this call is not available to embedding websites", event.origin); return; }
     let args = m.args === undefined ? [] : m.args;
     try {
@@ -158,7 +160,7 @@ export function installIsolation(target) {
 if (embedActive() && !installIsolation(window)) {
   const message = document.createElement("p"), link = document.createElement("a");
   message.textContent = "This page was opened inside another website, but this browser would not give it a private workspace. Open JumpStart 3D in its own tab.";
-  link.href = location.origin + location.pathname; link.textContent = "Open JumpStart 3D";
+  link.href = location.href.split(/[?#]/)[0]; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Open JumpStart 3D";
   document.body.replaceChildren(message, link);
   throw new Error("Could not create the temporary workspace.");
 }
@@ -185,7 +187,7 @@ export function startEmbed(app, api) {
   status.setAttribute("aria-live", "polite");
   status.textContent = allow.length ? "Temporary design, not saved. Waiting for the website." : "Temporary design, not saved. The website did not give a valid address to allow.";
   stop.textContent = "Stop"; link.textContent = "Open the full app";
-  link.href = location.origin + location.pathname; link.target = "_blank"; link.rel = "noopener noreferrer";
+  link.href = location.href.split(/[?#]/)[0]; link.target = "_blank"; link.rel = "noopener noreferrer";
   bar.append(status, stop, link); document.body.append(bar);
   const position = () => {
     let top = window.innerHeight;
@@ -201,8 +203,8 @@ export function startEmbed(app, api) {
   position();
   window.addEventListener("resize", later);
   new MutationObserver(later).observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "hidden", "style"] });
-  store.on(() => requestAnimationFrame(position));
-  const channel = createChannel({ isChisel: () => app.mode === "chisel", api: { ...api, newDesign: (mode = "beginner") => { const doc = newDoc("Untitled", mode); ids.add(doc.id); app.projects.embedNew(doc); return api.ready(); } }, allow, onCall, parent: window.parent, post: (msg, origin) => window.parent.postMessage(msg, origin), onState: (state, origin) => { status.textContent = state === "controlled" ? `Temporary design, not saved. Controlled by ${origin}` : `Temporary design, not saved. Channel closed (${state}).`; if (state !== "controlled") stop.disabled = true; } });
+  store.on(later);
+  const channel = createChannel({ isChisel: () => app.mode === "chisel", isCurrent: () => ids.has(store.doc.id), api: { ...api, newDesign: (mode = "beginner") => { const doc = newDoc("Untitled", mode); ids.clear(); ids.add(doc.id); app.projects.embedNew(doc); return api.ready(); } }, allow, onCall, parent: window.parent, post: (msg, origin) => window.parent.postMessage(msg, origin), onState: (state, origin) => { status.textContent = state === "controlled" ? `Temporary design, not saved. Controlled by ${origin}` : `Temporary design, not saved. Channel closed (${state}).`; if (state !== "controlled") stop.disabled = true; } });
   stop.addEventListener("click", () => channel.close("stopped"));
   window.addEventListener("pagehide", () => channel.close("pagehide"));
   window.addEventListener("message", (event) => channel.receive(event));

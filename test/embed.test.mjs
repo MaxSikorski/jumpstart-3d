@@ -147,7 +147,7 @@ test('blocked isolation stops module startup and shows the warning', async () =>
   const nodes = []; let rendered;
   const fakeWindow = new Proxy({parent:{postMessage(){ throw Error('channel started'); }}}, {defineProperty(){ throw Error('blocked'); }});
   globalThis.window = fakeWindow;
-  globalThis.location = {protocol:'https:', search:'?embed=https%3A%2F%2Fschool.example', origin:'https://app.example', pathname:'/cad'};
+  globalThis.location = {protocol:'https:', search:'?embed=https%3A%2F%2Fschool.example', origin:'https://app.example', pathname:'/cad', href:'https://app.example/cad?embed=https%3A%2F%2Fschool.example#x'};
   globalThis.document = {createElement() { const n = {}; nodes.push(n); return n; }, body:{replaceChildren(...args){ rendered = args; }}};
   try {
     await assert.rejects(import('../src/embed.js?blocked-isolation'), /Could not create the temporary workspace/);
@@ -178,4 +178,17 @@ test('async edits reject a design change before writing', async () => {
     await assert.rejects(pending, {message:error});
     assert.equal(store.doc.name, 'untouched'); assert.equal(store.doc.bodies.length, 0); assert.equal(store.doc.sketches.length, 0); assert.equal(writes, 0);
   }
+});
+test('a call name must be text, so a profile cannot be dodged with ["setMode"]', async () => {
+  let mode = null; const x = setup({ setMode: (m) => { mode = m; } });
+  x.send(1, ['setMode'], ['arch']); await tick();
+  assert.match(x.sent.at(-1).error, /call must be the name of a call as text/); assert.equal(mode, null);
+});
+test('a call waiting in the queue is not run once the open design is no longer the temporary one', async () => {
+  const parent = {}, sent = []; let current = true, ran = 0, release;
+  const ch = createChannel({ api: { ready: () => new Promise((r) => { release = r; }), list: () => { ran++; return []; } }, parent, allow: [origin], post: (msg) => sent.push(msg), isCurrent: () => current });
+  ch.start();
+  const send = (id, call) => ch.receive({ source: parent, origin, data: { type: 'js3d-call', protocol: 1, id, call, args: [] } });
+  send(1, 'ready'); send(2, 'list'); current = false; release(); await tick(); await tick();
+  assert.equal(ran, 0); assert.ok(sent.some((m) => m.type === 'js3d-closed' && m.reason === 'design-changed'));
 });
