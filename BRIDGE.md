@@ -1214,6 +1214,8 @@ A website can open JumpStart 3D in an iframe and control a temporary design. The
 
 Replace both addresses with the app and host origins. The `embed` value accepts up to eight exact cross-origin addresses, separated by commas or spaces. HTTPS is required except for HTTP localhost, 127.0.0.1, and [::1]. Paths, trailing slashes, credentials and wildcards are not accepted. An invalid list leaves a temporary design without a channel. A top-level page or a file opened from disk does not activate embedding.
 
+Inside a frame without `?embed`, the app opens the same temporary workspace (empty memory-only storage, none of the person's designs or settings) with a note that says so, and no website can control it: messages from the framing page get no reply and change nothing.
+
 - `allow-scripts` lets the app run.
 - `allow-same-origin` gives the app its own origin; the temporary workspace still uses empty memory-only storage.
 - `allow-popups` lets the user open the full app.
@@ -1229,7 +1231,7 @@ The ready message lists the available calls from: `supports`, `describe`, `ready
 
 Stop, opening a different design, and leaving the page close the channel until reload. Each call has 10 minutes; if it takes longer, the app sends an error and closes the channel because the call may still be running. The app sends `{type:"js3d-closed", protocol:1, reason}` with `stopped`, `design-changed`, `pagehide`, or `timeout`. Calls that finish after closure get no reply.
 
-The frame uses empty, memory-only page storage. Chisel, FlexiGen, Mesh to STEP, Neon and Floor Planner are unavailable in the frame; open the full app to use them. It neither reads nor writes the persistent mesh cache and does not start or write folder copies. While the person is using Chisel, the channel accepts only reading calls.
+The frame uses empty, memory-only page storage. Chisel, FlexiGen, Mesh to STEP, Neon, Layerscape and Floor Planner are unavailable in the frame; open the full app to use them. It neither reads nor writes the persistent mesh cache and does not start or write folder copies. While the person is using Chisel, the channel accepts only reading calls.
 
 ### What is not protected
 

@@ -192,3 +192,15 @@ test('a call waiting in the queue is not run once the open design is no longer t
   send(1, 'ready'); send(2, 'list'); current = false; release(); await tick(); await tick();
   assert.equal(ran, 0); assert.ok(sent.some((m) => m.type === 'js3d-closed' && m.reason === 'design-changed'));
 });
+test('any http(s) frame is a temporary workspace; only ?embed invites control', async () => {
+  const priorWindow = globalThis.window, priorLocation = globalThis.location;
+  const { embedActive, embedInvited } = await import('../src/embedmode.js');
+  const at = (framed, protocol, search) => { const w = { parent: null }; w.parent = framed ? {} : w; globalThis.window = w; globalThis.location = { protocol, search }; return [embedActive(), embedInvited()]; };
+  try {
+    assert.deepEqual(at(true, 'https:', ''), [true, false]);
+    assert.deepEqual(at(true, 'http:', '?x=1'), [true, false]);
+    assert.deepEqual(at(true, 'https:', '?embed=https%3A%2F%2Fschool.example'), [true, true]);
+    assert.deepEqual(at(false, 'https:', '?embed=https%3A%2F%2Fschool.example'), [false, false]);
+    assert.deepEqual(at(true, 'file:', '?embed=x'), [false, false]);
+  } finally { globalThis.window = priorWindow; globalThis.location = priorLocation; }
+});

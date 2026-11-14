@@ -1,7 +1,7 @@
-// A temporary design controlled by an explicitly allowed parent website.
+// A temporary design controlled by an explicitly allowed parent website; framed without ?embed, the same temporary design that no website controls.
 import { store, newDoc } from "./store.js";
 import { setUnit } from "./units.js";
-import { embedActive } from "./embedmode.js";
+import { embedActive, embedInvited } from "./embedmode.js";
 export { embedActive } from "./embedmode.js";
 
 export const EMBED_CALLS = Object.freeze("supports describe ready kinds list get doc save params mode selection add fastener holePattern gear namePlate knurl spring remove delete duplicate move moveTo rotate resize scale setHole setColor rename setHidden group ungroup setParam removeParam bind undo redo select fit setMode screenshot screenshotDataURL export newDesign sketch extrude revolve fillet chamfer shell hole pattern faces edges inspect measure printCheck collisions section boxMaker gearSet hardware textures texture drawing checkpoint checkpoints diff rollback".split(" "));
@@ -178,17 +178,18 @@ export function guardUpdates(store, isScratch) {
 
 export function startEmbed(app, api) {
   setUnit("mm");
-  const allow = parseAllow(new URLSearchParams(location.search).get("embed"), location.origin);
+  const invited = embedInvited(); // framed without ?embed: the same temporary workspace, but no website may control it
+  const allow = invited ? parseAllow(new URLSearchParams(location.search).get("embed"), location.origin) : [];
   const ids = new Set();
   const onCall = guardUpdates(store, (id) => ids.has(id));
   app.embed = { isScratch: (id) => ids.has(id) };
   const bar = document.createElement("div"), status = document.createElement("span"), stop = document.createElement("button"), link = document.createElement("a");
   bar.style.cssText = "position:fixed;bottom:36px;left:8px;z-index:10000;padding:8px 10px;background:#fff;color:#111;border:1px solid #555;border-radius:6px;box-shadow:0 2px 8px #0005;font:14px sans-serif;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
   status.setAttribute("aria-live", "polite");
-  status.textContent = allow.length ? "Temporary design, not saved. Waiting for the website." : "Temporary design, not saved. The website did not give a valid address to allow.";
+  status.textContent = !invited ? "Temporary workspace inside another website. Nothing here is saved." : allow.length ? "Temporary design, not saved. Waiting for the website." : "Temporary design, not saved. The website did not give a valid address to allow.";
   stop.textContent = "Stop"; link.textContent = "Open the full app";
   link.href = location.href.split(/[?#]/)[0]; link.target = "_blank"; link.rel = "noopener noreferrer";
-  bar.append(status, stop, link); document.body.append(bar);
+  bar.append(...(invited ? [status, stop, link] : [status, link])); document.body.append(bar);
   const position = () => {
     let top = window.innerHeight;
     for (const el of document.querySelectorAll(".status, .timeline")) {

@@ -4,8 +4,8 @@ import { buildOf } from './helpers.mjs';
 const port = process.env.JS3D_PORT || '8765';
 const app = `http://localhost:${port}`;
 const host = `http://127.0.0.1:${port}`;
-async function openHost(page, hostOrigin = host) {
-  await page.route(`${hostOrigin}/__embed-host.html`, (route) => route.fulfill({contentType:'text/html', body:`<iframe src="${app}/?embed=${encodeURIComponent(host)}"></iframe><script>window.messages=[];addEventListener('message',e=>messages.push(e.data));</script>`}));
+async function openHost(page, hostOrigin = host, src = `${app}/?embed=${encodeURIComponent(host)}`) {
+  await page.route(`${hostOrigin}/__embed-host.html`, (route) => route.fulfill({contentType:'text/html', body:`<iframe src="${src}"></iframe><script>window.messages=[];addEventListener('message',e=>messages.push(e.data));</script>`}));
   await page.goto(`${hostOrigin}/__embed-host.html`);
 }
 async function call(page, id, name, ...args) {
@@ -64,6 +64,41 @@ test('unlisted parent gets no reply', async ({page}, info) => {
   await frame.evaluate(() => window.postMessage({type:'js3d-call',protocol:1,id:1,call:'list'}, '*'));
   await page.evaluate(app => document.querySelector('iframe').contentWindow.postMessage({type:'js3d-call',protocol:1,id:2,call:'list'}, app), app);
   await page.waitForTimeout(500); expect(await page.evaluate(() => messages.length)).toBe(0);
+});
+test('framed without ?embed: a temporary workspace that no website controls and that keeps nothing', async ({page}, info) => {
+  test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
+  await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
+  await page.evaluate(async () => { JS3D.add('box'); await __app.projects.saveNow(); localStorage.setItem('top-level-probe', '1'); });
+  const before = await page.evaluate(() => __app.projects._store.list());
+  expect(before.length).toBeGreaterThan(0);
+  const normalKeys = await page.evaluate(() => Object.keys(localStorage));
+  await openHost(page, host, `${app}/`);
+  const inside = page.frameLocator('iframe');
+  await expect(inside.getByText('Temporary workspace inside another website. Nothing here is saved.')).toBeVisible();
+  await expect(inside.getByRole('button', {name:'Stop', exact:true})).toHaveCount(0);
+  let frame = page.frames().find(f => f.url().startsWith(app));
+  await frame.waitForFunction(() => window.__app?.embed?.isScratch(window.__store?.doc?.id));
+  expect(await frame.evaluate(() => JS3D.list())).toEqual([]);
+  expect(await frame.evaluate(keys => keys.filter(k => Object.hasOwn(localStorage, k)), normalKeys)).toEqual([]);
+  expect(await frame.evaluate(() => indexedDB === undefined)).toBe(true);
+  // the person's own edit inside the frame stays in the frame
+  await frame.evaluate(async () => { JS3D.add('box'); await JS3D.ready(); localStorage.setItem('frame-only', '1'); });
+  // the host's messages arrive but are refused: no ready, no result, no change
+  await frame.evaluate(() => { window.seen = []; addEventListener('message', e => seen.push(e.data?.type)); });
+  await page.evaluate((app) => { const w = document.querySelector('iframe').contentWindow; w.postMessage({type:'js3d-hello',protocol:1}, app); w.postMessage({type:'js3d-call',protocol:1,id:1,call:'add',args:['box']}, app); }, app);
+  await expect.poll(() => frame.evaluate(() => seen.length)).toBe(2);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => messages.filter(m => /^js3d-/.test(m?.type)))).toEqual([]);
+  expect(await frame.evaluate(() => JS3D.list().length)).toBe(1);
+  // nothing persists after a reload
+  await page.reload();
+  frame = page.frames().find(f => f.url().startsWith(app));
+  await frame.waitForFunction(() => window.__app?.embed?.isScratch(window.__store?.doc?.id));
+  expect(await frame.evaluate(() => [JS3D.list().length, localStorage.getItem('frame-only')])).toEqual([0, null]);
+  // and the person's own designs and settings were never touched
+  await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
+  expect(await page.evaluate(() => __app.projects._store.list())).toEqual(before);
+  expect(await page.evaluate(() => [localStorage.getItem('top-level-probe'), localStorage.getItem('frame-only')])).toEqual(['1', null]);
 });
 test('top-level embed parameter does not activate', async ({page}, info) => {
   test.skip(buildOf(info) !== 'site', 'site only'); await page.goto(`${app}/?embed=${encodeURIComponent(host)}`);
