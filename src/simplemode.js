@@ -372,6 +372,11 @@ html[data-face="simple"] #app[data-mode="beginner"] > .topbar { grid-column: 1; 
 html[data-face="simple"] #app[data-mode="beginner"] > .work { grid-column: 1; grid-row: 2; }
 html[data-face="simple"] #app[data-mode="beginner"] > .status { grid-column: 1; grid-row: 3; }
 html[data-face="simple"] #app[data-mode="beginner"] #ribbon { display: none; }
+/* Until Simple has its own sketch tools: while a sketch is open, J.Siwek's sketch ribbon shows above the view, in a row whatever layout is picked (build 36 showed no tools at all) */
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > #ribbon { display: flex; grid-column: 1; grid-row: 2; flex-direction: row; width: auto; min-height: 58px; border: 0; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > .work { grid-row: 3; }
+html[data-face="simple"] #app[data-mode="beginner"]:has(#sk-finish) > .status { grid-row: 4; }
 html[data-face="simple"] #app[data-mode="beginner"] #simple-rail { display: flex; grid-column: 1; grid-row: 1; width: 80px; min-height: 0; box-sizing: border-box; flex-direction: column; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
 #simple-rail button, .simple-panel button { font: 600 12px/1.2 var(--f-ui); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 #simple-rail button { flex: 1 0 44px; min-height: 44px; padding: 4px 2px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }

@@ -1,0 +1,14 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["W", "50"] },
+    { "call": "setParam", "args": ["D", "30"] },
+    { "call": "setParam", "args": ["H", "20"] },
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Block", "shapes": [{ "type": "rect", "center": [25, 15], "size": ["W", "D"] }] }], "as": "block" },
+    { "call": "extrude", "args": [{ "sketch": "$block.sketch", "dist": "H", "name": "Counterbored block" }], "as": "part" },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[10, 15, 20], [40, 15, 20]], "kind": "cbore", "dia": 6.6, "cbDia": 11, "cbDepth": 6.5 }] },
+    { "call": "hole", "args": ["$part.body", { "face": "front", "points": [[25, 0, 10]], "dia": 5, "depth": 10 }] }
+  ]
+}

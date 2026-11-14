@@ -1,0 +1,11 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["L", "1"] },
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Hex", "shapes": [{ "type": "polygon", "center": [0, 0], "sides": 6, "diameter": 0.57735 }] }], "as": "hex" },
+    { "call": "extrude", "args": [{ "sketch": "$hex.sketch", "dist": "L", "name": "Hex standoff" }], "as": "part" },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[0, 0, 1]], "dia": 0.25 }] }
+  ]
+}

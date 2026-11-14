@@ -1,0 +1,15 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["W", "80"] },
+    { "call": "setParam", "args": ["D", "50"] },
+    { "call": "setParam", "args": ["T", "6"] },
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Plate", "shapes": [{ "type": "rect", "center": [40, 25], "size": ["W", "D"] }] }], "as": "plate" },
+    { "call": "extrude", "args": [{ "sketch": "$plate.sketch", "dist": "T", "name": "Mounting plate" }], "as": "part" },
+    { "call": "fillet", "args": ["$part.body", "|z and <x and <y", 6] },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[8, 8, 6], [72, 8, 6], [8, 42, 6], [72, 42, 6]], "dia": 5.5 }] },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[30, 20, 6]], "dia": 10 }] }
+  ]
+}
