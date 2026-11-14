@@ -133,11 +133,11 @@ test('every error text', () => {
   bad('top and', "unexpected \"\" at character 7 in \"top and\". Example selector: \"top\".");
   bad('top @', "unexpected \"@\" at character 4 in \"top @\". Example selector: \"top\".");
   bad('>Q', "unexpected \"Q\" at character 1 in \">Q\". Example selector: \"top\".");
-  bad('roof', "unknown word \"roof\"; use a face selector. Example: \"top\".");
-  bad('roof', "unknown word \"roof\"; use a edge selector. Example: \"edges of top\".", 'edge');
+  bad('roof', /^unknown word "roof"; use top, bottom, .*, plane, cylinder, .*, edge N\. Example: "top"\.$/);
+  bad('roof', /^unknown word "roof"; use top, bottom, .*, line, circle, .*, edge N\. Example: "edges of top"\.$/, 'edge');
   bad('edges of top', "\"edges of\" is for edges; this call takes faces, got \"edges of top\". Use a face selector such as \"top\".");
-  bad('circle', "\"circle\" is an edge type; face types are plane, cylinder, cone, sphere, torus, other, hole. Choose a face type.");
-  bad('plane', "\"plane\" is a face type; edge types are line, circle, ellipse, other. Choose a edge type.", 'edge');
+  bad('circle', "\"circle\" is an edge type; face types are plane, cylinder, cone, sphere, torus, other, hole. Use one of those face types.");
+  bad('plane', "\"plane\" is a face type; edge types are line, circle, ellipse, other. Use one of those edge types.", 'edge');
   bad('+Z', "+Z and -Z are for faces; for edges use |Z or >Z, got \"+Z\". Example: \"|Z\".", 'edge');
   bad('-Z', "+Z and -Z are for faces; for edges use |Z or >Z, got \"-Z\". Example: \"|Z\".", 'edge');
   bad('[1]', "an index [n] only follows >X, <X ... or top, bottom, front, back, left, right, got \"[1]\". Example: \"top[0]\".");
@@ -145,8 +145,8 @@ test('every error text', () => {
   bad('(top', "missing \")\" in \"(top\". Add a closing parenthesis.");
   bad('edge 2', "unexpected \"edge\" at character 0 in \"edge 2\". Example selector: \"top\".");
   bad('face 2', "unexpected \"face\" at character 0 in \"face 2\". Example selector: \"top\".", 'edge');
-  bad('constructor', "unknown word \"constructor\"; use a face selector. Example: \"top\".");
-  bad('toString', "unknown word \"tostring\"; use a face selector. Example: \"top\".");
+  bad('constructor', /^unknown word "constructor"; use top, bottom, /);
+  bad('toString', /^unknown word "tostring"; use top, bottom, /);
   assert.equal(select(box, 'top' + ' or top'.repeat(60), 'face').length, 1);
   bad('top' + ' or top'.repeat(72), "a selector can be at most 500 characters; this one has 507, got \"top or top or top or top or top or top or top or top or to…. Shorten the selector.");
 });

@@ -49,9 +49,9 @@ export function parseSelector(text, kind) {
     if (Object.hasOwn(aliases, word)) { const [op, axis] = aliases[word]; return { op, axis, level: index() }; }
     if (word === "all" || types[k].includes(word)) return { op: "type", type: word };
     const other = k === "face" ? "edge" : "face";
-    if (types[other].includes(word)) throw Error(`${show(word)} is ${other === "edge" ? "an" : "a"} ${other} type; ${k} types are ${types[k].join(", ")}. Choose a ${k} type.`);
+    if (types[other].includes(word)) throw Error(`${show(word)} is ${other === "edge" ? "an" : "a"} ${other} type; ${k} types are ${types[k].join(", ")}. Use one of those ${k} types.`);
     if (word === "[") noIndex();
-    if (word && /^[a-z]+$/.test(word)) throw Error(`unknown word ${show(word)}; use a ${k} selector. Example: "${k === "face" ? "top" : "edges of top"}".`);
+    if (word && /^[a-z]+$/.test(word)) throw Error(`unknown word ${show(word)}; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, ${types[k].join(", ")}, all, not, and, or, (, ), edges of, face N, edge N. Example: "${k === "face" ? "top" : "edges of top"}".`);
     i--; unexpected();
   }
   function selector(k) {
