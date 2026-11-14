@@ -83,7 +83,7 @@ test("finish, pose choice, and wrong expectations", () => {
   assert.equal(expectWrong(r, ["edit-W"]).ok, true); assert.deepEqual(expectWrong(r, ["size"]), { ok: false, unexpected: ["edit-W"], missing: ["size"] });
   const a = { pose, checks: [{ id: "overlap", gating: true, status: "pass", measured: 0.98 }] }, b = { pose, checks: [{ id: "overlap", gating: true, status: "pass", measured: 0.99 }] };
   assert.equal(pickPose([a, b]), 1); assert.equal(pickPose([b, b]), 0);
-  assert.match(table([{ case: "plate", design: "truth", result: r }, { case: "plate", design: "wrong-big", result: r, expected: { ok: true } }]), /Truth parts: 1 of 1 pass\. Wrong parts: 1 of 1 fail as expected\./);
+  assert.match(table([{ case: "plate", design: "truth", result: r }, { case: "plate", design: "wrong-big", result: r, expected: { ok: true } }]), /Reference parts: 0 of 1 score 100 %\. Wrong parts: 1 of 1 fail as expected\./);
 });
 test("truth and case validation name problems", () => {
   assert.equal(validateTruth(truth()).name, "Plate"); assert.equal(validateCase(kase(), "plate", truth()).id, "plate");
@@ -105,4 +105,62 @@ test("loadCase checks required files", async () => {
     await assert.rejects(loadCase(dir), /drawing\.png/); await writeFile(join(dir, "drawing.png"), "");
     assert.equal((await loadCase(dir)).kase.id, basename(dir));
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("hole centres are matched one to one, so a near miss cannot take another centre's hole", () => {
+  const t = truth();
+  t.checks[1] = { ...holes, count: 2, at: [[1, 5], [1.18, 5]] };
+  const p = part();
+  p.holes = [hole([1.08, 5]), hole([0.91, 5])];
+  assert.equal(byId(check(p, t), "holes").status, "pass");
+  p.holes = [hole([1.08, 5]), hole([0.85, 5])];
+  assert.match(byId(check(p, t), "holes").note, /no Ø5\.5 hole at \[1(\.18)?, 5\] \(nearest is/);
+});
+
+test("a blind hole and a counterbore must open on the stated side", () => {
+  const t = truth(), p = part();
+  t.checks[1] = { id: "blind", kind: "holes", dia: 5, count: 1, axis: "z", through: false, depth: 4, at: [[40, 25]], opens: "+z", tol: 0.1 };
+  const blind = (open, from) => ({ axis: [0, 0, 1], point: [40, 25, from], from, to: from + 4, dia: 5, through: false, open, segments: [{ dia: 5, from, to: from + 4 }] });
+  p.holes = [blind([0, 0, 1], 2)];
+  assert.equal(byId(check(p, t), "blind").status, "pass");
+  p.holes = [blind([0, 0, -1], 0)];
+  assert.match(byId(check(p, t), "blind").note, /opens on the wrong side \(expected \+z\)/);
+  const flipped = ROTATIONS.findIndex((R) => R.join() === "1,0,0,0,-1,0,0,0,-1"); // half a turn about x: +z becomes -z
+  assert.equal(byId(check(p, t, evidence(), { index: flipped, R: ROTATIONS[flipped] }), "blind").status, "pass");
+  t.checks[1] = { ...holes, id: "cb", count: 1, at: [[40, 25]], dia: 6.6, cbore: { dia: 11, depth: 6.5 }, opens: "+z" };
+  const cbore = (segments) => ({ axis: [0, 0, 1], point: [40, 25, 0], from: 0, to: 6, dia: 6.6, through: true, segments });
+  p.holes = [{ ...cbore([{ dia: 6.6, from: -13.5, to: 0 }, { dia: 11, from: 0, to: 6.5 }]), from: -13.5, to: 6.5 }];
+  assert.equal(byId(check(p, t), "cb").status, "pass");
+  p.holes = [{ ...cbore([{ dia: 11, from: 0, to: 6.5 }, { dia: 6.6, from: 6.5, to: 20 }]), from: 0, to: 20 }];
+  assert.match(byId(check(p, t), "cb").note, /counterbore of the Ø6\.6 hole at \[40, 25\] is on the wrong side/);
+  p.holes = [{ ...cbore([{ dia: 6.6, from: 0, to: 20 }]), from: 0, to: 20 }];
+  assert.match(byId(check(p, t), "cb").note, /^no counterbore, expected Ø11 × 6\.5$/);
+});
+
+test("an overlap that could not be measured is reported but does not decide the case", () => {
+  const e = evidence();
+  e.overlap = { error: "the geometry engine failed" };
+  const checks = check(part(), truth(), e);
+  assert.deepEqual({ ...byId(checks, "overlap") }, { id: "overlap", kind: "overlap", status: "unverified", expected: 0.98, measured: null, tol: null, note: "overlap not measured: the geometry engine failed", gating: false });
+  const r = finish({ truth: truth(), kase: kase(), part: part(), scored: [{ pose, checks }], editable: [{ id: "edit-W", status: "pass", measured: [90, 50, 6], note: "" }] });
+  assert.equal(r.pass, true);
+  assert.ok(r.score.percent < 100);
+});
+
+test("other correct builds: validated, listed in the summary, and only editable checks may be expected to fail", async () => {
+  const good = { ...kase(), other: [{ recipe: "other-centred.recipe.json", why: "centred", fails: ["edit-W"] }] };
+  assert.equal(validateCase(good, "plate", truth()), good);
+  assert.throws(() => validateCase({ ...good, other: [{ recipe: "other-a.recipe.json", why: "x", fails: ["size"] }] }, "plate", truth()), /only fail editable checks/);
+  assert.throws(() => validateCase({ ...good, other: [{ recipe: "wrong-a.recipe.json", why: "x", fails: [] }] }, "plate", truth()), /invalid or duplicate other recipe/);
+  const full = finish({ truth: truth(), kase: kase(), part: part(), scored: [{ pose, checks: check() }], editable: [{ id: "edit-W", status: "pass", measured: [90, 50, 6], note: "" }] });
+  assert.equal(full.score.percent, 100);
+  const text = table([{ case: "plate", design: "truth", kind: "truth", result: full }, { case: "plate", design: "other-centred", kind: "other", result: full, expected: expectWrong(full, []) },
+    { case: "plate", design: "mine.json", kind: "design", result: full }]);
+  assert.match(text, /Reference parts: 1 of 1 score 100 %\. Other correct builds: 1 of 1 pass as expected\. mine\.json: PASS, \d+ of \d+ checks \(100 %\)\./);
+  const dir = await mkdtemp(join(tmpdir(), "drawbench-other-"));
+  try {
+    await mkdir(join(dir, "plate"));
+    for (const [name, value] of [["truth.json", truth()], ["case.json", good], ["drawing.png", ""], ["truth.recipe.json", {}], ["wrong-big.recipe.json", {}]]) await writeFile(join(dir, "plate", name), typeof value === "string" ? value : JSON.stringify(value));
+    await assert.rejects(loadCase(join(dir, "plate")), /missing file other-centred\.recipe\.json/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

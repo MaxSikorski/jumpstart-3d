@@ -44,6 +44,7 @@ export function validateTruth(truth) {
       if (c.at !== undefined && (!Array.isArray(c.at) || c.at.length !== c.count || !c.at.every((p) => vector(p, 2)))) fail("invalid hole positions");
       if (c.depth !== undefined && (c.through || !positive(c.depth))) fail("depth requires a blind hole and a positive number");
       if (c.cbore !== undefined && (!object(c.cbore) || !positive(c.cbore.dia) || c.cbore.dia <= c.dia || !positive(c.cbore.depth))) fail("invalid counterbore");
+      if (c.opens !== undefined && (!/^[+-][xyz]$/.test(c.opens) || c.opens[1] !== c.axis || (c.through && !c.cbore))) fail("opens must be +axis or -axis (for example \"+z\"), on a blind or counterbored hole");
     }
     if (c.kind === "distance" && (!vector(c.a?.near, 3) || !vector(c.b?.near, 3) || !positive(c.value))) fail("invalid distance points or value");
     if (c.kind === "radius" && (!vector(c.near, 3) || !positive(c.value))) fail("invalid radius point or value");
@@ -70,7 +71,13 @@ export function validateCase(kase, dirName, truth) {
   }
   if (!object(kase.drawing)) bad("drawing must be an object");
   if (!Array.isArray(kase.wrong) || !kase.wrong.length) bad("wrong must contain at least one recipe");
+  if (kase.other !== undefined && !Array.isArray(kase.other)) bad("other must be an array");
   const recipes = new Set(), known = new Set([...truth.checks.map((c) => c.id), ...RESERVED, ...ids]);
+  for (const o of kase.other ?? []) {
+    if (!object(o) || typeof o.recipe !== "string" || !/^other-[a-z0-9-]+\.recipe\.json$/.test(o.recipe) || recipes.has(o.recipe)) bad("invalid or duplicate other recipe");
+    recipes.add(o.recipe);
+    if (!text(o.why) || !Array.isArray(o.fails) || new Set(o.fails).size !== o.fails.length || o.fails.some((id) => !ids.has(id))) bad(`${o.recipe}: invalid why or fails (an other build may only fail editable checks)`);
+  }
   for (const w of kase.wrong) {
     if (!object(w) || typeof w.recipe !== "string" || !/^wrong-[a-z0-9-]+\.recipe\.json$/.test(w.recipe) || recipes.has(w.recipe)) bad("invalid or duplicate wrong recipe");
     recipes.add(w.recipe);
@@ -82,7 +89,7 @@ export async function loadCase(dir) {
   const read = async (name) => { try { return JSON.parse(await readFile(join(dir, name), "utf8")); } catch (e) { throw new Error(`${name}: ${e.message}`); } };
   const truth = validateTruth(await read("truth.json"));
   const kase = validateCase(await read("case.json"), basename(dir), truth);
-  for (const name of [kase.input.picture, ...kase.wrong.map((w) => w.recipe), "truth.recipe.json"]) {
+  for (const name of [kase.input.picture, ...kase.wrong.map((w) => w.recipe), ...(kase.other ?? []).map((o) => o.recipe), "truth.recipe.json"]) {
     try { await access(join(dir, name)); } catch { throw new Error(`missing file ${name}`); }
   }
   return { kase, truth, dir };
@@ -130,6 +137,19 @@ export function gate(truth, part) {
   else if (part.solids !== expected || part.bodies[0].solids !== expected) note = `found ${part.solids} solids, expected ${expected}`;
   return { id: "gate", kind: "gate", status: note ? "fail" : "pass", note, gating: true };
 }
+// the largest set of truth centres matched one-to-one to built holes within tolerance (Kuhn's augmenting paths)
+function assign(d, ok) {
+  const owner = new Array(d[0]?.length ?? 0).fill(-1);
+  const claim = (i, seen) => d[i].some((_, j) => {
+    if (seen[j] || !ok(d[i][j])) return false;
+    seen[j] = true;
+    if (owner[j] < 0 || claim(owner[j], seen)) { owner[j] = i; return true; }
+    return false;
+  });
+  d.forEach((_, i) => claim(i, new Array(owner.length).fill(false)));
+  return d.map((_, i) => owner.indexOf(i));
+}
+const opening = (h) => h.open ?? null;
 function holesCheck(c, part, r, truthSize) {
   const axis = multiply(r, ["x", "y", "z"].map((a) => +(a === c.axis)));
   const t = tolOf(c.tol, c.dia), candidates = part.holes.filter((h) => Math.abs(dot(h.axis, axis)) >= Math.cos(Math.PI / 360) && within(h.dia, c.dia, t));
@@ -137,23 +157,29 @@ function holesCheck(c, part, r, truthSize) {
   let note = candidates.length !== c.count ? `found ${candidates.length} Ø${c.dia} holes along ${c.axis}, expected ${c.count}` : "";
   const selected = [];
   if (c.at) {
-    const unused = [...candidates];
-    for (const at of c.at) {
-      const p = toBuilt(r, truthSize, part.box.min, holePoint(c.axis, at));
-      const ranked = unused.map((h) => ({ h, d: lineDistance(p, h) })).sort((a, b) => a.d - b.d);
-      const nearest = ranked[0];
-      if (!nearest) { if (!note) note = `no Ø${c.dia} hole at [${at.join(", ")}]`; continue; }
-      measured.at.push(nearest.d); unused.splice(unused.indexOf(nearest.h), 1); selected.push({ h: nearest.h, at });
-      if (!within(nearest.d, 0, t) && !note) note = `no Ø${c.dia} hole at [${at.join(", ")}] (nearest is ${round(nearest.d)} mm away)`;
-    }
+    const d = c.at.map((at) => { const p = toBuilt(r, truthSize, part.box.min, holePoint(c.axis, at)); return candidates.map((h) => lineDistance(p, h)); });
+    const match = assign(d, (x) => within(x, 0, t));
+    c.at.forEach((at, i) => {
+      const nearest = d[i].length ? Math.min(...d[i]) : null;
+      measured.at.push(match[i] >= 0 ? d[i][match[i]] : nearest);
+      if (match[i] >= 0) selected.push({ h: candidates[match[i]], at });
+      else if (!note) note = nearest === null ? `no Ø${c.dia} hole at [${at.join(", ")}]` : `no Ø${c.dia} hole at [${at.join(", ")}] (nearest is ${round(nearest)} mm away)`;
+    });
   } else selected.push(...candidates.map((h) => ({ h, at: null })));
+  const opens = c.opens && multiply(r, ["x", "y", "z"].map((a) => (a === c.opens[1] ? (c.opens[0] === "+" ? 1 : -1) : 0)));
   for (const { h, at } of selected) {
     const where = at ? ` at [${at.join(", ")}]` : "";
+    if (opens && !c.cbore && h.through === false && !note && (!opening(h) || dot(opening(h), opens) < 0.99)) note = `the Ø${c.dia} hole${where} opens on the wrong side (expected ${c.opens})`;
     if (h.through !== c.through && !note) note = `the Ø${c.dia} hole${where} is ${h.through === null ? "of unknown depth" : h.through ? "through" : "blind"}, expected ${c.through ? "through" : "blind"}`;
     if (c.depth !== undefined && !within(h.to - h.from, c.depth, tolOf(c.tol, c.depth)) && !note) note = `hole depth ${round(h.to - h.from)} mm, expected ${c.depth} mm`;
     if (c.cbore) {
       const s = [...h.segments].sort((a, b) => b.dia - a.dia)[0];
-      if ((!s || !within(s.dia, c.cbore.dia, tolOf(c.tol, c.cbore.dia)) || !within(s.to - s.from, c.cbore.depth, tolOf(c.tol, c.cbore.depth))) && !note) note = `counterbore ${s ? `Ø${round(s.dia)} × ${round(s.to - s.from)}` : "missing"}, expected Ø${c.cbore.dia} × ${c.cbore.depth}`;
+      const plain = h.segments.length < 2;
+      if ((plain || !within(s.dia, c.cbore.dia, tolOf(c.tol, c.cbore.dia)) || !within(s.to - s.from, c.cbore.depth, tolOf(c.tol, c.cbore.depth))) && !note) note = `${plain ? "no counterbore" : `counterbore Ø${round(s.dia)} × ${round(s.to - s.from)}`}, expected Ø${c.cbore.dia} × ${c.cbore.depth}`;
+      if (opens && !plain && !note) {
+        const at = Math.abs(s.from - h.from) < 0.01 ? -1 : 1; // the counterbore sits at the hole's low or high end along its axis
+        if (dot(h.axis.map((v) => v * at), opens) < 0.99) note = `the counterbore of the Ø${c.dia} hole${where} is on the wrong side (expected ${c.opens})`;
+      }
     } else if (h.segments.some((s) => !within(s.dia, c.dia, t)) && !note) note = `the Ø${c.dia} hole${where} has an unexpected bore diameter`;
   }
   return result(c.id, c.kind, note ? "fail" : "pass", c.count, measured, c.tol, note);
@@ -189,7 +215,7 @@ export function checkPose({ truth, kase, part, pose, evidence }) {
   const count = truth.checks.filter((c) => c.kind === "holes").reduce((n, c) => n + c.count, 0);
   checks.push(result("holes-total", "holes-total", part.holes.length === count ? "pass" : "fail", count, part.holes.length, null, `found ${part.holes.length} holes, expected ${count}`));
   const e = evidence.overlap;
-  if (!e || e.error) checks.push(result("overlap", "overlap", "unverified", kase.overlap, null, null, `overlap not measured: ${e?.error ?? "measurement is missing"}`));
+  if (!e || e.error) checks.push(result("overlap", "overlap", "unverified", kase.overlap, null, null, `overlap not measured: ${e?.error ?? "measurement is missing"}`, false));
   else { const iou = e.shared / (part.volume + e.truthVolume - e.shared); checks.push(result("overlap", "overlap", iou >= kase.overlap ? "pass" : "fail", kase.overlap, iou, null, `overlap ${round(iou)}, expected at least ${kase.overlap}`)); }
   return checks;
 }
@@ -221,8 +247,14 @@ export function table(rows) {
   const cells = rows.map((r) => [r.case, r.design, `${r.result.score.passed}/${r.result.score.total}`, `${r.result.score.percent}%`, r.result.pass ? "PASS" : "FAIL", r.expected === undefined ? "" : (typeof r.expected === "boolean" ? r.expected : r.expected.ok) ? "as expected" : "NOT as expected", r.result.checks.filter((c) => c.status !== "pass").map((c) => c.id).join(", ")]);
   const widths = [0, 1, 2, 3, 4, 5].map((i) => Math.max(0, ...cells.map((c) => String(c[i]).length)));
   const lines = cells.map((c) => c.map((v, i) => i < 6 ? String(v).padEnd(widths[i]) : v).join("  ").trimEnd());
-  const truth = rows.filter((r) => r.expected === undefined), wrong = rows.filter((r) => r.expected !== undefined);
+  // kind: "truth" (a reference part: must score 100 %), "other" (another correct build: must pass), "wrong", "design" (one given design)
+  const of = (kind) => rows.filter((r) => (r.kind ?? (r.expected === undefined ? "truth" : "wrong")) === kind);
   const correct = (r) => typeof r.expected === "boolean" ? r.expected : r.expected.ok;
-  lines.push("", `Truth parts: ${truth.filter((r) => r.result.pass).length} of ${truth.length} pass. Wrong parts: ${wrong.filter(correct).length} of ${wrong.length} fail as expected.`);
+  const sums = [];
+  if (of("truth").length) sums.push(`Reference parts: ${of("truth").filter((r) => r.result.pass && r.result.score.percent === 100).length} of ${of("truth").length} score 100 %.`);
+  if (of("other").length) sums.push(`Other correct builds: ${of("other").filter(correct).length} of ${of("other").length} pass as expected.`);
+  if (of("wrong").length) sums.push(`Wrong parts: ${of("wrong").filter(correct).length} of ${of("wrong").length} fail as expected.`);
+  for (const r of of("design")) sums.push(`${r.design}: ${r.result.pass ? "PASS" : "FAIL"}, ${r.result.score.passed} of ${r.result.score.total} checks (${r.result.score.percent} %).`);
+  lines.push("", sums.join(" "));
   return lines.join("\n");
 }

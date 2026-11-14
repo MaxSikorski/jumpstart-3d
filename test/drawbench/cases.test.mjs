@@ -20,10 +20,10 @@ test("wave 1: six cases, two for development and four for qualification", () => 
   assert.ok(cases.every((c) => c.kase.wave === 1));
 });
 
-test("every recipe is valid and every wrong recipe in a folder is listed in its case", async () => {
+test("every recipe is valid and every wrong or other recipe in a folder is listed in its case", async () => {
   for (const { kase, dir } of cases) {
     const files = (await readdir(dir)).filter((f) => f.endsWith(".recipe.json")).sort();
-    assert.deepEqual(files, ["truth.recipe.json", ...kase.wrong.map((w) => w.recipe)].sort(), kase.id);
+    assert.deepEqual(files, ["truth.recipe.json", ...kase.wrong.map((w) => w.recipe), ...(kase.other ?? []).map((o) => o.recipe)].sort(), kase.id);
     for (const f of files) checkRecipe(await json(dir, f));
   }
 });

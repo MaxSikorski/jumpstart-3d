@@ -2,7 +2,7 @@
 // params, save, load), never from a spec the AI wrote. `call(name, args)` is JS3D.invoke in a page: mcp/session.mjs in the
 // bench, page.evaluate in the Playwright test. score.mjs does the sums.
 import { createHash } from "node:crypto";
-import { checkRecipe, substitute } from "../../mcp/recipe.mjs";
+import { checkRecipe, substitute, versionAtLeast } from "../../mcp/recipe.mjs";
 import { finish, pickPose, poses, stepMatrix, toBuilt, tolOf, turnedSize, within, checkPose } from "./score.mjs";
 
 const LONG = { timeoutMs: 600_000 };
@@ -19,6 +19,10 @@ export async function openApp(app) {
 // Builds a recipe in the open design, as `jumpstart build` does: "$name" in later args is an earlier step's result.
 export async function runRecipe(call, recipe) {
   checkRecipe(recipe);
+  if (recipe.needs) {
+    const version = await call("run", ["return JS3D.version"]);
+    if (!versionAtLeast(version, recipe.needs)) throw new Error(`this recipe needs bridge ${recipe.needs}; the app has ${version}`);
+  }
   const vars = Object.create(null);
   for (const [i, step] of recipe.steps.entries()) {
     try {
@@ -47,21 +51,25 @@ function circleCentre(e) {
 }
 
 // Holes from JS3D.faces and JS3D.edges of one body: hole-wall cylinders grouped by axis line into stacks (a counterbore
-// and its bore are one hole). A stack end is closed when the face beyond its end circle is a flat disc, a cone or a sphere.
+// and its bore are one hole). A stack end is closed when the face beyond its end circle is a floor (a flat face whose
+// outside points into the hole), a cone or a sphere; a stack closed at both ends is a sealed cavity, not a hole.
 export function findHoles(faces, edges) {
   const byIndex = new Map(faces.map((f) => [f.index, f]));
   const circlesOf = new Map();
   for (const e of edges) if (e.type === "circle") for (const fi of e.faces) circlesOf.set(fi, [...(circlesOf.get(fi) || []), e]);
   const pieces = faces.filter((f) => f.type === "cylinder" && f.hole).map((f) => {
     const axis = unit(f.axis), circles = (circlesOf.get(f.index) || []).map((e) => ({ e, c: circleCentre(e) }));
-    const point = circles[0]?.c ?? f.center, at = circles.length ? circles.map(({ c }) => dot(c, axis)) : [dot(f.center, axis)];
+    const point = circles[0]?.c ?? f.center, mid = dot(f.center, axis), at = circles.map(({ c }) => dot(c, axis));
+    if (at.length && Math.max(...at) - Math.min(...at) < 0.01) at.push(2 * mid - at[0]);
+    if (!at.length) { const half = f.area / (2 * Math.PI * f.radius) / 2; at.push(mid - half, mid + half); }
     return { f, axis, point, dia: 2 * f.radius, from: Math.min(...at), to: Math.max(...at), circles };
   });
   const groups = [];
   for (const p of pieces) {
-    const g = groups.find((q) => q.some((o) => Math.abs(dot(o.axis, p.axis)) >= PARALLEL && offAxis(p.point, o.point, o.axis) < 0.01 &&
+    const touching = groups.filter((q) => q.some((o) => Math.abs(dot(o.axis, p.axis)) >= PARALLEL && offAxis(p.point, o.point, o.axis) < 0.01 &&
       p.from <= o.to + 0.01 && o.from <= p.to + 0.01));
-    if (g) g.push(p); else groups.push([p]);
+    for (const q of touching) groups.splice(groups.indexOf(q), 1); // a piece may join stacks met earlier in another order
+    groups.push([p, ...touching.flat()]);
   }
   const holes = [];
   for (const g of groups) {
@@ -73,15 +81,18 @@ export function findHoles(faces, edges) {
     }
     if (segments.some((s) => s.area < FULL_TURN * Math.PI * s.dia * (s.to - s.from))) continue; // part of a cylinder: a slot end, a fillet
     const from = Math.min(...segments.map((s) => s.from)), to = Math.max(...segments.map((s) => s.to));
-    const end = (at) => {
-      const ends = g.flatMap((p) => p.circles.filter(({ c }) => Math.abs(dot(c, axis) - at) < 0.01).map(({ e }) => e.faces.find((fi) => fi !== p.f.index)));
-      if (!ends.length) return null;
-      return ends.some((fi) => { const f = byIndex.get(fi); return f && (f.type === "cone" || f.type === "sphere" || (f.type === "plane" && f.edgeCount === 1)); });
+    const closes = (f, inward) => !!f && (f.type === "cone" || f.type === "sphere" ||
+      (f.type === "plane" && (f.normal ? dot(f.normal, inward) > 0.5 : f.edgeCount === 1)));
+    const end = (at, inward) => {
+      const beyond = g.flatMap((p) => p.circles.filter(({ c }) => Math.abs(dot(c, axis) - at) < 0.01).map(({ e }) => e.faces.find((fi) => fi !== p.f.index)));
+      return beyond.length ? beyond.some((fi) => closes(byIndex.get(fi), inward)) : null;
     };
-    const closedLow = end(from), closedHigh = end(to);
+    const closedLow = end(from, axis), closedHigh = end(to, axis.map((v) => -v));
+    if (closedLow && closedHigh) continue;
+    const open = closedLow === true && closedHigh === false ? axis : closedHigh === true && closedLow === false ? axis.map((v) => -v) : null;
     holes.push({
-      axis, point: g[0].point, from, to, dia: Math.min(...segments.map((s) => s.dia)),
-      through: closedLow === null || closedHigh === null ? null : !closedLow && !closedHigh,
+      axis, point: g[0].point.map((v, i) => v + axis[i] * (from - dot(g[0].point, axis))), from, to, dia: Math.min(...segments.map((s) => s.dia)),
+      through: closedLow === null || closedHigh === null ? null : !closedLow && !closedHigh, open,
       segments: segments.sort((a, b) => a.from - b.from).map(({ dia, from: f, to: t }) => ({ dia, from: f, to: t })),
     });
   }
@@ -132,15 +143,16 @@ async function overlaps(call, { truthBuild, part, truthSize, turns, original }) 
     for (const [k] of turns.entries()) {
       try {
         const r = await call("collisions", [{ ids: [part.body, `drawbench-truth-${k}`] }]);
-        const pair = r.pairs[0];
-        if (pair?.note) out.push({ error: pair.note });
+        const pair = r.pairs[0], skipped = r.skipped?.[0];
+        const problem = skipped ? `${skipped.name}: ${skipped.error}` : pair?.error ?? pair?.note ?? (pair?.state === "overlap" && typeof pair.overlap !== "number" ? "the shared volume was not worked out" : null);
+        if (problem) out.push({ error: problem });
         else out.push({ shared: pair?.state === "overlap" ? pair.overlap : 0, truthVolume: truthBuild.part.volume });
       } catch (e) { out.push({ error: (e && e.message) || String(e) }); }
     }
   } catch (e) {
     while (out.length < turns.length) out.push({ error: (e && e.message) || String(e) });
   } finally {
-    await call("load", [JSON.stringify(original)]);
+    await call("load", [JSON.stringify(original), { keepId: true }]);
     await call("ready");
   }
   return out;
@@ -193,7 +205,7 @@ async function editableChecks(call, { kase, truth, part, pose, original }) {
       out.push(result);
     }
   } finally {
-    await call("load", [text]);
+    await call("load", [text, { keepId: true }]);
     await call("ready");
   }
   return out;
@@ -201,12 +213,14 @@ async function editableChecks(call, { kase, truth, part, pose, original }) {
 
 // Scores the design that is open now against a case. truthBuild comes from buildTruth (build it once per case).
 export async function scoreOpenDesign(call, { kase, truth, truthBuild }) {
+  const original = await call("save");
+  await call("load", [JSON.stringify(original), { keepId: true }]);
+  await call("ready");
   const part = await measurePart(call);
   const sizeCheck = sizeTolOf(truth), truthSize = sizeCheck.value;
   const gated = finish({ truth, kase, part, scored: [], editable: [] });
   if (gated.checks[0].status !== "pass") return { result: gated, part };
   const turns = poses(truthSize, part.size, tolOf(sizeCheck.tol, Math.max(...truthSize)));
-  const original = await call("save");
   const shared = await overlaps(call, { truthBuild, part, truthSize, turns, original });
   const scored = [];
   for (const [k, pose] of turns.entries()) {

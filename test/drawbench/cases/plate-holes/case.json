@@ -31,9 +31,13 @@
       { "view": "front", "type": "linear", "along": "y", "from": [80, 0], "to": [80, 6], "at": 92, "text": "6" }
     ]
   },
+  "other": [
+    { "recipe": "other-centred.recipe.json", "why": "a quarter turn, centred on the origin, below z = 0, with its own size names", "fails": [] }
+  ],
   "wrong": [
-    { "recipe": "wrong-big.recipe.json", "why": "10 percent too big (every size times 1.1)", "fails": ["size", "holes-5.5", "holes-10", "T", "R", "volume", "overlap", "edit-W", "edit-T"] },
+    { "recipe": "wrong-big.recipe.json", "why": "10 percent too big (every size times 1.1)", "fails": ["size", "holes-5.5", "holes-10", "T", "R1", "R2", "R3", "R4", "volume", "overlap", "edit-W", "edit-T"] },
     { "recipe": "wrong-moved.recipe.json", "why": "the Ø10 hole moved 0.5 mm along x", "fails": ["holes-10"] },
+    { "recipe": "wrong-one-corner.recipe.json", "why": "only one corner rounded; the drawing says all four", "fails": ["R2", "R3", "R4"] },
     { "recipe": "wrong-names.recipe.json", "why": "right shape, but built from plain numbers: no named size drives it", "fails": ["edit-W", "edit-T"] }
   ]
 }

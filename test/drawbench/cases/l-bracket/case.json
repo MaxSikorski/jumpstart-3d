@@ -25,6 +25,8 @@
       { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 5], "at": -12, "text": "5" },
       { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [15, 25], "at": -24, "text": "25" },
       { "view": "front", "type": "linear", "along": "y", "from": [0, 0], "to": [0, 40], "at": -36, "text": "40" },
+      { "view": "front", "type": "linear", "along": "x", "from": [0, 25], "to": [15, 25], "at": 46, "text": "15" },
+      { "view": "front", "type": "linear", "along": "x", "from": [0, 25], "to": [45, 25], "at": 54, "text": "45" },
       { "view": "front", "type": "leader", "point": [45, 25], "r": 2.5, "to": [62, -16], "text": "2X Ø5 THRU" },
       { "view": "right", "type": "linear", "along": "x", "from": [35, 40], "to": [40, 40], "at": 50, "text": "5" }
     ]

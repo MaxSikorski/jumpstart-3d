@@ -26,6 +26,9 @@
       { "view": "front", "type": "linear", "along": "y", "from": [40, 0], "to": [31, 25], "at": 60, "text": "25" }
     ]
   },
+  "other": [
+    { "recipe": "other-revolve.recipe.json", "why": "made by revolving the half profile, the bore in two faces; no named sizes", "fails": ["edit-D", "edit-H"] }
+  ],
   "wrong": [
     { "recipe": "wrong-bolt-circle.recipe.json", "why": "flange holes on a Ø32 circle instead of Ø31 (each 0.5 mm out)", "fails": ["holes-4.5"] }
   ]

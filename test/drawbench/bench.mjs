@@ -33,7 +33,9 @@ const designOf = (text, file) => {
 
 async function main() {
   const flags = parse(process.argv.slice(2));
-  const ids = flags.case ? [flags.case] : (await readdir(CASES, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  const all = (await readdir(CASES, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  if (flags.case && !all.includes(flags.case)) throw new Usage(`no case named "${flags.case}"; the cases are ${all.join(", ")}`);
+  const ids = flags.case ? [flags.case] : all;
   const cases = [];
   for (const id of ids) cases.push(await loadCase(join(CASES, id)));
   const design = flags.design && designOf(await readFile(flags.design, "utf8"), flags.design);
@@ -45,12 +47,14 @@ async function main() {
       console.error(`drawing-bench: ${kase.id}`);
       const truthBuild = await buildTruth(app.call, JSON.parse(await readFile(join(dir, "truth.recipe.json"), "utf8")));
       const score = async (d) => (await scoreDesign(app.call, { kase, truth, truthBuild, design: d })).result;
-      if (design) rows.push({ case: kase.id, design: flags.design, result: await score(design) });
+      const recipe = async (name) => ({ recipe: JSON.parse(await readFile(join(dir, name), "utf8")) });
+      if (design) rows.push({ case: kase.id, design: flags.design, kind: "design", result: await score(design) });
       else {
-        rows.push({ case: kase.id, design: "truth", result: await score({ recipe: JSON.parse(await readFile(join(dir, "truth.recipe.json"), "utf8")) }) });
-        for (const w of kase.wrong) {
-          const result = await score({ recipe: JSON.parse(await readFile(join(dir, w.recipe), "utf8")) });
-          rows.push({ case: kase.id, design: w.recipe.replace(/\.recipe\.json$/, ""), result, expected: expectWrong(result, w.fails), fails: w.fails });
+        rows.push({ case: kase.id, design: "truth", kind: "truth", result: await score(await recipe("truth.recipe.json")) });
+        // other correct builds must pass (failing only the named-size checks they list); wrong parts must fail exactly as listed
+        for (const [kind, list] of [["other", kase.other ?? []], ["wrong", kase.wrong]]) for (const x of list) {
+          const result = await score(await recipe(x.recipe));
+          rows.push({ case: kase.id, design: x.recipe.replace(/\.recipe\.json$/, ""), kind, result, expected: expectWrong(result, x.fails), fails: x.fails });
         }
       }
       console.error(`drawing-bench: ${kase.id} took ${((Date.now() - started) / 1000).toFixed(1)} s`);
@@ -60,7 +64,7 @@ async function main() {
   for (const r of rows) {
     const off = r.expected ? !r.expected.ok : !(r.result.pass && r.result.score.percent === 100);
     if (!design && !off) continue;
-    lines.push(`${r.case} ${r.design}:${r.expected && !r.expected.ok ? ` expected to fail exactly ${r.fails.join(", ")}` : ""}`, ...detail(r.result));
+    lines.push(`${r.case} ${r.design}:${r.expected && !r.expected.ok ? ` expected to fail exactly ${r.fails.join(", ") || "nothing"}` : ""}`, ...detail(r.result));
   }
   console.log(lines.join("\n").trimEnd());
   if (flags.json) await writeFile(flags.json, JSON.stringify(rows, null, 1) + "\n");
