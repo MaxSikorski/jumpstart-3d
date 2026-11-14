@@ -523,7 +523,7 @@ export function initSimpleMode(app) {
   function dismissCard() { if (!card) return; card.remove(); card = null; try { localStorage.setItem("jumpstart.simple.card", "seen"); } catch (e) { /* storage may be unavailable */ } }
   function apply(name) {
     if (name !== "simple" && app.beginner?.moveArmed) app.beginner.armMove(false); // Move is Simple's: Original never stays armed
-    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); plate.layout(); plate.schedule();
+    face = name; document.documentElement.dataset.face = face; if (name === "simple") $("btn-tutorials").after(themeWrap); else themePlace.after(themeWrap); collapse.activate(face === "simple"); if (face === "simple") plate.sync(); plate.layout(); plate.schedule(); // sync: the rail last mirrored the tools while Simple was showing, so its buttons were stale after a switch from Original
     for (const name of ["simple", "original"]) { $("face-" + name).setAttribute("aria-pressed", face === name); $("face-menu-" + name).setAttribute("aria-checked", face === name); }
     for (const label of labels) label.el.textContent = face === "simple" ? label.simple : label.original;
     if (face === "simple") $("btn-export").append(caret); else caret.remove();
