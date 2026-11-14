@@ -486,8 +486,7 @@ for (const face of ["original", "simple"]) {
       await addTile("box", false, { w: 60, d: 30, h: 3 });
       await ticks(1, "thin plate"); await next();
       await addTile("cylinder", true, { w: 6, d: 6, h: 10, x: -22, z: -2 });
-      if (face === "original") { await page.mouse.click(700, 120); await page.keyboard.press("Control+a"); }
-      else await dragBoxAround(-30, -15, 30, 15);
+      await page.mouse.click(700, 120); await page.keyboard.press("Control+a"); // the lesson's first way, in both faces (c-first-print plays the dragged rectangle in Simple; around this 60 mm tag it can run off the 3D view)
       expect((await page.evaluate(() => [...window.__app.sel])).length, "both shapes selected").toBe(2);
       await page.click(face === "simple" ? "#sr-group" : "#bb-group"); await waitIdle(page);
       await ticks(2, "the hole goes through the tag");
