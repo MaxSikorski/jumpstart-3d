@@ -7,6 +7,7 @@
 // and sum a fingerprint of the content both sides held at the last Open or Save.
 // The rule: a design is replaced only when its side has not changed since then; if both sides changed, nothing is
 // overwritten (Open makes a copy, Save asks). Nothing here throws into the app or writes to the console.
+import { isSafeThumb } from "./safeurl.js"; // jumpstart-3d: guard cached thumbnail sources
 import { el, uid } from "./util.js";
 import { store } from "./store.js";
 
@@ -157,7 +158,7 @@ export function initRemote({ ps, toast, fileSafe, open, thumbnail }) {
           if (g.text.length <= 200_000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(g.text)) {
             item.thumb = g.text;
             const button = thumbButtons.get(item);
-            if (button) button.style.backgroundImage = `url(${item.thumb})`;
+            if (button && isSafeThumb(item.thumb)) button.style.backgroundImage = `url(${item.thumb})`;
           }
         } catch (e) { /* previews are optional; the card remains usable */ }
         finally { previewActive--; loadPreviews(); }
@@ -354,7 +355,7 @@ export function initRemote({ ps, toast, fileSafe, open, thumbnail }) {
       acts.replaceWith(row);
     };
     const when = item.mtime ? new Date(item.mtime).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
-    const button = el("button", { class: "thumb", style: { backgroundImage: item.thumb ? `url(${item.thumb})` : "none", border: 0, cursor: "pointer" }, "aria-label": "Open " + name, onclick: go });
+    const button = el("button", { class: "thumb", style: { backgroundImage: isSafeThumb(item.thumb) ? `url(${item.thumb})` : "none", border: 0, cursor: "pointer" }, "aria-label": "Open " + name, onclick: go });
     thumbButtons.set(item, button);
     return el("div", { class: "pcard" + (item.id && item.id === store.doc.id ? " current" : "") },
       button,

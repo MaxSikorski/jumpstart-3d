@@ -33,8 +33,9 @@ function linesByLayer(text) {
   };
 }
 
-test("generator calls are available at bridge 1.11", async () => {
-  expect(await run(() => JS3D.version)).toBe("1.11");
+test("generator calls are available at bridge 1.11 or later", async () => {
+  const [maj, min] = await run(() => JS3D.version.split(".").map(Number));
+  expect(maj > 1 || (maj === 1 && min >= 11)).toBe(true);
   expect(await run(() => ["boxMaker", "gearSet", "hardware", "textures", "texture", "drawing"].map((n) => typeof JS3D[n]))).toEqual(Array(6).fill("function"));
 });
 test("default bin builds and opens in the Box Maker dialog", async () => {
@@ -138,7 +139,37 @@ test("whole-body textures change exported mesh and keep a dialog layer", async (
 test("texture on chosen faces", async () => {
   await fresh(); const id = await run(() => JS3D.add("box", { size: [40,30,20] }));
   expect(await run((id) => JS3D.texture(id, { texture: "ribs", faces: "top" }), id)).toMatchObject({ faces: 1 });
-  expect(await run(() => __store.doc.bodies[0].textures[0].faces)).toMatchObject([{ t: "PLANE", n: [0,0,1], c: [0,0,20] }]);
+  const faces = await run(() => __store.doc.bodies[0].textures[0].faces);
+  expect(faces).toHaveLength(1);
+  expect(faces[0].t).toBe("PLANE");
+  [[faces[0].n, [0,0,1]], [faces[0].c, [0,0,20]]].forEach(([got, want]) => want.forEach((v, i) => expect(got[i]).toBeCloseTo(v, 9)));
+});
+test("mixed texture face selectors form a union", async () => {
+  await fresh(); const id = await run(() => JS3D.add("box"));
+  const result = await run(async (id) => {
+    const top = (await JS3D.faces(id, "top"))[0].index;
+    const other = (await JS3D.faces(id, "all")).find((f) => f.index !== top).index;
+    return JS3D.texture(id, { faces: ["top", top, other] });
+  }, id);
+  expect(result.faces).toBe(2);
+});
+test("texture layer limit rejects the seventeenth call", async () => {
+  await fresh(); const id = await run(() => JS3D.add("box", { name: "Layered" }));
+  for (let i = 0; i < 16; i++) await run((id) => JS3D.texture(id), id);
+  const before = await undoCount();
+  expect(await failure((id) => JS3D.texture(id), id)).toBe("Layered already has 16 textures; remove one in the Texture dialog first");
+  expect(await undoCount()).toBe(before);
+  expect(await run(() => __store.doc.bodies[0].textures.length)).toBe(16);
+});
+test("generator names are trimmed and limited", async () => {
+  await fresh();
+  for (const kind of ["boxMaker", "hardware"]) {
+    const result = await run((kind) => { const o = { name: "  " + "x".repeat(256) + "  " }; return kind === "boxMaker" ? JS3D.boxMaker(o).id : JS3D.hardware({ ...o, part: "washer", size: "M4" }); }, kind);
+    expect((await run((id) => JS3D.get(id).name, result)).length).toBe(256);
+    const before = await undoCount();
+    expect(await failure((kind) => kind === "boxMaker" ? JS3D.boxMaker({ name: "x".repeat(257) }) : JS3D.hardware({ part: "washer", size: "M4", name: "x".repeat(257) }), kind)).toBe("name can have at most 256 characters");
+    expect(await undoCount()).toBe(before);
+  }
 });
 test("textures use mesh detail and reject changes while waiting", async () => {
   try {

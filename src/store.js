@@ -1,4 +1,5 @@
 // Document model, undo/redo, and resolution of sketch references for the kernel.
+import { dropUnsafeMedia } from "./safeurl.js"; // jumpstart-3d: discard project URL sources
 import { clone, uid } from "./util.js";
 import { resolveSketch, findRegions, resolveRegionRef, regionContains, polyArea } from "./regions.js";
 import { textShapes, textBounds } from "./textgeo.js";
@@ -53,6 +54,7 @@ export const store = {
   emit(kind) { for (const f of listeners) f(kind); },
   load(doc) {
     this.doc = migrate(doc);
+    this.droppedUnsafeMedia = dropUnsafeMedia(this.doc); // jumpstart-3d: before any load listener can render
     applyParams(this.doc); // jumpstart-3d: parameters
     this.preview = null;
     this.endRoll();

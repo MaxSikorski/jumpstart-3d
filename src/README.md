@@ -10,6 +10,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 
 | File | What it does |
 |---|---|
+| `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |
 | `meshdetail.js` | Mesh detail menu: Normal, Fine, Extra fine, custom up to 32x |
 | `params.js` | Named parameters that drive sketch and feature sizes |
@@ -94,13 +95,3 @@ No markers. On a port, take his new version whole. Do not "tidy" these.
 node tools/upstream-merge.mjs --base <last source zip> --new <new source zip>
 ```
 It three-way merges each file (his old, our current, his new) in a new `upstream-<version>` worktree, never commits, and writes a plain-English report. Add `--dry-run` to look first. The source zips live on the `upstream-originals` GitHub release (latest: 2.5.1). After a merge: resolve conflicts around our markers, `node build.mjs`, `npm test`.
-
-
-### Public API contract
-
-| File | Purpose |
-| --- | --- |
-| `apicontract.js` | Dependency-free, deeply frozen bridge manifest; API_VERSION 1.13.0, supports/describe implementation. Describes existing calls without validating them at runtime. |
-
-Update the manifest, anchored BRIDGE.md entry and API changelog together when a call changes.
-Run `node tools/api-reference.mjs` to refresh generated indices/schema blocks; `--check` only compares bytes.

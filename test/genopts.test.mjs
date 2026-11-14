@@ -12,6 +12,8 @@ test("Box Maker defaults and door print layout", () => {
   assert.equal(door.o.layout, "print"); assert.equal(binSet(door.o).parts.length, 8);
   assert.equal(boxOptions({ layout: "assembled", name: "  Case  " }).name, "Case");
   assert.equal(boxOptions({ layout: "assembled" }).o.layout, "");
+  assert.equal(boxOptions({ name: "  " + "x".repeat(256) + "  " }).name.length, 256);
+  fails(boxOptions, { name: "x".repeat(257) }, "name can have at most 256 characters");
 });
 test("Box Maker exact validation errors", () => {
   for (const [o, e] of [[{ w: 5 }, 'w must be a number from 10 to 1000 (mm)'], [{ style: "box" }, 'style must be "bin", "drawer", "tilt" or "door"'], [{ units: 1.5 }, 'units must be a whole number from 1 to 8'], [{ scoop: "yes" }, 'scoop must be true or false'], [{ style: "drawer", cols: 13 }, 'cols must be a whole number from 1 to 12']]) fails(boxOptions, o, e);

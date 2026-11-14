@@ -17,6 +17,11 @@ npm run test:mobile   the phone budget and Simple switch
 First time: `npm install`, then `npx playwright install chromium`. Set `JS3D_PORT` (default 8765) to serve the site build on another port, so two checkouts can run the tests at the same time. The same
 suite runs on GitHub Actions: the smoke and golden specs gate every pull request (`.github/workflows/test.yml`) and the rest runs nightly (`.github/workflows/nightly.yml`).
 
+| File | Coverage |
+|---|---|
+| `safeurl.test.mjs` | Allowed raster data, rejected addresses and kinds, document cleanup |
+| `mediasrc.spec.mjs` | Both builds: no project URL requests through load or direct use; embedded pictures still display |
+
 ## How CI runs it
 
 The merge gate (`.github/workflows/test.yml`) is small on purpose: it builds both outputs, then runs the smoke spec and the golden exports on each, and takes about 3 minutes, plus the specs a pull request adds or changes. Everything slower runs every night (see below). The full suite runs three ways:
@@ -548,8 +553,6 @@ separately; no Playwright run was authorized during implementation.
 
 - `simple-collapse.spec.mjs`: Simple panel handles, viewport resizing, whole-plate restoration across reload, Home framing, keyboard shortcut, Original visibility and horizontal overflow on desktop and mobile.
 
-- `mcp/test/proof.test.mjs` exercises the full agent build, inspect and STL export loop through the MCP server.
-
 ### Checkpoint tests
 
 | File | Coverage |
@@ -558,13 +561,4 @@ separately; no Playwright run was authorized during implementation.
 | `designdiff.test.mjs` | Pure summaries, snapshot isolation and FIFO eviction in Node |
 | `../mcp/test/checkpoint.test.mjs` | Tool arguments, forwarding and matching chat descriptions |
 
-### API contract and documentation gates
-
-| File | Coverage |
-| --- | --- |
-| `api-docs.test.mjs` | Node pretest after build: fresh Chromium context loads single file; Reflect.ownKeys and descriptors must match manifest and anchored entries. Missing browser/build fails, never skips. Pure negative fixtures cover undocumented functions/properties/aliases/nonenumerable keys, missing fields and removed members. |
-| `api.spec.mjs` | Same runtime coverage on both builds; discovery defensive copies, alias/version and document/undo/selection purity. |
-| `../mcp/test/api-mapping.test.mjs` | All 65 tool mappings, positional forwarding, shared enums/defaults, explicit file/status/script differences, byte-equal MCP/chat descriptions. |
-| `../mcp/test/api-mapping-fixture.mjs` | Explicit tool-to-call cases and transformation/difference notes, independent of adapter implementation. |
-
-The orchestrator runs browser specs. The Node docs gate itself still requires installed Playwright Chromium and a built single file.
+- `mcp/test/proof.test.mjs` exercises the full agent build, inspect and STL export loop through the MCP server.
