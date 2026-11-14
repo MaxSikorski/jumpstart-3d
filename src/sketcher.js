@@ -452,6 +452,7 @@ export class Sketcher {
     if (t === "mirror") return sketchMirror.click(this, raw); // jumpstart-3d: sketch mirror
     const s = this.snap(raw, this.state && this.state.anchor);
     this.click(s, e);
+    this.app.status && this.app.status(); // jumpstart-3d: stale hint. the status line follows every click (after the first corner it asks for the opposite one)
     return true;
   }
   move(e) {
