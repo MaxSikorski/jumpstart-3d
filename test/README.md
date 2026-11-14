@@ -257,6 +257,10 @@ and commit the new `golden.json` with the change that caused it. (The script
 sets `UPDATE_GOLDEN=1` and records from the site build; in PowerShell run
 `$env:UPDATE_GOLDEN=1; npx playwright test --project=site` instead.)
 
+- `codecad.spec.mjs` (both builds): Code CAD builds one solid from replicad code in a temporary worker and adds it as a STEP body; volumes are checked by hand against the example code; every build starts and stops exactly one worker.
+- `printsim-rows.mjs`, `stepspeed-kernel.mjs`, `stepspeed-trial.mjs`: helpers, not tests. The first lets a Node bundle include `src/printsim.js` without the app (printer tests); the second loads the real kernel outside the timing; the third runs one fresh-process STEP trial for `stepspeed.test.mjs`.
+- `sharelink-kernel.test.mjs` (Node): the kernel rejects degenerate path arcs before OpenCascade (share-link fixtures).
+
 ## The fuzzer
 
 `fuzz.spec.mjs` acts like a user who does things in a random order. A chain is 18 random steps: add a shape, move, move to, rotate, scale, resize, make a hole or a solid, hide, duplicate, remove, group (join, cut, intersect), group then ungroup, ungroup, undo, redo, export, and the real buttons: Group in Beginner and Combine in Advanced. The chain is fully decided by its seed, so the same seed always makes the same steps. Every chain gets a fresh page, so a seed gives the same run alone or inside a long series.

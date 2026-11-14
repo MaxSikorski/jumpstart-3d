@@ -136,9 +136,10 @@ yours could be the first. Questions go in [Discussions](https://github.com/MaxSi
 
 ### Learn it
 
-JumpStart 3D has ninety step-by-step tutorials with animations, behind the **Tutorials** button
-in the top bar: fifty-one from J.Siwek and thirty-eight added by this community build for the
-toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
+JumpStart 3D has 126 step-by-step lessons with animations, behind the **Tutorials** button
+in the top bar: J.Siwek's own (his About text counts fifty-one; he keeps adding, such as the
+lamp and workshop projects) and the rest added by this community build, first of all "Your first
+print: a box with a hole", then lessons for the toolbar buttons that had none, among them roofs, a snowman, cutter shapes, turning and snapping,
 a tour of the top bar, how the model looks on screen and sketch constraints.
 
 ### Add yours
