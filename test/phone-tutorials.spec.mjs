@@ -441,6 +441,7 @@ async function prepareFor(p, sel, mode, ch = "") {
     return "ground made";
   }
   if (/param-expr/.test(sel)) { await click("#browser .param-add"); return "one parameter added"; }
+  if (/#ps-r-/.test(sel)) { await click("#ws-print"); await p.waitForSelector("#ps-r-arrange", { state: "attached" }); return "3D Print Sim open"; }
   if (/#bn-/.test(sel)) { // J.Siwek 2.9.8.9.x Box Maker lessons: the step before opens the Box Maker; its joins and plates show for a dovetailed set of drawers two wide and two high
     await p.evaluate((plates) => { try { if (plates) localStorage.setItem("jumpstart3d.bins", JSON.stringify({ style: "drawer", units: 2, across: 2, lock: "dovetail", sideLock: "dovetail" })); } catch {} window.__app.advanced.openBins(); try { localStorage.removeItem("jumpstart3d.bins"); } catch {} }, /bn-(lock|plates)/.test(sel));
     await p.waitForSelector(sel.split(",")[0].trim(), { state: "attached" });

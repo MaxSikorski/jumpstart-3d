@@ -1,0 +1,11 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "sketch", "args": [{ "on": "XY", "name": "Plate", "shapes": [{ "type": "roundrect", "center": [40, 25], "size": [80, 50], "radius": 6 }] }], "as": "plate" },
+    { "call": "extrude", "args": [{ "sketch": "$plate.sketch", "dist": 6, "name": "Mounting plate" }], "as": "part" },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[8, 8, 6], [72, 8, 6], [8, 42, 6], [72, 42, 6]], "dia": 5.5 }] },
+    { "call": "hole", "args": ["$part.body", { "face": "top", "points": [[30, 20, 6]], "dia": 10 }] }
+  ]
+}

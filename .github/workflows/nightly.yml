@@ -353,19 +353,21 @@ jobs:
   # The same suite in Firefox and WebKit, on the site and the single file. NOT BLOCKING while it settles: continue-on-error keeps the run green
   # and the report job lists the failing specs in a section of their own. To make them count, drop continue-on-error and set CROSS_BLOCKING=1 on the report job.
   # The golden exports and the chat judge stay Chromium only (the export files and the mock clock do not depend on the browser).
+  # 6 parts per browser and build: with 3, most of the twelve jobs hit the 20-minute step limit every night since late October (the suite had grown to 1212 tests;
+  # one Firefox build needs about 90 minutes of tests), so a third of the suite never ran (run 43450984696).
   cross:
     name: ${{ matrix.browser }} ${{ matrix.build }} (${{ matrix.shard }}/${{ matrix.total }})
     if: ${{ inputs.specs == '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 50
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
         browser: [firefox, webkit]
         build: [site, single]
-        shard: [1, 2, 3]
-        total: [3]
+        shard: [1, 2, 3, 4, 5, 6]
+        total: [6]
     env:
       JS3D_CROSS: '1'
       JS3D_SKIP_CHATJUDGE: '1'
@@ -399,7 +401,7 @@ jobs:
         timeout-minutes: 5
       - run: node build.mjs
       # a step limit ends the step as a failure (not a cancel), so the uploads below still run; the job limit leaves room for install + Xvfb + this step
-      - timeout-minutes: 20
+      - timeout-minutes: 25
         run: ${{ matrix.browser == 'firefox' && 'xvfb-run -a -s "-screen 0 1400x900x24" ' || '' }}npx playwright test --project=${{ matrix.build }}-${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.total }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7

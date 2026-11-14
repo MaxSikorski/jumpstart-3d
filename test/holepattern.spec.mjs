@@ -289,9 +289,7 @@ test("guards: a warning at 110 holes, a refusal at 225 (Create off), tapped hole
   expect(await undoDepth()).toBe(depth + 2); // the sphere and the cutter, nothing else
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("the golden design exports to STEP as one true solid", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/holepattern.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();
@@ -528,9 +526,7 @@ test("Phase 3 step 2b: guards and errors add nothing", async () => {
   await run(() => __app.command && __app.command.cancel());
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("Phase 3 step 2b: the golden design exports to STEP as one true solid", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/holepattern-shapes.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();

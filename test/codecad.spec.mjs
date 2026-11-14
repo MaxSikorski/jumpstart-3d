@@ -2,7 +2,7 @@
 // recipe. Reached through window.__app.codeCad (the Code CAD… menu entry opens the same dialog). Runs on both builds.
 // Volumes are worked out by hand from the code in the examples (src/codecad.js).
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors, waitIdle, bodies, exportBytes, loadDoc, newDoc } from "./helpers.mjs";
+import { boot, watchErrors, waitIdle, bodies, exportBytes, loadDoc, newDoc, browserOf } from "./helpers.mjs";
 
 const L_BRACKET = 7200 + 7200 - 60 * 4 * 4 - 2 * Math.PI * 3 * 3 * 4; // base + wall - where they overlap - two 6 mm holes through the base
 const plate = (w = 40, d = 25, t = 5, hole = 8) => (w * d - (4 - Math.PI) * 3 * 3 - Math.PI * (hole / 2) ** 2) * t; // rounded rectangle (corner 3) with a round hole
@@ -232,7 +232,8 @@ test("code that is wrong, or returns the wrong thing, gives a plain message, sto
     const w = await workers();
     const r = await build({ code });
     expect(r.error, code).toMatch(why);
-    expect(r.error, code).not.toMatch(/object|undefined/i);
+    // WebKit words the user's own null mistake as "null is not an object (evaluating 'null.size')": the browser's phrase, not a lost message
+    expect(r.error.replace(/\bnull is not an object \(evaluating '[^']*'\)/, ""), code).not.toMatch(/object|undefined/i);
     if (code) { const w2 = await workers(); expect(w2.made - w.made, code).toBe(1); expect(w2.ended - w.ended, code + " stopped").toBe(1); }
   }
   expect(await history()).toEqual(h);
@@ -610,8 +611,13 @@ const LOCKED = [
 ];
 const ALLOWED_GLOBALS = ("Object Function Array Number parseFloat parseInt Infinity NaN undefined Boolean String Symbol Date Promise RegExp Error AggregateError EvalError RangeError ReferenceError SyntaxError TypeError URIError globalThis JSON Math Intl ArrayBuffer SharedArrayBuffer Atomics Uint8Array Int8Array Uint16Array Int16Array Uint32Array Int32Array Float16Array Float32Array Float64Array Uint8ClampedArray BigUint64Array BigInt64Array DataView Map BigInt Set WeakMap WeakSet WeakRef FinalizationRegistry Proxy Reflect Iterator decodeURI decodeURIComponent encodeURI encodeURIComponent escape unescape eval isFinite isNaN WebAssembly console TextDecoder TextEncoder Blob URL performance navigator self close postMessage onmessage onmessageerror addEventListener removeEventListener dispatchEvent queueMicrotask structuredClone setTimeout clearTimeout setInterval clearInterval").split(" ");
 const ALLOWED_NAVIGATOR = "hardwareConcurrency userAgent platform language languages".split(" ");
-for (const [name, code, message] of LOCKED) {
+// A browser that does not have one of these in a worker leaves nothing to hide: Firefox has no navigator.storageBuckets, and Playwright's WebKit
+// on Linux has neither it nor navigator.storage in workers. The code then stops on the browser's own TypeError, which names the missing thing.
+const MISSING_IN_WORKERS = { firefox: ["navigator.storageBuckets"], webkit: ["navigator.storageBuckets", "navigator.storage"] };
+for (const [name, code, strict] of LOCKED) {
   test(`locked down: ${name} ends in a plain error, with no body and no request outside the app`, async ({}, info) => {
+    const missing = (MISSING_IN_WORKERS[browserOf(info)] || []).includes(name);
+    const message = missing ? new RegExp(`${strict.source}|${name.replace(".", "\\.")}\\b`) : strict;
     await fresh();
     const urls = [];
     const note = (req) => urls.push(req.url());

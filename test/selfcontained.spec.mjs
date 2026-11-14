@@ -3,7 +3,7 @@
 // page, the three helper pages (srcdoc iframes), the Mesh to STEP pop-out tab, and the fonts, which must also really load and be used.
 // Runs on both builds. Red before the fonts were self-hosted: the page linked fonts.googleapis.com and fonts.gstatic.com.
 import { test, expect } from "@playwright/test";
-import { boot, watchErrors, loadDoc, newDoc, body, prim } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, browserOf } from "./helpers.mjs";
 
 const box20 = () => newDoc("Box", "advanced", { bodies: [body("b1", "Box", prim("box", { w: 20, d: 20, h: 20, r: 0, c: 0 }))] });
 const LOCAL = /^(file|data|blob|about):/;
@@ -45,7 +45,8 @@ test("no request leaves the page's own origin, and the fonts still load", async 
 
   const outside = requests.filter((u) => !(LOCAL.test(u) || (origin && new URL(u).origin === origin)));
   expect(outside, "requests that left the page's own origin").toEqual([]);
-  expect(requests.length, "the page made requests at all").toBeGreaterThan(0);
+  // the listener works: Firefox reports no request at all for a page opened from disk (file:, blob: and data: loads), so the single file there has none to count
+  if (origin || browserOf(info) !== "firefox") expect(requests.length, "the page made requests at all").toBeGreaterThan(0);
 
   // not only blocked: the interface fonts are really loaded and used
   expect(pageFonts).toEqual(expect.arrayContaining(["IBM Plex Sans", "Barlow Condensed"]));
