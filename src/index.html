@@ -179,8 +179,8 @@ button { cursor: pointer; }
 /* jumpstart-3d: keep the longer settings menu compact while retaining tablet-sized targets */
 :root:not([data-device="tablet"]) #menu-theme > button { padding-block: 6px; }
 /* jumpstart-3d: end compact settings menu */
-/* jumpstart-3d: a menu taller than the space under the toolbar scrolls inside itself (46px toolbar + notch inset + 20px gap) instead of running off the window */
-.menu { max-height: calc(100vh - 46px - env(safe-area-inset-top, 0px) - 20px); max-height: calc(100dvh - 46px - env(safe-area-inset-top, 0px) - 20px); overflow-y: auto; overscroll-behavior: contain; }
+/* jumpstart-3d: a menu taller than the space under the toolbar scrolls inside itself (46px toolbar + top and bottom safe-area insets + 20px gap) instead of running off the window */
+.menu { max-height: calc(100vh - 46px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px); max-height: calc(100dvh - 46px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px); overflow-y: auto; overscroll-behavior: contain; }
 .sk-widths { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px 10px 6px; }
 .sk-widths button { display: grid; place-items: center; gap: 3px; padding: 6px 2px 4px !important; font-size: 10.5px; text-align: center; border: 1px solid var(--line-2) !important; border-radius: 6px; }
 .sk-widths button i { display: block; width: 26px; background: currentColor; border-radius: 2px; }
