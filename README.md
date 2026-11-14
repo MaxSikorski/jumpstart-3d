@@ -261,8 +261,9 @@ A local model server has to allow the JumpStart 3D page to talk to it, once.
 
 If Chrome asks whether the site may reach devices on your local network, allow it. Safari may block
 the website from reaching `localhost`; use the single file there. When a model server on your
-computer does not answer, the chat says so in one line ("No model is answering at localhost:11434");
-these steps are under **More help** below it.
+computer does not answer or refuses the page, the chat says so in one line ("Can't reach a model at
+localhost:11434: start Ollama there, or allow this page in OLLAMA_ORIGINS"); after a message or List
+models, these steps are under **More help** below that line.
 
 ### Chat keys and scripts
 

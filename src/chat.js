@@ -62,7 +62,7 @@ export function initChat(app) {
   const testBtn = el("button", { class: "btn", id: "chat-test", type: "button" }, "Test connection");
   const testResult = el("span", { id: "chat-test-result", role: "status" });
   f.url.closest("label").after(el("div", { class: "chat-testrow" }, testBtn, testResult));
-  let testVersion = 0;
+  let testVersion = 0, testAbort = null; // testAbort: the request of the test still running
 
   for (const [id, p] of Object.entries(PROVIDERS)) f.provider.append(el("option", { value: id }, p.label));
 
@@ -102,7 +102,7 @@ export function initChat(app) {
     try { localStorage.setItem(KEY, JSON.stringify({ provider: current, remember: s.remember, scripts: s.scripts, per: out })); } catch (e) { /* storage blocked: settings last until reload */ }
   };
   // a changed provider, address or key makes an earlier answer (or a test still waiting) meaningless
-  const clearTest = () => { testVersion++; testResult.textContent = ""; testBtn.disabled = false; };
+  const clearTest = () => { testVersion++; testAbort?.abort(); testResult.textContent = ""; testBtn.disabled = false; };
   f.provider.addEventListener("change", () => { clearTest(); collect(); current = f.provider.value; show(current); save(); });
   f.url.addEventListener("input", clearTest);
   f.key.addEventListener("input", clearTest);
@@ -151,14 +151,17 @@ export function initChat(app) {
     return say(c, row);
   };
 
-  const localFailure = (err, id, url) => {
+  // A failed fetch looks the same whether the server is not running or refuses the page (CORS), so the line names both.
+  // more: the chat shows "More help" under the line; Test connection does not.
+  const localFailure = (err, id, url, more = true) => {
     if (!err.network) return "";
     try {
       const address = new URL(url);
       if (!["localhost", "127.0.0.1", "[::1]"].includes(address.hostname)) return "";
       const host = address.host + (address.port ? "" : address.protocol === "https:" ? ":443" : ":80");
-      const name = id === "ollama" ? "Ollama" : id === "lmstudio" ? "LM Studio" : "your model server";
-      return `No model is answering at ${host}. Start ${name} there, or pick another provider in chat settings.`;
+      const fix = { ollama: "start Ollama there, or allow this page in OLLAMA_ORIGINS", lmstudio: "start the LM Studio server there, or turn on Enable CORS in LM Studio" }[id]
+        || "start your model server there, or allow this page in its CORS settings";
+      return `Can't reach a model at ${host}: ${fix}${more ? " (More help)" : ""}.`;
     } catch (e) { return ""; }
   };
 
@@ -281,20 +284,22 @@ export function initChat(app) {
   });
 
   testBtn.addEventListener("click", async () => {
-    const s = settings(), version = ++testVersion;
+    const s = settings(), version = ++testVersion, ctl = new AbortController();
     let host = s.url, timer;
+    testAbort = ctl;
     try { host = new URL(s.url).host; } catch (e) { /* use the entered address */ }
     testBtn.disabled = true;
     testResult.textContent = "Testing…";
     // a server that accepts the connection and never answers would keep the button off for good
-    const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error(`No answer from ${host} within ${TEST_SECONDS} seconds.`)), TEST_SECONDS * 1000); });
+    const late = new Promise((_, no) => { timer = setTimeout(() => { no(new Error(`No answer from ${host} within ${TEST_SECONDS} seconds.`)); ctl.abort(); }, TEST_SECONDS * 1000); });
     try {
-      const ids = await Promise.race([PROVIDERS[s.provider].listModels({ url: s.url, model: s.model, key: s.key }), late]);
+      const ids = await Promise.race([PROVIDERS[s.provider].listModels({ url: s.url, model: s.model, key: s.key, signal: ctl.signal }), late]);
       if (version === testVersion) testResult.textContent = `Connected: ${ids.length} ${ids.length === 1 ? "model" : "models"}`;
     } catch (err) {
-      if (version === testVersion) testResult.textContent = localFailure(err, s.provider, s.url) || (err.network ? `Could not reach ${host}: ${err.message}` : err.message || String(err));
+      if (version === testVersion) testResult.textContent = localFailure(err, s.provider, s.url, false) || (err.network ? `Could not reach ${host}: ${err.message}` : err.message || String(err));
     } finally {
       clearTimeout(timer);
+      if (testAbort === ctl) testAbort = null;
       if (version === testVersion) testBtn.disabled = false;
     }
   });

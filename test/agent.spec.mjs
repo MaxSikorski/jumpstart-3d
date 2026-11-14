@@ -231,9 +231,16 @@ test("the note links the setup guide on GitHub in a new tab, only when clicked",
   if (await page.locator("#menu-theme").isVisible()) await page.click("#btn-theme");
 });
 
-test("after 5 seconds of waiting with no server, the local-network sentence lights up; it goes out when the link stops", async () => {
+test("on the website, after 5 seconds of waiting with no server, the local-network sentence lights up and goes out when the link stops; the single file does not show it", async () => {
   await openMenu();
   const hint = page.locator("#agent-lna");
+  if (await page.evaluate(() => location.protocol === "file:")) {
+    // the single file, opened from disk, is never asked about the local network, so the note does not say it will be
+    await expect(hint).toHaveCount(0);
+    await expect(page.locator("#menu-theme .agent-note a")).toHaveAttribute("href", GUIDE);
+    await page.click("#btn-theme");
+    return;
+  }
   await expect(hint).toHaveText(LNA);
   await expect(hint).not.toHaveClass(/hot/);
   const port = await closedPort();

@@ -582,6 +582,7 @@ export function initBridge(app) {
   };
   const row = document.querySelector("#menu-theme button[data-agent]");
   if (row) row.addEventListener("click", () => app.setAgent(!link.on));
+  if (location.protocol === "file:") document.getElementById("agent-lna")?.remove(); // the single file is never asked about the local network
 
   Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls

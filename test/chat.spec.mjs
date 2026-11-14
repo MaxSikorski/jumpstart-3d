@@ -44,7 +44,9 @@ const idOf = (r) => (typeof r === "string" ? r : r.id);
 const wireTools = (req) => req.body.tools.map((t) => t.name || t.function?.name);
 // a port nothing listens on: open one, note its number, close it
 const closedPort = () => new Promise((resolve) => { const s = createServer().listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
-const noModel = (hostPort, name) => `No model is answering at ${hostPort}. Start ${name} there, or pick another provider in chat settings.`;
+// the one line for a local server that does not answer: not running, or refusing the page (a failed fetch cannot tell which)
+const FIX = { Ollama: "start Ollama there, or allow this page in OLLAMA_ORIGINS", "LM Studio": "start the LM Studio server there, or turn on Enable CORS in LM Studio" };
+const noModel = (hostPort, name, more = true) => `Can't reach a model at ${hostPort}: ${FIX[name]}${more ? " (More help)" : ""}.`;
 
 test("a block with a hole, over the Anthropic shape: five tool calls, an answer, and the right solid", async ({ browser }, info) => {
   test.setTimeout(180_000);
@@ -293,7 +295,7 @@ test("Test connection asks only when clicked: Connected with a server that answe
   await page.unroute(base + "/api/tags");
   netNoise = true;
   await page.click("#chat-test");
-  await expect(page.locator("#chat-test-result")).toHaveText(noModel(`localhost:${port}`, "Ollama"));
+  await expect(page.locator("#chat-test-result")).toHaveText(noModel(`localhost:${port}`, "Ollama", false)); // no More help next to it
   await expect(page.locator("#chat-test")).toBeEnabled();
   expect(asked).toEqual([base + "/api/tags", base + "/api/tags"]);
   await expect(page.locator("#chat-messages > .chat-msg")).toHaveCount(0);
