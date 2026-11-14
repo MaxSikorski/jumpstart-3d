@@ -16,6 +16,7 @@ import { inflateRaw } from "./inflate.js";
 import { evalExpr } from "./params.js";
 import { MAX_SLOTS } from "./paint3mf.js";
 import { GEAR_DEFAULTS } from "./gearlib.js";
+import { JIG_DEFAULTS } from "./jigs.js";
 
 // ---------------------------------------------------------------- limits (named, and tested at their edges)
 export const LIMITS = {
@@ -186,13 +187,13 @@ const IMAGE = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/; /
 const DOC_KEYS = new Set(["v", "id", "name", "mode", "created", "seq", "grid", "bodies", "sketches", "planes", "joints", "params", "assets", "media", "ver", "printPaint", "folders"]);
 // the part kinds of the Fasteners dialog (FASTENER_KINDS in fasteners.js, which this module does not import; test/sharelink.test.mjs compares)
 export const FASTENER_KINDS = new Set(["hexbolt", "shcs", "button", "flat", "set", "wood", "rod", "nut", "nyloc", "sqnut", "washer", "lockw", "insert", "dowel", "cutter"]);
-const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "binPart", "hinge", "hingePart", "gear", "gearPart", "folder"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
+const BODY_KEYS = new Set(["id", "name", "seq", "color", "hole", "hidden", "m", "node", "brick", "media", "locked", "fastener", "bin", "binLid", "binPart", "hinge", "hingePart", "gear", "gearPart", "folder", "jig", "jigPart"]); // fastener: the Fasteners dialog's settings (J.Siwek 2.7.8, with our thread fit)
 const NODE_TYPES = new Set(["prim", "extrude", "revolve", "sweep", "pipe", "coil", "group", "loft", "mirror", "placed", "mesh", "step"]);
 const NODE_KEYS = new Set(["t", "id", "name", "color", "hidden", "kind", "p", "mods", "exprs", "exprUnits", "children", "sketch", "profiles", "dist", "mode", "dist2", "axis", "axisWorld", "angle", "path", "orient", "taper", "twist", "chain", "section", "size", "hollow", "wall", "edgeSegs", "railEdgeSegs", "railScale", "sections", "rail", "ruled", "closed", "src", "srcM", "srcBody", "plane", "asset", "k", "left", "pitch", "turns", "pos", "d", "h", "stretch", "keepPos", "regions", "op", "parts"]);
 const PRIM_KINDS = new Set(["box", "cylinder", "tube", "cone", "pyramid", "prism", "wedge", "sphere", "hemisphere", "torus", "text", "star", "heart", "roof", "roundroof", "paraboloid", "gem", "capsule", "arrow", "spring"]);
 const CHILD_KEYS = new Set(["node", "m", "hole", "color", "name", "hidden", "id", "seq"]);
 const MOD_TYPES = new Set(["fillopen", "fillet", "chamfer", "hole", "bool", "keeppiece", "halfspace", "sketchsplit", "splitface", "offset", "shell", "emboss", "facepat", "thread", "scale", "pattern"]);
-const MOD_KEYS = new Set(["keep", "id", "seq", "t", "exprs", "exprUnits", "angle", "at", "ax1", "ax2", "cax", "cbDepth", "cbDia", "center", "chain", "clear", "closed", "cn", "count", "csAngle", "csDia", "curves", "d", "depth", "dia", "dir", "edges", "face", "faces", "feats", "flip", "k", "kind", "left", "length", "m", "mode", "n", "n1", "n2", "o", "op", "p", "piece", "pitch", "plane", "poly", "r", "s1", "s2", "sets", "side", "sym", "th", "through", "tip", "tool", "what", "size", "x", "str", "font", "along", "mirror", "reverse", "sketch", "tapped", "hidden", "src", "sole"]);
+const MOD_KEYS = new Set(["keep", "id", "seq", "t", "exprs", "exprUnits", "angle", "at", "ax1", "ax2", "cax", "cbDepth", "cbDia", "center", "chain", "clear", "closed", "cn", "count", "csAngle", "csDia", "curves", "d", "depth", "dia", "dir", "edges", "face", "faces", "feats", "flip", "k", "kind", "left", "length", "m", "mode", "n", "n1", "n2", "o", "op", "p", "piece", "pitch", "plane", "poly", "r", "s1", "s2", "sets", "side", "sym", "th", "through", "tip", "tool", "what", "size", "x", "str", "font", "along", "mirror", "reverse", "sketch", "tapped", "hidden", "src", "sole", "rib", "kh"]);
 const SKETCH_KEYS = new Set(["id", "name", "seq", "plane", "pts", "ents", "hidden", "onBody", "faceCenter", "fromFace", "cons", "image"]);
 const ENT_KEYS = {
   line: ["a", "b"], circle: ["c", "r"], arc: ["c", "a", "b"], spline: ["pts", "closed"], point: ["p"], text: ["p", "str", "size", "angle", "font"],
@@ -257,7 +258,7 @@ function inlineExtrude(n, ctx) {
     return poly;
   };
   // the app writes one outline per extrude, with at most 9 holes (a gear's bore and 8 lightening holes): each hole is a cut in the engine
-  const regions = arr(n.regions, "outlines", 1);
+  const regions = arr(n.regions, "outlines", ctx.jig ? 600 : 1);
   if (!regions.length) throw damaged("an empty outline");
   for (const r of regions) {
     obj(r, "an outline"); allow(r, new Set(["outer", "holes"]), "an outline");
@@ -558,11 +559,13 @@ export function validateEnvelope(env) {
     if ((b.gear !== undefined || b.gearPart !== undefined) && ["bin", "binLid", "binPart", "hinge", "hingePart", "gear", "gearPart"].filter((k) => b[k] !== undefined).length > 1) throw damaged("conflicting part roles");
     if (b.folder !== undefined && (typeof b.folder !== "string" || !fid.has(b.folder))) throw damaged("a body in a missing folder");
     if (b.gear !== undefined) gearSettings(b.gear);
+    if (b.jig !== undefined) jigSettings(b.jig);
+    if (b.jig !== undefined && b.jigPart !== undefined) throw damaged("conflicting jig roles");
     const ref = (v) => { id(v, "a part body id"); };
-    for (const k of ["binLid", "binPart", "hingePart", "gearPart"]) if (b[k] !== undefined) ref(b[k]);
+    for (const k of ["binLid", "binPart", "hingePart", "gearPart", "jigPart"]) if (b[k] !== undefined) ref(b[k]);
     if (b.bin !== undefined) {
       const o = obj(b.bin, "a bin");
-      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids", "across", "sideLock", "doorCatch"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies; 2.9.8 grids (across) and side joints (sideLock); 2.9.8.1 door catch (doorCatch)
+      allow(o, new Set(["w", "d", "h", "cols", "rows", "wall", "divider", "floor", "radius", "shape", "inner", "scoop", "scoopR", "label", "labelW", "stack", "foot", "lid", "lidT", "clear", "lidId", "style", "units", "lock", "caseT", "pull", "hinge", "doorPull", "layout", "ids", "across", "sideLock", "doorCatch", "clips", "plates", "gplates", "plateFit", "dvFit"]), "a bin"); // jumpstart-3d: J.Siwek 2.9.5 cases (drawer, tilt bin, door), stacking and the ids of the set's other bodies; 2.9.8 grids (across) and side joints (sideLock); 2.9.8.1 door catch (doorCatch)
       for (const k of ["w", "d", "h", "wall", "divider", "floor", "scoopR", "labelW", "foot", "lidT", "caseT"]) if (o[k] !== undefined) positive(o[k], k);
       for (const k of ["radius", "inner", "clear"]) if (o[k] !== undefined) nonnegative(o[k], k);
       for (const k of ["cols", "rows"]) if (o[k] !== undefined) count(o[k], 20, k);
@@ -571,17 +574,17 @@ export function validateEnvelope(env) {
       if (o.lidId != null) ref(o.lidId);
       if (o.units !== undefined) count(o.units, 8, "units");
       if (o.across !== undefined) count(o.across, 8, "across"); // jumpstart-3d: 2.9.8 grids, 1 to 8 across like bins.js
-      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["sideLock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["doorCatch", ["none", "light", "firm"]], ["layout", ["", "stack", "print"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
+      for (const [k, list] of [["style", ["bin", "drawer", "tilt", "door"]], ["lock", ["dovetail", "pegs", "none"]], ["sideLock", ["dovetail", "pegs", "none"]], ["pull", ["bar", "knob", "notch"]], ["hinge", ["left", "right"]], ["doorPull", ["knob", "hole", "bar"]], ["doorCatch", ["none", "light", "firm"]], ["layout", ["", "stack", "print"]], ["clips", ["none", "back"]], ["plates", ["none", "top", "side", "both"]], ["gplates", ["none", "under", "side", "both"]], ["plateFit", ["tight", "snug", "loose"]], ["dvFit", ["snug", "normal", "loose"]]]) if (o[k] !== undefined && !list.includes(o[k])) throw damaged("a bin " + k);
       if (o.ids !== undefined) {
         const e = Object.entries(obj(o.ids, "a bin set"));
         // jumpstart-3d: up to 8 x 8 units (2.9.8 grids): bin1-bin63 or case1-case63, front0-front63, and a lid
-        if (e.length > 128) throw damaged("a bin set");
-        for (const [k, v] of e) { if (!/^(?:lid|(?:bin|case)(?:[1-9]|[1-5]\d|6[0-3])|front(?:\d|[1-5]\d|6[0-3]))$/.test(k)) throw unsupported("a bin set has " + k.slice(0, 16).replace(/[^\w.-]/g, "?")); ref(v); }
+        if (e.length > LIMITS.BODIES - 1) throw damaged("a bin set");
+        for (const [k, v] of e) { if (!/^(?:lid|(?:bin|case)(?:[1-9]|[1-5]\d|6[0-3])|front(?:\d|[1-5]\d|6[0-3])|(?:clip|plate|gplate)[1-9]\d{0,2})$/.test(k)) throw unsupported("a bin set has " + k.slice(0, 16).replace(/[^\w.-]/g, "?")); ref(v); }
         // one body per part: the same body under two keys, or a lid other than lidId, is not a set the app makes
         if (new Set(e.map(([, v]) => v)).size !== e.length) throw damaged("a bin set lists a body twice");
         if (o.ids.lid !== undefined && o.lidId != null && o.ids.lid !== o.lidId) throw damaged("a bin set has two lids");
         // jumpstart-3d: build 31 review: no part numbered past the set (units high x across)
-        for (const [k] of e) if (k !== "lid" && +k.replace(/^\D+/, "") >= (o.units ?? 1) * (o.across ?? 1)) throw damaged("a bin set part past the end of the set");
+        for (const [k] of e) if (/^(?:bin|case|front)/.test(k) && +k.replace(/^\D+/, "") >= (o.units ?? 1) * (o.across ?? 1)) throw damaged("a bin set part past the end of the set");
       }
       // jumpstart-3d: build 31 review: the compartments of every bin together (bins and drawers have columns and rows, a tilt bin columns)
       const style = o.style ?? "bin", cells = style === "bin" || style === "drawer" ? (o.cols ?? 1) * (o.rows ?? 1) : style === "tilt" ? (o.cols ?? 1) : 1;
@@ -598,7 +601,9 @@ export function validateEnvelope(env) {
       if (o.kind !== undefined) text(o.kind, "hinge name");
       for (const k of ["bId", "pinId"]) if (o[k] != null) ref(o[k]);
     }
+    ctx.jig = b.jig !== undefined || b.jigPart !== undefined;
     node(obj(b.node, "a body shape"), ctx, "a shape");
+    ctx.jig = false;
   }
   for (const r of ctx.bodyRefs) if (!bid.has(r)) throw damaged("a mirror points at a missing body");
   const byId = new Map(bodies.map((b) => [b.id, b]));
@@ -619,6 +624,8 @@ export function validateEnvelope(env) {
     check(b, "hingePart", (target) => target.hinge && (target.hinge.bId === b.id || target.hinge.pinId === b.id));
     if (b.hinge?.bId != null && b.hinge.bId === b.hinge.pinId) throw damaged("part references do not agree");
     check(b, "gearPart", (target) => !!target.gear);
+    if (b.jig) for (const k of Object.keys(b.jig.ids)) check(b.jig.ids, k, (target) => target.jigPart === b.id);
+    check(b, "jigPart", (target) => !!target.jig && Object.values(target.jig.ids).includes(b.id));
   }
   gearSets(bodies, byId, doc);
   if (doc.printPaint !== undefined) printPaint(doc.printPaint, bid);
@@ -730,6 +737,45 @@ function gearSets(bodies, byId, doc) {
   }
 }
 
+// Saved maker settings are checked independently of their generated shapes.
+function featureSettings(m) {
+  const rib = m.src === "rib", o = obj(rib ? m.rib : m.kh, "feature settings");
+  if (m.op !== (rib ? "join" : "cut") || (rib ? m.kh !== undefined : m.rib !== undefined)) throw damaged("feature operation");
+  if (m.tool === undefined || m.m === undefined) throw damaged("feature tool");
+  if (rib) {
+    allow(o, new Set(["shape", "height", "thick", "count", "spacing", "flip", "a", "b", "n"]), "a rib");
+    if (!["straight", "gusset"].includes(o.shape)) throw damaged("rib shape");
+    for (const k of ["height", "thick", "spacing"]) positive(o[k], k);
+    count(o.count, LIMITS.REPEAT, "rib count"); bool(o.flip, "rib flip");
+    vec(o.a, 3, "rib a"); vec(o.b, 3, "rib b"); normal(o.n, "rib n");
+    if (o.a.every((x, i) => x === o.b[i])) throw damaged("rib ends");
+  } else {
+    allow(o, new Set(["size", "head", "shank", "length", "lip", "depth", "ang", "at"]), "a keyhole");
+    if (!["small", "medium", "large", "custom"].includes(o.size)) throw damaged("keyhole size");
+    for (const k of ["head", "shank", "length", "lip", "depth"]) positive(o[k], k);
+    if (o.head <= o.shank || ![0, 90, 180, 270].includes(o.ang)) throw damaged("keyhole settings");
+    const points = arr(o.at, "keyhole points", LIMITS.REPEAT); if (!points.length) throw damaged("keyhole points");
+    for (const q of points) { obj(q, "a keyhole point"); allow(q, new Set(["p", "n"]), "a keyhole point"); vec(q.p, 3, "point"); normal(q.n, "normal"); }
+  }
+}
+function jigSettings(j) {
+  obj(j, "a jig"); allow(j, new Set(["o", "ids", "base"]), "a jig"); mat16(j.base, "jig placement");
+  const o = obj(j.o, "jig options"); allow(o, new Set(Object.keys(JIG_DEFAULTS)), "jig options");
+  for (const [k, d] of Object.entries(JIG_DEFAULTS)) {
+    const v = o[k];
+    if (typeof d === "boolean") bool(v, k);
+    else if (typeof d === "number") { num(v, k); if (Math.abs(v) > 10000 || (k !== "tOffset" && v < 0)) throw damaged(k); }
+    else text(v, k, LIMITS.STRING);
+  }
+  for (const [k, values] of [["type", ["miter", "dowel", "pocket", "square", "angle", "drill", "dove", "box", "mortise", "lap"]], ["mAngles", ["90", "45", "both", "22"]], ["sUnits", ["mm", "in"]]]) if (!values.includes(o[k])) throw damaged("jig " + k);
+  for (const [k, max] of [["dCount", 8], ["pCount", 3], ["vTails", 12]]) count(o[k], max, k);
+  for (const [k, min, max] of [["pAngle", 8, 30], ["vSlope", 3, 14], ["tOffset", -50, 50], ["hCell", 4, 30], ["hWeb", 1.2, 6]]) if (o[k] < min || o[k] > max) throw damaged(k);
+  if (![0.15, 0.25, 0.4].includes(o.fit)) throw damaged("jig fit");
+  const entries = Object.entries(obj(j.ids, "jig parts")); if (entries.length > LIMITS.BODIES - 1) throw damaged("jig parts");
+  for (const [k, v] of entries) { if (!/^(?:dovsaw|boxkey|tenon|lapg|angle[0-9_]+)$/.test(k)) throw unsupported("a jig part"); id(v, "jig part id"); }
+  if (new Set(entries.map(([, v]) => v)).size !== entries.length) throw damaged("duplicate jig parts");
+}
+
 // node: one shape-building step and its modifiers. Only the types and fields the kernel reads are in the tables.
 function node(n, ctx, what) {
   if (++ctx.nodes > LIMITS.NODES) throw tooBig("This design has too many steps to open from a link.");
@@ -789,8 +835,11 @@ function node(n, ctx, what) {
       obj(m, "a modifier"); allow(m, MOD_KEYS, "a modifier");
       if (typeof m.t !== "string" || !MOD_TYPES.has(m.t)) throw unsupported("a " + String(m.t).slice(0, 16).replace(/[^\w ]/g, "?") + " modifier");
       id(m.id, "a modifier id"); if (mids.has(m.id)) throw damaged("duplicate modifier id"); mids.add(m.id);
+      if (m.t !== "bool" && (m.rib !== undefined || m.kh !== undefined)) throw damaged("a modifier feature");
       if (m.t === "bool") {
-        if (m.src !== undefined) throw unsupported("a combined body");
+        if (m.src !== undefined && m.src !== "rib" && m.src !== "keyhole") throw unsupported("a combined body");
+        if (m.src === "rib" || m.src === "keyhole") featureSettings(m);
+        else if (m.rib !== undefined || m.kh !== undefined) throw damaged("a modifier feature");
         if (m.tool !== undefined) node(obj(m.tool, "a cutting shape"), ctx, what);
         if (m.m !== undefined) mat16(m.m, "a cutting shape placement");
       } else if (m.src !== undefined && !(m.t === "keeppiece" && m.src === "import")) throw damaged("a modifier source"); // STEP parts (#173): the piece of an imported file

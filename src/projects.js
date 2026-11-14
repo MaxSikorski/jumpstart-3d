@@ -250,12 +250,16 @@ export function initProjects(app) {
   app.recovery = rec;
   // the Autosave button in the top bar
   const asBtn = $("btn-autosave");
-  const showAutosave = () => { asBtn.textContent = rec.enabled ? "Autosave: On" : "Autosave: Off"; asBtn.setAttribute("aria-pressed", rec.enabled ? "true" : "false"); };
+  // jumpstart-3d: the button says what it is: the design is saved after every change anyway, this only keeps extra crash copies (Grok review).
+  // The visible label stays as short as "Autosave: Off" (the Original top bar is one row only just); the full name is in the aria-label and tooltip.
+  asBtn.title = "Your design is already saved in this browser after every change. Crash recovery keeps extra copies you can go back to.";
+  const showAutosave = () => { asBtn.textContent = rec.enabled ? "Recovery: On" : "Recovery: Off"; asBtn.setAttribute("aria-label", rec.enabled ? "Crash recovery: On" : "Crash recovery: Off"); asBtn.setAttribute("aria-pressed", rec.enabled ? "true" : "false"); };
   asBtn.onclick = () => {
     rec.setEnabled(!rec.enabled);
     showAutosave();
-    app.toast(rec.enabled ? "Autosave is on: backups are kept as you work and offered back if the app closes unexpectedly." : "Autosave is off. Your designs are still saved as usual; crash backups are not kept.");
+    app.toast(rec.enabled ? "Crash recovery is on: extra copies are kept as you work and offered back if the app closes unexpectedly." : "Crash recovery is off. Your design is still saved in this browser after every change.");
   };
+  // end jumpstart-3d
   showAutosave();
 
   // ---------------------------------------------------------------- sample design
@@ -614,6 +618,19 @@ export function initProjects(app) {
     await offerModel(exportName() + ".glb", bytes);
     app.onExport && app.onExport("glb");
   }
+  // laser cut files from flat parts (the selection, or everything shown)
+  async function exportLaser(fmt) {
+    const items = (await exportItems()).map((it) => ({ name: it.b.name, data: it.data, m: it.m }));
+    if (!items.length) { app.toast("Nothing to export yet: make or select a flat part (like a 3 mm acrylic panel)."); return; }
+    const { laserParts, laserSVG, laserDXF } = await import("./laser.js");
+    const parts = laserParts(items);
+    const thick = parts.filter((p) => p.thick > 12);
+    const text = fmt === "svg" ? laserSVG(parts, versionName()) : laserDXF(parts);
+    await offerModel(exportName() + " laser." + fmt, new TextEncoder().encode(text));
+    const eng = parts.reduce((n, p) => n + p.engrave.length, 0);
+    app.toast(`Laser file: ${parts.length} part${parts.length > 1 ? "s" : ""}, cut in red${eng ? ", engrave in black" : ""}.` + (thick.length ? " Some parts are thick: laser files are for flat parts like 3 mm acrylic." : ""));
+    app.onExport && app.onExport("laser");
+  }
   // 3MF: one object per body with its color, vertices shared so slicers see closed meshes
   function threeMFBytes(objs) {
     if (!objs || (objs.length && !objs[0].data)) objs = viewItems(objs || exportBodies()); // jumpstart-3d: scripting bridge
@@ -878,6 +895,7 @@ export function initProjects(app) {
     if (a === "step") exportSTEP();
     if (a === "bodydxf") exportBodyDrawing(); // jumpstart-3d: body drawing
     if (a === "dxf") app.advanced.exportSketchesDXF(null);
+    if (a === "laser-svg" || a === "laser-dxf") exportLaser(a === "laser-svg" ? "svg" : "dxf");
     if (a === "json") exportJSON();
     if (a === "import") $("file-import").click();
     if (a === "savedl") {
