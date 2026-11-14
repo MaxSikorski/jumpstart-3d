@@ -935,7 +935,7 @@ export const COMMUNITY_TUTORIALS = [
         when: "Snap back undoes a slightly crooked turn without typing numbers.",
         check: (t) => t.prim("box").some((b) => t.near(b.node.p.w, 30, 1) && Math.abs((Math.atan2(b.m[1], b.m[0]) * 180) / Math.PI) < 0.5) },
       { title: "Switch snapping on and off", tool: "Snap and Snap to", icon: "select", show: { sel: "#snap-toggle, #snap-more" },
-        how: ["Drag the plank along the ground. With <b>Snap</b> on, it jumps in whole millimetres.", "Click <b>Snap</b> to turn it off and drag again: the move is smooth. Turn it back on.", "Click <b>Snap to</b> to choose what the plank snaps to: the grid, other objects, or both."],
+        how: ["Drag the plank along the ground. With <b>Snap</b> on, it jumps in whole millimetres.", "Click <b>Snap</b> to turn it off and drag again: the move is smooth. Turn it back on.", "Click <b>Snap to</b> to choose what the plank snaps to: the grid, other objects, or both.", "<b>Faces</b> sets a dragged shape on the face under the pointer."],
         when: "Snap is best for exact work; switch it off for a free placement.",
         tip: "Shift+S also switches snapping." },
       { title: "Change the units", tool: "Units", icon: "text", show: { sel: "#unit-toggle" },

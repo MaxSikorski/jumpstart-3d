@@ -70,6 +70,7 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations; `curvedBottom` (a round bottom resting on the plate: a sphere, a cylinder on its side, a cone tip down) |
 | `placebeside.js` | Where a clicked shape goes when its drop spot is taken: beside the rightmost shape, 5 mm apart, on the plate; pure |
+| `facesnap.js`, `facedrag.js` | Face snap: a Beginner drag lands on the face under the pointer (top: rests on it; side: turns to stand out of it). `facesnap.js` is the pure maths (no DOM, no three.js); `facedrag.js` is the glue the move drag calls |
 | `escapekey.js` | Escape closes the dialog in front, or an open menu or Simple panel, and nothing else (Grok review, build 36); full-window studios keep their own Escape |
 | `codecad.js` | Code CAD dialog and `JS3D.codeCad`: replicad code builds one solid in a temporary worker and is added as a STEP body that keeps its recipe as inert text; runs again only on Update |
 | `codecad-worker.js` | Code CAD, worker side: locks the temporary worker down (no network, storage or extra scripts), builds one closed solid and proves its STEP reads back; not a full sandbox |
