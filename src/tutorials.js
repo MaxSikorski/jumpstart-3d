@@ -256,7 +256,7 @@ export function initTutorials(app) {
       if (rem) rem.hidden = m === "plan";
       if (fpn) fpn.hidden = m !== "plan";
       list.innerHTML = "";
-      const items = TUTORIALS.filter((t) => t.mode === m).sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
+      const items = TUTORIALS.filter((t) => t.mode === m).sort((a, b) => (b.first ? 1 : 0) - (a.first ? 1 : 0) || LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]); // jumpstart-3d: a lesson marked first (c-first-print, the short first project) leads its list
       for (const t of items) {
         const prog = lsGet("p." + t.id);
         const doneN = prog && prog.done ? prog.done.length : 0;

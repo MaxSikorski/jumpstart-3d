@@ -532,3 +532,31 @@ test("a rescue copy made on an older base keeps the newer stored design as \"(ot
   expect(await idbNames(page)).toEqual(["Rescue old base", "Rescue same base (other tab)"]);
   expect(errors).toEqual([]);
 });
+
+// Grok review: the ordinary save already keeps the design after every change, so the old "Autosave: Off" read as "nothing is saved".
+test("the crash recovery button says what it is; the design is saved with it off", async ({ page }, info) => {
+  const errors = await prepare(page);
+  await page.setViewportSize({ width: 1600, height: 900 }); // Original shows it in the top bar from 1440 px
+  await boot(page, info);
+  const b = page.locator(".topbar #btn-autosave");
+  await expect(b).toBeVisible();
+  await expect(b).toHaveText("Crash recovery: Off");
+  await expect(b).toHaveAttribute("aria-pressed", "false");
+  await expect(b).toHaveAttribute("title", "Your design is already saved in this browser after every change. Crash recovery keeps extra copies you can go back to.");
+  // with it off, an edit is still saved: the status line says so
+  await page.evaluate((b) => window.__store.update((d) => { d.bodies.push(b); }, "Edit"), body("b1", "Box", box(20, 20, 20)));
+  await expect(page.locator("#savestate")).toHaveText("Saved in this browser");
+  await b.click();
+  await expect(b).toHaveText("Crash recovery: On");
+  await expect(b).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => localStorage.getItem("jumpstart3d.autosave"))).toBe("on");
+  await expect.poll(() => page.evaluate(() => window.__toasts.map((t) => t.text).join("\n"))).toContain("Crash recovery is on");
+  await b.click();
+  await expect(b).toHaveText("Crash recovery: Off");
+  await expect.poll(() => page.evaluate(() => window.__toasts.map((t) => t.text).join("\n"))).toContain("Crash recovery is off. Your design is still saved in this browser after every change.");
+  // below 1440 px Original keeps it in Customize > Workspace, with the same words
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.click("#btn-theme");
+  await expect(page.locator("#cz-autosave")).toHaveText("Crash recovery: Off");
+  expect(errors).toEqual([]);
+});

@@ -240,12 +240,15 @@ export function initProjects(app) {
   app.recovery = rec;
   // the Autosave button in the top bar
   const asBtn = $("btn-autosave");
-  const showAutosave = () => { asBtn.textContent = rec.enabled ? "Autosave: On" : "Autosave: Off"; asBtn.setAttribute("aria-pressed", rec.enabled ? "true" : "false"); };
+  // jumpstart-3d: the button says what it is: the design is saved after every change anyway, this only keeps extra crash copies (Grok review)
+  asBtn.title = "Your design is already saved in this browser after every change. Crash recovery keeps extra copies you can go back to.";
+  const showAutosave = () => { asBtn.textContent = rec.enabled ? "Crash recovery: On" : "Crash recovery: Off"; asBtn.setAttribute("aria-pressed", rec.enabled ? "true" : "false"); };
   asBtn.onclick = () => {
     rec.setEnabled(!rec.enabled);
     showAutosave();
-    app.toast(rec.enabled ? "Autosave is on: backups are kept as you work and offered back if the app closes unexpectedly." : "Autosave is off. Your designs are still saved as usual; crash backups are not kept.");
+    app.toast(rec.enabled ? "Crash recovery is on: extra copies are kept as you work and offered back if the app closes unexpectedly." : "Crash recovery is off. Your design is still saved in this browser after every change.");
   };
+  // end jumpstart-3d
   showAutosave();
 
   // ---------------------------------------------------------------- sample design
