@@ -52,7 +52,7 @@ export function initFlexiGen(app) {
     };
     // jumpstart-3d: helper pages load on demand (the site fetches the page the first time; the single file has it inline)
     const note = helperLoadingNote(() => close());
-    helperPage("flexigen").then((html) => { if (frame && ifr.isConnected) { note.done(); ifr.srcdoc = html; } }, (e) => { if (frame && ifr.isConnected) { close(); app.toast(helperFailText("FlexiGen", e), "err"); } });
+    helperPage("flexigen").then((html) => { if (frame && ifr.isConnected) { note.done(); ifr.srcdoc = html; } }, (e) => { note.done(); if (frame && ifr.isConnected) { close(); app.toast(helperFailText("FlexiGen", e), "err"); } });
     frame.append(note, ifr);
     document.body.append(frame);
     app.flexiOpen = true;

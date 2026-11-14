@@ -542,7 +542,7 @@ Runs one call by its name with a list of arguments: the plumbing the WebSocket l
 #### `JS3D.connect([url]) -> undefined`
 Opens the link to an AI tool server on this computer (`mcp/server.mjs`), answers its calls one at a time and keeps trying every 3 seconds until `disconnect`. Nothing connects until this is called or the Connect to AI agent row in the theme menu is turned on, so a page on its own makes no connection.
 - **Arguments:** `url`: the server's address, default `"ws://127.0.0.1:8822"`. It must start `ws://` or `wss://`.
-- **Returns:** `undefined` at once; `connection()` then reports `"waiting"`, and `"connected"` once the server is there. When the socket opens, the page sends `{"hello":"jumpstart-3d","version":"1.13","apiVersion":"1.13.1","app":"2.9.8.2","url":<the page's address>}` (a design link's `#` part is never sent), then `{"id":n,"result":...}` or `{"id":n,"error":"..."}` for each call it receives.
+- **Returns:** `undefined` at once; `connection()` then reports `"waiting"`, and `"connected"` once the server is there. When the socket opens, the page sends `{"hello":"jumpstart-3d","version":"1.14","apiVersion":"1.14.0","app":"2.9.8.2","url":<the page's address>}` (a design link's `#` part is never sent), then `{"id":n,"result":...}` or `{"id":n,"error":"..."}` for each call it receives.
 - **Errors:** throws `url must be a ws:// or wss:// address` for anything else, and nothing changes. A browser that will not let the page reach this computer (Safari on an https page) says so once and keeps retrying. A second page asking for the same server is refused by the server: that page then switches its link off and stops retrying, though the remembered setting stays on, so a reload can take the link later.
 - **Example:** `JS3D.connect(); JS3D.connection().state;   // "waiting" at first; "connected" a moment later if a tool server is running`
 - **Since:** 1.1 · synchronous · no undo step; opens a socket and shows its state in the theme menu
@@ -803,15 +803,15 @@ Restores a retained checkpoint for the current design as one undoable change, pr
 <a id="api-version"></a>
 #### `JS3D.version`
 The API version as `"major.minor"` text, for a tool that checks what the page can do before calling it.
-- **Value:** `"1.13"`. The first number changes when an existing call changes shape or meaning; the second goes up when calls are added (1.0 was the first bridge). Read `supports()` or `describe()` rather than guessing from it.
-- **Example:** `JS3D.version;   // "1.13"`
+- **Value:** `"1.14"`. The first number changes when an existing call changes shape or meaning; the second goes up when calls are added (1.0 was the first bridge). Read `supports()` or `describe()` rather than guessing from it.
+- **Example:** `JS3D.version;   // "1.14"`
 - **Since:** 1.0 · synchronous · does not change the design
 
 <a id="api-apiVersion"></a>
 #### `JS3D.apiVersion`
 The API version in full, `"major.minor.patch"`, where the patch number goes up for a fix that adds or changes no call.
-- **Value:** `"1.13.1"`. Its first two numbers are the same as `version`; the third is new in 1.13, so a page older than that has only `version`.
-- **Example:** `JS3D.apiVersion;   // "1.13.1"`
+- **Value:** `"1.14.0"`. Its first two numbers are the same as `version`; the third is new in 1.13, so a page older than that has only `version`.
+- **Example:** `JS3D.apiVersion;   // "1.14.0"`
 - **Since:** 1.13 · synchronous · does not change the design
 
 <a id="api-appVersion"></a>
@@ -841,6 +841,7 @@ as the tool error text. Wording may improve in any release, so match the call’
 outcome rather than its exact message. A body that fails to build reports its
 error in `JS3D.list()`, with a hint when one is known.
 
+- An async call refuses to write if the design changed while it waited.
 - While Chisel mode is open, every call that edits or loads throws `leave Chisel mode first` (`setMode` is how you leave it).
 - Everything is synchronous except `ready`, `export`, `screenshot`,
   `screenshotDataURL`, `load`, `newDesign`, `run`, `invoke`, `codeCad`, `holePattern`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `texture` and `drawing`, which return promises.
@@ -1201,8 +1202,94 @@ Check each tool result for an error before continuing. The headless end-to-end t
 - It does not push, publish or save anything outside this browser. `load`
   does save the opened design in this browser's storage, as opening a file does.
 
+## Embedding in another website
+
+A website can open JumpStart 3D in an iframe and control a temporary design. The frame starts with no saved designs and default settings. Its page storage is memory-only. The browser may still cache the app's own files. The person's own designs, settings, and saved passwords and keys are never visible inside the frame. Modern browsers also separate an embedded site's storage from the host's storage. Loading a different design closes the channel.
+
+```html
+<iframe src="https://cad.example/?embed=https%3A%2F%2Fschool.example"
+  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
+  referrerpolicy="no-referrer" title="JumpStart 3D"></iframe>
+```
+
+Replace both addresses with the app and host origins. The `embed` value accepts up to eight exact cross-origin addresses, separated by commas or spaces. HTTPS is required except for HTTP localhost, 127.0.0.1, and [::1]. Paths, trailing slashes, credentials and wildcards are not accepted. An invalid list leaves a temporary design without a channel. A top-level page or a file opened from disk does not activate embedding.
+
+Inside a frame without `?embed`, the app opens the same temporary workspace (empty memory-only storage, none of the person's designs or settings) with a note that says so, and no website can control it: messages from the framing page get no reply and change nothing.
+
+- `allow-scripts` lets the app run.
+- `allow-same-origin` gives the app its own origin; the temporary workspace still uses empty memory-only storage.
+- `allow-popups` lets the user open the full app.
+- `allow-popups-to-escape-sandbox` lets that full app run outside the frame's restrictions.
+- `allow-downloads` allows user-initiated downloads inside the app.
+- `referrerpolicy="no-referrer"` keeps the host page address out of the iframe request.
+
+The app sends `{type:"js3d-ready", protocol:1, apiVersion, calls}` to each allowed origin. A host can send `{type:"js3d-hello", protocol:1}` to request it again, at most once per second. Send `{type:"js3d-call", protocol:1, id, call, args}` and receive `{type:"js3d-result", protocol:1, id, result}` or the same message with `error` instead of `result`. IDs must be positive safe integers, strictly increasing. An ID is used up even if its call is refused; send a new, higher ID. Undefined results become null; byte results are `Uint8Array` objects with their own tightly sized buffer.
+
+Calls run one at a time in arrival order. Up to 16 may wait; at most 30 calls per second are accepted. Arguments must be simple JSON-like values, at most 1 MiB, 100,000 values and 32 levels deep, with no `__proto__`, `constructor`, or `prototype` keys. Repeated object references and sparse arrays are refused; arrays may have at most 100,000 items. Results are limited to 32 MiB. If a result is too large, the edit itself has already happened. `export` returns bytes and does not download. `setMode` and `newDesign` accept only `beginner` and `advanced`; a new design remains temporary. `printCheck` defaults to the generic printer and 45 degrees.
+
+The ready message lists the available calls from: `supports`, `describe`, `ready`, `kinds`, `list`, `get`, `doc`, `save`, `params`, `mode`, `selection`, `add`, `fastener`, `holePattern`, `gear`, `namePlate`, `knurl`, `spring`, `remove`, `delete`, `duplicate`, `move`, `moveTo`, `rotate`, `resize`, `scale`, `setHole`, `setColor`, `rename`, `setHidden`, `group`, `ungroup`, `setParam`, `removeParam`, `bind`, `undo`, `redo`, `select`, `fit`, `setMode`, `screenshot`, `screenshotDataURL`, `export`, `newDesign`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `pattern`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `boxMaker`, `gearSet`, `hardware`, `textures`, `texture`, `drawing`, `checkpoint`, `checkpoints`, `diff`, `rollback`. Calls missing from this app version are unavailable. `run`, `codeCad`, `load`, `invoke`, `connect`, `disconnect`, `connection`, `internals`, `version`, `appVersion`, `apiVersion` and all other names are refused.
+
+Stop, opening a different design, and leaving the page close the channel until reload. Each call has 10 minutes; if it takes longer, the app sends an error and closes the channel because the call may still be running. The app sends `{type:"js3d-closed", protocol:1, reason}` with `stopped`, `design-changed`, `pagehide`, or `timeout`. Calls that finish after closure get no reply.
+
+The frame uses empty, memory-only page storage. Chisel, FlexiGen, Mesh to STEP, Neon, Layerscape and Floor Planner are unavailable in the frame; open the full app to use them. It neither reads nor writes the persistent mesh cache and does not start or write folder copies. While the person is using Chisel, the channel accepts only reading calls.
+
+### What is not protected
+
+A website can ask the frame to build huge shapes and slow down its own page. That is no more than the website could do with its own code. A website can show its own copy of this open-source app, and clicks inside the frame are the user’s own.
+
+A complete host example (serve it from the allowed origin and change the app address):
+
+```html
+<iframe id="cad" title="JumpStart 3D"
+  src="https://cad.example/?embed=https%3A%2F%2Fschool.example"
+  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
+  referrerpolicy="no-referrer"></iframe>
+<script>
+const frame = document.querySelector('#cad');
+const origin = 'https://cad.example';
+const pending = new Map();
+let nextId = 0, started = false;
+function call(name, ...args) {
+  const id = ++nextId;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    frame.contentWindow.postMessage(
+      { type: 'js3d-call', protocol: 1, id, call: name, args }, origin);
+  });
+}
+window.addEventListener('message', async event => {
+  if (event.source !== frame.contentWindow || event.origin !== origin) return;
+  const msg = event.data;
+  if (!msg || msg.protocol !== 1) return;
+  if (msg.type === 'js3d-result') {
+    const task = pending.get(msg.id);
+    if (!task) return;
+    pending.delete(msg.id);
+    if (msg.error) task.reject(new Error(msg.error));
+    else task.resolve(msg.result);
+  } else if (msg.type === 'js3d-closed') {
+    for (const task of pending.values()) task.reject(new Error(msg.reason));
+    pending.clear();
+  } else if (msg.type === 'js3d-ready' && !started) {
+    started = true;
+    try {
+      const id = await call('add', 'box', { size: { w: 40, d: 30, h: 20 } });
+      await call('ready');
+      console.log(await call('get', id));
+      const bytes = await call('export', 'stl');
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'model/stl' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'box.stl'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { console.error(error); }
+  }
+});
+</script>
+```
+
 ## API changelog
 
+- 1.14.0: Added embedding in another website: a temporary in-memory design driven with postMessage by the origins the page lists (see Embedding in another website).
 - 1.13.1: Error messages name the bad input, show the value received and say what to try next; known geometry-engine failures get a hint in list(), get() and export.
 - 1.13.0: Added supports, describe and apiVersion, the version promise, and a reference for every call.
 - 1.12: Added checkpoints, diff and rollback.

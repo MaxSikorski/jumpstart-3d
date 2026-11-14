@@ -34,6 +34,7 @@
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
+const checkDesign = (id) => { if (store.doc.id !== id) throw new Error("the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want."); };
 import { API_VERSION, API_COMPAT, CALLS, describe } from "./apicontract.js";
 import * as THREE from "three";
 import { show } from "./teach.js";
@@ -47,6 +48,8 @@ import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } f
 import { historyCalls } from "./bridgehistory.js";
 import { uid } from "./util.js";
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
+import { embedActive } from "./embedmode.js";
+import { startEmbed } from "./embed.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
@@ -240,10 +243,10 @@ export function initBridge(app) {
       return id;
     },
     fastener(opts = {}) { edit(); return app.advanced.addFastener(opts); }, // jumpstart-3d: fasteners
-    async holePattern(opts) { edit(); need((opts ?? {}).body); await ready(); return app.advanced.addHolePattern(opts); }, // jumpstart-3d: hole pattern
+    async holePattern(opts) { const design = store.doc.id; edit(); need((opts ?? {}).body); await ready(); checkDesign(design); return app.advanced.addHolePattern(opts); }, // jumpstart-3d: hole pattern
     gear(opts = {}) { edit(); return app.advanced.addGear(opts); }, // jumpstart-3d: gears
     namePlate(opts = {}) { edit(); return app.advanced.addNamePlate(opts); }, // jumpstart-3d: name plates
-    async codeCad(opts = {}) { edit(); const id = await app.codeCad.build(opts); await ready(); return id; }, // jumpstart-3d: Code CAD
+    async codeCad(opts = {}) { const design = store.doc.id; edit(); const id = await app.codeCad.build(opts); checkDesign(design); await ready(); checkDesign(design); return id; }, // jumpstart-3d: Code CAD
     knurl(opts = {}) { edit(); return app.advanced.addKnurl(opts); }, // jumpstart-3d: knurl
     spring(opts = {}) { edit(); return app.advanced.addSpring(opts); }, // jumpstart-3d: spring
     remove(ids) {
@@ -579,6 +582,7 @@ export function initBridge(app) {
   }
   // the setting: on = true/false, or null to read the remembered one. quiet: apply without saving or telling.
   app.setAgent = function (on, quiet) {
+    if (embedActive()) { app.toast("Open the full app to connect an AI agent."); return; }
     if (on == null) { try { on = localStorage.getItem(AGENT_KEY) === "on"; } catch (e) { on = false; } }
     if (on) api.connect(); else if (link.on) api.disconnect();
     if (quiet) return;
@@ -586,11 +590,14 @@ export function initBridge(app) {
     app.toast(on ? "Connect to AI agent: on. Looking for a program on this computer; if the browser asks about local network access, allow it." : "Connect to AI agent: off.");
   };
   const row = document.querySelector("#menu-theme button[data-agent]");
-  if (row) row.addEventListener("click", () => app.setAgent(!link.on));
+  if (row) row.addEventListener("click", () => { if (!embedActive()) app.setAgent(!link.on); });
   if (location.protocol === "file:") document.getElementById("agent-lna")?.remove(); // the single file is never asked about the local network
 
   Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls
   window.JS3D = api;
-  app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
+  if (embedActive()) {
+    if (app.projects) startEmbed(app, api);
+  }
+  else app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
 }

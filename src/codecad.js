@@ -109,6 +109,8 @@ export function initCodeCad(app) {
     try { out = await running.done; } finally { if (job === running) job = null; }
     const cancelled = () => Object.assign(new Error("Cancelled. Nothing was changed."), { kind: "cancelled" });
     if (mine.cancelled) throw cancelled();
+    // jumpstart-3d: do not use a result prepared for a different design.
+    if (store.doc.id !== doc.id) throw new Error("the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want.");
 
     // What came back is not trusted (the code ran in that worker and can post anything): the design's own worker builds the file as a
     // step body first, and it must be one solid with a volume.
@@ -116,6 +118,8 @@ export function initCodeCad(app) {
     app.kernel.addAsset(asset, "step", out.bytes);
     const node = { t: "step", asset, keepPos: true, mods: [] };
     const seen = await Promise.race([app.kernel.probe({ id: asset, key: "codecad:" + asset, node }), new Promise((r) => { mine.stop = () => r(null); })]);
+    // jumpstart-3d: discard the temporary asset if the design changed while the probe waited.
+    if (store.doc.id !== doc.id) { app.kernel.dropAsset(asset); throw new Error("the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want."); }
     if (mine.cancelled || !seen) { app.kernel.dropAsset(asset); throw cancelled(); } // Cancel or closing the dialog also stops the read-back
     if (!seen.ok || seen.mesh.solidCount !== 1 || seen.mesh.hasNonSolidFaces || !(seen.mesh.volume > 1e-6)) {
       app.kernel.dropAsset(asset);
