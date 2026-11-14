@@ -299,7 +299,7 @@ export function liveGizmo(app, host) {
       d.move = (ev) => { d.deg = turn(ev); fb.angle(d.deg, ev); preview(ids, base, turnAbout(p0, axis, d.deg)); };
       d.finish = () => { fb.hide(); if (d.deg) store.commitPreview(`Rotate ${d.deg}°`); else store.setPreview(null); };
     } else {
-      const free = part.userData.axis === "free", dir = free ? null : part.userData.dir.clone(), g = app.gridStep();
+      const free = part.userData.axis === "free", dir = free ? null : part.userData.dir.clone(), g = app.moveStep(); // jumpstart-3d: move step. free = 0.01 mm
       const plane = free ? new THREE.Plane().setFromNormalAndCoplanarPoint(vp.camera.getWorldDirection(new THREE.Vector3()), p0) : null;
       const q0 = free ? vp.rayPlane(e, plane) : null, s0 = free ? 0 : axisAlong(vp, e, p0, dir) || 0;
       const boxes = new Map(ids.map((id) => [id, app.scene.boxWithMatrix(id, M4(base.get(id)))]));

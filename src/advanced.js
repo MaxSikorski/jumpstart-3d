@@ -448,7 +448,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ placing text on a face
   // Snap a point on a flat face (all vectors in one space): to the face's center lines when close,
   // otherwise to the grid measured from the face center. Returns the point and its offsets.
-  const gridMM = () => { const v = +(document.getElementById("snap") || {}).value; return v > 0 ? v : 1; };
+  const gridMM = () => { const v = +app.snapSize(); return v > 0 ? v : 1; }; // jumpstart-3d: move step. the last chosen size, even while the list shows Off · free
   function snapOnFace(p, c, x, up, tolMM, on) {
     let u = p.clone().sub(c).dot(x), v = p.clone().sub(c).dot(up);
     if (on) {
@@ -8175,6 +8175,7 @@ export function initAdvanced(app) {
   // ------------------------------------------------------------------ timeline
   const TL_ICON = { rib: "rib", keyhole: "keyhole", sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", keeppiece: "splitBody", pattern: "pattern", fillopen: "fillOpen" }; // jumpstart-3d: pattern, fill openings
   let lastTl = null, lastTlT = 0;
+  const tlDbl = { key: null, open: null, at: -1e9 }; // jumpstart-3d: Firefox timeline double-click (see the tl-item onclick)
   // ---- stepping through the timeline (rollback): see the design as it was after any step
   const TL_SVG = {};
   const tlSteps = () => timeline(store.doc);
@@ -8250,17 +8251,24 @@ export function initAdvanced(app) {
       const err = it.body && scene.errors.has(it.body);
       const cls = "tl-item" + (err ? " err" : "") + (rolled && idx > at ? " tl-future" : "") + (rolled && idx === at ? " tl-now" : "");
       const b = el("button", { class: cls, "data-mod": it.mod || "", "data-step": idx, title: `${it.label}${err ? " — " + scene.errors.get(it.body) : ""}\n${rolled ? "Click to show the design at this step. " : ""}Double-click (or tap twice) to edit`, "aria-label": it.label, html: ICON[TL_ICON[it.kind]] || ICON.prim });
-      b.onclick = () => {
+      // jumpstart-3d: Firefox double-click. Each click redraws the timeline, so the second click of a double-click lands on a new button
+      // and Firefox then sends no dblclick. Every browser still counts that click as the second (detail 2): it opens the item, and the
+      // dblclick Chromium and WebKit still send right after it is skipped. tk tells the items apart across redraws.
+      const tk = `${idx}|${it.kind}|${it.mod || it.tex || it.body || it.sketch || it.plane || it.joint}`;
+      const opened = () => { tlDbl.key = null; tlDbl.open = tk; tlDbl.at = performance.now(); };
+      b.onclick = (e) => {
         if (app.command && app.command.timelinePick && it.mod) { app.command.timelinePick(it); return; }
+        if (e.detail === 2 && tlDbl.key === tk) { tlDbl.open = lastTl = null; b.ondblclick(); opened(); return; } // jumpstart-3d: Firefox double-click
+        tlDbl.key = tk; // jumpstart-3d: Firefox double-click
         // while stepping through: a click moves the marker to that step
         if (rolled) { if (roll.timer) rollStop(); rollToIndex(idx); return; }
         const key = it.mod || it.body || it.sketch;
-        if (lastTl === key && performance.now() - lastTlT < 2500 && vp.touchMode) { lastTl = null; editItem(it); return; }
+        if (lastTl === key && performance.now() - lastTlT < 2500 && vp.touchMode) { lastTl = null; editItem(it); opened(); return; } // jumpstart-3d: opened(): Firefox double-click
         lastTl = key; lastTlT = performance.now();
         if (it.body) { selSketch = null; app.select([it.body]); }
         else if (it.sketch) { selSketch = it.sketch; app.select([]); renderBrowser(); }
       };
-      b.ondblclick = () => { if (roll.timer) rollStop(); if (store.rollTo != null) { store.setRoll(null); } editItem(it); };
+      b.ondblclick = () => { if (tlDbl.open === tk && performance.now() - tlDbl.at < 500) return; if (roll.timer) rollStop(); if (store.rollTo != null) { store.setRoll(null); } editItem(it); }; // jumpstart-3d: skip the dblclick of a pair the click above already opened
       tl.append(b);
     });
     // keep the current step in sight

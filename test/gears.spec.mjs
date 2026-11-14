@@ -202,7 +202,7 @@ test("a bevel gear is two hidden sketches and a straight loft with the frustum v
   const bored = await bodyOf(await run(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, mate: 30, width: 10, clear: 0, bore: 6, at: [100, 0, 0] })));
   expect(bored.error).toBeNull();
   near(g.volume - bored.volume, Math.PI * 9 * 10, 0.001, "bore");
-  expect(await failure(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, width: 11 }))).toBe("width must be a positive number of mm, at most 10 for this bevel gear (a third of the way to the cone's tip)");
+  expect(await failure(() => JS3D.gear({ kind: "bevel", module: 2, teeth: 30, width: 11 }))).toBe("width must be a positive number of mm, at most 10 for this bevel gear (a third of the way to the cone's tip), got 11. Example: JS3D.gear({kind: \"spur\", module: 2, teeth: 20}).");
 });
 
 // quarantined: in Firefox the engine's watchdog reports "This shape stalled the geometry engine" on threaded or bevel shapes (app or runner-speed finding, see the PR notes)
@@ -282,7 +282,7 @@ test("limits: 130 teeth warns, 150 teeth turned bevel is refused with Create off
     [{ module: 2, teeth: 20, at: [1, 2] }, "at must be [x, y, z] in mm"],
   ];
   for (const [spec, text] of bad) {
-    expect(await failure((s) => JS3D.gear(s), spec), JSON.stringify(spec)).toBe(text);
+    expect(await failure((s) => JS3D.gear(s), spec), JSON.stringify(spec)).toContain(text);
     expect(await counts(), JSON.stringify(spec)).toEqual(before);
   }
 });
@@ -301,9 +301,7 @@ test("Beginner: the Gear button opens the dialog and a rack from it is one body 
   expect(list[0].bbox.min[2]).toBeGreaterThanOrEqual(0);
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("the golden design exports to STEP as three true solids", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/gears.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();
@@ -402,9 +400,7 @@ test("a helical gear with hardly any twist is two sections; a bore takes its exa
   near(list.find((x) => x.id === b).volume, (area - Math.PI * 25) * 8, 0.003, "bore");
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("a helical gear exports to STEP as one solid and reads back with the same volume", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   await fresh();
   const id = await run(() => JS3D.gear({ kind: "helical", module: 2, teeth: 20, angle: 25, width: 10 }));
   const g = await bodyOf(id);
