@@ -47,7 +47,7 @@ const CSS = `
 /* Simple on a phone: keep them clear of the panel buttons at the foot of the view, and of the collapsed shape sheet under them */
 @media (pointer: coarse) and (max-width: 640px) {
  html[data-face="simple"] #app[data-mode="beginner"] .navbtns { max-height: calc(100% - var(--nav-top) - 56px); }
- html[data-face="simple"]:not([data-simple-hide~="panel"]) .work:has(> #simple-panel.has-selection:not(.expanded)) .navbtns { max-height: calc(100% - var(--nav-top) - 112px); }
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) #app[data-mode="beginner"] .work:has(> #simple-panel.has-selection:not(.expanded)) .navbtns { max-height: calc(100% - var(--nav-top) - 112px); }
 }
 `;
 

@@ -79,7 +79,7 @@ export function initPhoneSheet(app, panel) {
   return { sync(selected) {
     const next = selected.map((body) => body.id);
     const changed = next.length !== ids.length || next.some((id, i) => id !== ids[i]);
-    const off = document.documentElement.dataset.face !== "simple" || !phone.matches; // a face switch or a wide window closes it
+    const off = document.documentElement.dataset.face !== "simple" || app.mode !== "beginner" || !phone.matches; // a face or mode switch, or a wide window, closes it
     if (changed || (off && panel.classList.contains("expanded"))) setExpanded(false);
     ids = next; label();
   } };

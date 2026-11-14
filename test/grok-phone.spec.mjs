@@ -308,3 +308,15 @@ test("More moves above a phone keyboard while Find a tool is typed in", async ({
   await page.evaluate(() => { delete window.visualViewport.height; window.visualViewport.dispatchEvent(new Event("resize")); });
   await expect.poll(async () => page.evaluate(() => document.getElementById("simple-more").style.bottom)).toBe("");
 });
+
+test("an open sheet closes when the mode changes, and Advanced keeps its own panel buttons", async ({ page }) => {
+  await page.locator('#shapes .tile[data-kind="box"]').tap();
+  await page.waitForFunction(() => window.__app.selected().length === 1);
+  await waitIdle(page);
+  await page.locator("#simple-sheet-handle").tap();
+  await expect(page.locator("#simple-sheet-handle")).toHaveAttribute("aria-expanded", "true");
+  await page.evaluate(() => window.__app.setMode("advanced", true));
+  await expect(page.locator("#simple-collapse-top")).toBeVisible();
+  await expect(page.locator("#simple-collapse-bottom")).toBeVisible();
+  await expect(page.locator("#simple-panel")).not.toHaveClass(/\bexpanded\b/);
+});
