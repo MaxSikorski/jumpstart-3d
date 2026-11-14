@@ -5,6 +5,8 @@ const port = process.env.JS3D_PORT || '8765';
 const app = `http://localhost:${port}`;
 const host = `http://127.0.0.1:${port}`;
 async function openHost(page, hostOrigin = host, src = `${app}/?embed=${encodeURIComponent(host)}`) {
+  // a page Playwright makes up has no address, so Chromium counts it as a public website and blocks its frame of localhost (Local Network Access); a real host is a public website framing a public app
+  await page.context().grantPermissions(['local-network-access']);
   await page.route(`${hostOrigin}/__embed-host.html`, (route) => route.fulfill({contentType:'text/html', body:`<iframe src="${src}"></iframe><script>window.messages=[];addEventListener('message',e=>messages.push(e.data));</script>`}));
   await page.goto(`${hostOrigin}/__embed-host.html`);
 }

@@ -9,6 +9,7 @@ import { openProjectStore } from "./projstore.js"; // jumpstart-3d: designs stor
 import { initFolder } from "./folder.js"; // jumpstart-3d: copies in a folder
 import { glbBytes } from "./gltf.js"; // jumpstart-3d: glTF export
 import { initRemote } from "./remote.js"; // jumpstart-3d: remote
+import { embedActive } from "./embedmode.js"; // jumpstart-3d: a framed app is a temporary workspace
 import { triangleCodes, paintAttrs, PAINT_NS } from "./paint3mf.js"; // jumpstart-3d: painted 3MF
 import { texturedMesh, textureSig } from "./scene.js";
 import { packMesh, unpackMesh } from "./meshpack.js";
@@ -46,6 +47,7 @@ export function initProjects(app) {
   async function capabilities() {
     const c = window.claude;
     if (!c || !c.use) return;
+    if (embedActive()) return; // jumpstart-3d: inside a frame, no account designs either (Max, 2026-11-14)
     const [d, u, dl] = await Promise.all([c.use("db").catch(() => null), c.use("user").catch(() => null), c.use("downloads").catch(() => null)]);
     downloads = dl;
     if (d && u) {
