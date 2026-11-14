@@ -1,7 +1,11 @@
 // A temporary design controlled by an explicitly allowed parent website.
 import { store, newDoc } from "./store.js";
+import { setUnit } from "./units.js";
+import { embedActive } from "./embedmode.js";
+export { embedActive } from "./embedmode.js";
 
-const NAMES = Object.freeze("supports describe ready kinds list get doc save params mode selection add fastener holePattern gear namePlate knurl spring remove delete duplicate move moveTo rotate resize scale setHole setColor rename setHidden group ungroup setParam removeParam bind undo redo select fit setMode screenshot screenshotDataURL export newDesign sketch extrude revolve fillet chamfer shell hole pattern faces edges inspect measure printCheck collisions section boxMaker gearSet hardware textures texture drawing checkpoint checkpoints diff rollback".split(" "));
+export const EMBED_CALLS = Object.freeze("supports describe ready kinds list get doc save params mode selection add fastener holePattern gear namePlate knurl spring remove delete duplicate move moveTo rotate resize scale setHole setColor rename setHidden group ungroup setParam removeParam bind undo redo select fit setMode screenshot screenshotDataURL export newDesign sketch extrude revolve fillet chamfer shell hole pattern faces edges inspect measure printCheck collisions section boxMaker gearSet hardware textures texture drawing checkpoint checkpoints diff rollback".split(" "));
+export const REFUSED = Object.freeze("run codeCad load invoke connect disconnect connection".split(" "));
 const READ_CALLS = new Set("kinds list get doc save params mode selection ready supports describe textures checkpoints faces edges inspect measure printCheck collisions section screenshot screenshotDataURL export drawing diff".split(" "));
 const MAX_ARGS = 1024 * 1024, MAX_RESULT = 32 * 1024 * 1024;
 
@@ -42,7 +46,7 @@ function validate(args) {
 }
 
 export function createChannel({ api, allow, parent, post, now = Date.now, onState = () => {}, onCall = () => () => {}, setTimer = setTimeout, clearTimer = clearTimeout, isChisel = () => false }) {
-  const calls = Object.fromEntries(NAMES.filter((n) => typeof api[n] === "function").map((n) => [n, api[n].bind(api)]));
+  const calls = Object.fromEntries(EMBED_CALLS.filter((n) => typeof api[n] === "function").map((n) => [n, api[n].bind(api)]));
   const ready = { type: "js3d-ready", protocol: 1, apiVersion: api.apiVersion ?? api.version, calls: Object.keys(calls) };
   let open = true, started = false, lastId = 0, lastHello = -Infinity, running = false;
   let times = [], queue = [], activeOrigin = null, endActive = null, activeTimer = null;
@@ -105,7 +109,7 @@ export function createChannel({ api, allow, parent, post, now = Date.now, onStat
     const t = now(); times = times.filter((v) => t - v < 1000);
     if (times.length >= 30) { fail(id, "too many calls per second", event.origin); return; }
     times.push(t);
-    if (!Object.hasOwn(calls, call)) { fail(id, NAMES.includes(call) ? "unknown call" : "this call is not available to embedding websites", event.origin); return; }
+    if (!Object.hasOwn(calls, call)) { fail(id, EMBED_CALLS.includes(call) ? "unknown call" : "this call is not available to embedding websites", event.origin); return; }
     let args = m.args === undefined ? [] : m.args;
     try {
       if (!Array.isArray(args)) throw Error("args must be an array");
@@ -119,10 +123,6 @@ export function createChannel({ api, allow, parent, post, now = Date.now, onStat
     } catch (e) { fail(id, String(e.message || e), event.origin); }
   }
   return { receive, close, start() { if (!open || started) return; started = true; for (const origin of allow) send(ready, origin); }, get open() { return open; } };
-}
-
-export function embedActive() {
-  return typeof window !== "undefined" && window.parent !== window && /^(https?:)$/.test(location.protocol) && new URLSearchParams(location.search).has("embed");
 }
 
 export function storageOverlay() {
@@ -155,7 +155,13 @@ export function installIsolation(target) {
   } catch { return false; }
 }
 
-const isolated = !embedActive() || installIsolation(window);
+if (embedActive() && !installIsolation(window)) {
+  const message = document.createElement("p"), link = document.createElement("a");
+  message.textContent = "This page was opened inside another website, but this browser would not give it a private workspace. Open JumpStart 3D in its own tab.";
+  link.href = location.origin + location.pathname; link.textContent = "Open JumpStart 3D";
+  document.body.replaceChildren(message, link);
+  throw new Error("Could not create the temporary workspace.");
+}
 
 // While a website's call runs, edits may only touch a temporary design (newDesign switches between them).
 export function guardUpdates(store, isScratch) {
@@ -169,6 +175,7 @@ export function guardUpdates(store, isScratch) {
 }
 
 export function startEmbed(app, api) {
+  setUnit("mm");
   const allow = parseAllow(new URLSearchParams(location.search).get("embed"), location.origin);
   const ids = new Set();
   const onCall = guardUpdates(store, (id) => ids.has(id));
@@ -180,7 +187,21 @@ export function startEmbed(app, api) {
   stop.textContent = "Stop"; link.textContent = "Open the full app";
   link.href = location.origin + location.pathname; link.target = "_blank"; link.rel = "noopener noreferrer";
   bar.append(status, stop, link); document.body.append(bar);
-  if (!isolated) { status.textContent = "This browser blocked the temporary workspace; open the full app instead."; stop.disabled = true; return; }
+  const position = () => {
+    let top = window.innerHeight;
+    for (const el of document.querySelectorAll(".status, .timeline")) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width && rect.height && getComputedStyle(el).visibility !== "hidden" && getComputedStyle(el).display !== "none") top = Math.min(top, rect.top);
+    }
+    const bottom = Math.max(8, window.innerHeight - top + 4) + "px";
+    if (bar.style.bottom !== bottom) bar.style.bottom = bottom;
+  };
+  let queued = false; // the app changes the page often: measure at most once a frame
+  const later = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; position(); }); } };
+  position();
+  window.addEventListener("resize", later);
+  new MutationObserver(later).observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "hidden", "style"] });
+  store.on(() => requestAnimationFrame(position));
   const channel = createChannel({ isChisel: () => app.mode === "chisel", api: { ...api, newDesign: (mode = "beginner") => { const doc = newDoc("Untitled", mode); ids.add(doc.id); app.projects.embedNew(doc); return api.ready(); } }, allow, onCall, parent: window.parent, post: (msg, origin) => window.parent.postMessage(msg, origin), onState: (state, origin) => { status.textContent = state === "controlled" ? `Temporary design, not saved. Controlled by ${origin}` : `Temporary design, not saved. Channel closed (${state}).`; if (state !== "controlled") stop.disabled = true; } });
   stop.addEventListener("click", () => channel.close("stopped"));
   window.addEventListener("pagehide", () => channel.close("pagehide"));

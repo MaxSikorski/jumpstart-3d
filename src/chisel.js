@@ -239,7 +239,7 @@ export function initChisel(app) {
     const note = helperLoadingNote(() => app.switchMode("beginner")), mine = host;
     helperPage("chisel").then((html) => { if (host === mine) { note.done(); ifr.srcdoc = html; } }, (e) => {
       if (host !== mine) return;
-      host.remove(); host = ifr = readyP = null;
+      note.done(); host.remove(); host = ifr = readyP = null;
       readyRes(false); readyRes = null;
       if (app.mode === "chisel") { app.toast(helperFailText("Chisel", e), "err"); app.switchMode("beginner"); }
     });

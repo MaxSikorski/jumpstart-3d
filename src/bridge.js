@@ -34,6 +34,7 @@
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
+const checkDesign = (id) => { if (store.doc.id !== id) throw new Error("the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want."); };
 import { API_VERSION, API_COMPAT, CALLS, describe } from "./apicontract.js";
 import * as THREE from "three";
 import { show } from "./teach.js";
@@ -47,7 +48,8 @@ import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } f
 import { historyCalls } from "./bridgehistory.js";
 import { uid } from "./util.js";
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
-import { embedActive, startEmbed } from "./embed.js";
+import { embedActive } from "./embedmode.js";
+import { startEmbed } from "./embed.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
@@ -241,10 +243,10 @@ export function initBridge(app) {
       return id;
     },
     fastener(opts = {}) { edit(); return app.advanced.addFastener(opts); }, // jumpstart-3d: fasteners
-    async holePattern(opts) { edit(); need((opts ?? {}).body); await ready(); return app.advanced.addHolePattern(opts); }, // jumpstart-3d: hole pattern
+    async holePattern(opts) { const design = store.doc.id; edit(); need((opts ?? {}).body); await ready(); checkDesign(design); return app.advanced.addHolePattern(opts); }, // jumpstart-3d: hole pattern
     gear(opts = {}) { edit(); return app.advanced.addGear(opts); }, // jumpstart-3d: gears
     namePlate(opts = {}) { edit(); return app.advanced.addNamePlate(opts); }, // jumpstart-3d: name plates
-    async codeCad(opts = {}) { edit(); const id = await app.codeCad.build(opts); await ready(); return id; }, // jumpstart-3d: Code CAD
+    async codeCad(opts = {}) { const design = store.doc.id; edit(); const id = await app.codeCad.build(opts); checkDesign(design); await ready(); checkDesign(design); return id; }, // jumpstart-3d: Code CAD
     knurl(opts = {}) { edit(); return app.advanced.addKnurl(opts); }, // jumpstart-3d: knurl
     spring(opts = {}) { edit(); return app.advanced.addSpring(opts); }, // jumpstart-3d: spring
     remove(ids) {

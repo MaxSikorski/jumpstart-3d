@@ -142,18 +142,40 @@ test('embedded mesh cache and folder mirror stay idle', async () => {
     await folder.now(); await folder.soon(); assert.equal(await folder.row(),null); assert.equal(reads,0); assert.equal(writes,0);
   } finally { globalThis.window = priorWindow; globalThis.location = priorLocation; globalThis.indexedDB = priorIDB; }
 });
-test('blocked isolation shows the warning and never starts a channel', async () => {
+test('blocked isolation stops module startup and shows the warning', async () => {
   const oldWindow = globalThis.window, oldLocation = globalThis.location, oldDocument = globalThis.document;
-  const nodes = [], listeners = [];
-  const fakeWindow = {parent:{postMessage(){ throw Error('channel started'); }}, addEventListener:(...args) => listeners.push(args)};
-  Object.defineProperty(fakeWindow, 'indexedDB', {value:{}, configurable:false});
+  const nodes = []; let rendered;
+  const fakeWindow = new Proxy({parent:{postMessage(){ throw Error('channel started'); }}}, {defineProperty(){ throw Error('blocked'); }});
   globalThis.window = fakeWindow;
-  globalThis.location = {protocol:'https:', search:'?embed=https%3A%2F%2Fschool.example', origin:'https://app.example', pathname:'/'};
-  globalThis.document = {createElement() { const n = {style:{}, setAttribute(){}, append(){}, addEventListener(){}}; nodes.push(n); return n; }, body:{append(){}}};
+  globalThis.location = {protocol:'https:', search:'?embed=https%3A%2F%2Fschool.example', origin:'https://app.example', pathname:'/cad'};
+  globalThis.document = {createElement() { const n = {}; nodes.push(n); return n; }, body:{replaceChildren(...args){ rendered = args; }}};
   try {
-    const {startEmbed} = await import('../src/embed.js?blocked-isolation');
-    startEmbed({projects:{embedReady:Promise.resolve()}}, {});
-    assert.equal(nodes[1].textContent, 'This browser blocked the temporary workspace; open the full app instead.');
-    assert.equal(nodes[2].disabled, true); assert.deepEqual(listeners, []);
+    await assert.rejects(import('../src/embed.js?blocked-isolation'), /Could not create the temporary workspace/);
+    assert.equal(rendered[0].textContent, 'This page was opened inside another website, but this browser would not give it a private workspace. Open JumpStart 3D in its own tab.');
+    assert.equal(rendered[1].href, 'https://app.example/cad');
   } finally { globalThis.window = oldWindow; globalThis.location = oldLocation; globalThis.document = oldDocument; }
+});
+
+test('all API calls are classified for embedding', async () => {
+  const { EMBED_CALLS, REFUSED } = await import('../src/embed.js');
+  const { CALLS } = await import('../src/apicontract.js');
+  const names = CALLS.map(c => c.name);
+  for (const name of EMBED_CALLS) assert.ok(names.includes(name), name);
+  for (const name of names) assert.equal(Number(EMBED_CALLS.includes(name)) + Number(REFUSED.includes(name)), 1, name);
+  for (const name of REFUSED) assert.ok(!EMBED_CALLS.includes(name), name);
+});
+
+test('async edits reject a design change before writing', async () => {
+  const error = 'the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want.';
+  for (const call of ['sketch', 'holePattern', 'texture']) {
+    let writes = 0;
+    const kernel = {ready:false, inflight:0, queue:new Set()};
+    const {api, store} = bridge({kernel, advanced:{addHolePattern(){ writes++; }}});
+    const id = api.add('box');
+    const pending = call === 'sketch' ? api.sketch({on:{body:id, face:'top'}, shapes:[{type:'circle', center:[0,0], radius:2}]}) : call === 'texture' ? api.texture(id, {texture:api.textures()[0].key}) : api.holePattern({body:id});
+    const other = {...store.doc, id:'other', name:'untouched', bodies:[], sketches:[]};
+    store.load(other); kernel.ready = true;
+    await assert.rejects(pending, {message:error});
+    assert.equal(store.doc.name, 'untouched'); assert.equal(store.doc.bodies.length, 0); assert.equal(store.doc.sketches.length, 0); assert.equal(writes, 0);
+  }
 });

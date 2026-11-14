@@ -14,6 +14,7 @@ import { boxOptions, gearSetOptions, textureOptions, drawingOptions, at3, genera
 import { show } from "./teach.js";
 
 const T3 = (v) => arr(new THREE.Matrix4().makeTranslation(...v));
+const checkDesign = (id) => { if (store.doc.id !== id) throw new Error("the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want."); };
 export function initBridgeGen(app, { edit, need, idList, ready, api }) {
   function boxMaker(opts = {}) {
     edit();
@@ -85,6 +86,7 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
   }
   const textures = () => LIB.map((t) => ({ key: t.key, name: t.name, category: t.cat, size: t.size || 4 }));
   async function texture(id, opts = {}) {
+    const design = store.doc.id;
     edit();
     const b = need(id), { layer, faces } = textureOptions(opts ?? {});
     if (b.hole) throw new Error(`${show(b.name)} is marked as a hole; textures go on solid bodies. JS3D.list() marks the holes with hole: true; pick a solid body.`);
@@ -98,6 +100,7 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
       return current;
     };
     await ready();
+    checkDesign(design);
     validate();
     if (app.scene.errors.has(id)) throw new Error(`${show(b.name)} has a build error: ${app.scene.errors.get(id)}. Fix the shape, then call JS3D.texture again.`);
     const r = baseOf(app, id);
@@ -106,7 +109,9 @@ export function initBridgeGen(app, { edit, need, idList, ready, api }) {
     if (faces !== "all") {
       const list = [], seen = new Set();
       for (const selector of Array.isArray(faces) ? faces : [faces]) {
-        for (const face of await api.faces(id, selector)) if (!seen.has(face.index)) { seen.add(face.index); list.push(face); }
+        const found = await api.faces(id, selector);
+        checkDesign(design);
+        for (const face of found) if (!seen.has(face.index)) { seen.add(face.index); list.push(face); }
       }
       validate();
       if (!list.length) throw new Error(`faces ${show(faces)} matches no face of ${show(b.name)}. Call JS3D.faces(${show(id)}) to see the faces it has.`);

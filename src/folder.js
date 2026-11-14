@@ -6,7 +6,7 @@
 // { handle, name, files: { <design id>: { file, updated } } }. A copy run compares the list of designs
 // with `files` and writes whatever is newer, so anything missed (permission lapsed, a failed write, the
 // tab closed) is caught up on the next run. Nothing here throws into the app or writes to the console.
-import { embedActive } from "./embed.js";
+import { embedActive } from "./embedmode.js";
 import { el } from "./util.js";
 
 const KEY = "folder", MODE = { mode: "readwrite" }, QUIET = 5000;

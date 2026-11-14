@@ -3,7 +3,7 @@
 // minutes). Only bodies that took a while to build are kept; the newest 250 stay.
 // Every call fails quietly: without storage the app simply builds as before.
 // jumpstart-3d: embedded geometry never reaches persistent storage.
-import { embedActive } from "./embed.js";
+import { embedActive } from "./embedmode.js";
 const DB = "jumpstart3d-meshes", STORE = "m", MAX = 250;
 let dbp = null;
 function open(version) {

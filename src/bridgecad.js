@@ -16,6 +16,7 @@ import { parseSelector, selectItems } from "./cadselect.js";
 import { LIMITS } from "./sharelink.js";
 import { buildShapes, defaultProfiles, pickProfiles } from "./cadsketch.js";
 
+const checkDesign = (id) => { if (store.doc.id !== id) throw new Error("the design changed while this call was waiting, so nothing was changed. Run the call again on the design you want."); };
 const r4 = (x) => Math.round(x * 1e4) / 1e4 || 0;
 const r9 = (x) => +x.toFixed(9) || 0;
 const round3 = (x) => Math.round(x * 1e3) / 1e3;
@@ -57,10 +58,12 @@ export function initBridgeCad(app, { edit, need, ready }) {
 
   // the built shape of a body, after waiting for the engine. solid: the call puts a feature on it
   async function target(id, solid = true) {
+    const design = store.doc.id;
     edit();
     const body = need(id);
     if (solid && body.hole) throw new Error(`${show(body.name)} is marked as a hole; features go on solid bodies. Choose a solid body from JS3D.list().`);
     await ready();
+    checkDesign(design);
     const failure = app.scene.errors.get(id);
     if (failure) throw new Error(`${show(body.name)} has a build error: ${failure}. Check the body in JS3D.list() and fix its geometry.`);
     const base = baseOf(app, id);
@@ -148,11 +151,13 @@ export function initBridgeCad(app, { edit, need, ready }) {
   const nextSketchName = (doc) => { const names = new Set(doc.sketches.map((s) => s.name)); let n = 1; while (names.has("Sketch " + n)) n++; return "Sketch " + n; };
 
   async function sketch(opts) {
+    const design = store.doc.id;
     edit();
     const { on = "XY", name, shapes, hidden = false } = opts ?? {};
     if (name !== undefined && (typeof name !== "string" || !name.trim())) throw new Error(`name must be a non-empty string, got ${show(name)}. Example: name: "Part".`);
     if (typeof hidden !== "boolean") throw new Error(`hidden must be true or false, got ${show(hidden)}. Use hidden: true to hide the new sketch, or leave it out.`);
     const where = await sketchPlane(on);
+    checkDesign(design);
     const built = buildShapes(shapes, (v, what) => quantity(v, what, ["a number", () => true]));
     let id;
     store.update((doc) => {
@@ -210,6 +215,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
   }
 
   async function extrude(o) {
+    const design = store.doc.id;
     edit();
     o = o ?? {};
     if (o.mode !== undefined && !["one", "sym", "two"].includes(o.mode)) throw new Error(`mode must be "one", "sym" or "two", got ${show(o.mode)}. Use mode: "sym" for both ways equally, "two" with dist2, or leave it out for one way.`);
@@ -224,6 +230,7 @@ export function initBridgeCad(app, { edit, need, ready }) {
     let dist, dist2 = o.dist2 === undefined ? undefined : quantity(o.dist2, "dist2", LEN);
     if (o.through) {
       const base = await target(s.body.id), n = new THREE.Vector3(...s.sk.plane.n).normalize(), p0 = new THREE.Vector3(...s.sk.plane.o), w = new THREE.Vector3(), V = base.data.vertices;
+      checkDesign(design);
       let up = -Infinity, down = -Infinity;
       for (let i = 0; i + 2 < V.length; i += 3) { const d = w.set(V[i], V[i + 1], V[i + 2]).applyMatrix4(base.m).sub(p0).dot(n); up = Math.max(up, d); down = Math.max(down, -d); }
       if (up > 1e-6 && down > 1e-6) { mode = "two"; dist = { v: round3(up + 1) }; dist2 = { v: round3(down + 1) }; }
@@ -265,14 +272,18 @@ export function initBridgeCad(app, { edit, need, ready }) {
   // ------------------------------------------------------------- fillet, chamfer, shell, holes
   const mod = (id, doc, m) => { const b = findBody(doc, id); b.node.mods = b.node.mods || []; b.node.mods.push(m); };
   async function edgeFeature(t, id, edges, raw, key) {
+    const design = store.doc.id;
     const base = await target(id), topo = topology(base), picked = pick(topo, "edge", edges), size = quantity(raw, key, [`a number of mm more than 0, or an expression`, (v) => v > 0]);
+    checkDesign(design);
     const feature = uid("f"), m = { id: feature, seq: 0, t, edges: picked.map((i) => structuredClone(base.data.edgeInfo[i])), [key]: size.v };
     withExpr(m, key, size);
     store.update((doc) => { m.seq = nextSeq(doc); mod(id, doc, m); }, t === "fillet" ? "Fillet" : "Chamfer");
     return { body: id, feature, edges: picked.length };
   }
   async function shell(id, o) {
+    const design = store.doc.id;
     const base = await target(id), topo = topology(base);
+    checkDesign(design);
     o = o ?? {};
     const th = quantity(o.th, "th", ["a number of mm more than 0, or an expression", (v) => v > 0]), dir = o.dir ?? "in";
     if (!["in", "out", "both"].includes(dir)) throw new Error(`dir must be "in", "out" or "both", got ${show(dir)}. Choose one of those values.`);
@@ -283,9 +294,11 @@ export function initBridgeCad(app, { edit, need, ready }) {
     return { body: id, feature, open: open.length };
   }
   async function hole(id, o) {
+    const design = store.doc.id;
     o = o ?? {};
     if (o.shape !== undefined) throw new Error(`hole makes round holes; use holePattern for square, hex or slot holes, got shape ${show(o.shape)}. Remove shape for a round hole.`);
     const base = await target(id), topo = topology(base);
+    checkDesign(design);
     if (o.face === undefined) throw new Error(`face must be a face selector such as "top" or a face index, got ${show(o.face)}. Call JS3D.faces(id) to inspect faces.`);
     const face = one(topo, o.face, "a hole"), { kind, size, dia, depth, tip, cbDia, cbDepth, csDia, csAngle, pitch, clear } = o;
     const r = app.advanced.addHoles({ body: id, face, points: o.points, hole: { kind, size, dia, depth, tip, cbDia, cbDepth, csDia, csAngle, pitch, clear } });

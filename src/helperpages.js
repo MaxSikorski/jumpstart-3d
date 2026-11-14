@@ -9,6 +9,7 @@ import THREE from "./helper-three.html";
 import FONTS_MORE from "./fonts_more.js"; // text, not a module: tools/helper-files.mjs lists it, so both builds import it as text
 import FLOORPLAN from "./floorplan.html";
 import NEON from "./neon.html";
+import { embedActive } from "./embedmode.js";
 import { withFonts } from "./helperfonts.js";
 
 // "" in the site build (build.mjs empties these imports), the whole text in the single file
@@ -63,6 +64,7 @@ async function fetchAsset(file) {
 
 // The text of helpers/<file>: inline in the single file, else fetched from the same origin once and kept in memory (a failed load is forgotten, so a retry starts fresh).
 export function helperAsset(file) {
+  if (embedActive() && /\.html$/i.test(file)) return Promise.reject(unavailable(({"floorplan.html": "Floor Planner", "chisel.html": "Chisel", "flexigen.html": "FlexiGen", "meshstep.html": "Mesh to STEP", "neon.html": "Neon"})[file] || file));
   if (INLINE[file]) return Promise.resolve(INLINE[file]);
   if (!loaded.has(file)) {
     const p = fetchAsset(file);
@@ -73,7 +75,9 @@ export function helperAsset(file) {
 }
 
 // A helper page ready for an iframe's srcdoc or a Blob: the page, the shared three.js and the fonts. name: "chisel", "flexigen", "meshstep" or "neon".
+const unavailable = (name) => Object.assign(new Error(`${name} is not available in the temporary workspace. Open the full app to use it.`), { temporaryWorkspace: true });
 export async function helperPage(name) {
+  if (embedActive()) throw unavailable(({ chisel: "Chisel", flexigen: "FlexiGen", meshstep: "Mesh to STEP", neon: "Neon" })[name] || name);
   const [page, three] = await Promise.all([helperAsset(name + ".html"), helperAsset("helper-three.html")]);
   return withFonts(page, three);
 }
@@ -102,4 +106,4 @@ export function helperLoadingNote(onClose) {
   return note;
 }
 
-export const helperFailText = (tool, e) => e && e.skew ? "A newer version was installed: reload the page to use " + tool + "." : tool + " needs a connection the first time. The downloaded single file has everything built in.";
+export const helperFailText = (tool, e) => e && e.temporaryWorkspace ? e.message : e && e.skew ? "A newer version was installed: reload the page to use " + tool + "." : tool + " needs a connection the first time. The downloaded single file has everything built in.";

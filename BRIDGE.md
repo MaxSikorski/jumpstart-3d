@@ -841,6 +841,7 @@ as the tool error text. Wording may improve in any release, so match the call’
 outcome rather than its exact message. A body that fails to build reports its
 error in `JS3D.list()`, with a hint when one is known.
 
+- An async call refuses to write if the design changed while it waited.
 - While Chisel mode is open, every call that edits or loads throws `leave Chisel mode first` (`setMode` is how you leave it).
 - Everything is synchronous except `ready`, `export`, `screenshot`,
   `screenshotDataURL`, `load`, `newDesign`, `run`, `invoke`, `codeCad`, `holePattern`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `texture` and `drawing`, which return promises.
@@ -1217,7 +1218,7 @@ Check each tool result for an error before continuing. The headless end-to-end t
 
 ## Embedding in another website
 
-A website can open JumpStart 3D in an iframe and control a temporary design. The frame starts with no saved designs and default settings. Nothing it does is stored. The person's own designs, settings, and saved passwords and keys are never visible inside the frame. Modern browsers also separate an embedded site's storage from the host's storage. Loading a different design closes the channel.
+A website can open JumpStart 3D in an iframe and control a temporary design. The frame starts with no saved designs and default settings. Its page storage is memory-only. The browser may still cache the app's own files. The person's own designs, settings, and saved passwords and keys are never visible inside the frame. Modern browsers also separate an embedded site's storage from the host's storage. Loading a different design closes the channel.
 
 ```html
 <iframe src="https://cad.example/?embed=https%3A%2F%2Fschool.example"
@@ -1242,7 +1243,7 @@ The ready message lists the available calls from: `supports`, `describe`, `ready
 
 Stop, opening a different design, and leaving the page close the channel until reload. Each call has 10 minutes; if it takes longer, the app sends an error and closes the channel because the call may still be running. The app sends `{type:"js3d-closed", protocol:1, reason}` with `stopped`, `design-changed`, `pagehide`, or `timeout`. Calls that finish after closure get no reply.
 
-The frame uses empty, memory-only browser storage. It neither reads nor writes the persistent mesh cache and does not start or write folder copies. While the person is using Chisel, the channel accepts only reading calls.
+The frame uses empty, memory-only page storage. Chisel, FlexiGen, Mesh to STEP, Neon and Floor Planner are unavailable in the frame; open the full app to use them. It neither reads nor writes the persistent mesh cache and does not start or write folder copies. While the person is using Chisel, the channel accepts only reading calls.
 
 ### What is not protected
 

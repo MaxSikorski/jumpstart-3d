@@ -9,7 +9,7 @@
 // untrusted data: it is size-checked before it is decoded, decoded with bounds, and checked against explicit tables below. Anything
 // outside the tables ("Use a project file for this design") is refused, never trimmed or passed on to the CAD kernel. No eval, no
 // script, no address inside the data is ever fetched. The link is neither encrypted nor proof of who sent it.
-import { embedActive } from "./embed.js";
+import { embedActive } from "./embedmode.js";
 import { el } from "./util.js";
 import { ICON } from "./icons.js";
 import { inflateRaw } from "./inflate.js";
