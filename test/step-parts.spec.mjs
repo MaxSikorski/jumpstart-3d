@@ -7,7 +7,7 @@
 //   step-2-touching-cubes.step  two 10 mm cubes that touch face to face
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, newDoc, body, prim, IDENTITY, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, IDENTITY } from "./helpers.mjs";
 
 let page, errors, info0;
 test.describe.configure({ mode: "serial" });
@@ -318,10 +318,7 @@ test("the split never costs an unrelated undo step when the history is full", as
   expect(await page.evaluate(() => ({ n: window.__store.undoStack.length, first: window.__store.undoStack[0].label, last: window.__store.undoStack[window.__store.undoStack.length - 1].label }))).toEqual({ n: 120, first: "Edit 0", last: "Import full" });
 });
 
-// quarantined: a double-click on a timeline item opens nothing in Firefox: each click selects the body and draws the timeline again, and Firefox
-// sends no dblclick when the element under the pointer was replaced. A real Firefox bug in the timeline (advanced.js), written up for after the upstream port
-test("the timeline names an import part and explains it; the body keeps its volume", async ({}, info) => {
-  quarantine(info, ["site-firefox", "single-firefox"], "Firefox: a double-click on a timeline item opens nothing (each click redraws the timeline)");
+test("the timeline names an import part and explains it; the body keeps its volume", async () => {
   await fresh("advanced");
   await importFile("three parts.step", fixture("step-assembly-3-parts.step"));
   await whenBuilt(3);
@@ -330,10 +327,40 @@ test("the timeline names an import part and explains it; the body keeps its volu
   await expect(item).toHaveCount(1);
   await item.dblclick();
   await expect(toast("This body is part 1 of 3 of an imported STEP file")).toBeVisible();
+  expect(await toast("This body is part 1 of 3").count(), "the double-click opened the part once").toBe(1);
   const after = await list();
   expect(after).toHaveLength(3);
   expect(after[0].volume).toBe(before[0].volume);
   // (the refusal to delete the piece selector, "Delete the body instead", is a guard in deleteFeature: no timeline control reaches it for this feature today)
+});
+
+// Every click on a timeline item redraws the timeline, so the second click of a double-click lands on a new button. Firefox then sends
+// only the two clicks (the second one with detail 2), Chromium and WebKit send a dblclick after them as well, and on a touch screen a
+// second tap within 2.5 s opens the item. Each way must open the item exactly once: an import part's opening is a message, so it is counted.
+test("a double-click on a timeline item opens it once, whichever events the browser sends", async () => {
+  await fresh("advanced");
+  await importFile("three parts.step", fixture("step-assembly-3-parts.step"));
+  await whenBuilt(3);
+  const opened = await page.evaluate(() => {
+    const item = (n) => document.querySelector(`.tl-item[aria-label="Part ${n} of the file"]`); // found again each time: the timeline is redrawn
+    const click = (n, detail) => item(n).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail }));
+    const dbl = (n) => item(n).dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, detail: 2 }));
+    const parts = () => [...document.querySelectorAll("#toasts .toast")].map((t) => (/This body is part (\d) of 3/.exec(t.textContent) || [])[1]).filter(Boolean).join("");
+    const run = (events) => { document.querySelectorAll("#toasts .toast").forEach((t) => t.remove()); events(); return parts(); };
+    const vp = window.__app.vp, touch = vp.touchMode;
+    const out = {
+      firefox: run(() => { click(1, 1); click(1, 2); }),
+      chromium: run(() => { click(2, 1); click(2, 2); dbl(2); }),
+      twoPairs: run(() => { click(1, 1); click(1, 2); dbl(1); click(3, 1); click(3, 2); dbl(3); }),
+      twoItems: run(() => { click(1, 1); click(2, 2); }), // a second click on another item is no double-click (Firefox sends nothing more)
+      keyboard: run(() => { click(2, 0); click(2, 0); }), // Enter or Space: detail 0, it only selects
+    };
+    vp.touchMode = true;
+    out.touch = run(() => { click(3, 1); click(3, 1); click(3, 2); dbl(3); }); // tap, tap (opens), and a third tap the browser pairs with the second
+    vp.touchMode = touch;
+    return out;
+  });
+  expect(opened).toEqual({ firefox: "1", chromium: "2", twoPairs: "13", twoItems: "", keyboard: "", touch: "3" });
 });
 
 test("a design of more than 160 bodies keeps the saved meshes of the body being edited while its preview is open", async () => {
