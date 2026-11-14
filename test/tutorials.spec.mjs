@@ -446,3 +446,27 @@ test("every toolbar and menu button is used by a tutorial, or is a known gap in 
   expect(fixed, "buttons now used by a tutorial: remove them from test/tutorial-gaps.json").toEqual([]);
   expect(gone, "ids in test/tutorial-gaps.json that no longer exist in the app: remove them").toEqual([]);
 });
+
+
+test('Simple Advanced Show me follows rail and More proxies', async ({}, info) => {
+  test.skip(info.project.name === 'mobile', 'The desktop rail shows Revolve.');
+  await normalize(); await page.evaluate(() => window.__app.setFace('simple', true));
+  const go = async (id, selector) => {
+    await page.evaluate(({ id, selector }) => {
+      const app = window.__app; app.tutorials.start(id);
+      const target = app.tutorials.list.find(t => t.id === id).steps.findIndex(s => s.show.sel === selector);
+      if (target < 0) throw new Error('Lesson step not found: ' + selector);
+      for (let i = 0; i < target; i++) document.getElementById('tut-next').click();
+      document.querySelector('#tut-panel .tut-mini-line')?.click();
+      document.getElementById('tut-show').click();
+    }, { id, selector });
+  };
+  await go('a-pawn', '#ad-revolve');
+  await expect(page.locator('#sar-ad-revolve')).toHaveClass(/tut-spot/);
+  await go('a-spring', '#ad-combine');
+  await expect(page.locator('#sr-more')).toHaveClass(/tut-spot/);
+  await page.click('#sr-more');
+  await page.evaluate(() => { document.querySelector('#tut-panel .tut-mini-line')?.click(); document.getElementById('tut-show').click(); });
+  await expect(page.locator('#simple-more [data-for="ad-combine"]')).toHaveClass(/tut-spot/);
+  await page.evaluate(() => window.__app.tutorials.close());
+});

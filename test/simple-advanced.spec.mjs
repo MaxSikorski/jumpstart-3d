@@ -1,7 +1,7 @@
 // Simple Advanced Browser and Timeline: src/simpleadvanced.js and src/simplemode.js.
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { boot, loadDoc, reload, watchErrors } from './helpers.mjs';
+import { boot, loadDoc, newDoc, reload, watchErrors } from './helpers.mjs';
 
 const design = JSON.parse(readFileSync(new URL('./projects/advanced-sketch-extrude.json', import.meta.url), 'utf8'));
 let errors;
@@ -70,10 +70,10 @@ test('ribbon Browser reveals a hidden panel with Browser open', async ({ page },
   await expect(page.locator('#browser')).toBeVisible();
 });
 
-test('ribbon Browser opens the collapsed phone sheet', async ({ page }, info) => {
+test('sheet control opens the collapsed phone sheet', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'This interaction needs the phone sheet.');
   await expect(page.locator('#sap-sheet')).toHaveAttribute('aria-expanded', 'false');
-  await page.click('#ribbon .panel-toggle');
+  await page.click('#sap-sheet');
   await expect(page.locator('#sap-sheet')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('#sap-browser .sap-head')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('#browser')).toBeVisible();
@@ -193,6 +193,7 @@ test('More switches workspaces and finds Simulate tools', async ({ page }, info)
   await page.keyboard.press('Escape'); await expect.poll(() => page.evaluate(() => window.__app.advanced.workspace)).toBe('design');
   await page.click('#sr-more'); await page.fill('#simple-find','joint'); await page.locator('#simple-find').press('Enter');
   await expect.poll(() => page.evaluate(() => window.__app.advanced.workspace)).toBe('simulate');
+  await expect.poll(() => page.evaluate(() => window.__app.command?.title)).toMatch(/Joint/i);
 });
 
 test('Beginner sketch uses the sketch rail and restores Beginner tools', async ({ page }, info) => {
@@ -200,13 +201,16 @@ test('Beginner sketch uses the sketch rail and restores Beginner tools', async (
   await canvasPoint(page,10,-10); await expect(page.locator('#sar-sk-line')).toBeVisible(); await expect(page.locator('#sar-sk-finish')).toBeVisible();
   await page.click('#sar-sk-rect'); await canvasPoint(page,-20,-10); await canvasPoint(page,20,10);
   await expect.poll(() => page.evaluate(() => window.__app.sketcher.sketch.ents.length)).toBe(4);
-  await page.click('#sar-sk-finish'); await expect(page.locator('#sr-sketch')).toBeVisible();
+  await page.locator('#sar-sk-finish').focus(); await page.keyboard.press('Enter'); await expect(page.locator('#sr-sketch')).toBeVisible();
+  await expect(page.locator('#sr-sketch')).toBeFocused();
 });
 
 test('phone shows six rail tools and More, with Pattern and Measure in More', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'Phone tab bar only.');
   await expect(page.locator('#sar button:visible')).toHaveCount(6); await expect(page.locator('#sr-more')).toBeVisible();
   await page.click('#sr-more'); await expect(page.locator('#simple-more [data-for="ad-pattern"]:visible')).toBeVisible(); await expect(page.locator('#simple-more [data-for="ad-measure"]:visible')).toBeVisible();
+});
+
 test('selected body actions stay visible at the bottom of the Browser', async ({ page }, info) => {
   desktop(info);
   await page.setViewportSize({ width: 1366, height: 768 });
@@ -257,4 +261,50 @@ test('section headers show Browser and Timeline counts', async ({ page }) => {
   const counts = await page.evaluate(() => ({ browser: window.__store.doc.bodies.length + window.__store.doc.sketches.length, timeline: document.querySelectorAll('#timeline .tl-item').length }));
   await expect(page.locator('#sap-browser .sap-head')).toContainText(`Browser (${counts.browser})`);
   await expect(page.locator('#sap-timeline .sap-head')).toContainText(`Timeline (${counts.timeline})`);
+});
+
+
+test('sketch constraints and quick extrude work from the rail', async ({ page }, info) => {
+  desktop(info); await loadDoc(page, newDoc('Rail sketch', 'advanced')); await enterSketch(page);
+  await page.click('#sar-sk-line'); await canvasPoint(page,-20,-15); await canvasPoint(page,20,-10);
+  await page.keyboard.press('Escape');
+  const before = await page.evaluate(() => window.__store.doc.sketches.at(-1).cons.length);
+  await page.click('#sar-sk-constraints'); await page.locator('#ribbon-menu #sk-c-horizontal').click();
+  await canvasPoint(page,0,-12.5);
+  await expect.poll(() => page.evaluate(() => window.__store.doc.sketches.at(-1).cons.length)).toBeGreaterThan(before);
+  await page.click('#sar-sk-rect'); await canvasPoint(page,-15,0); await canvasPoint(page,15,20);
+  const bodies = await page.evaluate(() => window.__store.doc.bodies.length);
+  await page.click('#sar-sk-extrude'); await page.click('#cmd-ok');
+  await expect.poll(() => page.evaluate(() => window.__store.doc.bodies.length)).toBe(bodies + 1);
+});
+
+test('rectangle choices and canonical tutorial aliases are reachable', async ({ page }, info) => {
+  desktop(info);
+  expect(await page.evaluate(() => window.__app.simple.proxyFor('ad-hole-m')?.id)).toBe('sar-ad-hole');
+  await page.click('#sr-more');
+  expect(await page.evaluate(() => window.__app.simple.proxyFor('ad-fastbtn')?.dataset.for)).toBe('ad-fasteners');
+  await page.click('#sr-more'); await enterSketch(page);
+  await moreTool(page,'sk-rectc'); await expect.poll(() => page.evaluate(() => window.__app.sketcher.tool)).toBe('rectc');
+  await moreTool(page,'sk-rect'); await expect.poll(() => page.evaluate(() => window.__app.sketcher.tool)).toBe('rect');
+});
+
+test('rail arrows move focus without nudging the selected body', async ({ page }, info) => {
+  desktop(info); await page.locator('#browser .node:not(.fold) .nm').first().click();
+  const before = await page.evaluate(() => JSON.stringify(window.__store.doc.bodies));
+  await page.locator('#sar-ad-sketch').focus(); await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#sar-ad-extrude')).toBeFocused();
+  expect(await page.evaluate(() => JSON.stringify(window.__store.doc.bodies))).toBe(before);
+});
+
+test('Advanced More has icons, one Workshop, and searchable import and plane names', async ({ page }, info) => {
+  desktop(info); await page.click('#sr-more');
+  const workshop = page.locator('#simple-more section:visible').filter({ has: page.getByRole('heading', { name: 'Workshop', exact: true }) });
+  await expect(workshop).toHaveCount(1);
+  await expect(workshop.locator('[data-for="simple-run-litho"]')).toBeVisible();
+  await expect(workshop.locator('[data-for="exp-laser-svg"]')).toBeVisible();
+  expect(await page.locator('#simple-more .sadv-group button:visible').evaluateAll(bs => bs.every(b => !!b.querySelector('svg')))).toBe(true);
+  for (const [query, id] of [['image','ad-ins-img'], ['STL','ad-ins-model'], ['offset plane','ad-plane-off']]) {
+    await page.fill('#simple-find', query);
+    await expect(page.locator(`#simple-more [data-for="${id}"]`)).toBeVisible();
+  }
 });

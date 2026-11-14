@@ -42,26 +42,158 @@ export function initSimpleAdvanced(app, plate, collapse) {
     simulate: [['ws-design','Design','back',1],['sim-joint','Joint','joint',1],['sim-drive','Drive','drive',1],['sim-motion','Motion','motion',1],['sim-stress','Stress','stress',1],['sim-render','Render','render',1],['sim-reset','Reset pose','clearSim'],['sim-apply','Apply pose','move']]
   };
   const groups = [
-    ['Workspaces', [['ws-design','Design'],['ws-print','3D Print Sim'],['ws-simulate','Simulate']]],
-    ['Create', [['ad-sketch3d','3D Sketch'], ...'sweep pipe coil loft rib keyhole mirror holepattern thread thread-offset'.split(' ').map(x => ['ad-'+x, null, 'ad-features'])]],
-    ['Primitives', 'box cyl sphere torus prism cone pyramid tube capsule text3d'.split(' ').map(x => ['ad-'+x, null, 'ad-prims'])],
-    ['Modify', [['ad-moverot'],['ad-fillopen'], ...['fillet','chamfer'].map(x => ['ad-'+x,null,'ad-edge-more']), ...'offset clearance combine splitbody splitface'.split(' ').map(x => ['ad-'+x,null,'ad-advmod']), ...'move scale align'.split(' ').map(x => ['ad-'+x,null,'ad-transform'])]],
-    ['Decorate', 'texture facepat emboss appearance'.split(' ').map(x => ['ad-'+x,null,'ad-decorate'])],
-    ['Planes', 'plane-off plane-ang plane-mid'.split(' ').map(x => ['ad-'+x,null,'ad-construct'])],
-    ['Insert', 'svg dxf img model realpart'.split(' ').map(x => ['ad-ins-'+x,null,'ad-insert'])],
-    ['Parts', 'fasteners hinge gear gears nameplate knurl spring'.split(' ').map(x => ['ad-'+x,x === 'gears' ? 'Gear library' : null,'ad-features'])],
-    ['Inspect', [['ad-section']]], ['Workshop', 'jigs chipcarve lathe'.split(' ').map(x => ['ad-'+x,null,'ad-workshop'])],
-    ['Simulate', 'joint drive motion stress print render reset apply'.split(' ').map(x => ['sim-'+x,null,'ws-simulate'])],
-    ['Studios', [...'meshstep bricks cam voxel bins cosforge layerscape helmet flexigen neon sglass'.split(' ').map(x => ['sim-'+x,null,'ws-simulate']), ...'fasteners hinge gears chipcarve lathe'.split(' ').map(x => ['sim-'+x])]],
-    ['3D Print Sim', 'prepare preview rx ry model strength'.split(' ').map(x => ['ps-r-'+x])],
-    ['Sketch', [...'arcc polygon spline point text cons mirror select cpin'.split(' ').map(x => ['sk-'+x]), ...['rect3','rectc'].map(x => ['sk-'+x,null,'sk-rect-more']), ...['svg','dxf','img'].map(x => ['sk-ins-'+x,null,'sk-insert'])]],
-    ['Constraints', 'coincident horizontal vertical parallel perpendicular tangent concentric equal midpoint fixed'.split(' ').map(x => ['sk-c-'+x,null,'sk-constraints'])]
+    ["Workspaces", [
+      ["ws-design","Design",null,"more","Design"],
+      ["ws-print","3D Print Sim",null,"more","3D Print Sim"],
+      ["ws-simulate","Simulate",null,"more","Simulate"]
+    ]],
+    ["Create", [
+      ["ad-sketch3d","3D Sketch",null,"spline","Draw lines in 3D on a body, a virtual sphere or cube, or in the air, with a split camera view. Works with touch, pen, mouse and trackpad."],
+      ["ad-sweep","Sweep","ad-features","sweep","Sweep a profile along a path"],
+      ["ad-pipe","Pipe","ad-features","pipe","A round, square or triangular tube along a path"],
+      ["ad-coil","Coil","ad-features","coil","Springs and spirals"],
+      ["ad-loft","Loft","ad-features","loft","Blend between profiles on different planes (square to circle, to a point, along a centerline…)"],
+      ["ad-rib","Rib","ad-features","rib","Reinforce: straight ribs or corner gussets standing on a flat face"],
+      ["ad-keyhole","Keyhole slot","ad-features","keyhole","Cut keyhole slots in a face so the part hangs on screws"],
+      ["ad-mirror","Mirror","ad-features","mirror","Mirror bodies across a plane or flat face"],
+      ["ad-holepattern","Hole pattern","ad-features","hole","Rows, staggered rows or a circle of round, square, hex or slot holes on a flat face"],
+      ["ad-thread","Thread","ad-features","thread","Modeled metric (ISO) and inch (UNC / UNF) threads on round faces"],
+      ["ad-thread-offset","Thread print offset…","ad-features","thread","Loosen printed threads"]
+    ]],
+    ["Primitives", [
+      ["ad-box","Box","ad-prims","box","Box"],
+      ["ad-cyl","Cylinder","ad-prims","cylinder","Cylinder"],
+      ["ad-sphere","Sphere","ad-prims","sphere","Sphere"],
+      ["ad-torus","Torus","ad-prims","torus","Torus"],
+      ["ad-prism","Prism","ad-prims","prism","Prism with 3 to 24 sides"],
+      ["ad-cone","Cone","ad-prims","cone","Cone"],
+      ["ad-pyramid","Pyramid","ad-prims","pyramid","Pyramid"],
+      ["ad-tube","Tube","ad-prims","tube","Tube"],
+      ["ad-capsule","Capsule","ad-prims","capsule","Capsule"],
+      ["ad-text3d","3D text","ad-prims","text","Text that sits on any face or the workplane: drag it into place"]
+    ]],
+    ["Modify", [
+      ["ad-moverot","Move / Rotate",null,"move","Move or turn the selected shape in 3D: drag an arrow to move, a ring to turn, or type exact values"],
+      ["ad-fillopen","Fill openings",null,"fillOpen","Make the openings in a flat face solid (vents, slots, holes, logos)"],
+      ["ad-fillet","Fillet","ad-edge-more","fillet","Round edges (F)"],
+      ["ad-chamfer","Chamfer","ad-edge-more","chamfer","Bevel edges (C)"],
+      ["ad-offset","Offset face","ad-advmod","offset","Offset face / press pull (Q): click faces, or drag a box around a whole body"],
+      ["ad-clearance","Clearance","ad-advmod","joint","Give moving parts room: finds bodies that touch or overlap and cuts a small gap (0.2-0.5 mm) so they don't print fused"],
+      ["ad-combine","Combine","ad-advmod","combine","Join, cut or intersect bodies (B)"],
+      ["ad-splitbody","Split body","ad-advmod","splitBody","Cut a body into pieces with a plane, a face or another body"],
+      ["ad-splitface","Split face","ad-advmod","splitFace","Divide faces with a plane or sketch curve (the shape stays the same)"],
+      ["ad-move","Move/Copy","ad-transform","move","Move / Copy (M)"],
+      ["ad-scale","Scale","ad-transform","scale","Scale a body by typed factors (or drag its white handles)"],
+      ["ad-align","Align","ad-transform","align","Align (A)"]
+    ]],
+    ["Decorate", [
+      ["ad-texture","Texture","ad-decorate","texture","Surface texture (T)"],
+      ["ad-facepat","Pattern on face","ad-decorate","facePattern","Raise or cut a hexagon, diamond plate, screen mesh or other pattern on a flat face"],
+      ["ad-emboss","Emboss text","ad-decorate","emboss","Raise or cut text on a flat or curved face"],
+      ["ad-appearance","Appearance","ad-decorate","appearance","Colors and materials for bodies or faces (display only)"]
+    ]],
+    ["Planes", [
+      ["ad-plane-off","Offset plane","ad-construct","planeOffset","Offset plane parallel to a plane or face"],
+      ["ad-plane-ang","Angled plane","ad-construct","planeAngle","Plane through an axis or edge at an angle"],
+      ["ad-plane-mid","Mid plane","ad-construct","planeMid","Plane halfway between two faces"]
+    ]],
+    ["Insert", [
+      ["ad-ins-svg","SVG drawing","ad-insert","svgfile","Insert an SVG drawing as a sketch"],
+      ["ad-ins-dxf","DXF drawing","ad-insert","dxffile","Insert a DXF drawing as a sketch"],
+      ["ad-ins-img","Import image","ad-insert","image","Insert a picture (PNG, JPG) to trace or emboss"],
+      ["ad-ins-model","Import model","ad-insert","import","Insert a 3D model file (STL, 3MF, OBJ, STEP)"],
+      ["ad-ins-realpart","Real part from a supplier…","ad-insert","import","Find a supplier part and import its downloaded model"]
+    ]],
+    ["Parts", [
+      ["ad-fasteners","Fasteners","ad-features","thread","Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch), with optional modeled threads"],
+      ["ad-hinge","Quick Hinge","ad-features","hinge","Ready-made hinges: print-in-place, pin (filament, screw or printed pin) or living hinges, laid on any face"],
+      ["ad-gear","Gear","ad-features","gear","Spur gears, bevel gears and racks by module and tooth count"],
+      ["ad-gears","Gears","ad-features","gear","Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study"],
+      ["ad-nameplate","Name plate","ad-features","tag","A tag or name plate sized to its text, with raised or cut-in letters"],
+      ["ad-knurl","Knurled knob","ad-features","knurl","A knob or grip with straight V grooves all round and an optional round, hex or D bore"],
+      ["ad-spring","Spring","ad-features","spring","A compression spring of round wire, with open ends or ends cut flat"]
+    ]],
+    ["Inspect", [
+      ["ad-section","Section Analysis",null,"section","Cut the view with a plane to look inside your design (the design doesn't change)"]
+    ]],
+    ["Workshop", [
+      ["ad-jigs","Jig Maker","ad-workshop","jig","Woodworking jigs: miter box, dowel and pocket-hole jigs, square, angle templates, drill guide, and jigs for dovetails, box joints, mortise and tenon and lap joints, all honeycombed inside to save plastic"],
+      ["ad-chipcarve","Chip Carving","ad-workshop","chipcarve","Chip carve a board, plate, log or a shape from your design with knives; pen pressure sets the depth. The result is a mesh body."],
+      ["ad-lathe","Lathe","ad-workshop","lathe","Turn a body or a wood blank on a virtual lathe with chisels (Space is the pedal), then hollow it out. The result is a mesh body."],
+      ["simple-run-litho","Colour lithophane",null,"image","Turn a photo into a full-colour lithophane"],
+      ["exp-laser-svg","Laser cut file",null,"layerscape","Export flat parts as a laser cut file"]
+    ]],
+    ["Simulate", [
+      ["sim-joint","Joint","ws-simulate","joint","Connect two parts so one can turn or slide"],
+      ["sim-drive","Drive","ws-simulate","drive","Move a joint by hand"],
+      ["sim-motion","Motion study","ws-simulate","motion","Animate joints and check for collisions"],
+      ["sim-stress","Stress test","ws-simulate","stress","Load or pressure test: stress, deflection and safety factor"],
+      ["sim-print","Print strength","ws-simulate","printer3d","3D-print strength by filament and print orientation"],
+      ["sim-render","Render","ws-simulate","render","Make a photo-style picture of your design (PNG)"],
+      ["sim-reset","Reset pose","ws-simulate","clearSim","Put moved parts back"],
+      ["sim-apply","Apply pose","ws-simulate","move","Keep the moved positions in the design"]
+    ]],
+    ["Studios", [
+      ["sim-meshstep","Mesh to STEP","ws-simulate","import","Mesh to STEP Helper: turn an STL or 3MF mesh into an editable STEP solid, then open it here"],
+      ["sim-bricks","Jump Brick Builder","ws-simulate","bricks","Rebuild the selected objects (or all) out of stud-and-tube building bricks you can print, press together and take apart"],
+      ["sim-cam","CAM Studio","ws-simulate","cam","Plan and simulate cutting the design on a CNC router, mill or laser, then save or send the G-code (your design is not changed)"],
+      ["sim-voxel","Voxel Studio","ws-simulate","voxel","Turn the selected objects (or all) into cubes you can paint face by face, then export STL or 3MF or add them to the design (your design is not changed until you add it)"],
+      ["sim-bins","Bin & Box Maker","ws-simulate","box","Make part bins and organiser boxes: open bins, drawers, tilt-out bins and door cabinets, stacked and interlocking, with compartments, scoops, label lips and lids"],
+      ["sim-cosforge","CosForge","ws-simulate","cosforge","Design cosplay costumes: a mannequin from your measurements, themed parts to shape, sculpt and fit, then cut into printable pieces with joints (opens in its own window)"],
+      ["sim-layerscape","Layerscape","ws-simulate","layerscape","Layerscape: turn a photo into a layered, slot-together diorama: pick the pieces, check the build in 3D, then export laser-cut sheets, printable art or a 3D print kit, or add the finished diorama to your design (opens in its own window)"],
+      ["sim-helmet","Helmet Maker","ws-simulate","helmet","Build a contemporary sci-fi helmet sized to the wearer's head: templates, a traced or drawn visor, details, finishes and a rendered picture, then cut it for printing (opens in its own window)"],
+      ["sim-flexigen","FlexiGen","ws-simulate","flexigen","Turn one object into a print-in-place articulated flexi model (your design is not changed)"],
+      ["sim-neon","Neon Sign Builder","ws-simulate","neon","Neon Sign Builder: glowing text, shapes and traced images as 3D-printed shells for LED strips, with a snap-in backing, cut into pieces for your printer, and a light show"],
+      ["sim-sglass","Stained Glass","ws-simulate","stainedglass","Turn an object or a lamp shade into stained glass (a Tiffany-style lamp or a glass statue): glass and frame thickness, painting, STL / 3MF / OBJ export"],
+      ["sim-fasteners","Fasteners",null,"thread","Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch)"],
+      ["sim-hinge","Quick Hinge",null,"hinge","Ready-made hinges: print-in-place, pin or living hinges, without FlexiGen"],
+      ["sim-gears","Gears",null,"gear","Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study"],
+      ["sim-chipcarve","Chip Carving",null,"chipcarve","Chip carve a board, plate, log or a shape from your design with chip knives, a stab knife, pencil and sanding block. Pen pressure sets the depth. Add it to the design or export STL, 3MF or OBJ."],
+      ["sim-lathe","Lathe",null,"lathe","Turn a body or a wood blank on a virtual lathe"]
+    ]],
+    ["3D Print Sim", [
+      ["ps-r-prepare","Prepare",null,"more","Prepare"],
+      ["ps-r-preview","Preview",null,"more","Preview"],
+      ["ps-r-rx","Rotate X",null,"revolve","Turn 90° about X"],
+      ["ps-r-ry","Rotate Y",null,"revolve","Turn 90° about Y"],
+      ["ps-r-model","Model",null,"body","Part, overhangs and supports"],
+      ["ps-r-strength","Strength",null,"stress","Strong and weak spots of the print"]
+    ]],
+    ["Sketch", [
+      ["sk-arcc","Center arc",null,"more","Center arc"],
+      ["sk-polygon","Polygon",null,"more","Polygon"],
+      ["sk-spline","Spline",null,"more","Spline"],
+      ["sk-point","Point",null,"more","Point"],
+      ["sk-text","Text",null,"more","Text"],
+      ["sk-cons","Construction",null,"construction","Toggle construction (X)"],
+      ["sk-mirror","Mirror",null,"more","Mirror"],
+      ["sk-select","Select",null,"more","Select"],
+      ["sk-cpin","Pin",null,"more","Pin"],
+      ["sk-rect","2-point rectangle","sk-rect-more","rect","Draw a rectangle using two points"],
+      ["sk-rect3","3-point rectangle","sk-rect-more","rect3","Draw a rectangle using three points"],
+      ["sk-rectc","Center rectangle","sk-rect-more","rectc","Draw a rectangle from its center"],
+      ["sk-ins-svg","SVG drawing","sk-insert","svgfile","Insert an SVG drawing into this sketch"],
+      ["sk-ins-dxf","DXF drawing","sk-insert","dxffile","Insert a DXF drawing into this sketch"],
+      ["sk-ins-img","Image to trace","sk-insert","image","Place a picture on this sketch plane to trace over"]
+    ]],
+    ["Constraints", [
+      ["sk-c-coincident","Coincident","sk-constraints","more","Coincident"],
+      ["sk-c-horizontal","Horizontal","sk-constraints","more","Horizontal"],
+      ["sk-c-vertical","Vertical","sk-constraints","more","Vertical"],
+      ["sk-c-parallel","Parallel","sk-constraints","more","Parallel"],
+      ["sk-c-perpendicular","Perpendicular","sk-constraints","more","Perpendicular"],
+      ["sk-c-tangent","Tangent","sk-constraints","more","Tangent"],
+      ["sk-c-concentric","Concentric","sk-constraints","more","Concentric"],
+      ["sk-c-equal","Equal","sk-constraints","more","Equal"],
+      ["sk-c-midpoint","Midpoint","sk-constraints","more","Midpoint"],
+      ["sk-c-fixed","Fixed","sk-constraints","more","Fixed"]
+    ]]
   ];
-  const friendly = id => ({cyl:'Cylinder',text3d:'3D text',holepattern:'Hole pattern',thread:'Thread', 'thread-offset':'Thread offset',moverot:'Move / rotate',fillopen:'Fill openings',splitbody:'Split body',splitface:'Split face',facepat:'Face pattern',realpart:'Real part',nameplate:'Name plate',chipcarve:'Chip carving',arcc:'Center arc',cons:'Construction',cpin:'Pin',rect3:'3-point rectangle',rectc:'Center rectangle',rx:'Rotate X',ry:'Rotate Y',sglass:'Stained glass'})[id.split('-').slice(1).join('-')] || id.split('-').slice(1).join(' ').replace(/\b\w/g, c => c.toUpperCase());
   const back = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7"/></svg>';
   function button(id, label, icon, via) {
     const b = document.createElement('button'); b.type = 'button'; b.dataset.for = id; if (via) b.dataset.via = via;
-    b.innerHTML = (icon === 'back' ? back : ICON[icon] || '') + '<span></span>'; b.querySelector('span').textContent = label || friendly(id); return b;
+    if (!ICON[icon] && icon !== 'back') b.dataset.iconFallback = 'true';
+    b.innerHTML = (icon === 'back' ? back : ICON[icon] || ICON.select) + '<span></span>'; b.querySelector('span').textContent = label; return b;
   }
   for (const [set, items] of Object.entries(sets)) for (const [id,label,icon,phone,via] of items) {
     const b = button(id,label,icon,via); b.id = 'sar-' + id; b.dataset.set = set; if (phone) b.dataset.phone = 'true'; sar.append(b);
@@ -70,14 +202,38 @@ export function initSimpleAdvanced(app, plate, collapse) {
   sar.querySelectorAll('#sar-ws-design')[1].removeAttribute('id');
   const ai = more.querySelector('.simple-ai');
   function section(name, cls = '') { const s = document.createElement('section'); s.className = 'sadv-group ' + cls; const h = document.createElement('h3'); h.textContent = name; const grid = document.createElement('div'); grid.className = 'simple-grid'; s.append(h,grid); ai.before(s); return s; }
-  for (const [name, items] of groups) { const s = section(name); s.dataset.group = name; for (const [id,label,via] of items) s.lastChild.append(button(id,label,'',via)); }
+  for (const [name, items] of groups) { const s = section(name, ['Sketch','Constraints'].includes(name) ? '' : 'sadv-advanced-only'); s.dataset.group = name; for (const [id,label,via,icon,title] of items) { const b = button(id,label,icon,via); b.title = title; s.lastChild.append(b); } }
   const onrail = section('On the rail','simple-arrange sadv-onrail');
   for (const [set,items] of Object.entries(sets)) for (const [id,label,icon,phone,via] of items) { const b = button(id,label,icon,via); b.dataset.set = set; if (phone) b.dataset.phone = 'true'; onrail.lastChild.append(b); }
   const aliases = section('Aliases','sadv-alias');
-  for (const [id,via] of [['ad-hole-m','ad-features'],['ad-fastbtn'],['ad-ins-fast','ad-insert'],['ad-ins-hinge','ad-insert'],['ad-ins-gear','ad-insert']]) aliases.lastChild.append(button(id,null,'',via));
+  for (const [id,via] of [['ad-hole-m','ad-features'],['ad-fastbtn'],['ad-ins-fast','ad-insert'],['ad-ins-hinge','ad-insert'],['ad-ins-gear','ad-insert']]) aliases.lastChild.append(button(id,id,'more',via));
   const other = section('Other','sadv-other');
-  const titles = {'ws-design':'Design: sketch, extrude, pattern and measure','ws-print':'3D Print Sim: orient, arrange, slice and G-code','ws-simulate':'Simulate: joint, motion, stress and voxel'};
+  const titles = Object.fromEntries(groups.flatMap(([, items]) => items.map(([id,, , , title]) => [id, title]))); Object.assign(titles, {'ws-design':'Design: sketch, extrude, pattern and measure','ws-print':'3D Print Sim: orient, arrange, slice and G-code','ws-simulate':'Simulate: joint, motion, stress and voxel'});
   let previousSet = '', menuFromRail = false, ignoreClick = false;
+  const proxyFor = plate.proxyFor;
+  const canonical = {'ad-hole-m':'ad-hole', 'ad-fastbtn':'ad-fasteners', 'ad-ins-fast':'ad-fasteners', 'ad-ins-hinge':'ad-hinge', 'ad-ins-gear':'ad-gears'};
+  plate.proxyFor = id => proxyFor(canonical[id] || id);
+  rail.addEventListener('keydown', e => {
+    if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key) || !e.target.closest('button')) return;
+    e.preventDefault(); e.stopPropagation();
+    const buttons = [...rail.querySelectorAll('button')].filter(b => !b.disabled && b.getClientRects().length);
+    const step = ['ArrowRight','ArrowDown'].includes(e.key) ? 1 : -1;
+    buttons[(buttons.indexOf(e.target.closest('button')) + step + buttons.length) % buttons.length]?.focus();
+  });
+  more.addEventListener('keydown', e => {
+    if (e.target.id !== 'simple-find' || e.key !== 'Enter' || !active()) return;
+    const q = e.target.value.trim().toLowerCase();
+    const buttons = [...more.querySelectorAll('button[data-for]')].filter(b => !b.disabled && b.getClientRects().length);
+    const label = b => b.textContent.trim().toLowerCase();
+    const best = buttons.find(b => label(b) === q) || buttons.find(b => label(b).startsWith(q)) || buttons.find(b => label(b).includes(q)) || buttons.find(b => b.title.toLowerCase().includes(q));
+    if (best) { e.preventDefault(); e.stopPropagation(); best.click(); }
+  }, true);
+  more.addEventListener('click', e => {
+    const b = e.target.closest('button[data-for="sk-rect"][data-via="sk-rect-more"]');
+    if (!b) return;
+    e.stopPropagation(); $('sr-more').click(); $('sk-rect-more')?.click();
+    document.querySelector('#ribbon-menu #sk-rect')?.click();
+  }, true);
   window.addEventListener('pointerdown', e => { if (root.dataset.face === 'simple' && e.target.closest?.('#sar [data-for="sk-constraints"]') && menuFromRail && $('ribbon-menu')) { ignoreClick = true; e.stopPropagation(); } }, true);
   sar.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || b.dataset.for !== 'sk-constraints') return;
@@ -91,10 +247,11 @@ export function initSimpleAdvanced(app, plate, collapse) {
     const set = app.sketcher?.active ? 'sketch' : app.mode === 'advanced' ? app.advanced.workspace : '';
     const focused = sar.contains(document.activeElement); rail.dataset.set = set;
     for (const b of sar.querySelectorAll('button')) b.hidden = b.dataset.set !== set;
-    if (focused && previousSet !== set) requestAnimationFrame(() => [...sar.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus()); previousSet = set;
+    if (focused && previousSet !== set) requestAnimationFrame(() => [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus()); previousSet = set;
     $('sap-note').hidden = set !== 'sketch'; $('sap-note').textContent = $('sk-note')?.textContent || '';
     for (const b of [...sar.querySelectorAll('button'), ...more.querySelectorAll('.sadv-group button')]) {
       const original = $(b.dataset.for); if (original) {
+        if (b.dataset.iconFallback && original.querySelector('svg')) { b.querySelector('svg')?.remove(); b.prepend(original.querySelector('svg').cloneNode(true)); }
         b.disabled = original.disabled; const pressed = original.getAttribute('aria-pressed') ?? original.getAttribute('aria-selected'); if (pressed !== null) b.setAttribute('aria-pressed', pressed); else b.removeAttribute('aria-pressed');
         if (!titles[b.dataset.for]) b.title = original.title || original.textContent.trim();
         if (['ad-edge','sk-rect'].includes(b.dataset.for)) { const svg = original.querySelector('svg'), old = b.querySelector('svg'); if (svg && old) old.replaceWith(svg.cloneNode(true)); }
@@ -133,7 +290,7 @@ export function initSimpleAdvanced(app, plate, collapse) {
   new MutationObserver(update).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   const style = document.createElement('style'); style.id = 'simpleadvanced-css'; style.textContent = `
 #simple-adv-panel { display: none; }
-html[data-face="simple"] #app[data-mode="advanced"] .work { --sap-rail-w: 0px; --sap-panel-w: 280px; grid-template-columns: var(--sap-rail-w) minmax(0, 1fr) var(--sap-panel-w); }
+html[data-face="simple"] #app[data-mode="advanced"] .work { --sap-rail-w: 80px; --sap-panel-w: 280px; grid-template-columns: var(--sap-rail-w) minmax(0, 1fr) var(--sap-panel-w); }
 html[data-face="simple"] #app[data-mode="advanced"] #simple-adv-panel { display: flex; grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; background: var(--panel); color: var(--ink); border-left: 1px solid var(--line); font-family: var(--f-ui); }
 html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { --sap-panel-w: 0px; }
 html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] #simple-adv-panel, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] #simple-adv-panel { display: none; }
@@ -172,16 +329,12 @@ html[data-face="simple"] #app[data-mode="advanced"] #simple-adv-panel .tl-item::
  html[data-face="simple"] #app[data-mode="advanced"] #sap-sheet { display: flex; flex-direction: column; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 2; height: 44px; background: var(--panel); }
  html[data-face="simple"] #app[data-mode="advanced"] #sap-sheet .sap-grip { display: block; width: 36px; height: 4px; flex: none; border-radius: 2px; background: var(--line); }
  html[data-face="simple"] #app[data-mode="advanced"] #simple-adv-panel.expanded #sap-sheet .sap-sheet-label { display: none; }
- /* PR 2 removes: leave room for Simple's More button while collapsed. */
- html[data-face="simple"] #app[data-mode="advanced"] #simple-adv-panel:not(.expanded) #sap-sheet { padding-left: 64px; }
- /* PR 2 removes: move Simple's More button aside while the sheet is open. */
- html[data-face="simple"] #app[data-mode="advanced"] .work:has(#simple-adv-panel.expanded) #simple-rail { display: none; }
  html[data-face="simple"] #app[data-mode="advanced"] #simple-adv-panel:not(.expanded) > :not(#sap-sheet) { display: none; }
  html[data-face="simple"]:not([data-simple-hide~="panel"]) #app[data-mode="advanced"] #simple-collapse-panel { display: none; }
 }
 html[data-face="simple"] #app[data-mode="advanced"] { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr) auto; }
 html[data-face="simple"] #app[data-mode="advanced"] > .topbar { grid-column: 1; grid-row: 1; }
-html[data-face="simple"] #app[data-mode="advanced"] > .work { grid-column: 1; grid-row: 2; grid-template-columns: 80px minmax(0,1fr) 280px; }
+html[data-face="simple"] #app[data-mode="advanced"] > .work { grid-column: 1; grid-row: 2; }
 html[data-face="simple"] #app[data-mode="advanced"] > .status { grid-column: 1; grid-row: 3; }
 html[data-face="simple"] #app[data-mode="advanced"] #ribbon { display:none; }
 html[data-face="simple"] #app[data-mode="advanced"] #simple-rail { display:flex; grid-column:1; grid-row:1; width:80px; min-height:0; box-sizing:border-box; flex-direction:column; overflow-y:auto; background:var(--panel); border-right:1px solid var(--line); }
@@ -194,14 +347,12 @@ html[data-face="simple"] #app[data-mode="beginner"] .sadv-group:not([data-group=
 html[data-face="simple"] #simple-rail:not([data-set="sketch"]) ~ #simple-more :is([data-group="Sketch"],[data-group="Constraints"]), html[data-face="simple"] #simple-rail:not([data-set="print"]) ~ #simple-more [data-group="3D Print Sim"] { display:none; }
 html[data-face="simple"] #simple-more .sadv-onrail button { display:none; }
 html[data-face="simple"] #simple-rail[data-set="design"] ~ #simple-more .sadv-onrail [data-set="design"], html[data-face="simple"] #simple-rail[data-set="sketch"] ~ #simple-more .sadv-onrail [data-set="sketch"], html[data-face="simple"] #simple-rail[data-set="print"] ~ #simple-more .sadv-onrail [data-set="print"], html[data-face="simple"] #simple-rail[data-set="simulate"] ~ #simple-more .sadv-onrail [data-set="simulate"] { display:flex; }
-html[data-face="simple"] #app[data-mode="advanced"] #simple-more :is([data-for="simple-run-rib"],[data-for="simple-run-keyhole"],[data-for="simple-run-jigs"],[data-for="simple-run-helmet"]) { display:none; }
+html[data-face="simple"] #app[data-mode="advanced"] #simple-more section:not(.sadv-group):has(.simple-grid [data-for="simple-run-rib"]) { display:none; }
+html[data-face="simple"] #app[data-mode="beginner"] #simple-more .sadv-advanced-only { display:none !important; }
 html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] #simple-rail { display:none; }
-html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .work { grid-template-columns:0 minmax(0,1fr) 280px; }
-html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { grid-template-columns:80px minmax(0,1fr) 0; }
-html[data-face="simple"][data-simple-hide~="rail"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="rail"] body.ps-orca #app[data-mode="advanced"] .work { grid-template-columns:0 minmax(0,1fr) 0; }
-@media (min-width:641px) and (max-width:1100px) { html[data-face="simple"] #app[data-mode="advanced"] .work { grid-template-columns:80px minmax(0,1fr) 236px; } html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .work { grid-template-columns:0 minmax(0,1fr) 236px; } html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { grid-template-columns:80px minmax(0,1fr) 0; } }
+html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .work { --sap-rail-w: 0px; }
 @media (max-width:640px) {
- html[data-face="simple"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { grid-template-columns:0 minmax(0,1fr) 0; grid-template-rows:minmax(0,1fr) auto 58px; }
+ html[data-face="simple"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { --sap-rail-w:0px; grid-template-rows:minmax(0,1fr) auto 58px; }
  html[data-face="simple"] #app[data-mode="advanced"] #simple-rail { grid-column:1 / -1; grid-row:3; width:100%; flex-direction:row; overflow:hidden; border-right:0; border-top:1px solid var(--line); }
  html[data-face="simple"] #simple-rail[data-set] #sar button:not([data-phone]) { display:none; }
  html[data-face="simple"] #simple-more:not(.searching) .sadv-onrail button[data-phone] { display:none; }
