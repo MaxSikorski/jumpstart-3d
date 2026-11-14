@@ -1838,8 +1838,8 @@ details.chat-msg.hint > summary { cursor: pointer; color: var(--ink-2); }
     <div class="snapctl">
     <button id="unit-toggle" class="unit-toggle" title="Units for every size you see and type: click to switch between millimetres and inches">mm · millimetres</button>
     <button id="snap-toggle" aria-pressed="true" title="Snapping on or off (Shift+S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v8a6 6 0 0 0 12 0V3"/><path d="M6 7h4M14 7h4"/></svg>Snap</button>
-    <select id="snap" aria-label="Snap grid size">
-      <option value="0.1">0.1 mm</option><option value="0.25">0.25 mm</option><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option><option value="10">10 mm</option>
+    <select id="snap" aria-label="Snap step" title="Snap step: how far a drag or an arrow key moves a shape. Off · free moves freely (to 0.01 mm). Shift+S turns snapping on or off."> <!-- jumpstart-3d: move step -->
+      <option value="0">Off · free</option><option value="0.1">0.1 mm</option><option value="0.25">0.25 mm</option><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option><option value="10">10 mm</option>
     </select>
     <div class="snap-menu-wrap">
       <button id="snap-more" aria-haspopup="true" aria-expanded="false" title="What to snap to: the grid, other objects, or both">Snap to <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="M6 15l6-6 6 6"/></svg></button>
