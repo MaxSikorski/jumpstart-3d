@@ -77,8 +77,7 @@ self.onmessage = async (ev) => {
     } else if (msg.type === "step") {
       await ready;
       await manifoldReady(); // jumpstart-3d: Manifold
-      const blob = exportStep(msg.bodies);
-      const buf = await blob.arrayBuffer();
+      const buf = exportStep(msg.bodies).buffer; // jumpstart-3d: the engine's file bytes (a fresh buffer of exactly the file), not a Blob, which Safari cannot read here in the single file
       self.postMessage({ type: "step", req: msg.req, data: buf }, [buf]);
     } else if (msg.type === "code") { // jumpstart-3d: Code CAD. only the temporary worker that codecadclient.js starts is sent this
       await ready;
