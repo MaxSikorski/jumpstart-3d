@@ -170,7 +170,7 @@ export function initBridge(app) {
     for (;;) {
       const w = waiting();
       if (!w) return;
-      if (Date.now() - t0 > timeoutMs) throw new Error(`JS3D.ready timed out after ${timeoutMs} ms; still building: ${w.length ? w.join(", ") : "(the geometry engine is busy)"}. Wait longer or check JS3D.list() for build errors.`);
+      if (Date.now() - t0 > timeoutMs) throw new Error(`JS3D.ready timed out after ${timeoutMs} ms; still building: ${w.length ? w.slice(0, 10).map(show).join(", ") + (w.length > 10 ? `, and ${w.length - 10} more` : "") : "(the geometry engine is busy)"}. Wait longer or check JS3D.list() for build errors.`);
       await sleep(50);
     }
   }
