@@ -4,6 +4,7 @@
 import { registerHooks } from "node:module";
 
 const tp = new URL("../third_party/", import.meta.url).href;
+// These module hooks apply to the whole test process.
 registerHooks({
   resolve(spec, ctx, next) {
     if (spec === "three") return { url: tp + "three/build/three.module.js", shortCircuit: true };
@@ -23,13 +24,23 @@ globalThis.location ??= { href: "http://localhost/", origin: "http://localhost",
 
 const { initBridge } = await import("../src/bridge.js");
 const { store, newDoc } = await import("../src/store.js");
+const on = store.on;
+let unsubscribers = [];
+store.on = function (fn) {
+  const unsubscribe = on.call(this, fn);
+  unsubscribers.push(unsubscribe);
+  return unsubscribe;
+};
 
 // A fresh window.JS3D on a blank design. `app` fields override the stand-in app (mode, scene, advanced, ...).
 export function bridge(app = {}) {
+  for (const unsubscribe of unsubscribers) unsubscribe();
+  unsubscribers = [];
+  memory.clear();
   const toasts = [];
   const fake = {
     mode: "beginner",
-    select() {}, exitSketch() {}, toast: (text, kind) => toasts.push([text, kind]),
+    sel: [], select(ids) { this.sel = ids; }, exitSketch() {}, toast: (text, kind) => toasts.push([text, kind]),
     advanced: {}, projects: { saveNow() {}, newDesign() {} },
     scene: { errors: new Map(), views: new Map(), allBox: () => ({ isEmpty: () => true }) },
     vp: { setView() {}, isMoving: () => false },
