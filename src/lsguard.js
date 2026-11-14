@@ -11,8 +11,8 @@ const COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const OWNER = /^-?\d+:\d+(?:,-?\d+:\d+)*$/;
 const MAX_SIDE = 4000; // Layerscape shrinks a photo to 2,000 px on its long side
 const MAX_ID = 32767; // its pixel owners are an Int16Array
-const MAX_ASPECT = 6; // a long thin photo makes its backdrop artwork huge
-const MAX_PIECES = 2000, MAX_LAYERS = 64, LAYER_PIXELS = 3e8; // more than that is refused, never cut short: every layer is a full-size canvas
+const MAX_ASPECT = 20; // a long thin photo makes its backdrop artwork huge (20:1 keeps it under about 300 MB)
+const MAX_LAYERS = 256, LAYER_PIXELS = 3e8; // more than that is refused, never cut short: every layer is a full-size canvas
 const int = (v) => Number.isInteger(v);
 const fin = (v) => typeof v === "number" && Number.isFinite(v);
 const clamp = (v, lo, hi, def) => (fin(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -52,7 +52,7 @@ export function cleanLayerscape(d) {
   if (!isObj(d) || d.app !== "layerscape") return null;
   const image = pic(d.image);
   if (!image || !int(d.W) || !int(d.H) || d.W < 1 || d.H < 1 || d.W > MAX_SIDE || d.H > MAX_SIDE || Math.max(d.W, d.H) > MAX_ASPECT * Math.min(d.W, d.H)) return null;
-  if (Array.isArray(d.pieces) && d.pieces.length > MAX_PIECES) return null;
+  if (Array.isArray(d.pieces) && d.pieces.length > MAX_ID + 1) return null;
   if (isObj(d.layers) && Array.isArray(d.layers.list) && (d.layers.list.length > MAX_LAYERS || d.layers.list.length * d.W * d.H > LAYER_PIXELS)) return null;
   if (typeof d.owner !== "string" || d.owner.length > 16 * d.W * d.H || !OWNER.test(d.owner) || ownerPixels(d.owner) !== d.W * d.H) return null;
   const pieces = [], ids = new Set();

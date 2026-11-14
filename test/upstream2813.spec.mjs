@@ -88,6 +88,7 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
   await page.click("#bb-printsim");
   await sliced();
   expect(await plate()).toMatchObject({ copies: 0, box: [40, 30] });
+  await page.click("#ps-tab-objects"); // J.Siwek 2.9.8.9.x: the object tools and Arrange are in the Objects tab
   await run(() => window.__app.advanced.printSim.selectKey("b1"));
   await page.click("#ps-otz"); // a quarter turn about Z
   await expect.poll(async () => (await plate()).box, { timeout: 60_000 }).toEqual([30, 40]);
@@ -104,7 +105,6 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
     return (await plate()).copies;
   }, { timeout: 60_000, intervals: [1500] }).toBe(2);
   const placed = await plate();
-  await page.click("#ps-tab-objects"); // J.Siwek 2.9.8.9.x: Arrange moved into the Objects tab
   await page.click("#ps-arrange");
   await expect.poll(async () => (await plate()).at, { timeout: 60_000 }).not.toBe(placed.at);
   expect((await plate()).copies).toBe(2);
