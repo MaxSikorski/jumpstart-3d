@@ -51,6 +51,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `pivot.js`, `fineturn.js`, `rotationui.js` | Movable pivot, status-bar Turn control, shared rotation helpers |
 | `perfpanel.js` | Hidden rebuild-times panel (Ctrl+Alt+P or `?perf`) |
 | `simpleabout.js` | Community About dialog, update check, help and support links |
+| `phonefit.js` | Long menus scroll inside the window with a fade while more items are below; 44 px touch targets on touch screens for Save, Undo, Redo, view buttons, view-cube arrows and status-bar controls |
+| `phonesheet.js` | Simple’s selected-shape sheet on a phone opens collapsed with the name and size; tap or pull to open it, sized to keep the shape in view |
+| `a11ynames.js` | Icon-only buttons or controls with a tooltip but no name get the tooltip as an aria-label, at start and when controls are added later |
 | `simplemode.js` | Simple \| Original switch in the top bar, the stored choice (`jumpstart.face`, `?face=`), the Simple top bar and Customize controls, Beginner tool rail, selected-shape panel, print check and searchable More panel, and the one-time Try Simple card |
 | `dropimport.js` | Drop a model file anywhere on the page: "Drop to import" note, then `app.advanced.openModelFile` (the Import button's own entry); also guards the Chisel, FlexiGen and Mesh to STEP frames |
 | `insertpart.js` | Supplier links, a model drop card and optional watching of a chosen folder for downloaded parts |
@@ -68,6 +71,9 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | `inspectgeo.js` | Pure mesh maths and the Ready-to-print rule `checkPrint`, Node-tested; Simple mode may reuse it |
 | `printcheck.js` | Pure world bounds, plate fit, bed contact and print verdict calculations; `curvedBottom` (a round bottom resting on the plate: a sphere, a cylinder on its side, a cone tip down) |
 | `placebeside.js` | Where a clicked shape goes when its drop spot is taken: beside the rightmost shape, 5 mm apart, on the plate; pure |
+| `escapekey.js` | Escape closes the dialog in front, or an open menu or Simple panel, and nothing else (Grok review, build 36); full-window studios keep their own Escape |
+| `codecad.js` | Code CAD dialog and `JS3D.codeCad`: replicad code builds one solid in a temporary worker and is added as a STEP body that keeps its recipe as inert text; runs again only on Update |
+| `codecad-worker.js` | Code CAD, worker side: locks the temporary worker down (no network, storage or extra scripts), builds one closed solid and proves its STEP reads back; not a full sandbox |
 | `overhang.js`, `printerpresets.js`, `printerpreview.js` | Overhang rule, printer list labels and saved plate, plate and overhang shading |
 | `tutorial_data_community.js` | Community tutorials (built on his `tutorial_data.js`) |
 | `meshbool.js` | Joins, cuts and combines that involve an imported mesh run on Manifold (triangle-mesh engine, `third_party/manifold-3d/`) instead of OpenCascade. `startManifold()` / `manifoldReady()` load it (the worker starts it on a mesh asset; a failed or 15 s stuck start ends in a kept error and OpenCascade does the booleans); `kernel.js` calls it from marked blocks (`import` + `initMeshBool`, the top of `evalNode`, `buildBodies`, `clearCache`). `meshBody` draws a meshy body from a Manifold (`meshEngine: "manifold"`); `meshBrep` builds a B-rep from it on demand; a refusal runs today's OpenCascade code (`meshEngine: "occt-fallback"`). Corners of a moved operand go back to the decimal they were written as, through the matrix in doubles, to float32 once (so a moved mesh still meets a box set on its face); `simplify(1e-5)`, cavities kept with the solid around them, closed-by-position check, films dropped |
