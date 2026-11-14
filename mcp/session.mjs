@@ -1,5 +1,5 @@
 // How the server reaches a JumpStart 3D page. Two ways, one call(name, args):
-//   tab       the app open in the user's browser connects to our WebSocket (Connect to AI agent, in the theme menu)
+//   tab       the app open in the user's browser connects to our WebSocket (Connect to AI agent, in the Customize menu)
 //   headless  we start our own Chromium (Playwright) on the built site and call JS3D inside it
 // Both end in JS3D.invoke(call, args) (src/bridge.js), so a call means the same thing either way.
 // stdout is the MCP protocol: everything we say goes to stderr.
@@ -42,7 +42,7 @@ export class Session {
     if (!["auto", "tab", "headless"].includes(mode)) throw new Error(`JS3D_MODE must be auto, tab or headless, got ${show(mode)}. Set it in the server's env, or leave it out for auto.`);
     const m = /^(\d+)x(\d+)$/.exec(viewport);
     if (!m) throw new Error(`JS3D_VIEWPORT must look like 1000x700, got ${show(viewport)}. Try "1000x700".`);
-    if (!/^\d+$/.test(String(wsPort)) || Number(wsPort) > 65535) throw new Error(`JS3D_WS_PORT must be a whole number from 0 to 65535, got ${show(wsPort)}. Try 8822, the port the theme menu uses.`);
+    if (!/^\d+$/.test(String(wsPort)) || Number(wsPort) > 65535) throw new Error(`JS3D_WS_PORT must be a whole number from 0 to 65535, got ${show(wsPort)}. Try 8822, the port Connect to AI agent uses.`);
     Object.assign(this, { mode, wsPort: Number(wsPort), viewport: { width: +m[1], height: +m[2] }, appSpec: app, log });
     this.wss = null; this.wsError = null;
     this.tab = null; // { ws, hello } once a page has said hello
@@ -175,8 +175,8 @@ export class Session {
     for (let t0 = Date.now(); !this.tab && Date.now() - t0 < ms;) await new Promise((r) => setTimeout(r, 100));
   }
   noTab() {
-    const fix = this.wsError ? `The server ${this.wsError}. Set JS3D_WS_PORT and restart, then reconnect the tab with JS3D.connect("ws://127.0.0.1:PORT").` : "Restart the server with JS3D_MODE=headless to work without a browser.";
-    return "No JumpStart 3D tab is connected. Open the app, then turn on Connect to AI agent in the theme menu. " + fix;
+    const fix = this.wsError ? `The server ${this.wsError}. Set JS3D_WS_PORT, restart, then run JS3D.connect("ws://127.0.0.1:PORT") in the tab.` : "Or restart the server with JS3D_MODE=headless to work without a browser.";
+    return "No JumpStart 3D tab is connected. In the app, open Customize (the sliders button in the top bar), turn on Connect to AI agent, and allow local network access if the browser asks. " + fix;
   }
   #callTab(name, args, timeoutMs) {
     const { ws } = this.tab;
@@ -211,7 +211,7 @@ export class Session {
       s.hint = this.pinned === "tab" ? "The tab disconnected; turn Connect to AI agent on again or reload it, then retry. Calls wait 5 seconds for it, then fail. To work without a browser, restart the server with JS3D_MODE=headless." :
         this.pinned === "headless" ? "The headless browser starts again on the next tool call that needs a page." :
         this.mode === "tab" ? this.noTab() : this.mode === "headless" ? "A headless browser starts on the first tool call that needs a page." :
-        "No page yet. Open JumpStart 3D and turn on Connect to AI agent in the theme menu to use that tab (allow the browser's local network permission if it asks), or call any other tool to start a headless browser.";
+        "No page yet. Open JumpStart 3D and turn on Connect to AI agent in the Customize menu (the sliders button) to use that tab (allow the browser's local network permission if it asks), or call any other tool to start a headless browser.";
       return s;
     }
     s.url = t === "tab" ? this.tab.hello.url : this.hl.page.url();
