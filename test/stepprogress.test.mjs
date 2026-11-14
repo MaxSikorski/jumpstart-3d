@@ -128,7 +128,7 @@ class Element {
     this.style = {};
   }
   getBoundingClientRect() {
-    return { top: 0, bottom: 800 };
+    return { left: 0, right: 800, top: 0, bottom: 800 };
   }
   append(...children) {
     for (const c of children) {
@@ -147,7 +147,8 @@ class Element {
 test("panel stages, elapsed timer, parts handoff and cleanup; retained meshes cannot complete imports", () => timers(tasks => {
   const old = globalThis.document;
   const viewport = new Element("div"), head = new Element("head");
-  globalThis.document = { querySelectorAll: () => [{ getBoundingClientRect: () => ({ top: 740, bottom: 800, width: 400, height: 60 }) }], head, createElement: t => new Element(t), getElementById: () => viewport };
+  let obstacle = { left: 0, right: 400, top: 740, bottom: 800, width: 400, height: 60 };
+  globalThis.document = { querySelectorAll: () => [{ getBoundingClientRect: () => obstacle }], head, createElement: t => new Element(t), getElementById: () => viewport };
   try {
     const app = { kernel: { quality: 2, inflight: [{ id: "a" }], get: () => ({ ok: true }) }, scene: { views: new Map() }, status() {
       } };
@@ -155,6 +156,10 @@ test("panel stages, elapsed timer, parts handoff and cleanup; retained meshes ca
     assert(viewport.children[0].hidden);
     const s = p.start("<long & unsafe>.step");
     assert.equal(viewport.children[0].style.bottom, "72px");
+    obstacle = { ...obstacle, left: 800, right: 1200 };
+    const side = p.start("side.step");
+    assert.equal(viewport.children[0].style.bottom, "12px");
+    p.finish(side);
     assert.equal(s.row.attrs["aria-busy"], "true");
     assert.equal(s.bar.attrs["aria-label"], "STEP import stages");
     let checks = 0;

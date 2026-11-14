@@ -8,6 +8,7 @@ import { startPlateJob, fitsPlate, flatness, verdict, curvedBottom } from "./pri
 import { ICON } from "./icons.js";
 import { store } from "./store.js";
 import { showSimpleAbout } from "./simpleabout.js";
+import { initSimpleAdvanced } from "./simpleadvanced.js";
 
 const TOOLS = {
   sketch: ["Sketch", "sketch"], import: ["Import", "import"], hole: ["Hole", "holeToggle"], group: ["Group", "group"], align: ["Align", "align"], fillet: ["Round edges", "fillet", "Fillet"], measure: ["Measure", "measure"],
@@ -301,7 +302,7 @@ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"])
 #simple-collapse-rail { left: 0; top: 40%; } #simple-collapse-panel { right: 0; bottom: 12px; }
 #simple-collapse-top { top: 0; left: 50%; transform: translateX(-50%); } #simple-collapse-bottom { bottom: 0; left: 8px; }
 #simple-collapse-panel.selected::after { content: ""; position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
-html[data-face="simple"] #app[data-mode="advanced"] :is(#simple-collapse-rail, #simple-collapse-panel) { display: none; }
+html[data-face="simple"] #app[data-mode="advanced"] #simple-collapse-rail { display: none; }
 html[data-face="simple"][data-simple-hide~="top"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .topbar { display: none; }
 html[data-face="simple"][data-simple-hide~="bottom"] #app:is([data-mode="beginner"], [data-mode="advanced"]) > .status { display: none; }
 html[data-face="simple"] #app[data-mode="beginner"] #shapes { transition: none; }
@@ -487,6 +488,7 @@ export function initSimpleMode(app) {
   const $ = (id) => document.getElementById(id);
   const plate = initPlate(app);
   const collapse = initCollapse(app, plate);
+  initSimpleAdvanced(app, plate, collapse);
   initPhoneFit(); initA11yNames();
   const row = document.createElement("div");
   row.className = "faceswitch-row";

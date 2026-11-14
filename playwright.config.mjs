@@ -49,7 +49,7 @@ export default defineConfig({
       : []),
     {
       name: "mobile", // port base + 2: 8766 is the single-file preview in .claude/launch.json
-      testMatch: [MOBILE, /simple-(switch|plate|collapse)\.spec\.mjs/, /grok-move\.spec\.mjs/],
+      testMatch: [MOBILE, /simple-(switch|plate|collapse|advanced)\.spec\.mjs/, /grok-move\.spec\.mjs/],
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 667 }, screen: { width: 375, height: 667 }, baseURL: `http://127.0.0.1:${base + 2}/` },
     },
   ],
