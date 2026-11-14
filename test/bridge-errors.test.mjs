@@ -182,3 +182,12 @@ test('nameplate reads invalid text only once', () => {
   assert.throws(() => api.namePlate(spec), /text must be a non-empty string, got ""/);
   assert.equal(reads, 1);
 });
+
+test('ready timeout limits and quotes pending body names', async () => {
+  const {api} = bridge({kernel: {ready: true, inflight: false, queue: new Set()}});
+  for (let i = 1; i <= 30; i++) api.add('box', {name: `Pending ${i}`});
+  await assert.rejects(api.ready(-1), error => {
+    assert.equal(error.message, `JS3D.ready timed out after -1 ms; still building: ${Array.from({length: 10}, (_, i) => `"Pending ${i + 1}"`).join(', ')}, and 20 more. Wait longer or check JS3D.list() for build errors.`);
+    return true;
+  });
+});
