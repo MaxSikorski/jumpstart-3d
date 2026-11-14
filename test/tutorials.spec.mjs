@@ -181,8 +181,8 @@ async function prepareFor(sel, mode) {
     return "ground made";
   }
   if (/param-expr/.test(sel)) { await page.click("#browser .param-add"); return "one parameter added"; }
-  if (/#bn-/.test(sel)) { // J.Siwek 2.9.8.9.x Box Maker lessons: the step before opens the Box Maker; its plates show for a dovetailed set two wide and two high
-    await page.evaluate((plates) => { try { if (plates) localStorage.setItem("jumpstart3d.bins", JSON.stringify({ style: "drawer", units: 2, across: 2, lock: "dovetail", sideLock: "dovetail" })); } catch {} window.__app.advanced.openBins(); try { localStorage.removeItem("jumpstart3d.bins"); } catch {} }, /plates/.test(sel));
+  if (/#bn-/.test(sel)) { // J.Siwek 2.9.8.9.x Box Maker lessons: the step before opens the Box Maker; its joins and plates show for a dovetailed set of drawers two wide and two high
+    await page.evaluate((plates) => { try { if (plates) localStorage.setItem("jumpstart3d.bins", JSON.stringify({ style: "drawer", units: 2, across: 2, lock: "dovetail", sideLock: "dovetail" })); } catch {} window.__app.advanced.openBins(); try { localStorage.removeItem("jumpstart3d.bins"); } catch {} }, /bn-(lock|plates)/.test(sel));
     await page.waitForSelector(sel.split(",")[0].trim(), { state: "attached" });
     return "Box Maker open";
   }
