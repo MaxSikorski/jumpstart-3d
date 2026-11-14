@@ -13,6 +13,7 @@
 // runaway worker, they do not limit it), and it can post any message (self.postMessage). The page never trusts the answer: it
 // builds the STEP bytes again in the design's own worker before using them (src/codecad.js). Everything here is a friendly early check.
 import * as replicad from "replicad";
+import { exportShapeSTEPBytes } from "replicad/shape-functions";
 import { errorText } from "./kernel.js";
 
 const NO_CODE = "Code CAD cannot build new code from text.";
@@ -177,5 +178,6 @@ export async function runCodeCad({ code, params }) {
   if (!(volume > 1e-6)) throw new Error("The solid has no volume (it is flat, empty, or turned inside out).");
 
   // The page does not trust this answer (the code above can post any message): it builds the bytes again in the design's own worker before using them.
-  return { bytes: await solid.blobSTEP().arrayBuffer() };
+  // bytes, not solid.blobSTEP(): Safari cannot read a Blob made in this worker when the single file started it ("The I/O read operation failed")
+  return { bytes: exportShapeSTEPBytes(solid).buffer };
 }

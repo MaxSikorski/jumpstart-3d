@@ -28,7 +28,17 @@ async function clickBox() {
 // path is worked out from what is drawn on screen: Beginner measures the pointer's angle on the plane through the box's middle,
 // Advanced measures it around the ring's centre on screen (counted the other way when the axis points away from the viewer).
 // off pushes the press that many pixels away from the middle of the picture (a finger is not on the line).
-const plan = (p, kind, axis, deg, off = 0) => p.evaluate(([kind, axis, deg, off]) => {
+// The arcs and rings are drawn on a frame after a selection or an undo, so plan first waits for the wanted one: WebKit drawing in software on the
+// CI runner was still a frame behind when the Shift test planned right after its click (run 43450984696).
+const plan = async (p, kind, axis, deg, off = 0) => {
+  await p.waitForFunction(([kind, axis]) => {
+    let found = false;
+    window.__app.vp.overlay.traverseVisible((o) => { if (kind === "arc" ? o.userData.handle && o.userData.handle.type === "rot" && o.userData.handle.axis === axis : o.userData.axis === "rot-" + axis) found = true; });
+    return found;
+  }, [kind, axis], { timeout: 20_000 });
+  return planNow(p, kind, axis, deg, off);
+};
+const planNow = (p, kind, axis, deg, off) => p.evaluate(([kind, axis, deg, off]) => {
   const { vp, scene } = window.__app, rect = vp.canvas.getBoundingClientRect();
   let obj = null;
   vp.overlay.traverseVisible((o) => { if (kind === "arc" ? o.userData.handle && o.userData.handle.type === "rot" && o.userData.handle.axis === axis : o.userData.axis === "rot-" + axis) obj = o; });
@@ -43,7 +53,8 @@ const plan = (p, kind, axis, deg, off = 0) => p.evaluate(([kind, axis, deg, off]
   for (const s of kind === "arc" ? [0.5, 0.35, 0.65, 0.2, 0.8] : [0.125, 0.375, 0.625, 0.875, 0.0625, 0.25, 0.5, 0.75, 0.1875, 0.3125, 0.4375, 0.5625, 0.6875, 0.8125, 0.9375]) {
     const t = kind === "arc" ? (s * Math.PI) / 2.6 : s * Math.PI * 2, r = kind === "arc" ? 1 : 0.95;
     const [px, py] = vp.project(V(Math.cos(t) * r, Math.sin(t) * r, 0).applyMatrix4(obj.matrixWorld));
-    const d = Math.hypot(px - cx, py - cy) || 1, sx = px + (off * (px - cx)) / d, sy = py + (off * (py - cy)) / d;
+    const d = Math.hypot(px - cx, py - cy) || 1;
+    let sx = px + (off * (px - cx)) / d, sy = py + (off * (py - cy)) / d;
     const at = (x, y) => ({ clientX: rect.left + x, clientY: rect.top + y });
     let ex, ey;
     if (kind === "arc") {
@@ -52,9 +63,18 @@ const plan = (p, kind, axis, deg, off = 0) => p.evaluate(([kind, axis, deg, off]
       const p0 = ray.origin.clone().addScaledVector(ray.direction, k); // where the press lands on the turning plane
       [ex, ey] = vp.project(p0.sub(centre).applyAxisAngle(n, (deg * Math.PI) / 180).add(centre));
     } else {
+      // Firefox and WebKit hand the page whole-pixel pointer positions (Chromium keeps the fraction), which moved a 12.5 degree drag to 12.88.
+      // The ring counts only the angle round its centre, so: press on a whole pixel, and let go on the whole pixel nearest the wanted angle's ray.
+      const whole = (x, o) => Math.round(o + x) - o;
+      sx = whole(sx, rect.left); sy = whole(sy, rect.top);
       const facing = Math.sign(obj.userData.dir.dot(vp.camera.position.clone().sub(centre))) || 1;
       const a = Math.atan2(-(sy - cy), sx - cx) + (facing * deg * Math.PI) / 180, R = Math.hypot(sx - cx, sy - cy);
-      ex = cx + R * Math.cos(a); ey = cy - R * Math.sin(a);
+      let miss = Infinity;
+      for (let r = R; r < R + 30; r += 0.25) {
+        const qx = whole(cx + r * Math.cos(a), rect.left), qy = whole(cy - r * Math.sin(a), rect.top), da = Math.atan2(-(qy - cy), qx - cx) - a;
+        const m = Math.abs(Math.atan2(Math.sin(da), Math.cos(da)));
+        if (m < miss) { miss = m; ex = qx; ey = qy; }
+      }
     }
     const free = (x, y) => document.elementFromPoint(rect.left + x, rect.top + y) === vp.canvas;
     if (others.some(([ox, oy]) => Math.hypot(ox - sx, oy - sy) < off + 8)) continue;
