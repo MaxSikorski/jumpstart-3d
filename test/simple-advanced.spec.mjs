@@ -207,4 +207,54 @@ test('phone shows six rail tools and More, with Pattern and Measure in More', as
   test.skip(info.project.name !== 'mobile', 'Phone tab bar only.');
   await expect(page.locator('#sar button:visible')).toHaveCount(6); await expect(page.locator('#sr-more')).toBeVisible();
   await page.click('#sr-more'); await expect(page.locator('#simple-more [data-for="ad-pattern"]:visible')).toBeVisible(); await expect(page.locator('#simple-more [data-for="ad-measure"]:visible')).toBeVisible();
+test('selected body actions stay visible at the bottom of the Browser', async ({ page }, info) => {
+  desktop(info);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.evaluate(() => window.__app.select([window.__store.doc.bodies[0].id]));
+  const props = page.locator('#simple-adv-panel #browser .props');
+  const edit = props.getByRole('button', { name: 'Edit', exact: true });
+  const del = props.getByRole('button', { name: 'Delete', exact: true });
+  await expect(edit).toBeVisible(); await expect(del).toBeVisible();
+  const bounds = await props.evaluate(el => {
+    const panel = document.querySelector('#simple-adv-panel').getBoundingClientRect();
+    return [...el.querySelectorAll('button')].map(button => { const r = button.getBoundingClientRect(); return r.top >= panel.top && r.bottom <= panel.bottom; });
+  });
+  expect(bounds.every(Boolean)).toBe(true);
+});
+
+test('adding a feature scrolls the Timeline to its new row but rerendering does not', async ({ page }, info) => {
+  desktop(info);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.evaluate(() => window.__store.update(d => {
+    const body = d.bodies[0];
+    for (let i = 0; i < 20; i++) d.bodies.push({ ...structuredClone(body), id: `scroll-body-${i}`, name: `Scroll body ${i}`, seq: 1000 + i });
+  }, 'Add bodies'));
+  const slot = page.locator('#sap-timeline-slot');
+  await expect.poll(() => slot.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await slot.evaluate(el => { el.scrollTop = 0; });
+  await page.evaluate(() => window.__app.refreshUI());
+  await expect.poll(() => slot.evaluate(el => el.scrollTop)).toBe(0);
+  const count = await page.locator('#timeline .tl-item').count();
+  await page.evaluate(() => window.__store.update(d => {
+    d.bodies.push({ ...structuredClone(d.bodies[0]), id: 'scroll-new-body', name: 'Newest body', seq: 2000 });
+  }, 'Add body'));
+  await expect(page.locator('#timeline .tl-item')).toHaveCount(count + 1);
+  await expect.poll(() => slot.evaluate(el => {
+    const row = el.querySelector('.tl-item:last-child').getBoundingClientRect(), view = el.getBoundingClientRect();
+    return row.bottom <= view.bottom && row.top >= view.top;
+  })).toBe(true);
+});
+
+test('mobile Timeline items and controls have 44 px touch targets', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile', 'This interaction needs the phone sheet.');
+  await page.click('#sap-sheet');
+  const targets = page.locator('#simple-adv-panel :is(.tl-item, .tl-ctl)');
+  expect(await targets.count()).toBeGreaterThan(0);
+  for (const height of await targets.evaluateAll(els => els.map(el => el.getBoundingClientRect().height))) expect(height).toBeGreaterThanOrEqual(44);
+});
+
+test('section headers show Browser and Timeline counts', async ({ page }) => {
+  const counts = await page.evaluate(() => ({ browser: window.__store.doc.bodies.length + window.__store.doc.sketches.length, timeline: document.querySelectorAll('#timeline .tl-item').length }));
+  await expect(page.locator('#sap-browser .sap-head')).toContainText(`Browser (${counts.browser})`);
+  await expect(page.locator('#sap-timeline .sap-head')).toContainText(`Timeline (${counts.timeline})`);
 });
