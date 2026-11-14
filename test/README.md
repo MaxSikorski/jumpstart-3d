@@ -586,7 +586,7 @@ separately; no Playwright run was authorized during implementation.
 
 - `simple-collapse.spec.mjs`: Simple panel handles, viewport resizing, whole-plate restoration across reload, Home framing, keyboard shortcut, Original visibility and horizontal overflow on desktop and mobile.
 - `simple-advanced.spec.mjs`: Simple Advanced rail and More coverage, sketch tools, workspaces, Browser and Timeline panel, section persistence, reveal, and desktop and phone fit.
-- `simple-sketch.spec.mjs`: sketching in Simple Beginner shows J.Siwek's sketch tools above the view (default and Clean layout, desktop and phone); a rectangle drawn with them is one closed profile that opens Extrude.
+- `simple-sketch.spec.mjs`: sketching in Simple Beginner swaps the Simple rail to the sketch tools (default and Clean layout, desktop and phone); a rectangle drawn with them is one closed profile that opens Extrude.
 
 ### Checkpoint tests
 
