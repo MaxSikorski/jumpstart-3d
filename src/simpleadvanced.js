@@ -318,6 +318,22 @@ export function initSimpleAdvanced(app, plate, collapse) {
   document.addEventListener('click', e => { if (active() && e.target.closest('#ribbon .panel-toggle')) { e.preventDefault(); e.stopPropagation(); const hidden = root.dataset.simpleHide?.split(/\s+/).includes('panel'), phone = matchMedia('(max-width: 640px)').matches, collapsed = phone && !panel.classList.contains('expanded'); if (hidden) handle.click(); setSection('browser', hidden || collapsed || !sections.browser); if (phone) setSheet(true); } }, true);
   // Print Sim also closes through its own callback, without calling the public workspace setter.
   new MutationObserver(update).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  // A studio window (J.Siwek's .s3d: the Lathe, Chip Carving, CAM Studio, Voxel Studio…) covers the whole window, with its toolbar on top in two rows.
+  // In Simple nothing sits above the view, so a lesson's panel (placed at the view's top left, and above a studio) lands on that toolbar, over the Lathe's Done.
+  // When a studio opens, or a lesson starts while one is open, the panel moves just below the toolbar; it goes back when the studio closes, unless it was dragged meanwhile.
+  let studio = false, lesson = null, placed = null, before = '';
+  new MutationObserver(() => {
+    const open = document.body.classList.contains('s3d-on'), tut = $('tut-panel');
+    if (open === studio && tut === lesson) return;
+    const opened = open && (!studio || tut !== lesson); studio = open;
+    if (tut !== lesson) { lesson = tut; placed = null; }
+    if (!tut) return;
+    const bar = document.querySelector('.s3d > .s3d-bar');
+    if (opened && bar && root.dataset.face === 'simple') {
+      const b = bar.getBoundingClientRect(), r = tut.getBoundingClientRect(), top = Math.round(b.bottom + 10);
+      if (r.top < top && r.bottom > b.top && r.left < b.right && r.right > b.left) { before = tut.style.top; placed = top + 'px'; tut.style.top = placed; tut.style.maxHeight = Math.max(140, innerHeight - 6 - top) + 'px'; }
+    } else if (!open && placed !== null) { if (tut.style.top === placed) tut.style.top = before; placed = null; }
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'], childList: true });
   const style = document.createElement('style'); style.id = 'simpleadvanced-css'; style.textContent = `
 #simple-adv-panel { display: none; }
 #sap-note { padding: 8px 12px; font: 13px/1.35 var(--f-ui); color: var(--ink-2); background: var(--panel-2); border-bottom: 1px solid var(--line); }
