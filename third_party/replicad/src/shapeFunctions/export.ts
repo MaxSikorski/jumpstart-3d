@@ -30,6 +30,12 @@ export function deserializeTopoShape(data: string): TopoDS_Shape {
  * @category Shape Export
  */
 export function exportShapeSTEP(shapeInput: ShapeInput): Blob {
+  return new Blob([exportShapeSTEPBytes(shapeInput) as BlobPart], { type: "application/STEP" });
+}
+
+// jumpstart-3d: the same STEP file as plain bytes, with no Blob. Safari (WebKit) cannot read a Blob that was made inside a worker
+// which a page opened from disk started from a blob: URL ("The I/O read operation failed"); the single file starts its engine that way.
+export function exportShapeSTEPBytes(shapeInput: ShapeInput): Uint8Array {
   const oc = getOC();
   const shape = unwrapShape(shapeInput);
   const filename = "blob.step";
@@ -52,7 +58,7 @@ export function exportShapeSTEP(shapeInput: ShapeInput): Blob {
   if (done === oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
     const file = oc.FS.readFile("/" + filename);
     oc.FS.unlink("/" + filename);
-    return new Blob([file as BlobPart], { type: "application/STEP" });
+    return file;
   }
 
   throw new Error("WRITE STEP FILE FAILED.");

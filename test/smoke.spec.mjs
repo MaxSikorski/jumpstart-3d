@@ -151,9 +151,7 @@ test("exports STL, OBJ and the project file", async () => {
   expect(parsed.doc.bodies.map((b) => b.name)).toEqual(["Box"]);
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("exports STEP", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export cannot read its blob in the worker in the single file in WebKit");
   await loadDoc(page, box20());
   const step = await exportBytes(page, "step");
   expect(step.bytes.toString("latin1")).toMatch(/^ISO-10303-21/);

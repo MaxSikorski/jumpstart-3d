@@ -26,7 +26,8 @@ const inside = (sk, i, k = 0.3) => { // inside the hexagon at the corner after l
   const V = sk.pts.find((p) => p.id === sk.ents[(i + 1) % 6].a), cx = sk.pts.reduce((t, p) => t + p.x, 0) / 6, cy = sk.pts.reduce((t, p) => t + p.y, 0) / 6;
   return [V.x + (cx - V.x) * k, V.y + (cy - V.y) * k];
 };
-const toasts = () => run(() => [...document.querySelectorAll("#toasts .toast")].map((t) => t.textContent));
+// Auto drawing steps down with a toast when frames are slow, as they are in WebKit's software drawing on the CI runner: not a complaint about the sketch
+const toasts = () => run(() => [...document.querySelectorAll("#toasts .toast")].map((t) => t.textContent).filter((t) => !/to keep things smooth/.test(t)));
 const clearToasts = () => run(() => document.querySelectorAll("#toasts .toast").forEach((t) => t.remove()));
 
 async function openBlank() {

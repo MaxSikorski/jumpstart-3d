@@ -178,13 +178,16 @@ test("several files at once: each one is imported, in order, one body each", asy
 
 test("a file of another kind gets one plain message and no body", async () => {
   await fresh("beginner");
+  // every message shown is counted as it appears: an error message only stays 5.2 s, which a busy machine can use up before a count on screen
+  await page.evaluate(() => { window.__shown = []; new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => window.__shown.push(n.textContent)))).observe(document.getElementById("toasts"), { childList: true }); });
   await drop([textFile("notes.txt", "hello")]);
   await expect(toast(`${PICKY} notes.txt: ${WORDS}`)).toBeVisible();
   await page.waitForTimeout(300);
   const s = await state();
   expect(s.bodies).toBe(0);
   await expect(page.locator("#cmd")).toBeHidden();
-  await expect(page.locator("#toasts .toast")).toHaveCount(1);
+  // (Auto drawing's own step-down note, shown when WebKit draws in software on the CI runner, is not about the drop)
+  expect((await page.evaluate(() => window.__shown)).filter((t) => !/to keep things smooth/.test(t))).toEqual([`${PICKY} notes.txt: ${WORDS}`]);
   // pictures belong to the Insert menu, not the drop; the other files of the same drop still import
   await drop([textFile("photo.png", "x", "image/png"), await modelFile("step", "Kept.step")]);
   await expect(toast(`${PICKY} photo.png: ${WORDS}`)).toBeVisible();

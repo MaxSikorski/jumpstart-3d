@@ -301,9 +301,7 @@ test("Beginner: the Gear button opens the dialog and a rack from it is one body 
   expect(list[0].bbox.min[2]).toBeGreaterThanOrEqual(0);
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("the golden design exports to STEP as three true solids", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/gears.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();
@@ -402,9 +400,7 @@ test("a helical gear with hardly any twist is two sections; a bore takes its exa
   near(list.find((x) => x.id === b).volume, (area - Math.PI * 25) * 8, 0.003, "bore");
 });
 
-// quarantined: STEP export fails in the single file in WebKit ("The I/O read operation failed"), see booleans.spec.mjs
 test("a helical gear exports to STEP as one solid and reads back with the same volume", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   await fresh();
   const id = await run(() => JS3D.gear({ kind: "helical", module: 2, teeth: 20, angle: 25, width: 10 }));
   const g = await bodyOf(id);
