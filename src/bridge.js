@@ -6,13 +6,12 @@
 // its position is m[12..14]). `ids` takes one id or an array. A call that names a missing body throws
 // Error("no body <id>"). Every edit is one undo step with a readable label, and leaves the selection alone.
 //
-//   Reading    version, appVersion, kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
+//   Reading    version, apiVersion, appVersion, supports(), describe(), kinds(), list(), get(id), params(), doc(), save(), mode(), selection(), internals
 //   Generators boxMaker({style, w, d, h, units, across, cols, rows, ...}) -> {id, parts, cell, info}
 //              gearSet({type, module, teeth, teeth2, ...}) -> {id, parts, info}
 //              hardware({part, size, length, threads, clear, left, at, name}) -> id
 //              textures() -> [{key, name, category, size}], texture(id, {texture, faces, size, depth, ...}) -> {body, texture, faces}
 //              drawing({ids, views, scale, units, dims}) -> Uint8Array (DXF)
-//   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Inspecting inspect(ids, {material, density}), measure(a, b), printCheck({ids, printer, angle}), collisions({ids, gap}), section(plane, {ids, points, picture, width})   (bridgeinspect.js)
 //   Waiting    ready(timeoutMs=90000)   resolves when every shape has been built (or has an error)
 //   Shapes     add(kind, {size, at, hole, color, name}) -> id
@@ -35,6 +34,7 @@
 //   Files      export("stl"|"obj"|"3mf"|"glb"|"step"|"json", {ids}) -> Uint8Array, load(json, {keepId}), newDesign(mode)
 //   Scripts    run(text) -> the value the script returns
 //   Agent      connect(url), disconnect(), connection(), invoke(call, args): the link to a tool server (mcp/), off unless asked
+import { API_VERSION, API_COMPAT, CALLS, describe } from "./apicontract.js";
 import * as THREE from "three";
 import { initBridgeGen } from "./bridgegen.js"; // jumpstart-3d: generator calls
 import { inspectCalls } from "./bridgeinspect.js"; // 9.2 inspect calls
@@ -54,7 +54,7 @@ const MIN_SIZE_KEYS = new Set(["w", "d", "h", "size"]); // 0.01 mm is the smalle
 const INTEGER_KEYS = new Set(["sides", "points"]);
 const COLOR = /^#[0-9a-f]{6}$/i;
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const AGENT_KEY = "jumpstart.agent", AGENT_URL = "ws://127.0.0.1:8822", AGENT_RETRY_MS = 3000;
+const AGENT_KEY = "jumpstart.agent", AGENT_URL = "ws://127.0.0.1:8822", AGENT_RETRY_MS = 3000, AGENT_HINT_MS = 5000;
 const base64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 
 export function initBridge(app) {
@@ -208,7 +208,8 @@ export function initBridge(app) {
   const FILES = { stl: "stlBytes", obj: "objBytes", "3mf": "threeMFBytes", glb: "glbBytes", step: "stepBytes" };
 
   const api = {
-    version: "1.12", // jumpstart-3d: checkpoints
+    version: API_COMPAT,
+    apiVersion: API_VERSION,
     appVersion: VERSION,
     internals: { app, store },
 
@@ -218,6 +219,8 @@ export function initBridge(app) {
     doc: snapshot,
     save: () => ({ app: "jumpstart-3d", version: 1, doc: snapshot() }),
     ready,
+    supports: (name) => typeof name === "string" && Object.hasOwn(api, name) && typeof api[name] === "function" && CALLS.some((call) => call.name === name),
+    describe: () => describe(VERSION),
 
     // ----------------------------------------------------------- shapes
     add(kind, opts = {}) {
@@ -506,7 +509,7 @@ export function initBridge(app) {
   // its calls one at a time; it retries every few seconds while on. The "Connect to AI agent" menu row is the user's switch,
   // remembered in this browser; with it off (the default) no connection is ever made and no socket exists.
   const link = { on: false, url: AGENT_URL, state: "off", warned: false };
-  let sock = null, retry = 0, queue = Promise.resolve();
+  let sock = null, retry = 0, queue = Promise.resolve(), waitHint = 0;
   function closeLink() {
     clearTimeout(retry);
     const s = sock;
@@ -518,6 +521,16 @@ export function initBridge(app) {
     if (!b) return;
     b.setAttribute("aria-checked", link.on);
     b.querySelector("small").textContent = link.on ? "· " + link.state : "";
+    // Chrome's local-network question is easy to miss: after 5 s of "waiting" the note's sentence about it lights up.
+    // Retries set "waiting" again every few seconds; the 5 s count from the first one.
+    const hint = document.getElementById("agent-lna");
+    if (link.on && link.state === "waiting") {
+      if (!waitHint) waitHint = setTimeout(() => { if (link.on && link.state === "waiting") hint?.classList.add("hot"); }, AGENT_HINT_MS);
+    } else {
+      clearTimeout(waitHint);
+      waitHint = 0;
+      hint?.classList.remove("hot");
+    }
   }
   function openLink() {
     closeLink();
@@ -533,7 +546,7 @@ export function initBridge(app) {
     s.onopen = () => {
       link.state = "connected";
       linkChanged();
-      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
+      s.send(JSON.stringify({ hello: "jumpstart-3d", version: api.version, apiVersion: api.apiVersion, app: VERSION, url: location.href.split("#")[0] })); // jumpstart-3d: share link. a design link's fragment is never sent; the person has not decided about it yet
       setTimeout(() => { if (sock === s) app.toast("Connected to an AI agent."); }, 500); // the server may refuse right away (another tab has the link)
     };
     s.onmessage = (ev) => { queue = queue.then(() => answer(s, ev.data)); };
@@ -574,6 +587,7 @@ export function initBridge(app) {
   };
   const row = document.querySelector("#menu-theme button[data-agent]");
   if (row) row.addEventListener("click", () => { if (!embedActive()) app.setAgent(!link.on); });
+  if (location.protocol === "file:") document.getElementById("agent-lna")?.remove(); // the single file is never asked about the local network
 
   Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls

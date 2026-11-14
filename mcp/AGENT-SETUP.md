@@ -109,16 +109,16 @@ uvx mcpo --port 8000 --api-key CHOOSE_A_KEY -- node REPO/mcp/server.mjs
 ## Step 3. Check it works
 
 1. After the restart or reload, call the tool `status`. Your client adds a prefix to the name, such as `mcp__jumpstart-3d__status`, `mcp__plugin_jumpstart-3d_jumpstart-3d__status` or `jumpstart-3d_status`. Look for a tool whose name ends in `status`. In Cline, call `use_mcp_tool` with server `jumpstart-3d` and tool `status`.
-2. Expected: `{"mode":"auto","page":...}`. `page` may be `none`, `tab` or `headless`; all three are fine. A `wsError` means another program holds port 8822 (another copy of the server). That is fine for the invisible browser, but the tab cannot connect to this server.
+2. Expected: `{"mode":"auto","page":...}`. `page` may be `none`, `tab` or `headless`; all three are fine. A `wsError` means the server could not listen on its port (8822 unless `JS3D_WS_PORT` says otherwise), usually because another copy of the server holds it. That is fine for the invisible browser, but the tab cannot connect to this server.
 3. If INVISIBLE: call `list_bodies`. Expected: `[]`. Then `status` shows `page: "headless"`, the app version and `bodies: 0`.
 4. If TAB: call no other tool yet. Any tool except `status` starts the invisible browser, and then a tab that connects is ignored. Give the user the TAB text from Step 4. After they turn the setting on, call `status`. Expected: `page: "tab"`, the app version and the body count.
-5. If the tool is missing, restart the client. If it fails to start, run `node REPO/mcp/server.mjs --help` (needs Node 18 or newer, and `npm ci` done).
+5. If the tool is missing, restart the client. If it fails to start, run `node REPO/mcp/server.mjs --help` (needs Node 20 or newer, and `npm ci` done).
 
 ## Step 4. Tell the user
 
 If INVISIBLE, say: "JumpStart 3D is connected. I work in an invisible browser, and nothing needs to be open."
 
-If TAB, say: "Open JumpStart 3D (https://maxsikorski.github.io/jumpstart-3d/ or the single file), open the theme menu (the half-moon button), and turn on Connect to AI agent. If Chrome asks to allow local network access, allow it. Tell me when it says connected."
+If TAB, say: "Open JumpStart 3D (https://maxsikorski.github.io/jumpstart-3d/ or the single file), open Customize (the sliders button in the top bar), and turn on Connect to AI agent. If Chrome asks to allow local network access, allow it. Tell me when it says connected."
 
 If the invisible browser was already used in this session and the user then connects their tab, also say: "You connected your tab after I already used the invisible browser. Restart me (your client) so the next session uses the tab."
 
