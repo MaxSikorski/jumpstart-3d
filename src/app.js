@@ -9,6 +9,7 @@ import { initSketch3D } from "./sketch3d.js";
 import { initLathe } from "./lathe.js";
 import { initCarve } from "./carve.js";
 import { initStainedGlass } from "./stainedglass.js";
+import { initColorLitho } from "./colorlitho.js";
 // jumpstart-3d: keep the upstream version and community release number separate.
 import { VERSION, BUILD } from "./version.js";
 const BUILD_LABEL = VERSION + " · community build " + BUILD;
@@ -42,6 +43,7 @@ import { initFlexiGen } from "./flexigen.js";
 import { initFloorPlan } from "./floorplan.js";
 import { initMeshStep } from "./meshstep.js";
 import { initNeon } from "./neon.js";
+import { initLayerscape } from "./layerscape.js";
 import { initCosForge } from "./cosforge.js";
 import { initChisel } from "./chisel.js";
 import { initMeshDetail } from "./meshdetail.js";
@@ -197,6 +199,7 @@ function boot() {
 app.lathe = initLathe(app);
 app.carve = initCarve(app);
 app.stainedGlass = initStainedGlass(app);
+app.colorLitho = initColorLitho(app);
 // jumpstart-3d: match the static splash before the app loads.
 { const sv = document.getElementById("sp-ver"); if (sv) sv.textContent = "Version " + BUILD_LABEL; }
 app.bricks = initBricks(app);
@@ -211,6 +214,7 @@ app.voxel = initVoxel(app);
   app.floorplan = initFloorPlan(app);
   app.meshstep = initMeshStep(app);
   app.neon = initNeon(app);
+  app.layerscape = initLayerscape(app);
   app.cosforge = initCosForge(app);
   app.chisel = initChisel(app);
   app.arch = initArch(app);
@@ -852,6 +856,85 @@ app.showAbout = function () {
         el("a", { class: "btn", id: "ab-support", href: "https://buy.stripe.com/28E4gydyeetR0S9aNb0gw08", target: "_blank", rel: "noopener" }, "Support"),
         el("a", { class: "btn", id: "ab-site", href: SITE_URL, target: "_blank", rel: "noopener" }, "J.Siwek's site")),
       el("p", { class: "ab-upmsg", id: "ab-upmsg", role: "status", hidden: true }),
+      sec("New in version 2.9.8.9.8", [
+        ["Layerscape → 3D building kit → From my design:", "turn your own JumpStart 3D design into a building kit. Boxes become buildings with walls and a roof, cylinders and prisms become round towers, a cone or pyramid on top becomes a spire and a roof shape on top a pitched roof; anything else (a dome, a wedge, text...) is cut as stacked layers in wood or folded as a low-poly shell in card. It uses the selected objects, or all that are shown."],
+        ["Looks:", "print it in each object's own colour, or as a stone castle, a brick town, modern glass or a cottage, with or without windows and a door, in wood (tabs, slots and living hinges) or card (fold and glue)."],
+      ]),
+      sec("New in version 2.9.8.9.7", [
+        ["Layerscape → 3D building kits:", "build a printed model kit like the wooden and foam ones in toy shops: a castle with spires, a football stadium, a lighthouse and cottage, a cathedral, a city block, a cottage or a clock tower, every wall, roof and tower printed (stone, brick, slate, windows, crowds, scoreboard...)."],
+        ["Wood or card:", "wood kits are cut on a laser with finger-jointed walls, tabs and slots, bendy living-hinge walls for round towers and stands, and cross-slotted spires; card kits are unfolded into nets with fold lines, numbered edges and glue tabs."],
+        ["Layerscape → Low-poly papercraft:", "any template, your design or an STL / OBJ file becomes a faceted low-poly model (like the 4D card kits), each panel in the model's own colours, one colour or the picture's, numbered and unfolded into nets to print, cut, fold and glue."],
+        ["Faster puzzle maker:", "switching between puzzle kinds shows the new tab straight away, models are measured once, and puzzles you've already made come back instantly."],
+        ["Sketch → Line:", "finishing a line (closing it, Esc, Enter or a double-click) puts the Line tool down, so a stray click doesn't start another line. Press L or pick Line to draw the next one."],
+      ]),
+      sec("New in version 2.9.8.9.6", [
+        ["Layerscape → Puzzle maker:", "a new mode at the top of Layerscape turns a picture or a 3D model into a puzzle you can laser cut, print on paper or 3D print."],
+        ["Jigsaw puzzles:", "any picture (your photo or an example scene) as a jigsaw: rectangle, rounded, circle, egg, heart or star shaped, with the number of pieces, knob size and wobble you choose, and a frame tray to hold it."],
+        ["3D slot-together puzzles:", "a model sliced into flat ribs that slot into each other, from a template, your JumpStart 3D design or an STL / OBJ file; put the open picture on the ribs if you like."],
+        ["3D stacked-layer puzzles:", "the model cut into layers one sheet thick, with peg holes so the layers line up as you stack them."],
+        ["Puzzle templates:", "22 ready-made models to puzzle: animals (dinosaur, whale, turtle, cat, teddy, penguin), holidays (heart, star, Christmas tree, snowman, pumpkin, ghost, egg, bunny, bell, gingerbread man, dreidel) and things (rocket, globe, house, tower, car)."],
+        ["Every puzzle exports:", "a laser cut kit (.zip of SVG sheets), printable pages with the steps (.pdf), a 3D print kit (.3mf and STLs), or straight into your JumpStart 3D design as objects."],
+        ["16 new example scenes:", "holiday scenes (Winter village, Halloween night, Valentine's garden, Easter meadow, Autumn harvest, Festival of lights, New Year fireworks, Lucky clover, Birthday party) and more (Coral reef, Arctic friends, Desert oasis, Outer space, Dinosaur valley, Camping night, City lights), sorted by category."],
+      ]),
+      sec("New in version 2.9.8.9.5", [
+        ["Picture to 3D model, much closer to the real thing:", "each part of the subject gets its own round thickness (legs, arms, tails, stems and the body each as thick as they are wide), instead of one puffed-up outline. Presets for an animal, a person or figure, a plant or flower, a round object and flat art (a flat back with raised detail), and every setting to refine it: the cross-section (round, pillow, thin leaves, flat with a round edge, ridged), thickness, a maximum thickness, back depth, a flat back, surface detail from the picture's shading, smoothing, edge rounding and four levels of detail. A turning 3D preview shows the model before you make it."],
+        ["More pictures:", "add a side, back and top picture of the same subject and the model is carved to match each view too (so a dog photographed from the side gets its real width from a front photo, and its four legs in the right places)."],
+        ["A better cut-out:", "find the subject automatically, by tapping its colours (several for a multi-coloured subject), or by brightness; tap the background to tell it what to leave out; paint with Keep and Remove brushes; grow or shrink and smooth the edge; keep holes (handles, the gap between legs) and every piece if you want them."],
+        ["Helmet Maker → Photos:", "a new step: take or choose up to 4 photos of a helmet (front, side, back and top) and the helmet's shape is built from them, sized to fit your head (it is only ever pushed outward, so it still fits). Set the head's height and position inside it, round or boxy, smoothing, a little extra size and how strongly the photos shape it. \"Visor from the front photo\" finds the dark visor and uses its shape. Then Visor, Details, Look and Cut & Join work as before."],
+      ]),
+      sec("New in version 2.9.8.9.4", [
+        ["Color Lithophane Studio", "A new app in the 3D Print Sim (Color lithophane on its ribbon, or the Color lithophane button on its Plate card, in Beginner too). Open a photo and it becomes a full-colour lithophane printed with white, cyan, magenta and yellow filament (black too, if you like): a thin white plate, then under every colour pixel a stack of thin layers of those filaments whose mix sets its colour, then a white texture on top, thicker where the picture is darker, for the brightness and the detail. The colours are worked out the way light really passes through the plastic, from each filament's colour and its TD (transmission distance), so you can set your own filaments. See it lit from behind, the colour layers on their own, or the 3D parts. Choose the width, shape (rectangle, rounded, oval, heart, hexagon), a white frame, brightness, contrast and colour, dithering, layer height, how many colour layers, pixel sizes and the white's thickness; it shows the grams of each filament. Export a 3MF (one object with a part per filament, set up for Orca Slicer and Bambu Studio) or a ZIP of STLs with a preview and the settings, or press Print in 3D Print Sim."],
+        ["Full-colour printing in the 3D Print Sim", "The lithophane goes straight onto the sim's plate with each part on its own filament (white, cyan, magenta, yellow in AMS slots 1 to 4) at its layer height and 100% infill. Slice it and the layers show the colours going down, the filament changes and purges are counted (with a prime tower), the time is worked out like Orca Slicer, and Export G-code saves a real multi-colour .gcode with the tool changes. Back to my design puts your own bodies back on the plate."],
+        ["3D Print Sim looks like Orca Slicer", "The sim now has Orca Slicer's layout and teal accents: the settings down the left in Printer, Filament and Process cards, the Process settings in Quality, Strength, Speed, Support, Others and Objects tabs (new: 0.08 and 0.10 mm layers, top and bottom shell layers, and the printer's own speeds and accelerations), Prepare and Preview tabs and a Slice plate button on the ribbon, a dark textured PEI plate with a 10 mm grid, the plate number and the printer's name, the layer slider up the right with the layer number and height, a slider along the bottom for the moves within the layer, and a Line Type legend with the time and share of each kind of line, the total time and the filament."],
+      ]),
+      sec("New in version 2.9.8.9.3", [
+        ["Jigs made of honeycomb", "The Jig Maker's honeycomb now covers the whole jig, not just patches inside it: every wall, side, floor, plate, cheek and ear is a honeycomb from edge to edge, with as many cells as fit, spread evenly so the frame round them is the same all round. Blocks that hold guide holes or a slot (dowel jig, drill guide, mortise guide, pocket-hole jig) get honeycomb pockets in their sides that stop short of the holes, so the guides stay true. Only the strips the saw, chisel or drill rides on stay solid. Cells in upright walls are pointy-topped, so they print without supports. Cell size (8 mm to start) and cell walls are at the bottom of the Jig Maker, and you can still turn the honeycomb off."],
+      ]),
+      sec("New in version 2.9.8.9.2", [
+        ["Honeycomb jigs", "Every jig from the Jig Maker (Advanced → Workshop) is now a honeycomb inside: hexagonal holes through its walls, floors, blocks and plates, so it uses less plastic and prints faster while staying stiff. The faces that guide a saw, chisel or drill and the edges that locate on the board stay solid, with a solid rim round each honeycomb. Turn it off, or change the cell size and the cell walls, at the bottom of the Jig Maker."],
+        ["Joint jigs", "Four new jigs for the joints on a woodworking joints chart. Dovetail: a marking template with the tails and half pins at 1:5, 1:6, 1:7 or 1:8 (or any slope), for your board's width and thickness and number of tails, and a saw guide leaning at the same slope. Box joint: a finger template (fingers and gaps the same width, 1/4 to 3/4 inch or mm) and an indexing key for a saw or router sled. Mortise & tenon: a guide that straddles the board with a slot for the chisel or router (centred or off centre) and a tenon gauge. Lap joint: a bridge across the board whose window guides the saw, chisel or router for the shoulders, and a step gauge for half the thickness."],
+      ]),
+      sec("New in version 2.9.8.9.1", [
+        ["Layerscape: layered files", "Open picture in Layerscape now also opens layered files: Photoshop PSD and PSB (also saved by Procreate, Affinity, Photopea, Krita and GIMP), SVG (Inkscape, Illustrator and Figma layers or groups) and OpenRaster ORA (Krita, GIMP, MyPaint), or several pictures picked at once (one layer each, the first name at the back, so number them 01, 02…). A Layers found window lists every layer with a preview: choose Piece, Cross-slot piece, Backdrop or Leave out for each, put them in order with the arrows, and press Make pieces. The bottom layer that fills the picture becomes the backdrop and hidden layers are left out to start with. Each piece keeps all of its layer, even the parts hidden behind other layers, and the backdrop layers are used as they are, so nothing needs filling in. How far back each piece stands follows the layer order (top at the front). Photoshop groups come in as one piece, clipped layers join the layer under them, and layer masks and opacity count. The layers are saved with the project."],
+        ["Layerscape models in JumpStart 3D", "Import (Beginner) or Insert → STL / 3MF / STEP model (Advanced) now takes a Layerscape 3D print kit: the .zip or the .3mf inside it. It comes in as one object per part, named and coloured from the picture. Kits made with this version come in put together as the finished diorama; older kits come in laid out flat as on the print plate."],
+      ]),
+      sec("New in version 2.9.8.9", [
+        ["Layerscape updated", "The newest Layerscape replaces the one in 2.9.8.8.1: Undo and Redo buttons, Duplicate, Copy and Paste for pieces, move a selected piece anywhere on the deck by dragging it in the 3D view (Shift + drag to move only forward or back) or with the arrow keys, resize it with its corner handle or the [ and ] keys, and a Keyboard shortcuts list (press ?). It still keeps the diorama with your design, saves files through JumpStart 3D, and Add to my design puts the finished diorama in your design."],
+      ]),
+      sec("New in version 2.9.8.8.1", [
+        ["Layerscape", "Turn a photo into a layered, slot-together diorama. Beginner: the Layerscape button in the toolbar (it takes the Helmet Maker's place there; the Helmet Maker is still in CosForge and in Advanced → Simulate). Advanced: Simulate → Layerscape. Paint, wand, lasso or horizon-select the pieces, check the build in a 3D preview, set the size, material thickness, kerf, stage and backdrop shapes, then export a laser cut kit (SVG sheets), printable art with an assembly guide (PDF) or a 3D print kit (3MF and STL). Comes with example scenes and its own tutorials."],
+        ["Part of your design", "Layerscape keeps the diorama with your JumpStart 3D design, so it's there when you open the design again (it's saved when you press Save in Layerscape or go back to JumpStart 3D). Add to my design puts every part in your design, assembled as the finished diorama and coloured from the photo, ready to move, change and export. Its files save the same way as everything else in JumpStart 3D, on an iPad too, and it follows the app's light or dark look. It works offline."],
+      ]),
+      sec("New in version 2.9.8.8", [
+        ["Helmet Maker", "A new guided mode in CosForge for building a contemporary sci-fi helmet (Helmet Maker in Beginner's toolbar, Simulate → Helmet Maker in Advanced, or the Helmet Maker button inside CosForge). Size: pick a head size or type the distance around the head, and for a closer fit front to back, ear to ear and chin to crown; choose room for padding (snug, comfort, foam pads or headset) and the shell thickness, and see the inside and outside sizes, whether it fits your printer, and whether a head gets through the bottom. Split front / back or Auto-cut to fit in one click. Style: a library of 12 new original helmets (Nova Explorer, Vector Racer, Orbit Pilot, Specter Recon, Titan Heavy, Cyber Runner, Drift Trooper, Aegis Guard, Abyss Diver, Mech Jockey, Stealth Ops, Astro Scout), plus every other sci-fi helmet, free to print; your size stays when you change style. Add a reference picture behind the head from the front or side to match a design. Visor: full, eye, wraparound, V, split eyes, T, slit, open or closed, sized with sliders, with an optional separate lens; or draw your own visor with a finger, mouse or Pencil, or trace one from a picture (auto trace, with Simplify and Make both sides match). Details: ear pods, antennas, a top crest, chin and cheek vents, side lights and a brow camera in one tap, plus panel lines, light lines, ridge, edge, texture, emblem and rivets. Look: colours and a finish (paint, gloss, matte, PLA, PETG, silk, rainbow or two-tone silk, chrome, brushed metal, gunmetal, titanium, gold, carbon fibre), glowing or metal accents and a tinted lens, then Render a photo-style picture and save it as a PNG. Form, Sculpt, Cut & Join and Export work as in CosForge."],
+        ["13 new tutorials", "Beginner: an LED push-light lamp with its own laser-cut acrylic name panel (made for the round 69 mm push lights sold at dollar stores), an LED strip lamp (10 mm strips), a hanging lamp, a holiday ornament, a stacking bin set and a planter with a saucer. Advanced: the same three LED lamps built with sketches and features (including a traced picture engraved in the acrylic), a key rack with hooks, ribs and keyhole slots, a shelf bracket with gussets and countersunk holes, woodworking jigs, and a drawer cabinet with dovetail rails, plates and clips."],
+        ["Laser cutting files", "Export → Laser cut (SVG) or (DXF) turns flat parts (an acrylic panel, a sign, a stencil) into files for a laser cutter: outlines and holes as red cut lines, recesses on top (text, pictures) as black engraving."],
+        ["Pattern features", "Advanced Pattern features now repeats ribs (gussets) and keyhole slots too."],
+      ]),
+      sec("New in version 2.9.8.7.3", [
+        ["Jig Maker", "Workshop → Jig Maker makes woodworking jigs ready to print. There are six kinds. A miter box has saw kerfs at 90°, 45° (both ways) and 22.5°, sized to your stock and saw, with optional ears to screw it down. A self-centring dowel jig fits over the board, with guide holes for 6, 8 or 10 mm or inch dowels, spacing you choose and an end stop. A pocket-hole jig has 15° guides for 1/2 to 1-1/2 inch boards and tells you where to set the bit's depth collar. A try square has a ruled blade in mm or inches and a 45° shoulder. Angle templates come with a fence for setting saws and marking. A drill guide has labelled holes and a V groove for round stock. Dowel and pocket-hole guides can be sized for steel bushings. Double-click a jig to change it later."],
+      ]),
+      sec("New in version 2.9.8.7.2", [
+        ["Box Maker dovetail fit", "When boxes join with dovetail rails, stacked or side by side, choose how they fit. Snug leaves a 0.15 mm gap around each rail: a firm push, very little wobble. Normal (0.25 mm) slides easily on most printers. Loose (0.4 mm) slides freely, for printers that run tight or for PETG. Plates in grooves follow the fit you choose, so they still fit with their own Plate fit."],
+      ]),
+      sec("New in version 2.9.8.7", [
+        ["Rib tool", "Advanced Create has a Rib tool for reinforcing parts. Click where the rib starts and where it ends on a flat face. Straight ribs stiffen a floor or wall. Gussets are triangles that brace a corner, so start one against the wall. You set the height, thickness and count, plus the spacing for several side by side. Double-click it in the timeline to change it later."],
+        ["Keyhole slot", "Advanced Create has a Keyhole slot tool for hanging parts on screws. Click a flat face (usually the back) where the screw head goes in. Each keyhole has a round head hole and a slot running up from it, with a hidden channel behind a lip that the screw head hooks behind. There are sizes for M3 / #6, M4 / #8 and M5 / #10 screws or custom sizes, the slot can point up, down, left or right, and you can place several at once."],
+        ["Box Maker: plates on all four sides", "One click puts joining plates on every side: over the rails on top and the right, and in the grooves underneath and on the left. Click it again to remove them all."],
+      ]),
+      sec("New in version 2.9.8.6", [
+        ["Box Maker plates in grooves", "Box Maker now offers both kinds of joining plate. Plates over rails have dovetail grooves and slide over the open rails, on top of cases side by side or up the right side of a stack. Plates in grooves are new: they have dovetail rails and slide into the open grooves, under two cases side by side (lifting them 2.4 mm) or up the left side of a stack. Both kinds slide on from the back, stop at the front, use the same snug Plate fit (Tight, Snug or Loose) and print flat."],
+      ]),
+      sec("New in version 2.9.8.5", [
+        ["Box Maker rail plates", "A new Rail plates option joins boxes using their open dovetail rails. A plate with two dovetail grooves slides on from the back over a rail of each of two boxes and stops flush with the front. Choose On top (across the tops of cases side by side, when they stack with dovetails), On the side (up the right side of a stack, when boxes join side by side with dovetails), or Both. The grooves fit snugly by default, with about 0.12 mm around each rail, so a plate slides on with a firm push and stays put. Plate fit lets you pick Tight (0.08 mm) or Loose (0.2 mm) to suit your printer. The plates are separate parts that print flat, grooves up."],
+      ]),
+      sec("New in version 2.9.8.4", [
+        ["Box Maker lock clips", "When boxes join with dovetail rails (stacked cases, or bins and cases side by side), turn on Lock clips. Small plates press onto the backs across each dovetail join, with a peg in each box, so the boxes can't slide apart along the rails when you grab one. The clips are made as separate parts that print flat with their pegs up. Pull a clip off to slide the boxes apart."],
+      ]),
+      sec("New in version 2.9.8.3", [
+        ["Box Maker door pins", "The pin on top of a Box Maker door is 0.8 mm shorter, so the door is easier to snap into the case, and both door pins have rounded tips."],
+        ["3D-print filament appearances", "Appearance has a new 3D-print filament group: PLA, PLA matte, PETG, PETG translucent, TPU (flexible) and Silk PLA. Silk rainbow shows the colors running up the part in bands, repeating 1 to 4 times. Silk two-tone gradient fades from a bottom color to a top color that you pick. Like all appearances, these only change how parts look on screen and in rendered pictures."],
+      ]),
       sec("New in version 2.9.8.2", [
         ["Seasonal & holiday textures", "The Texture tool has four new groups with 50 picture textures: Seasons (snowflakes, fall leaves, acorns, suns, spring flowers, rain, beach), Holidays (snowmen, Christmas trees, nutcrackers, candy canes, ornaments, gingerbread people, holly, reindeer, jack-o'-lanterns, ghosts, bats, spider webs, turkeys, Valentine hearts, Easter eggs and bunnies, shamrocks, fireworks, dreidels), Celebrations (birthday cakes, balloons, gifts, confetti, anniversary rings and hearts, graduation caps, baby) and Animals (squirrels, chipmunks, rabbits, birds, owls, deer, butterflies, fish, cats, paw prints, woodland mix). The pictures stand up from the surface and repeat seamlessly; use Tile size to make them bigger or smaller, Depth to set how far they stand up, and Engrave to cut them in instead."],
       ]),

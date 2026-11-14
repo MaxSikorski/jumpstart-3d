@@ -18,7 +18,8 @@ import { paramNameOk, renameParam, newParam, removeParam, applyParams, setExpr, 
 import { sketchDof } from "./constraints.js"; // jumpstart-3d: parameters
 import { mirrorBox } from "./sketchmirror.js"; // jumpstart-3d: sketch mirror
 import { traceImage, curvesFor } from "./trace.js";
-import { subjectMask, inflate, maskBox } from "./puffy.js";
+import { maskBox } from "./puffy.js";
+import { cutOut, buildModel, shrink as photoShrink, colorAt as photoColorAt, PRESETS as PHOTO_PRESETS, PROFILES as PHOTO_PROFILES } from "./photo3d.js";
 import { resolveSketch, sampleCurve, d2, polyArea } from "./regions.js";
 import { M4, arr, makePrimBody, frameOnFace, groupBodies, ungroupBody, deleteBodies, duplicateBodies, nextName, PRIM_DEFAULTS, transformBodies } from "./ops.js";
 import { MATERIALS, matByKey, swatchCSS } from "./appearance.js";
@@ -28,6 +29,7 @@ import { initSimulate } from "./simulate.js";
 import { readMeshFile, simplify, packMesh, meshBounds, toB64, contentId, MESH_LIMIT } from "./meshimport.js";
 import { previewWorldBox } from "./meshpreview.js"; // jumpstart-3d: import preview
 import { importsAtOnce, showImportToast } from "./importtoast.js"; // jumpstart-3d: import units
+import { readLayerscape, addMeshBodies } from "./lsimport.js";
 import { initMeasure } from "./measure.js";
 import { commitCombine, hasLaterKeepPiece } from "./combinesplit.js"; // jumpstart-3d: separate Combine pieces
 import { textBounds } from "./textgeo.js";
@@ -46,6 +48,9 @@ import { initKnurl } from "./knurl.js"; // jumpstart-3d: knurl
 import { initSpring } from "./spring.js"; // jumpstart-3d: spring
 import { initPrintSim } from "./printsim.js";
 import { FACEPAT, facePatCells } from "./facepat.js";
+import { keyholeTool, KEYHOLE_SIZES, KEYHOLE_DEFAULTS, faceUp, ribTool, RIB_DEFAULTS } from "./ribkey.js";
+import { DV_FITS } from "./bins.js";
+import { jigSet, JIG_TYPES, JIG_DEFAULTS } from "./jigs.js";
 import { binParts, binSet, BIN_DEFAULTS, BIN_STYLES, BIN_LOCKS } from "./bins.js";
 import { hingeParts, HINGE_DEFAULTS, HINGE_TYPES, PIN_KINDS } from "./hinges.js";
 import { gearSet, GEAR_DEFAULTS, GEAR_TYPES, BORES } from "./gearlib.js"; // jumpstart-3d: his gears.js is gearlib.js here (our gears.js is the Gear dialog)
@@ -2060,6 +2065,163 @@ export function initAdvanced(app) {
     openCmd(def);
   }
 
+  // ------------------------------------------------------------------ Keyhole slots
+  // Click flat faces (the back of a sign, a shelf, a frame…) to cut keyhole slots for hanging it on
+  // screws. The slot runs "up" (the body's +Z laid onto the face, or +Y on a flat-lying face), or
+  // turned by 90° steps. Stored as a cut with src "keyhole" and its settings, so it can be edited.
+  const bodyUp = (b) => new THREE.Vector3(0, 0, 1).transformDirection(M4(b.m).invert()).toArray();
+  function keyholeCmd(editing = null) {
+    const st = { at: [], body: null, ...clone(KEYHOLE_DEFAULTS) };
+    if (editing) {
+      const b = findBody(store.doc, editing.body), m = b.node.mods.find((x) => x.id === editing.mod);
+      Object.assign(st, clone(m.kh), { body: b.id });
+      const M = M4(b.m);
+      st.at = m.kh.at.map((q) => ({ ...q, world: new THREE.Vector3(...q.p).applyMatrix4(M) }));
+    }
+    let hoverPt = null;
+    const spots = (b) => st.at.map((q) => ({ p: q.p, n: q.n, dir: faceUp(q.n, bodyUp(b), st.ang) }));
+    const def = {
+      title: (editing ? "Edit " : "") + "Keyhole slot",
+      valid: () => st.at.length > 0 && st.head > st.shank && st.length > 0 && st.lip > 0 && st.depth > 0,
+      canOk: () => def.valid(),
+      apply(doc) {
+        const b = findBody(doc, st.body);
+        if (!b) throw new Error("Click a flat face to place the keyhole.");
+        const kh = { size: st.size, head: st.head, shank: st.shank, length: st.length, lip: st.lip, depth: st.depth, ang: st.ang, at: st.at.map((q) => ({ p: q.p, n: q.n })) };
+        const tool = keyholeTool(kh, spots(b));
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, { kh, tool }); return; }
+        b.node.mods = b.node.mods || [];
+        b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "bool", op: "cut", src: "keyhole", kh, tool, m: IDENTITY.slice() });
+      },
+      ok() { commit(def, "Keyhole slot"); },
+      onDelete: editing ? () => deleteFeature(editing) : null,
+      hint: () => "Click a flat face (usually the back) where the screw head should go in. The slot runs up from there, so the part hangs on the screw.",
+      build(body) {
+        body.append(pickbox(true, st.at.length ? el("span", {}, el("b", {}, st.at.length), ` keyhole${st.at.length > 1 ? "s" : ""}`) : "Click a face to place", st.at.length && !editing ? () => { st.at = []; st.body = null; refresh(); } : null));
+        const sizes = seg([...Object.entries(KEYHOLE_SIZES).map(([k, v]) => [k, v.name.split(" ")[0]]), ["custom", "Custom"]], st.size, (v) => { st.size = v; if (KEYHOLE_SIZES[v]) { const { name, ...dims } = KEYHOLE_SIZES[v]; void name; Object.assign(st, dims); } refresh(); }, "kh-size");
+        body.append(el("div", { class: "subhead" }, "Screw size"), sizes);
+        if (KEYHOLE_SIZES[st.size]) body.append(el("p", { class: "hint" }, `For ${KEYHOLE_SIZES[st.size].name.replace(/.*\(|\)/g, "")} screws (pan or round heads).`));
+        const num = (lab, key, id, min, step) => body.append(row(lab, app.numField({ value: st[key], id, min, step, live: true, onCommit: (v) => { st[key] = v; st.size = "custom"; refresh(false); const sz = document.getElementById("kh-size"); if (sz) sz.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x.textContent === "Custom")); } }), id));
+        num("Head hole", "head", "kh-head", 1, 0.5);
+        num("Slot width", "shank", "kh-shank", 0.5, 0.1);
+        num("Slot length", "length", "kh-length", 1, 1);
+        num("Lip", "lip", "kh-lip", 0.4, 0.5);
+        num("Head room", "depth", "kh-depth", 0.5, 0.5);
+        body.append(el("p", { class: "hint" }, `Cuts ${withUnit(st.lip + st.depth, 2)} deep: make the part at least ${withUnit(st.lip + st.depth + 1.5, 2)} thick there. The lip is what the screw head hooks behind.`));
+        body.append(row("Slot points", seg([[0, "Up"], [90, "Right"], [180, "Down"], [270, "Left"]], st.ang, (v) => { st.ang = v; refresh(); }, "kh-dir")));
+      },
+      start() { refresh(); },
+      handler: {
+        hover(e) { hoverPt = locate(e); draw(); vp.canvas.style.cursor = hoverPt ? "crosshair" : "default"; },
+        down(e) {
+          const l = locate(e);
+          if (!l) return true;
+          if (st.body && l.body !== st.body) { app.toast("One keyhole feature works on one body. Finish this one first."); return true; }
+          st.body = l.body; st.at.push(l); refresh(); return true;
+        },
+      },
+    };
+    function locate(e) {
+      const f = pickBaseFace(e, (b) => !b.hole && !b.locked && (!st.body || b.id === st.body));
+      if (!f || !f.info || f.info.t !== "PLANE") return null;
+      const inv = f.base.m.clone().invert();
+      let local = f.point.clone().applyMatrix4(inv);
+      const c = new THREE.Vector3(...f.info.c);
+      if (c.distanceTo(local) < vp.pixelSize(f.point) * 10) local = c;
+      return { body: f.body, p: local.toArray(), n: f.info.n.slice(), world: local.clone().applyMatrix4(f.base.m) };
+    }
+    function draw() {
+      clearOv();
+      const b = st.body && findBody(store.doc, st.body);
+      for (const q of st.at) {
+        drawDot(q.world, 0x1f4fa8, 10);
+        if (b) { const M = M4(b.m), d = faceUp(q.n, bodyUp(b), st.ang); drawLine([q.world, new THREE.Vector3(...q.p.map((v, i) => v + d[i] * st.length)).applyMatrix4(M)], 0x1f4fa8); }
+      }
+      if (hoverPt) drawDot(hoverPt.world, 0xe8a317, 9);
+    }
+    function refresh(rerender = true) { if (rerender) def.render(); draw(); schedulePreview(def); }
+    openCmd(def);
+  }
+
+  // ------------------------------------------------------------------ Ribs
+  // Click where a rib starts and where it ends on a flat face; it stands up from the face. Straight
+  // ribs stiffen a floor or wall; gussets (triangles) brace a corner: start one against a wall.
+  function ribCmd(editing = null) {
+    const st = { a: null, b: null, body: null, ...clone(RIB_DEFAULTS) };
+    if (editing) {
+      const b = findBody(store.doc, editing.body), m = b.node.mods.find((x) => x.id === editing.mod), M = M4(b.m);
+      Object.assign(st, clone(m.rib), { body: b.id });
+      st.a = { p: m.rib.a, n: m.rib.n, world: new THREE.Vector3(...m.rib.a).applyMatrix4(M) };
+      st.b = { p: m.rib.b, n: m.rib.n, world: new THREE.Vector3(...m.rib.b).applyMatrix4(M) };
+    }
+    let hoverPt = null;
+    const def = {
+      title: (editing ? "Edit " : "") + "Rib",
+      valid: () => !!(st.a && st.b) && st.height > 0 && st.thick > 0,
+      canOk: () => def.valid(),
+      apply(doc) {
+        const b = findBody(doc, st.body);
+        if (!b || !st.a || !st.b) throw new Error("Click where the rib starts and where it ends, on a flat face.");
+        const rib = { shape: st.shape, height: st.height, thick: st.thick, count: st.count, spacing: st.spacing, flip: st.flip, a: st.a.p, b: st.b.p, n: st.a.n };
+        const { tool } = ribTool(rib, rib.a, rib.b, rib.n);
+        if (editing) { const m = b.node.mods.find((x) => x.id === editing.mod); Object.assign(m, { rib, tool }); return; }
+        b.node.mods = b.node.mods || [];
+        b.node.mods.push({ id: uid("f"), seq: nextSeq(doc), t: "bool", op: "join", src: "rib", rib, tool, m: IDENTITY.slice() });
+      },
+      ok() { commit(def, "Rib"); },
+      onDelete: editing ? () => deleteFeature(editing) : null,
+      hint: () => !st.a ? "Click on a flat face where the rib starts (for a gusset: against the wall it braces)." : !st.b ? "Click where the rib ends, on the same face." : "Set the size, then OK. Click the face again to start the rib over.",
+      build(body) {
+        const len = st.a && st.b ? st.a.world.distanceTo(st.b.world) : 0;
+        body.append(pickbox(true, st.a && st.b ? el("span", {}, "Rib ", el("b", {}, withUnit(len, 1)), " long") : st.a ? "Click where it ends" : "Click where it starts", st.a && !editing ? () => { st.a = st.b = null; st.body = null; refresh(); } : null));
+        body.append(el("div", { class: "subhead" }, "Shape"), seg([["straight", "Straight"], ["gusset", "Gusset (triangle)"]], st.shape, (v) => { st.shape = v; refresh(); }, "rib-shape"));
+        body.append(el("p", { class: "hint" }, st.shape === "gusset" ? "Full height at the start, down to nothing at the end: start it against a wall to brace the corner." : "An even wall standing on the face, to stiffen it."));
+        if (st.shape === "gusset") body.append(row("Tall end", seg([[false, "At the start"], [true, "At the end"]], st.flip, (v) => { st.flip = v; refresh(); }, "rib-flip")));
+        const num = (lab, key, id, min, step, int) => body.append(row(lab, app.numField({ value: st[key], id, min, step, len: !int, live: true, onCommit: (v) => { st[key] = int ? Math.max(1, Math.round(v)) : v; refresh(key === "count"); } }), id));
+        num("Height", "height", "rib-height", 0.2, 1);
+        num("Thickness", "thick", "rib-thick", 0.4, 0.2);
+        num("Count", "count", "rib-count", 1, 1, true);
+        if (st.count > 1) num("Spacing", "spacing", "rib-spacing", 0.5, 1);
+        body.append(el("p", { class: "hint" }, "Tip: ribs about 0.6 to 1 times the wall thickness print cleanly and add stiffness without sink marks."));
+      },
+      start() { refresh(); },
+      handler: {
+        hover(e) { hoverPt = locate(e); draw(); vp.canvas.style.cursor = hoverPt ? "crosshair" : "default"; },
+        down(e) {
+          const l = locate(e);
+          if (!l) return true;
+          if (st.a && st.b && !editing) { st.a = null; st.b = null; st.body = null; }
+          if (!st.a) { st.a = l; st.body = l.body; }
+          else {
+            if (l.body !== st.body) { app.toast("The rib's end must be on the same body."); return true; }
+            const nA = new THREE.Vector3(...st.a.n), off = new THREE.Vector3(...l.p).sub(new THREE.Vector3(...st.a.p)).dot(nA);
+            if (Math.abs(off) > 0.01) { app.toast("Click the end on the same flat face as the start."); return true; }
+            st.b = l;
+          }
+          refresh(); return true;
+        },
+      },
+    };
+    function locate(e) {
+      const f = pickBaseFace(e, (b) => !b.hole && !b.locked && (!st.body || b.id === st.body));
+      if (!f || !f.info || f.info.t !== "PLANE") return null;
+      const inv = f.base.m.clone().invert(), local = f.point.clone().applyMatrix4(inv);
+      const nL = new THREE.Vector3(...f.info.n);
+      const g = app.gridStep();
+      if (g > 0) { const c = new THREE.Vector3(...f.info.c); for (const k of ["x", "y", "z"]) if (Math.abs(nL[k]) < 0.999 && Math.abs(nL.x) + Math.abs(nL.y) + Math.abs(nL.z) < 1.0001) local[k] = c[k] + round(local[k] - c[k], g); }
+      return { body: f.body, p: local.toArray(), n: nL.toArray(), world: local.clone().applyMatrix4(f.base.m) };
+    }
+    function draw() {
+      clearOv();
+      if (st.a) drawDot(st.a.world, 0x1f4fa8, 10);
+      if (st.b) { drawDot(st.b.world, 0x1f4fa8, 10); drawLine([st.a.world, st.b.world], 0x1f4fa8); }
+      else if (st.a && hoverPt) drawLine([st.a.world, hoverPt.world], 0xe8a317);
+      if (hoverPt) drawDot(hoverPt.world, 0xe8a317, 9);
+    }
+    function refresh(rerender = true) { if (rerender) def.render(); draw(); schedulePreview(def); }
+    openCmd(def);
+  }
+
   // ------------------------------------------------------------------ Construction planes
   const V3 = (a) => new THREE.Vector3(...a);
   const arr3 = (v) => v.toArray().map((q) => (Math.abs(q) < 1e-9 ? 0 : +q.toFixed(9)));
@@ -2417,7 +2579,7 @@ export function initAdvanced(app) {
     });
   }
   async function insertFile(kind = "any") {
-    const MODELS = ".stl,.obj,.3mf,.step,.stp,model/stl,model/obj,model/3mf,application/sla"; // jumpstart-3d: OBJ in both modes' shared picker
+    const MODELS = ".stl,.obj,.3mf,.step,.stp,.zip,model/stl,model/obj,model/3mf,application/sla,application/zip"; // jumpstart-3d: OBJ in both modes' shared picker
     const accept = kind === "svg" ? ".svg,image/svg+xml" : kind === "dxf" ? ".dxf" : kind === "image" ? "image/png,image/jpeg,image/webp,image/gif,image/bmp" : kind === "model" ? MODELS : ".svg,.dxf,image/png,image/jpeg,image/webp,image/gif," + MODELS;
     const f = await pickFile(accept);
     if (!f) return;
@@ -2428,7 +2590,7 @@ export function initAdvanced(app) {
   // "image" (by its type), or null. Shared by the picker and the page-wide drop so they accept the same files.
   function fileKind(f) {
     const ext = (f.name.split(".").pop() || "").toLowerCase();
-    if (ext === "stl" || ext === "obj" || ext === "3mf" || ext === "step" || ext === "stp") return "model"; // jumpstart-3d: OBJ import
+    if (ext === "stl" || ext === "obj" || ext === "3mf" || ext === "step" || ext === "stp" || ext === "zip") return "model"; // jumpstart-3d: OBJ import (.zip: his Layerscape kits)
     return ext === "svg" ? "svg" : ext === "dxf" ? "dxf" : /^image\//.test(f.type) ? "image" : null;
   }
   // jumpstart-3d: drop import. Opens any file the Import button takes: a mesh or STEP model, an SVG or DXF drawing, a picture.
@@ -2470,6 +2632,16 @@ export function initAdvanced(app) {
         if (!app.stepProgress.sessions.has(session.token)) return;
         addImported({ kind: "step", bytes, name: base, k: 1, plate: true, session }); // jumpstart-3d: drop import. a model file lands on the plate centre
         return;
+      }
+      // a Layerscape 3D print kit (.zip) or its .3mf: one object per part, put together
+      if (ext === "zip" || ext === "3mf") {
+        const ls = await readLayerscape(bytes);
+        if (ls) {
+          const ids = addMeshBodies(app, ls.parts, "Import Layerscape " + ls.title);
+          app.toast(ls.assembled ? `Imported "${ls.title}" from Layerscape: ${ids.length} parts, put together as the finished diorama. Group them to move it as one.` : `Imported "${ls.title}" from Layerscape: ${ids.length} parts, laid out flat as on the print plate. Kits made with Layerscape in 2.9.8.9.1 or later come in put together.`);
+          return;
+        }
+        if (ext === "zip") { app.toast("That .zip isn't a Layerscape 3D print kit. Import an STL, 3MF or STEP file.", "err"); return; }
       }
       const big = bytes.length > 4e6;
       if (big) { app.toast("Reading " + file.name + "…"); await new Promise((r) => setTimeout(r, 60)); }
@@ -3038,15 +3210,22 @@ export function initAdvanced(app) {
     }
     openCmd(def);
   }
-  // Picture → puffy 3D model: cut the subject out, inflate its outline into a
-  // rounded solid, paint the picture on. Not an AI reconstruction: from the front it looks like
-  // the picture; from the side it is a rounded, plush-toy version of the outline.
+  // Picture → 3D model (v2.9.8.9.5): cut the subject out (automatic, or by picking its colours,
+  // refined with keep / remove brushes), give it a real thickness (each limb, leg, stem or tail
+  // round on its own), and carve it to match any side, back or top pictures too. A turning 3D
+  // preview shows the result before OK; the main picture is painted on. Not an AI
+  // reconstruction: the more views, the closer it gets to the real thing.
   function puffyCmd(sketchId) {
     const sk0 = findSketch(store.doc, sketchId), im = sk0 && sk0.image;
     if (!im) return;
-    const st = { mode: "auto", sens: 30, thr: 50, height: 60, puff: 80, detail: 25, paint: true };
+    const P0 = PHOTO_PRESETS.animal;
+    const st = { preset: "animal", mode: "auto", sens: 30, thr: 50, grow: 0, smooth: 2, keepHoles: false, allPieces: false, fg: [], bg: [], seeds: [], strokes: [],
+      tool: "view", brush: 10, height: 60, profile: P0.profile, thick: P0.thick, maxT: P0.maxT, back: P0.back, flatBack: P0.flatBack, relief: P0.relief, round: P0.round, tsmooth: P0.smooth, res: "normal", paint: true };
+    const RES = { draft: 64, normal: 96, fine: 132, extra: 170 };
+    const views = {}; // side / back / top: { img, mask, sens, faces | front }
     let img = null, mask = null, busy = true;
-    const prev = el("canvas", { class: "puffy-prev", width: 260, height: 170 });
+    const prev = el("canvas", { class: "puffy-prev", id: "pf-cut", width: 300, height: 210, style: { touchAction: "none", cursor: "crosshair" } });
+    const p3 = el("canvas", { class: "puffy-prev", id: "pf-3d", width: 300, height: 220, title: "Drag to turn the model", style: { touchAction: "none" } });
     const def = {
       title: "Picture to 3D model",
       keepSelection: true,
@@ -3055,13 +3234,13 @@ export function initAdvanced(app) {
       apply() {},
       ok() {
         let res;
-        try { res = inflate(img, mask, { height: st.height, puff: st.puff / 100, detail: st.detail / 100, res: 96 }); }
+        try { res = buildModel(viewSet(), shapeOpts(RES[st.res])); }
         catch (err) { app.toast(err.message, "err"); return; }
         let mesh = { V: res.V, I: res.I };
         if (mesh.I.length / 3 > MESH_LIMIT) mesh = simplify(mesh, MESH_LIMIT).mesh;
         closeCmd(false);
         const base = (im.name || "Picture").replace(/\.[^.]+$/, "");
-        const id = addImported({ kind: "mesh", bytes: packMesh(mesh), name: "Puffy " + base, k: 1 });
+        const id = addImported({ kind: "mesh", bytes: packMesh(mesh), name: "3D " + base, k: 1 });
         const mid = uid("md");
         store.update((doc) => {
           const b = doc.bodies.find((x) => x.id === id);
@@ -3070,71 +3249,215 @@ export function initAdvanced(app) {
           if (st.paint) {
             doc.media = doc.media || {};
             doc.media[mid] = { kind: "image", name: im.name || "picture", src: im.src, w: img.width, h: img.height };
-            b.media = { id: mid, map: "front", dir: [0, 1, 0], up: [0, 0, 1], both: true, crop: res.crop, rep: 1, rot: 0, mirror: false };
+            b.media = { id: mid, map: "front", dir: [0, 1, 0], up: [0, 0, 1], both: !views.back, crop: res.crop, rep: 1, rot: 0, mirror: false };
           }
-          // the flat picture it was made from steps out of the way (show it again from the browser)
           const s = doc.sketches.find((x) => x.id === sketchId); if (s) s.hidden = true;
         }, "Paint picture on");
         if (sketcher.active) app.exitSketch && app.exitSketch();
-        app.toast(`Made a puffy 3D model, ${res.size.map((v) => showLen(v, 0)).join(" × ")} ${getUnit()}. It's a real solid: you can print it.${st.paint ? " The picture is painted on (Media)." : ""}`);
+        stop3d();
+        const more = res.views.length ? ` Matched to ${res.views.length + 1} pictures.` : "";
+        app.toast(`Made a 3D model, ${res.size.map((v) => showLen(v, 0)).join(" × ")} ${getUnit()}.${more} It's a real solid: you can print it.${st.paint ? " The picture is painted on (Media)." : ""}`);
       },
-      hint: () => "Check the cut-out, then OK.",
+      cleanup() { stop3d(); },
+      hint: () => "Refine the cut-out and the shape, check the 3D preview, then OK.",
       build(body) {
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Cuts the subject out of the picture and puffs its outline up into a rounded solid, then paints the picture on. From the front it looks like the picture; from the side it's a rounded, plush-toy version."));
-        body.append(prev);
-        body.append(row("Cut out", seg([["auto", "Auto"], ["dark", "Dark parts"], ["light", "Light parts"]], st.mode, (v) => { st.mode = v; def.render(); recut(); }, "pf-mode"), "pf-mode"));
-        if (st.mode === "auto") body.append(sliderRow("Sensitivity", "pf-sens", st.sens, 0, 100, 1, "%", (v) => { st.sens = v; recutSoon(); }));
+        const sub = (t) => el("div", { class: "pf-sub", style: { fontWeight: "700", margin: "10px 0 2px" } }, t);
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Cuts the subject out and gives it a real 3D shape. Add a side, back or top picture to match the real thing more closely. The 3D preview updates as you go."));
+        body.append(sub("What is it?"));
+        body.append(el("div", { class: "seg wrap", id: "pf-preset" }, ...Object.entries(PHOTO_PRESETS).map(([k, p]) => el("button", { "aria-pressed": st.preset === k, id: "pf-pre-" + k, title: p.tip, onclick: () => setPreset(k) }, p.label))));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, PHOTO_PRESETS[st.preset].tip));
+        // the cut-out
+        body.append(sub("Cut-out"));
+        body.append(row("Find it by", seg([["auto", "Auto"], ["pick", "Picked colours"], ["dark", "Dark"], ["light", "Light"]], st.mode, (v) => { st.mode = v; if (v === "pick") st.tool = "fg"; def.render(); recut(); }, "pf-mode"), "pf-mode"));
+        if (st.mode === "auto" || st.mode === "pick") body.append(sliderRow(st.mode === "pick" ? "Colour range" : "Sensitivity", "pf-sens", st.sens, 0, 100, 1, "%", (v) => { st.sens = v; recutSoon(); }));
         else body.append(sliderRow("Threshold", "pf-thr", st.thr, 1, 99, 1, "%", (v) => { st.thr = v; recutSoon(); }));
-        body.append(row("Height", app.numField({ value: st.height, id: "pf-h", len: true, min: 5, max: 500, step: 5, onCommit: (v) => { st.height = v; } }), "pf-h"));
-        body.append(sliderRow("Puffiness", "pf-puff", st.puff, 20, 150, 5, "%", (v) => { st.puff = v; }));
-        body.append(sliderRow("Surface detail", "pf-detail", st.detail, 0, 100, 5, "%", (v) => { st.detail = v; }));
-        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pf-paint", checked: st.paint, onchange: (e) => { st.paint = e.target.checked; } }), "Paint the picture on it"));
+        body.append(prev);
+        body.append(row("Tap the picture to", seg([["view", "Look"], ["keep", "Keep brush"], ["remove", "Remove brush"], ["fg", "Pick subject"], ["bg", "Pick background"]], st.tool, (v) => { st.tool = v; def.render(); }, "pf-tool"), "pf-tool"));
+        if (st.tool === "keep" || st.tool === "remove") body.append(sliderRow("Brush size", "pf-brush", st.brush, 2, 60, 1, "px", (v) => { st.brush = v; }));
+        body.append(el("div", { class: "btnrow", style: { display: "flex", gap: "4px", flexWrap: "wrap" } },
+          el("button", { class: "btn", id: "pf-undo-stroke", disabled: !(st.strokes.length || st.fg.length || st.bg.length) || null, onclick: () => { if (st.strokes.length) st.strokes.pop(); else if (st.fg.length) { st.fg.pop(); st.seeds.pop(); } else st.bg.pop(); def.render(); recut(); } }, "Undo mark"),
+          el("button", { class: "btn", id: "pf-clear-strokes", onclick: () => { st.strokes = []; st.fg = []; st.bg = []; st.seeds = []; def.render(); recut(); } }, "Clear marks")));
+        body.append(sliderRow("Grow / shrink edge", "pf-grow", st.grow, -12, 12, 1, "px", (v) => { st.grow = v; recutSoon(); }));
+        body.append(sliderRow("Smooth edge", "pf-smooth", st.smooth, 0, 6, 1, "", (v) => { st.smooth = v; recutSoon(); }));
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pf-holes", checked: st.keepHoles || null, onchange: (e) => { st.keepHoles = e.target.checked; recut(); } }), "Keep holes (handles, gaps between legs)"));
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pf-pieces", checked: st.allPieces || null, onchange: (e) => { st.allPieces = e.target.checked; recut(); } }), "Keep every piece, not just the biggest"));
         body.append(el("div", { class: "hint", id: "pf-info", style: { padding: 0 } }, busy ? "Reading the picture…" : info()));
+        // more pictures
+        body.append(sub("More pictures (optional)"));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "The same subject from other sides, each showing all of it. Each one carves the model to match."));
+        for (const [k, name] of [["side", "Side"], ["back", "Back"], ["top", "Top"]]) {
+          const v = views[k];
+          const file = el("input", { type: "file", accept: "image/*", id: "pf-file-" + k, style: { display: "none" }, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) loadView(k, f); } });
+          const line = el("div", { class: "row", id: "pf-view-" + k, style: { alignItems: "center" } }, el("label", {}, name + " view"), file,
+            v ? viewThumb(v) : null,
+            el("button", { class: "btn", id: "pf-add-" + k, onclick: () => file.click() }, v ? "Change…" : "Add…"),
+            v ? el("button", { class: "btn", id: "pf-rm-" + k, onclick: () => { delete views[k]; def.render(); preview3d(); } }, "Remove") : null);
+          body.append(line);
+          if (v) {
+            body.append(sliderRow(name + " cut-out", "pf-vsens-" + k, v.sens, 0, 100, 1, "%", (x) => { v.sens = x; recutView(k); }));
+            if (k === "side") body.append(row("Its front is on the", seg([["left", "Left"], ["right", "Right"]], v.faces, (x) => { v.faces = x; def.render(); preview3d(); }, "pf-faces"), "pf-faces"));
+            if (k === "top") body.append(row("Its front is at the", seg([["bottom", "Bottom"], ["top", "Top"]], v.front, (x) => { v.front = x; def.render(); preview3d(); }, "pf-topfront"), "pf-topfront"));
+          }
+        }
+        // the shape
+        body.append(sub("Shape"));
+        body.append(row("Height", app.numField({ value: st.height, id: "pf-h", len: true, min: 5, max: 1000, step: 5, onCommit: (v) => { st.height = v; preview3dSoon(); } }), "pf-h"));
+        const multi = views.side || views.top;
+        if (!multi) {
+          body.append(row("Cross-section", el("select", { id: "pf-profile", onchange: (e) => { st.profile = e.target.value; custom(); preview3dSoon(); } }, ...PHOTO_PROFILES.map(([k, n]) => el("option", { value: k, selected: st.profile === k || null }, n))), "pf-profile"));
+          body.append(sliderRow("Thickness", "pf-puff", st.thick, 10, 250, 5, "%", (v) => { st.thick = v; custom(); preview3dSoon(); }));
+          body.append(sliderRow("Max thickness", "pf-maxt", st.maxT, 0, 200, 1, getUnit() === "in" ? "mm" : "mm (0: no limit)", (v) => { st.maxT = v; custom(); preview3dSoon(); }));
+          body.append(sliderRow("Back depth", "pf-back", st.back, 0, 150, 5, "%", (v) => { st.back = v; custom(); preview3dSoon(); }));
+          body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pf-flat", checked: st.flatBack || null, onchange: (e) => { st.flatBack = e.target.checked; custom(); preview3dSoon(); } }), "Flat back (for wall art, magnets, plaques)"));
+        } else body.append(el("div", { class: "hint", style: { padding: 0 } }, "The depth comes from the " + (views.side ? "side" : "top") + " picture."));
+        body.append(sliderRow("Surface detail", "pf-detail", st.relief, 0, 100, 5, "%", (v) => { st.relief = v; custom(); preview3dSoon(); }));
+        body.append(sliderRow("Smooth shape", "pf-tsmooth", st.tsmooth, 0, 8, 1, "", (v) => { st.tsmooth = v; custom(); preview3dSoon(); }));
+        body.append(sliderRow("Round the edges", "pf-round", st.round, 0, 6, 1, "", (v) => { st.round = v; custom(); preview3dSoon(); }));
+        body.append(row("Detail", seg([["draft", "Draft"], ["normal", "Normal"], ["fine", "Fine"], ["extra", "Extra fine"]], st.res, (v) => { st.res = v; def.render(); preview3dSoon(); }, "pf-res"), "pf-res"));
+        body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "pf-paint", checked: st.paint, onchange: (e) => { st.paint = e.target.checked; } }), "Paint the picture on it"));
+        body.append(sub("3D preview"));
+        body.append(p3, el("div", { class: "hint", id: "pf-3dinfo", style: { padding: 0 } }, ""));
         drawPrev();
       },
       start() { load(); },
       handler: { down: () => false, hover() {} },
     };
+    function custom() { if (st.preset !== "custom") { st.preset = "custom"; const b = document.querySelectorAll("#pf-preset button"); b.forEach((x) => x.setAttribute("aria-pressed", x.id === "pf-pre-custom")); } }
+    function setPreset(k) {
+      st.preset = k; const p = PHOTO_PRESETS[k];
+      if (k !== "custom") Object.assign(st, { profile: p.profile, thick: p.thick, maxT: p.maxT, back: p.back, flatBack: p.flatBack, relief: p.relief, round: p.round, tsmooth: p.smooth });
+      def.render(); preview3d();
+    }
     function info() {
       if (!mask) return "";
       const b = maskBox(mask, img.width, img.height);
-      if (!b) return "No subject found. Try a different cut-out setting.";
-      return st.mode === "auto" ? "Checkered = cut away. Works best with a plain background." : "Checkered = cut away.";
+      if (!b) return "No subject found. Try another way to find it, or paint it in with the Keep brush.";
+      return st.mode === "pick" && !st.fg.length ? "Tap the subject in the picture to pick its colours (tap a few spots for a multi-coloured subject)." : "Checkered = cut away. Fix mistakes with the Keep and Remove brushes.";
+    }
+    const viewSet = () => ({ front: { img, mask }, ...views });
+    function shapeOpts(res) { return { height: st.height, profile: st.profile, thick: st.thick, maxT: st.maxT, back: st.back, flatBack: st.flatBack, relief: st.relief, round: st.round, smooth: st.tsmooth, res }; }
+    function readPic(src, max = 420) {
+      return new Promise((res, rej) => {
+        const pic = new Image();
+        pic.onload = () => res(photoShrink(pic, max));
+        pic.onerror = () => rej(new Error("That picture couldn't be read."));
+        pic.src = src;
+      });
     }
     function load() {
-      const pic = new Image();
-      pic.onload = () => {
-        const k = Math.min(1, 420 / Math.max(pic.naturalWidth, pic.naturalHeight));
-        const W = Math.max(8, Math.round(pic.naturalWidth * k)), H = Math.max(8, Math.round(pic.naturalHeight * k));
-        const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
-        const g = cv.getContext("2d", { willReadFrequently: true }); g.drawImage(pic, 0, 0, W, H);
-        img = g.getImageData(0, 0, W, H); busy = false; recut();
-      };
-      pic.onerror = () => { busy = false; app.toast("That picture couldn't be read.", "err"); };
       // jumpstart-3d: tracing and puffing must not fetch project URLs.
-      if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(sketchId); pic.onerror(); return; }
-      pic.src = im.src;
+      if (!isSafeMediaSrc(im.src, "image")) { warnUnsafeMedia(sketchId); busy = false; app.toast("That picture couldn't be read.", "err"); return; }
+      readPic(im.src).then((d) => { img = d; busy = false; recut(); }).catch((e) => { busy = false; app.toast(e.message, "err"); });
     }
+    async function loadView(k, f) {
+      const url = URL.createObjectURL(f);
+      try {
+        const d = await readPic(url, 300);
+        views[k] = { img: d, mask: null, sens: 30, faces: (views[k] && views[k].faces) || "left", front: (views[k] && views[k].front) || "bottom" };
+        recutView(k, true);
+        def.render(); preview3d();
+      } catch (e) { app.toast(e.message, "err"); }
+      finally { URL.revokeObjectURL(url); }
+    }
+    function recutView(k, quiet) {
+      const v = views[k]; if (!v) return;
+      v.mask = cutOut(v.img, { mode: "auto", sens: v.sens, smooth: 2 });
+      const t = document.getElementById("pf-thumb-" + k); if (t) drawThumb(t, v);
+      if (!quiet) preview3dSoon();
+    }
+    function viewThumb(v) { const k = Object.keys(views).find((x) => views[x] === v); const c = el("canvas", { id: "pf-thumb-" + k, width: 64, height: 48, style: { border: "1px solid var(--line)", borderRadius: "4px" } }); drawThumb(c, v); return c; }
+    function drawThumb(c, v) { drawCut(c, v.img, v.mask); }
     let tmr = 0;
     function recutSoon() { clearTimeout(tmr); tmr = setTimeout(recut, 120); }
     function recut() {
       if (!img || app.command !== def) return;
-      mask = subjectMask(img, { mode: st.mode, sens: st.sens, thr: (st.thr / 100) * 255 });
+      mask = cutOut(img, { mode: st.mode, sens: st.sens, thr: (st.thr / 100) * 255, grow: st.grow, smooth: st.smooth, keepHoles: st.keepHoles, allPieces: st.allPieces, fg: st.fg, bg: st.bg, seeds: st.seeds, strokes: st.strokes });
       drawPrev();
       const i = $("pf-info"); if (i) i.textContent = info();
+      const u = $("pf-undo-stroke"); if (u) u.disabled = !(st.strokes.length || st.fg.length || st.bg.length);
       def.refreshOk && def.refreshOk();
+      preview3dSoon();
     }
-    // the cut-out on a checkerboard
+    // the cut-out on a checkerboard (and where it maps, for the brush)
+    let fit = null;
+    function drawCut(c, im2, m) {
+      const g = c.getContext("2d"), W = c.width, H = c.height, s = Math.max(4, Math.round(W / 30));
+      for (let y = 0; y < H; y += s) for (let x = 0; x < W; x += s) { g.fillStyle = ((x + y) / s) % 2 ? "#d9dde2" : "#f3f5f7"; g.fillRect(x, y, s, s); }
+      if (!im2) return null;
+      const t = document.createElement("canvas"); t.width = im2.width; t.height = im2.height;
+      const id = new ImageData(new Uint8ClampedArray(im2.data), im2.width, im2.height);
+      if (m) for (let i = 0; i < m.length; i++) if (!m[i]) id.data[i * 4 + 3] = 40;
+      t.getContext("2d").putImageData(id, 0, 0);
+      const k = Math.min(W / im2.width, H / im2.height), w = im2.width * k, h = im2.height * k, ox = (W - w) / 2, oy = (H - h) / 2;
+      g.drawImage(t, ox, oy, w, h);
+      return { k, ox, oy };
+    }
     function drawPrev() {
-      const g = prev.getContext("2d"), W = prev.width, H = prev.height;
-      for (let y = 0; y < H; y += 10) for (let x = 0; x < W; x += 10) { g.fillStyle = ((x + y) / 10) % 2 ? "#d9dde2" : "#f3f5f7"; g.fillRect(x, y, 10, 10); }
-      if (!img || !mask) return;
-      const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
-      const id = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height);
-      for (let i = 0; i < mask.length; i++) if (!mask[i]) id.data[i * 4 + 3] = 0;
-      c.getContext("2d").putImageData(id, 0, 0);
-      const k = Math.min(W / img.width, H / img.height), w = img.width * k, h = img.height * k;
-      g.drawImage(c, (W - w) / 2, (H - h) / 2, w, h);
+      fit = drawCut(prev, img, mask);
+      if (!fit) return;
+      const g = prev.getContext("2d");
+      for (const [x, y] of st.seeds) { g.strokeStyle = "#0a8f3a"; g.lineWidth = 2; g.beginPath(); g.arc(fit.ox + x * fit.k, fit.oy + y * fit.k, 5, 0, 7); g.stroke(); }
+      for (const [x, y] of st.bgPts || []) { g.strokeStyle = "#c82020"; g.lineWidth = 2; g.beginPath(); g.arc(fit.ox + x * fit.k, fit.oy + y * fit.k, 5, 0, 7); g.stroke(); }
+    }
+    // marking the picture: brushes and colour picks
+    let stroke = null;
+    const toImg = (e) => { const r = prev.getBoundingClientRect(), cx = ((e.clientX - r.left) * prev.width) / r.width, cy = ((e.clientY - r.top) * prev.height) / r.height; return [(cx - fit.ox) / fit.k, (cy - fit.oy) / fit.k]; };
+    prev.addEventListener("pointerdown", (e) => {
+      if (!img || !fit || st.tool === "view") return;
+      e.preventDefault(); prev.setPointerCapture(e.pointerId);
+      const [x, y] = toImg(e);
+      if (st.tool === "fg" || st.tool === "bg") {
+        const xi = Math.round(x), yi = Math.round(y); if (xi < 0 || yi < 0 || xi >= img.width || yi >= img.height) return;
+        const c = photoColorAt(img, xi, yi);
+        if (st.tool === "fg") { st.fg.push(c); st.seeds.push([xi, yi]); if (st.mode !== "pick") st.mode = "pick"; }
+        else { st.bg.push(c); (st.bgPts = st.bgPts || []).push([xi, yi]); }
+        def.render(); recut(); return;
+      }
+      stroke = { keep: st.tool === "keep", r: st.brush / fit.k * 0.5 + 1, pts: [[x, y]] };
+      st.strokes.push(stroke); recut();
+    });
+    prev.addEventListener("pointermove", (e) => { if (!stroke) return; stroke.pts.push(toImg(e)); recutSoon(); });
+    const endStroke = () => { if (stroke) { stroke = null; recut(); } };
+    prev.addEventListener("pointerup", endStroke); prev.addEventListener("pointercancel", endStroke);
+    // ---- the 3D preview
+    let R3 = null, mesh3 = null, spin = 0.6, raf3 = 0, drag3 = null, t3 = 0, gen = 0;
+    function ensure3d() {
+      if (R3) return;
+      try {
+        const r = new THREE.WebGLRenderer({ canvas: p3, antialias: true, alpha: true });
+        r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(p3.width, p3.height, false);
+        const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, p3.width / p3.height, 1, 100000);
+        sc.add(new THREE.HemisphereLight("#ffffff", "#7a8494", 1.6)); const dl = new THREE.DirectionalLight("#ffffff", 1.8); dl.position.set(-1, -2, 3); sc.add(dl);
+        R3 = { r, sc, cam };
+      } catch (e) { R3 = null; }
+      p3.addEventListener("pointerdown", (e) => { drag3 = e.clientX; p3.setPointerCapture(e.pointerId); });
+      p3.addEventListener("pointermove", (e) => { if (drag3 == null) return; spin += (e.clientX - drag3) * 0.01; drag3 = e.clientX; });
+      p3.addEventListener("pointerup", () => { drag3 = null; });
+      const loop = () => { raf3 = requestAnimationFrame(loop); if (!R3 || !mesh3) return; if (drag3 == null) spin += 0.006; mesh3.rotation.z = spin; R3.r.render(R3.sc, R3.cam); };
+      raf3 = requestAnimationFrame(loop);
+    }
+    function stop3d() { cancelAnimationFrame(raf3); if (R3) { R3.r.dispose(); R3 = null; } }
+    function preview3dSoon() { clearTimeout(t3); t3 = setTimeout(preview3d, 350); }
+    function preview3d() {
+      if (!img || !mask || app.command !== def) return;
+      ensure3d(); if (!R3) return;
+      const my = ++gen, info3 = $("pf-3dinfo");
+      if (info3) info3.textContent = "Building the preview…";
+      setTimeout(() => {
+        if (my !== gen) return;
+        let res;
+        try { res = buildModel(viewSet(), shapeOpts(Math.min(80, RES[st.res]))); }
+        catch (e) { if (info3) info3.textContent = e.message; return; }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(res.V, 3)); geo.setIndex(new THREE.BufferAttribute(res.I, 1)); geo.computeVertexNormals();
+        if (mesh3) { R3.sc.remove(mesh3); mesh3.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+        const pv = new THREE.Group(), m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: res.color, roughness: 0.75 }));
+        m.position.set(0, 0, -res.size[2] / 2); pv.add(m);
+        mesh3 = pv; R3.sc.add(pv);
+        const L = Math.max(...res.size) || 1;
+        R3.cam.up.set(0, 0, 1); R3.cam.position.set(0, -L * 3.1, L * 0.9); R3.cam.lookAt(0, 0, 0);
+        const inf = $("pf-3dinfo"); if (inf) inf.textContent = `${res.size.map((v) => showLen(v, 0)).join(" × ")} ${getUnit()}${res.views.length ? ", matched to " + (res.views.length + 1) + " pictures" : ""}. Drag to turn it.`;
+      }, 0);
     }
     openCmd(def);
   }
@@ -4338,7 +4661,7 @@ export function initAdvanced(app) {
   }
   // ------------------------------------------------------------------ Appearance (display only)
   function appearanceCmd() {
-    const st = { target: "body", bodies: [], faces: [], mat: "paint", color: "#2f6fd6", remove: false };
+    const st = { target: "body", bodies: [], faces: [], mat: "paint", color: "#2f6fd6", color2: "#9b3fc4", bands: 1, remove: false };
     for (const id of app.sel) if (!app.isLocked(id)) { const b = findBody(store.doc, id); if (b && !b.hole) st.bodies.push(id); }
     let hover = null;
     const faceRef = (info) => (info.n ? { c: info.c, t: info.t, n: info.n } : { c: info.c, t: info.t });
@@ -4350,7 +4673,9 @@ export function initAdvanced(app) {
       valid: () => count() > 0,
       canOk: () => def.valid(),
       apply(doc) {
-        const look = { mat: st.mat, color: st.color };
+        const fx = matByKey(st.mat).fx, look = { mat: st.mat, color: st.color };
+        if (fx === "grad") look.color2 = st.color2;
+        if (fx === "rainbow" && st.bands > 1) look.bands = st.bands;
         const tidy = (b) => { const a = b.appearance; if (a && !a.body && !(a.faces && a.faces.length)) delete b.appearance; };
         if (st.target === "body") {
           for (const id of st.bodies) {
@@ -4384,13 +4709,22 @@ export function initAdvanced(app) {
           let grp = null;
           for (const it of MATERIALS) {
             if (it.group !== grp) { grp = it.group; lib.append(el("div", { class: "ap-group" }, grp)); }
-            lib.append(el("button", { class: "ap-item", id: "ap-" + it.key, title: it.name, "aria-pressed": st.mat === it.key, onclick: () => { st.mat = it.key; if (!it.tint) st.color = it.color; else if (st.colorFor !== it.key && !st.userColor) st.color = it.color; st.colorFor = it.key; refresh(); } },
-              el("span", { class: "ap-ball", style: { background: swatchCSS({ mat: it.key, color: it.tint ? (st.mat === it.key ? st.color : it.color) : it.color }) } }), el("span", { class: "ap-name" }, it.name)));
+            lib.append(el("button", { class: "ap-item", id: "ap-" + it.key, title: it.name, "aria-pressed": st.mat === it.key, onclick: () => { st.mat = it.key; if (!it.tint) st.color = it.color; else if (st.colorFor !== it.key && !st.userColor) st.color = it.color; st.colorFor = it.key; if (it.fx === "grad" && !st.userColor2) st.color2 = it.color2; refresh(); } },
+              el("span", { class: "ap-ball", style: { background: swatchCSS({ mat: it.key, color: it.tint ? (st.mat === it.key ? st.color : it.color) : it.color, color2: st.mat === it.key ? st.color2 : it.color2 }) } }), el("span", { class: "ap-name" }, it.name)));
           }
           body.append(lib);
           const col = el("input", { type: "color", id: "ap-color", value: m.tint ? st.color : m.color, disabled: !m.tint, "aria-label": "Color" });
           col.addEventListener("input", () => { st.color = col.value; st.userColor = true; const ball = document.querySelector("#ap-" + st.mat + " .ap-ball"); if (ball) ball.style.background = swatchCSS({ mat: st.mat, color: st.color }); schedulePreview(def); });
-          body.append(row("Color", el("div", { class: "ap-colorrow" }, col, el("span", { class: "hint", style: { padding: 0 } }, m.tint ? "Pick any color" : m.name + " has its own color")), "ap-color"));
+          if (m.fx === "grad") {
+            // two-tone gradient silk: the bottom color, then the top color
+            const col2 = el("input", { type: "color", id: "ap-color2", value: st.color2, "aria-label": "Top color" });
+            col2.addEventListener("input", () => { st.color2 = col2.value; st.userColor2 = true; const ball = document.querySelector("#ap-" + st.mat + " .ap-ball"); if (ball) ball.style.background = swatchCSS({ mat: st.mat, color: st.color, color2: st.color2 }); schedulePreview(def); });
+            body.append(row("Bottom color", el("div", { class: "ap-colorrow" }, col, el("span", { class: "hint", style: { padding: 0 } }, "Fades upwards into the top color")), "ap-color"));
+            body.append(row("Top color", el("div", { class: "ap-colorrow" }, col2), "ap-color2"));
+          } else if (m.fx === "rainbow") {
+            body.append(row("Rainbows", seg([[1, "1"], [2, "2"], [3, "3"], [4, "4"]], st.bands, (v) => { st.bands = v; refresh(); }, "ap-bands")));
+            body.append(el("div", { class: "hint", style: { padding: 0 } }, "Rainbow silk changes color along the filament, so the colors run up the print in bands from bottom to top. Pick how many times the rainbow repeats."));
+          } else body.append(row("Color", el("div", { class: "ap-colorrow" }, col, el("span", { class: "hint", style: { padding: 0 } }, m.tint ? "Pick any color" : m.name + " has its own color")), "ap-color"));
         }
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ap-show", checked: app.scene.state.appearance !== false, onchange: (e) => app.setAppearances(e.target.checked) }), "Show appearances"));
         body.append(el("div", { class: "hint", style: { padding: 0 } }, "Appearances only change how parts look on screen. Shapes and exports stay the same. Turn them off any time with the paint button by the view controls."));
@@ -5569,8 +5903,10 @@ export function initAdvanced(app) {
     // ---------------- features that can be copied, and where each one sits (world)
     const featLabel = (m) => m.t === "hole" ? (m.tapped ? "Tapped hole" : m.kind === "csink" ? "Countersunk hole" : m.kind === "cbore" ? "Counterbored hole" : "Hole") + ((m.at || []).length > 1 ? ` ×${m.at.length}` : "")
       : m.t === "emboss" ? (m.mode === "deboss" ? "Deboss" : "Emboss") + ` "${String(m.str || "").slice(0, 12)}"`
+      : m.src === "rib" ? (m.rib && m.rib.shape === "gusset" ? "Gusset" : "Rib") + (m.rib && m.rib.count > 1 ? ` ×${m.rib.count}` : "")
+      : m.src === "keyhole" ? "Keyhole slot" + (m.kh && m.kh.at.length > 1 ? ` ×${m.kh.at.length}` : "")
       : ({ extrude: "Extrude ", revolve: "Revolve ", sweep: "Sweep " }[m.tool && m.tool.t] || "") + (m.op === "cut" ? "cut" : m.op === "intersect" ? "intersect" : "join");
-    const featOK = (m) => m.t === "hole" || (m.t === "emboss" && m.kind !== "other") || (m.t === "bool" && m.src !== "combine" && m.src !== "clearance" && m.tool && ["extrude", "revolve", "sweep"].includes(m.tool.t) && m.tool.sketch);
+    const featOK = (m) => m.t === "hole" || (m.t === "emboss" && m.kind !== "other") || (m.t === "bool" && (m.src === "rib" || m.src === "keyhole") && m.tool) || (m.t === "bool" && m.src !== "combine" && m.src !== "clearance" && m.tool && ["extrude", "revolve", "sweep"].includes(m.tool.t) && m.tool.sketch);
     const featsOf = (b) => { // jumpstart-3d: pattern (an edited pattern repeats only what comes before it)
       const ms = (b && b.node.mods) || [], i = editing ? ms.findIndex((x) => x.id === editing.mod) : -1;
       return (i >= 0 ? ms.slice(0, i) : ms).filter(featOK);
@@ -5579,6 +5915,9 @@ export function initAdvanced(app) {
       const B = M4(b.m), loc = (p) => new THREE.Vector3(...p).applyMatrix4(B);
       if (m.t === "hole") { const a = (m.at && m.at.length ? m.at : [{ p: m.p }]); const c = new THREE.Vector3(); a.forEach((x) => c.add(loc(x.p))); return c.divideScalar(a.length); }
       if (m.t === "emboss") return loc(m.p);
+      // ribs and keyholes: their own points (body coordinates)
+      if (m.src === "rib" && m.rib) return loc(m.rib.a).add(loc(m.rib.b)).multiplyScalar(0.5);
+      if (m.src === "keyhole" && m.kh) { const c = new THREE.Vector3(); m.kh.at.forEach((x) => c.add(loc(x.p))); return c.divideScalar(Math.max(1, m.kh.at.length)); }
       const sk = findSketch(store.doc, m.tool.sketch);
       if (!sk) return null;
       const P = planeMatrix(sk.plane), c = new THREE.Vector3(); let n = 0;
@@ -5600,6 +5939,8 @@ export function initAdvanced(app) {
         return { kind: "hole", B, spots: m.at && m.at.length ? m.at : [{ p: m.p, n: m.n }], r, rmax, depth: through ? null : m.depth + (m.tip ? r / Math.tan((59 * Math.PI) / 180) : 0) };
       }
       if (m.t === "emboss") return { kind: "emboss", B, p: m.p, n: m.n || [0, 0, 1], ext: Math.max(m.size || 5, ((m.size || 5) * String(m.str || "").length * 0.62) / 2 + 1), depth: m.depth || 1 };
+      // ribs and keyholes: their real shape, built by the geometry engine
+      if (m.src === "rib" || m.src === "keyhole") { const W = B.clone().multiply(new THREE.Matrix4().fromArray(m.m || IDENTITY)); return { kind: m.src, W, Wi: W.clone().invert(), regs: [], z0: 0, z1: 0, mesh: toolMesh(b, m) }; }
       const sk = findSketch(store.doc, m.tool.sketch);
       if (!sk) return null;
       const regs = regionsFor(sk), rs = [];
@@ -6020,6 +6361,13 @@ export function initAdvanced(app) {
       } else if (m.t === "emboss") {
         for (const k of ["p", "o", "c"]) if (c[k]) c[k] = P(c[k]);
         for (const k of ["n", "x", "ax", "up"]) if (c[k]) c[k] = D(c[k]);
+      } else if (m.src === "rib" && m.rib) {
+        // ribs keep their points, so a copy can still be edited
+        c.rib = { ...m.rib, a: P(m.rib.a), b: P(m.rib.b), n: D(m.rib.n) };
+        c.tool = ribTool(c.rib, c.rib.a, c.rib.b, c.rib.n).tool;
+      } else if (m.src === "keyhole" && m.kh) {
+        c.kh = { ...m.kh, at: m.kh.at.map((x) => ({ p: P(x.p), n: D(x.n) })) };
+        c.tool = keyholeTool(c.kh, c.kh.at.map((q) => ({ p: q.p, n: q.n, dir: faceUp(q.n, bodyUp(b), c.kh.ang || 0) })));
       } else {
         c.m = arr(L.clone().multiply(new THREE.Matrix4().fromArray(m.m || IDENTITY)));
       }
@@ -6542,6 +6890,41 @@ export function initAdvanced(app) {
           body.append(row(o.units > 1 ? "Stack join" : "Interlock", seg(BIN_LOCKS, o.lock || "none", (v) => { o.lock = v; upd(true); }, "bn-lock")));
           body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { dovetail: "Dovetail rails on top slide into grooves under the case above, from the front, and stop flush.", pegs: "Four pegs on top fit holes under the case above.", none: "Flat tops and bottoms: the cases just sit on each other." }[o.lock || "none"]));
         } else body.append(check("bn-stack", "stack", "Interlocking rim and foot", "A foot under each bin fits into the rim of the bin below, so a stack can't slide apart"));
+        // how tightly the dovetails fit, wherever the set uses them
+        if ((cab && o.lock === "dovetail") || ((o.across || 1) > 1 && o.sideLock === "dovetail")) {
+          const nGap = Math.max(0, o.clear ?? 0.25), fit = DV_FITS[o.dvFit] != null ? o.dvFit : "normal";
+          body.append(row("Dovetail fit", seg([["snug", "Snug"], ["normal", "Normal"], ["loose", "Loose"]], fit, (v) => { o.dvFit = v; upd(true); }, "bn-dvfit")));
+          body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { snug: `${DV_FITS.snug} mm gap around each rail: a firm push to slide together, and very little wobble. For a well-tuned printer.`, normal: `${+nGap.toFixed(2)} mm gap around each rail: slides together easily on most printers.`, loose: `${DV_FITS.loose} mm gap around each rail: slides freely. Use it if Normal is tight on your printer, or for PETG.` }[fit]));
+        }
+        // lock clips: only where boxes join with dovetails (they slide along the rails)
+        const dvStack = cab && o.units > 1 && o.lock === "dovetail", dvSide = (o.across || 1) > 1 && o.sideLock === "dovetail";
+        if (dvStack || dvSide) {
+          body.append(row("Lock clips", seg([["none", "None"], ["back", "On the back"]], o.clips === "back" ? "back" : "none", (v) => { o.clips = v; upd(true); }, "bn-clips")));
+          body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, o.clips === "back" ? "Small plates press onto the backs across each dovetail join, a peg in each box, so the boxes can't slide apart when you grab one. Pull a clip off to slide the boxes apart." : "Dovetailed boxes can slide apart along their rails. Add lock clips to hold them."));
+        }
+        // plates that join two boxes using their open dovetails: grooved plates slide over the open
+        // rails (on top of cases side by side, up the right side of a stack); railed plates slide
+        // into the open grooves (under cases side by side, up the left side of a stack)
+        const plTop = cab && (o.across || 1) > 1 && o.lock === "dovetail", plSide = o.units > 1 && dvSide;
+        if (plTop || plSide) {
+          const both = plTop && plSide ? [["both", "Both"]] : [];
+          const opts = [["none", "None"], ...(plTop ? [["top", "On top"]] : []), ...(plSide ? [["side", "Right side"]] : []), ...both];
+          const gopts = [["none", "None"], ...(plTop ? [["under", "Underneath"]] : []), ...(plSide ? [["side", "Left side"]] : []), ...both];
+          const cur = opts.some(([k]) => k === o.plates) ? o.plates : "none", gcur = gopts.some(([k]) => k === o.gplates) ? o.gplates : "none";
+          // one click for every side at once: over the rails on top and the right, in the grooves
+          // underneath and on the left (each where this set has open dovetails)
+          const allOn = (!plTop || (/top|both/.test(cur) && /under|both/.test(gcur))) && (!plSide || (/side|both/.test(cur) && /side|both/.test(gcur)));
+          const allBtn = el("button", { class: "btn" + (allOn ? " primary" : ""), id: "bn-plates-all", "aria-pressed": allOn, onclick: () => { if (allOn) { o.plates = "none"; o.gplates = "none"; } else { o.plates = plTop && plSide ? "both" : plTop ? "top" : "side"; o.gplates = plTop && plSide ? "both" : plTop ? "under" : "side"; } upd(true); } },
+            allOn ? "Remove all plates" : plTop && plSide ? "Plates on all four sides" : plTop ? "Plates on top and underneath" : "Plates on both sides");
+          body.append(row("Plates", allBtn));
+          body.append(row("Plates over rails", seg(opts, cur, (v) => { o.plates = v; upd(true); }, "bn-plates")));
+          body.append(row("Plates in grooves", seg(gopts, gcur, (v) => { o.gplates = v; upd(true); }, "bn-gplates")));
+          if (cur !== "none" || gcur !== "none") {
+            body.append(row("Plate fit", seg([["tight", "Tight"], ["snug", "Snug"], ["loose", "Loose"]], o.plateFit || "snug", (v) => { o.plateFit = v; upd(true); }, "bn-platefit")));
+            body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, { tight: "0.08 mm gap around each dovetail: for a well-tuned printer; may need sanding.", snug: "0.12 mm gap around each dovetail: slides in with a firm push and stays put.", loose: "0.2 mm gap around each dovetail: slides easily; use if Snug is too tight on your printer." }[o.plateFit || "snug"]));
+          }
+          body.append(el("div", { class: "hint", style: { padding: "0 0 4px" } }, "Plates join two boxes using their open dovetails. Plates over rails have grooves and slide over the open rails (on top, or the right side). Plates in grooves have rails and slide into the open grooves (underneath, or the left side). Both slide on from the back and stop at the front, and print flat."));
+        }
         if (!cab && o.stack) body.append(row("Foot height", app.numField({ value: o.foot, id: "bn-foot", len: true, min: 1, step: 0.5, live: true, onCommit: (v) => { o.foot = v; upd(); } }), "bn-foot"));
         if (o.units > 1 || (o.across || 1) > 1 || cab) body.append(row("Show", seg([["stack", "Assembled"], ["print", "Laid out to print"]], o.layout === "print" ? "print" : "stack", (v) => { o.layout = v === "print" ? "print" : ""; upd(true); }, "bn-layout")));
         if (cab) {
@@ -6776,6 +7159,104 @@ export function initAdvanced(app) {
     openCmd(def);
   }
 
+  // ------------------------------------------------------------------ Jig Maker
+  // Quick woodworking jigs: pick a kind, set its sizes, point to place it on the ground (or click),
+  // then OK. The set's first body remembers the settings, so double-clicking it opens the maker again.
+  function jigCmd(editingId = null) {
+    const existing = editingId ? findBody(store.doc, editingId) : null;
+    let pref = {}; try { pref = JSON.parse(localStorage.getItem("jumpstart3d.jig") || "{}") || {}; } catch (e) {}
+    const j0 = existing ? existing.jig : null;
+    const st = { o: { ...JIG_DEFAULTS, ...(j0 ? j0.o : pref) }, id: existing ? existing.id : uid("b"), ids: { ...(j0 ? j0.ids : {}) }, m: existing ? j0.base.slice() : null, placed: !!existing };
+    if (!st.m) { const t = vp.view.target; st.m = arr(new THREE.Matrix4().makeTranslation(round(t.x, 1), round(t.y, 1), 0)); }
+    const allIds = () => [st.id, ...Object.values(st.ids)];
+    const def = {
+      title: existing ? "Edit jig" : "Jig Maker",
+      apply(doc) {
+        const set = jigSet(st.o), keep = new Set();
+        set.parts.forEach((p, i) => {
+          const id = i === 0 ? st.id : (st.ids[p.key] = st.ids[p.key] || uid("b"));
+          keep.add(id);
+          const M = arr(M4(st.m).multiply(new THREE.Matrix4().makeTranslation(p.x, p.y, 0)));
+          let b = findBody(doc, id);
+          if (!b) { b = { id, name: nextName(doc, p.name), seq: nextSeq(doc), color: p.color, hole: false, hidden: false, m: M, node: p.node }; doc.bodies.push(b); }
+          b.node = p.node; b.m = M;
+          if (i === 0) { delete b.jigPart; b.jig = { o: { ...st.o }, ids: { ...st.ids }, base: st.m.slice() }; } else { delete b.jig; b.jigPart = st.id; }
+        });
+        const gone = Object.values(st.ids).filter((id) => !keep.has(id));
+        if (gone.length) doc.bodies = doc.bodies.filter((b) => !gone.includes(b.id));
+        for (const [k, id] of Object.entries(st.ids)) if (!keep.has(id)) delete st.ids[k];
+        const main = findBody(doc, st.id); if (main && main.jig) main.jig.ids = { ...st.ids };
+      },
+      ok() { try { localStorage.setItem("jumpstart3d.jig", JSON.stringify(st.o)); } catch (e) {} commit(def, existing ? "Edit jig" : "Jig Maker"); },
+      onDelete: existing ? () => { closeCmd(false); const ids = allIds().filter((id) => findBody(store.doc, id)); store.update((doc) => { doc.bodies = doc.bodies.filter((b) => !ids.includes(b.id)); }, "Delete jig"); } : null,
+      hint: () => existing ? "Change the jig, then OK." : "Pick a jig and set its sizes. Point on the ground to move it, click to place, then OK.",
+      build(body) {
+        const o = st.o;
+        const re = () => { def.render(); schedulePreview(def); };
+        const num = (label, k, opt = {}) => el("label", {}, label, app.numField({ value: o[k], id: "jg-" + k, len: opt.len !== false, min: opt.min ?? 0, max: opt.max ?? 1e4, step: opt.step ?? 1, live: true, onCommit: (v) => { o[k] = opt.int ? Math.max(opt.min ?? 1, Math.round(v)) : v; if (opt.rerender) re(); else schedulePreview(def); } }));
+        const txt = (label, k, ph) => el("label", {}, label, (() => { const i = el("input", { class: "num", id: "jg-" + k, value: o[k], placeholder: ph }); i.addEventListener("change", () => { o[k] = i.value; re(); }); return i; })());
+        const r3 = (...kids) => el("div", { class: "row3" }, ...kids);
+        const chk = (k, label) => el("label", { class: "check" }, el("input", { type: "checkbox", id: "jg-" + k, checked: !!o[k], onchange: (e) => { o[k] = e.target.checked; re(); } }), label);
+        body.append(el("div", { class: "seg", id: "jg-type", style: { flexWrap: "wrap", marginBottom: "6px" } }, ...JIG_TYPES.map(([v, l, tt]) => el("button", { "aria-pressed": String(o.type === v), title: tt, onclick: () => { o.type = v; re(); } }, l))));
+        body.append(el("p", { class: "hint" }, (JIG_TYPES.find((t) => t[0] === o.type) || JIG_TYPES[0])[2] + "."));
+        if (o.type === "miter") {
+          body.append(r3(num("Stock width", "mStock", { min: 5 }), num("Stock height", "mHeight", { min: 8 }), num("Saw kerf", "mKerf", { min: 0.3, step: 0.1 })));
+          body.append(r3(num("Wall", "mWall", { min: 3 }), num("Length (0 = auto)", "mLength", { min: 0, step: 5 }), el("span")));
+          body.append(row("Cuts", seg([["90", "90°"], ["45", "90° + 45°"], ["both", "90° + 45° both ways"], ["22", "+ 22.5°"]], o.mAngles, (v) => { o.mAngles = v; re(); }, "jg-mAngles")));
+          body.append(chk("mEars", "Ears with screw holes, to fix it to the bench"));
+        } else if (o.type === "dowel") {
+          body.append(r3(num("Board thickness", "dBoard", { min: 3, step: 0.5 }), num("Dowel Ø", "dDowel", { min: 2, step: 0.5 }), num("Holes", "dCount", { len: false, int: true, min: 1, max: 8 })));
+          body.append(r3(num("Spacing", "dSpacing", { min: 5 }), num("First hole from end", "dFirst", { min: 5 }), num("Guide length", "dGuide", { min: 8 })));
+          body.append(r3(num("Cheek depth", "dDrop", { min: 4 }), num("Bushing Ø (0 = none)", "dBush", { min: 0, step: 0.5 }), el("span")));
+          body.append(el("div", { class: "seg", id: "jg-dowsize", style: { flexWrap: "wrap" } }, ...[[6, "6 mm"], [8, "8 mm"], [10, "10 mm"], [6.35, '1/4"'], [7.94, '5/16"'], [9.53, '3/8"']].map(([v, l]) => el("button", { "aria-pressed": String(Math.abs(o.dDowel - v) < 0.01), onclick: () => { o.dDowel = v; re(); } }, l))));
+          body.append(chk("dStop", "End stop, to line up on the board's end"));
+        } else if (o.type === "pocket") {
+          body.append(r3(num("Board thickness", "pBoard", { min: 6, step: 0.5 }), num("Drill Ø", "pDrill", { min: 3, step: 0.1 }), num("Angle °", "pAngle", { len: false, min: 8, max: 30, step: 1 })));
+          body.append(r3(num("Guides", "pCount", { len: false, int: true, min: 1, max: 3 }), num("Spacing", "pSpacing", { min: 10 }), num("Bushing Ø (0 = none)", "pBush", { min: 0, step: 0.5 })));
+          body.append(el("div", { class: "seg", id: "jg-pboard", style: { flexWrap: "wrap" } }, ...[[12.7, '1/2"'], [15.9, '5/8"'], [19, '3/4"'], [28.6, '1-1/8"'], [38, '1-1/2"']].map(([v, l]) => el("button", { "aria-pressed": String(Math.abs(o.pBoard - v) < 0.05), title: `Board ${l} thick`, onclick: () => { o.pBoard = v; re(); } }, l))));
+        } else if (o.type === "square") {
+          body.append(r3(num("Blade length", "sBlade", { min: 40, step: 10 }), num("Stock length", "sStock", { min: 40, step: 10 }), el("span")));
+          body.append(row("Ruled in", seg([["mm", "mm"], ["in", "inches"]], o.sUnits, (v) => { o.sUnits = v; re(); }, "jg-sUnits")));
+          body.append(chk("sNumbers", "Numbers on the ruler (they take 10 to 20 seconds to build)"));
+        } else if (o.type === "angle") {
+          body.append(r3(txt("Angles (°)", "aList", "45, 30, 22.5"), num("Size", "aSize", { min: 30, step: 5 }), el("span")));
+        } else if (o.type === "drill") {
+          body.append(r3(txt("Hole sizes (mm)", "gSizes", "3, 4, 5, 6, 8"), num("Height", "gHeight", { min: 10 }), el("span")));
+          body.append(chk("gVee", "V groove underneath, for dowels and round stock"));
+        } else if (o.type === "dove") {
+          body.append(r3(num("Board thickness", "vBoard", { min: 6, step: 0.5 }), num("Board width", "vWidth", { min: 30, step: 5 }), num("Tails", "vTails", { len: false, int: true, min: 1, max: 12 })));
+          body.append(r3(num("Pin width (narrow)", "vPin", { min: 2, step: 0.5 }), num("Slope 1 :", "vSlope", { len: false, min: 3, max: 14, step: 0.5 }), el("span")));
+          body.append(row("Slope", seg([[5, "1:5"], [6, "1:6 softwood"], [7, "1:7"], [8, "1:8 hardwood"]], o.vSlope, (v) => { o.vSlope = v; re(); }, "jg-vSlope")));
+        } else if (o.type === "box") {
+          body.append(r3(num("Board thickness", "bBoard", { min: 4, step: 0.5 }), num("Board width", "bWidth", { min: 20, step: 5 }), num("Finger width", "bFinger", { min: 3, step: 0.5 })));
+          body.append(el("div", { class: "seg", id: "jg-bfinger", style: { flexWrap: "wrap" } }, ...[[6.35, '1/4"'], [9.53, '3/8"'], [12.7, '1/2"'], [19.05, '3/4"'], [6, "6 mm"], [10, "10 mm"], [12, "12 mm"]].map(([v, l]) => el("button", { "aria-pressed": String(Math.abs(o.bFinger - v) < 0.01), onclick: () => { o.bFinger = v; re(); } }, l))));
+        } else if (o.type === "mortise") {
+          body.append(r3(num("Board thickness", "tBoard", { min: 8, step: 0.5 }), num("Mortise width", "tWidth", { min: 3, step: 0.5 }), num("Mortise length", "tLength", { min: 5 })));
+          body.append(r3(num("Off centre", "tOffset", { min: -50, max: 50, step: 0.5 }), num("Tenon length", "tDepth", { min: 5 }), el("span")));
+          body.append(el("div", { class: "seg", id: "jg-twidth", style: { flexWrap: "wrap" } }, ...[[6.35, '1/4"'], [9.53, '3/8"'], [12.7, '1/2"'], [6, "6 mm"], [8, "8 mm"], [10, "10 mm"], [12, "12 mm"]].map(([v, l]) => el("button", { "aria-pressed": String(Math.abs(o.tWidth - v) < 0.01), title: `A ${l} chisel or bit`, onclick: () => { o.tWidth = v; re(); } }, l))));
+        } else if (o.type === "lap") {
+          body.append(r3(num("Board thickness", "lBoard", { min: 4, step: 0.5 }), num("Board width", "lWidth", { min: 15 }), num("Mating board width", "lMate", { min: 10 })));
+        }
+        if (o.type !== "square" && o.type !== "angle") body.append(row("Hole fit", seg([[0.15, "Snug"], [0.25, "Normal"], [0.4, "Loose"]], o.fit, (v) => { o.fit = v; re(); }, "jg-fit")));
+        body.append(chk("hex", "Honeycomb inside: lighter and stiff, using less plastic"));
+        if (o.hex) body.append(r3(num("Cell size", "hCell", { min: 4, max: 30, step: 0.5 }), num("Cell walls", "hWeb", { min: 1.2, max: 6, step: 0.2 }), el("span")));
+        let lines = [];
+        try { lines = jigSet(o).info; } catch (err) { lines = [err.message]; }
+        body.append(el("div", { class: "hint", id: "jg-info", style: { padding: "2px 0", whiteSpace: "pre-line" } }, lines.join("\n")));
+      },
+      start() { schedulePreview(def); },
+      handler: {
+        hover(e) { if (st.placed) return; const m = place(e); if (m) { st.m = m; schedulePreview(def); } },
+        down(e) { const m = place(e); if (m) { st.m = m; st.placed = true; schedulePreview(def); } return true; },
+      },
+    };
+    function place(e) {
+      const g = app.gridStep(), p = vp.rayPlane(e, new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+      return p ? arr(new THREE.Matrix4().makeTranslation(round(p.x, g), round(p.y, g), 0)) : null;
+    }
+    openCmd(def);
+  }
+
   // ------------------------------------------------------------------ 3D text on a surface
   // A text body that lies on any face (or the ground) and reads upright. Point to place it, then
   // drag it anywhere: it follows the faces, snapping to face centers and the grid (Snap off or Alt
@@ -6925,6 +7406,7 @@ export function initAdvanced(app) {
     if (b.node.t === "prim" && b.node.kind === "text") textCmd(b.id);
     else if (b.node.t === "prim") primCmd(b.node.kind, b.id);
     else if (b.gear || b.gearPart) gearCmd(b.gear ? b.id : b.gearPart);
+    else if (b.jig || b.jigPart) jigCmd(b.jig ? b.id : b.jigPart);
     else if (b.node.t === "extrude" || b.node.t === "revolve" || b.node.t === "sweep") extrudeCmd(b.node.t, { body: b.id });
     else if (b.node.t === "pipe") pipeCmd({ body: b.id });
     else if (b.node.t === "coil") coilCmd({ body: b.id });
@@ -6968,6 +7450,8 @@ export function initAdvanced(app) {
     else if (m.t === "keeppiece" && m.src === "import") app.toast(`This body is part ${m.piece + 1} of ${m.count} of an imported STEP file.`); // jumpstart-3d: STEP parts (#173)
     else if (m.t === "keeppiece") app.toast(`This body keeps piece ${m.piece + 1} of ${m.count}. Its earlier features are independent copies. Undo Combine or Group to restore the inputs.`); // jumpstart-3d: split pieces
     else if (m.t === "halfspace" || m.t === "sketchsplit" || m.t === "splitface") app.toast(m.t !== "splitface" ? "A split can't be edited. Undo it, or delete it from the timeline and split again." : "A face split can't be edited. Delete it from the timeline and split again.");
+    else if (m.t === "bool" && m.src === "keyhole") keyholeCmd({ body: b.id, mod: m.id });
+    else if (m.t === "bool" && m.src === "rib") ribCmd({ body: b.id, mod: m.id });
     else if (m.t === "bool" && m.src === "combine") combineCmd({ body: b.id, mod: m.id });
     else if (m.t === "bool" && m.src === "clearance") clearanceCmd({ body: b.id, mod: m.id });
     else if (m.t === "bool" && m.tool.t === "pipe") pipeCmd({ body: b.id, mod: m.id });
@@ -7089,11 +7573,20 @@ export function initAdvanced(app) {
     ribbon.append(el("div", { class: "wstabs", role: "tablist", "aria-label": "Workspace" },
       ...[["design", "Design"], ["print", "3D Print Sim"], ["simulate", "Simulate"]].map(([w, label]) => el("button", { role: "tab", id: "ws-" + w, "aria-selected": workspace === w ? "true" : "false", onclick: () => setWorkspace(w) }, label))));
     if (workspace === "print") {
+      // like Orca Slicer: Prepare (the plate) and Preview (the sliced layers), Slice plate
+      const pv = psim.st.view === "layers";
+      ribbon.append(el("div", { class: "orca-tabs", role: "tablist", "aria-label": "Prepare or preview" },
+        el("button", { role: "tab", id: "ps-r-prepare", "aria-selected": String(!pv), onclick: () => { psim.setView("model"); renderRibbon(); } }, "Prepare"),
+        el("button", { role: "tab", id: "ps-r-preview", "aria-selected": String(pv), onclick: () => { psim.setView("layers"); renderRibbon(); } }, "Preview")));
       group("Plate", "", [
         { id: "ps-r-auto", label: "Auto orient", title: "Turn the part to need the least support", icon: "printer3d", fn: () => psim.autoOrient() },
         { id: "ps-r-lay", label: "Lay on face", title: "Click a face to put it on the plate", icon: "drop", fn: () => psim.layFace() },
         { id: "ps-r-rx", label: "Rotate X", title: "Turn 90° about X", icon: "revolve", fn: () => psim.rotate("x") },
         { id: "ps-r-ry", label: "Rotate Y", title: "Turn 90° about Y", icon: "revolve", fn: () => psim.rotate("y") },
+        { id: "ps-r-arrange", label: "Arrange", title: "Pack every object neatly on the plate", icon: "pattern", fn: () => psim.arrange() },
+      ]);
+      group("Full color", "", [
+        { id: "ps-r-litho", label: "Color lithophane", title: "Color Lithophane Studio: turn a photo into a full-colour lithophane printed with white, cyan, magenta and yellow filament, then slice it here", icon: "image", fn: () => app.colorLitho.open() },
       ]);
       group("Preview", "", [
         { id: "ps-r-model", label: "Model", title: "Part, overhangs and supports", icon: "body", pressed: psim.st.view === "model", fn: () => { psim.setView("model"); renderRibbon(); } },
@@ -7104,7 +7597,8 @@ export function initAdvanced(app) {
         { id: "ps-r-play", label: "Play print", title: "Watch the part being printed, layer by layer", icon: "motion", fn: () => { psim.togglePlay(); renderRibbon(); } },
         { id: "ps-r-gcode", label: "Export G-code", title: "Save the sliced plate as a .gcode file for your printer (SD card, USB stick or the printer's app)", icon: "archExport", fn: () => psim.exportGcode() },
       ]);
-      ribbon.append(el("div", { class: "note" }, "Slice, preview, then export G-code for your printer."));
+      ribbon.append(el("span", { class: "orca-sp" }));
+      ribbon.append(el("button", { class: "btn orca-slice", id: "ps-r-slice", title: "Slice the plate and show the layers (Preview)", onclick: () => { psim.setView("layers"); renderRibbon(); } }, "Slice plate"));
       return;
     }
     if (workspace === "simulate") {
@@ -7146,6 +7640,8 @@ export function initAdvanced(app) {
       ]);
       group("Cosplay", "", [
         { id: "sim-cosforge", label: "CosForge", title: "Design cosplay costumes: a mannequin from your measurements, themed parts to shape, sculpt and fit, then cut into printable pieces with joints (opens in its own window)", icon: "cosforge", fn: () => app.cosforge.open() },
+        { id: "sim-layerscape", label: "Layerscape", title: "Layerscape: turn a photo into a layered, slot-together diorama: pick the pieces, check the build in 3D, then export laser-cut sheets, printable art or a 3D print kit, or add the finished diorama to your design (opens in its own window)", icon: "layerscape", fn: () => app.layerscape.open() },
+        { id: "sim-helmet", label: "Helmet Maker", title: "Build a contemporary sci-fi helmet sized to the wearer's head: templates, a traced or drawn visor, details, finishes and a rendered picture, then cut it for printing (opens in its own window)", icon: "helmet", fn: () => app.cosforge.open({ mode: "helmet" }) },
       ]);
       group("Flexi", "", [
         { id: "sim-flexigen", label: "FlexiGen", title: "Turn one object into a print-in-place articulated flexi model (your design is not changed)", icon: "flexigen", fn: () => flexiGenCmd() },
@@ -7168,12 +7664,14 @@ export function initAdvanced(app) {
       { id: "ad-extrude", label: "Extrude", title: "Extrude (E)", icon: "extrude", fn: () => extrudeCmd("extrude") },
       { id: "ad-sketch3d", label: "3D Sketch", title: "Draw lines in 3D on a body, a virtual sphere or cube, or in the air, with a split camera view. Works with touch, pen, mouse and trackpad.", icon: "spline", fn: () => app.sketch3d.open() },
       { id: "ad-hole", label: "Hole", title: "Hole (H): simple, counterbore, countersink or tapped, with standard screw sizes", icon: "hole", fn: () => holeCmd() },
-      { id: "ad-features", label: "Advanced Create", title: "Revolve, sweep, pipe, coil, loft, mirror, hole, thread and fasteners", icon: "features", dropdown: [
+      { id: "ad-features", label: "Advanced Create", title: "Revolve, sweep, pipe, coil, loft, rib, keyhole slot, mirror, hole, thread and fasteners", icon: "features", dropdown: [
         { id: "ad-revolve", label: "Revolve", title: "Revolve (Shift+R)", icon: "revolve", fn: () => extrudeCmd("revolve") },
         { id: "ad-sweep", label: "Sweep", title: "Sweep a profile along a path", icon: "sweep", fn: () => extrudeCmd("sweep") },
         { id: "ad-pipe", label: "Pipe", title: "A round, square or triangular tube along a path", icon: "pipe", fn: () => pipeCmd() },
         { id: "ad-coil", label: "Coil", title: "Springs and spirals", icon: "coil", fn: () => coilCmd() },
         { id: "ad-loft", label: "Loft", title: "Blend between profiles on different planes (square to circle, to a point, along a centerline…)", icon: "loft", fn: () => loftCmd() },
+        { id: "ad-rib", label: "Rib", title: "Reinforce: straight ribs or corner gussets standing on a flat face", icon: "rib", fn: () => ribCmd() },
+        { id: "ad-keyhole", label: "Keyhole slot", title: "Cut keyhole slots in a face so the part hangs on screws", icon: "keyhole", fn: () => keyholeCmd() },
         { id: "ad-mirror", label: "Mirror", title: "Mirror bodies across a plane or flat face", icon: "mirror", fn: () => mirrorCmd() },
         { id: "ad-hole-m", label: "Hole", title: "Hole (H)", icon: "hole", fn: () => holeCmd() },
         { id: "ad-holepattern", label: "Hole pattern", title: "Rows, staggered rows or a circle of round, square, hex or slot holes on a flat face", icon: "hole", fn: () => holePattern.cmd() }, // jumpstart-3d: hole pattern
@@ -7216,7 +7714,7 @@ export function initAdvanced(app) {
         { id: "ad-ins-fast", label: "Fasteners (bolts, nuts…)", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins in metric and inch sizes, with optional modeled threads", icon: "thread", fn: () => fastenerCmd() },
         { id: "ad-ins-hinge", label: "Quick Hinge", title: "Ready-made hinges: print-in-place, pin or living", icon: "hinge", fn: () => hingeCmd() },
         { id: "ad-ins-gear", label: "Gears", title: "Gear library: accurate involute spur gears, gear pairs, ring gears, rack and pinion and planetary sets, ready for a motion study and 3D printing", icon: "gear", fn: () => gearCmd() },
-        { id: "ad-ins-model", label: "STL / OBJ / 3MF / STEP model", title: "Import a 3D model: an STL, OBJ or 3MF mesh, or a STEP solid", icon: "import", fn: () => insertFile("model") }, // jumpstart-3d: OBJ import
+        { id: "ad-ins-model", label: "STL / OBJ / 3MF / STEP model", title: "Import a 3D model: an STL, OBJ or 3MF mesh, a STEP solid, or a Layerscape 3D print kit (.zip or .3mf, one object per part)", icon: "import", fn: () => insertFile("model") }, // jumpstart-3d: OBJ import
         // jumpstart-3d: insert supplier parts
         { id: "ad-ins-realpart", label: "Real part from a supplier…", title: "Find a supplier part and import its downloaded model", icon: "import", fn: () => app.insertPart.open() },
       ] },
@@ -7257,7 +7755,8 @@ export function initAdvanced(app) {
     // far right: the parts library, then the workshop tools (each opens in its own window)
     group("Workshop", "", [
       { id: "ad-fastbtn", label: "Fasteners", title: "Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch), with optional modeled threads", icon: "thread", fn: () => fastenerCmd() },
-      { id: "ad-workshop", label: "Workshop", title: "Woodworking: Chip Carving and the Lathe (each opens in its own window)", icon: "lathe", dropdown: [
+      { id: "ad-workshop", label: "Workshop", title: "Woodworking: Jig Maker, Chip Carving and the Lathe", icon: "lathe", dropdown: [
+        { id: "ad-jigs", label: "Jig Maker", title: "Woodworking jigs: miter box, dowel and pocket-hole jigs, square, angle templates, drill guide, and jigs for dovetails, box joints, mortise and tenon and lap joints, all honeycombed inside to save plastic", icon: "jig", fn: () => jigCmd() },
         { id: "ad-chipcarve", label: "Chip Carving", title: "Chip carve a board, plate, log or a shape from your design with knives; pen pressure sets the depth. The result is a mesh body.", icon: "chipcarve", fn: () => app.carve.open() },
         { id: "ad-lathe", label: "Lathe", title: "Turn a body or a wood blank on a virtual lathe with chisels (Space is the pedal), then hollow it out. The result is a mesh body.", icon: "lathe", fn: () => app.lathe.open() },
       ] },
@@ -7674,7 +8173,7 @@ export function initAdvanced(app) {
   }
 
   // ------------------------------------------------------------------ timeline
-  const TL_ICON = { sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", keeppiece: "splitBody", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", pattern: "pattern", fillopen: "fillOpen" }; // jumpstart-3d: pattern, fill openings
+  const TL_ICON = { rib: "rib", keyhole: "keyhole", sketch: "sketch", prim: "prim", extrude: "extrude", revolve: "revolve", fillet: "fillet", chamfer: "chamfer", hole: "hole", shell: "shell", offset: "offset", combine: "combineIcon", bool: "extrude", thread: "thread", scale: "scale", texture: "texture", sweep: "sweep", pipe: "pipe", coil: "coil", loft: "loft", mirror: "mirror", halfspace: "splitBody", sketchsplit: "splitBody", splitface: "splitFace", emboss: "emboss", facepat: "facePattern", plane: "planeOffset", joint: "joint", keeppiece: "splitBody", pattern: "pattern", fillopen: "fillOpen" }; // jumpstart-3d: pattern, fill openings
   let lastTl = null, lastTlT = 0;
   // ---- stepping through the timeline (rollback): see the design as it was after any step
   const TL_SVG = {};
@@ -7937,6 +8436,14 @@ export function initAdvanced(app) {
     if (workspace === "print") { workspace = "design"; if (app.mode === "advanced") { renderRibbon(); renderBrowser(); renderTimeline(); } }
     plateUpdate(); // jumpstart-3d: printer plate
   }
+  // the sim with objects from outside the design (the Color Lithophane Studio)
+  function openPrintSimWith(list, o) {
+    psim.loadExternal(list, o);
+    if (app.mode === "advanced" && workspace !== "print") { setWorkspace("print"); return; }
+    if (app.command) closeCmd(false);
+    if (app.mode === "advanced") { workspace = "print"; app.simLock = true; renderRibbon(); renderBrowser(); psim.open(); return; }
+    openPrintSim();
+  }
   // Beginner mode opens the same sim as a tool
   function openPrintSim() {
     if (app.mode === "advanced") { setWorkspace("print"); return; }
@@ -8006,6 +8513,7 @@ export function initAdvanced(app) {
     sim,
     printSim: psim,
     openPrintSim,
+    openPrintSimWith,
     // the Bin & Box Maker, for Beginner's ribbon too
     openBins: (id) => { if (app.command) closeCmd(false); binCmd(id || null); },
     setWorkspace,
@@ -8063,6 +8571,7 @@ export function initAdvanced(app) {
     holePattern: () => holePattern.cmd(), addHolePattern: (spec) => holePattern.add(spec), addHoles: (spec) => holePattern.addAt(spec), // jumpstart-3d: hole pattern, JS3D.hole
     fillOpenings: () => fillOpen.cmd(), // jumpstart-3d: fill openings
     faceBox: () => faceBox.cmd(), // jumpstart-3d: box on face
+    rib: () => ribCmd(), keyhole: () => keyholeCmd(), jigs: () => jigCmd(), // jumpstart-3d: Simple mode's More reaches his Rib, Keyhole slot and Jig Maker
     gear: () => gears.cmd(), addGear: (spec) => gears.add(spec), // jumpstart-3d: gears
     namePlate: () => namePlate.cmd(), addNamePlate: (spec) => namePlate.add(spec), // jumpstart-3d: name plates
     knurl: () => knurl.cmd(), addKnurl: (spec) => knurl.add(spec), // jumpstart-3d: knurl

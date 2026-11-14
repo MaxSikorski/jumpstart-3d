@@ -603,6 +603,19 @@ export function initProjects(app) {
     await offerModel(exportName() + ".glb", bytes);
     app.onExport && app.onExport("glb");
   }
+  // laser cut files from flat parts (the selection, or everything shown)
+  async function exportLaser(fmt) {
+    const items = (await exportItems()).map((it) => ({ name: it.b.name, data: it.data, m: it.m }));
+    if (!items.length) { app.toast("Nothing to export yet: make or select a flat part (like a 3 mm acrylic panel)."); return; }
+    const { laserParts, laserSVG, laserDXF } = await import("./laser.js");
+    const parts = laserParts(items);
+    const thick = parts.filter((p) => p.thick > 12);
+    const text = fmt === "svg" ? laserSVG(parts, versionName()) : laserDXF(parts);
+    await offerModel(exportName() + " laser." + fmt, new TextEncoder().encode(text));
+    const eng = parts.reduce((n, p) => n + p.engrave.length, 0);
+    app.toast(`Laser file: ${parts.length} part${parts.length > 1 ? "s" : ""}, cut in red${eng ? ", engrave in black" : ""}.` + (thick.length ? " Some parts are thick: laser files are for flat parts like 3 mm acrylic." : ""));
+    app.onExport && app.onExport("laser");
+  }
   // 3MF: one object per body with its color, vertices shared so slicers see closed meshes
   function threeMFBytes(objs) {
     if (!objs || (objs.length && !objs[0].data)) objs = viewItems(objs || exportBodies()); // jumpstart-3d: scripting bridge
@@ -867,6 +880,7 @@ export function initProjects(app) {
     if (a === "step") exportSTEP();
     if (a === "bodydxf") exportBodyDrawing(); // jumpstart-3d: body drawing
     if (a === "dxf") app.advanced.exportSketchesDXF(null);
+    if (a === "laser-svg" || a === "laser-dxf") exportLaser(a === "laser-svg" ? "svg" : "dxf");
     if (a === "json") exportJSON();
     if (a === "import") $("file-import").click();
     if (a === "savedl") {

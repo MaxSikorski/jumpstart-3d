@@ -174,7 +174,7 @@ export function initBeginner(app) {
     btn("spline", "3D Sketch", "Draw lines in 3D on a shape, a virtual sphere or cube, or in the air", () => app.sketch3d.open(), "bb-sketch3d", true);
     btn("extrude", "Extrude", "Extrude a sketch into a shape (E)", () => app.quickExtrude(), "bb-extrude", true);
     btn("rect", "Box on face", "Draw a box right on a flat face: click a face, drag a rectangle, then set the height", () => app.advanced.faceBox(), "bb-facebox", true); // jumpstart-3d: box on face
-    btn("import", "Import", "Import a 3D model (STL, OBJ, 3MF or STEP), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true); // jumpstart-3d: OBJ import
+    btn("import", "Import", "Import a 3D model (STL, OBJ, 3MF or STEP, or a Layerscape 3D print kit), an SVG or DXF drawing (to extrude), or a picture to trace", () => app.insertFile("any"), "bb-import", true); // jumpstart-3d: OBJ import
     bar.append(el("span", { class: "sep" }));
     btn("group", "Group", "Group (Ctrl+G): merges solids, cuts holes", () => group(), "bb-group", true);
     btn("ungroup", "Ungroup", "Ungroup (Ctrl+Shift+G)", () => ungroup(), "bb-ungroup", true);
@@ -205,6 +205,7 @@ export function initBeginner(app) {
     mb.setAttribute("aria-pressed", multi);
     bar.append(el("span", { class: "sep" }));
     btn("cosforge", "CosForge", "Design a cosplay costume on a body built from your measurements, then cut it into printable pieces (opens in its own window)", () => app.cosforge.open(), "bb-cosforge", true);
+    btn("layerscape", "Layerscape", "Layerscape: turn a photo into a layered, slot-together diorama to laser cut or 3D print, then add it to your design (opens in its own window)", () => app.layerscape.open(), "bb-layerscape", true);
     btn("neon", "Neon Sign", "Neon Sign Builder: glowing words, shapes and traced pictures as 3D-printed shells for LED strips, with a backing they snap into (opens in its own window)", () => app.neon.open(), "bb-neon", true);
     btn("box", "Box Maker", "Bin & Box Maker: open bins with compartments, or cases with drawers, tilt-out bins or doors, stacked and interlocking", () => app.advanced.openBins(), "bb-bins", true);
     bar.append(el("button", { class: "ibtn panel-toggle", onclick: () => $("shapes-tab").click() }, el("span", { class: "lbl" }, "Objects")));
