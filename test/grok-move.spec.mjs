@@ -234,7 +234,7 @@ test("phone: a finger drag from the dot moves the box; a finger held still on th
 
 // ------------------------------------------------------------------------------------------------ first run
 const tileAdd = async (page, kind, hole = false) => {
-  await run(page, ([k, h]) => window.__app.beginner.showTile(k, h), [kind, hole]);
+  await run(page, ([k, h]) => { window.__app.select([]); window.__app.beginner.showTile(k, h); }, [kind, hole]); // (on a phone the selected shape's sheet covers the strip)
   await page.locator(`#shapes .tile[data-kind="${kind}"]`).click();
 };
 const worldBoxes = (page) => run(page, () => window.__store.doc.bodies.map((b) => { const x = window.__app.scene.bodyTightBox(b.id); return { id: b.id, kind: b.node.kind, hole: b.hole, m: b.m, box: [...x.min.toArray(), ...x.max.toArray()] }; }));
@@ -264,9 +264,11 @@ test("the Simple card stays clear of the view cube, rail and panel, goes for goo
   await boot(page, info, { face: false });
   const card = page.locator("#try-simple");
   await expect(card).toBeVisible();
-  const rects = await run(page, () => Object.fromEntries(["try-simple", "simple-rail", "simple-panel"].map((id) => [id, document.getElementById(id).getBoundingClientRect().toJSON()]).concat([["cube", document.querySelector(".viewcube").getBoundingClientRect().toJSON()]])));
+  // the view cube, the rail, the right panel and the panel handles (the top-bar handle sits right under the top bar)
+  const rects = await run(page, () => Object.fromEntries(["try-simple", "simple-rail", "simple-panel", "simple-collapse-top", "simple-collapse-bottom", "simple-collapse-rail", "simple-collapse-panel"].map((id) => [id, document.getElementById(id).getBoundingClientRect().toJSON()]).concat([["cube", document.querySelector(".viewcube").getBoundingClientRect().toJSON()]])));
   const hit = (a, b) => a.width > 0 && b.width > 0 && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  for (const other of ["cube", "simple-rail", "simple-panel"]) expect(hit(rects["try-simple"], rects[other]), "the card covers " + other).toBe(false);
+  for (const other of Object.keys(rects).filter((k) => k !== "try-simple")) expect(hit(rects["try-simple"], rects[other]), "the card covers " + other + " " + JSON.stringify([rects["try-simple"], rects[other]])).toBe(false);
+  expect(await run(page, () => { const r = document.getElementById("try-simple").getBoundingClientRect(), b = document.getElementById("face-card-original").getBoundingClientRect(); return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("#face-card-original") !== null && b.right <= r.right; }), "Switch to Original is on top and inside the card").toBe(true);
   if (phone(info)) expect(rects["try-simple"].height, "one line on a phone").toBeLessThan(44);
   else expect(rects["try-simple"].top, "bottom-left of the view on a computer").toBeGreaterThan(rects.cube.bottom);
   expect(await run(page, () => localStorage.getItem("jumpstart.face"))).toBeNull();

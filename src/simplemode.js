@@ -438,15 +438,15 @@ html[data-face="simple"] #menu-theme :is([data-layout], .layout-note) { display:
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(.brand, #btn-redo) { display: inline-flex; }
   html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-theme, #face-more) { min-width: 44px; min-height: 44px; justify-content: center; }
 }
-.try-simple { position: absolute; left: 14px; bottom: 14px; top: auto; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
+.try-simple { position: absolute; left: 14px; bottom: 56px; top: auto; z-index: 30; max-width: min(320px, calc(100% - 28px)); padding: 12px 32px 12px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid #ffd66b; border-radius: 10px; box-shadow: 0 10px 30px rgba(20,30,45,.18); font: 13px/1.45 var(--f-ui); }
 .try-simple p { margin: 0 0 10px; }
 .try-simple button { font: 600 13px/1 var(--f-ui); cursor: pointer; border: 0; border-radius: 6px; padding: 7px 10px; }
 .try-simple .ts-yes { background: #ffd66b; color: #1b1407; }
 .try-simple .ts-no { background: transparent; color: var(--ink); }
 .try-simple .ts-x { position: absolute; top: 5px; right: 5px; padding: 4px 7px; background: transparent; color: var(--ink-2); font-size: 18px; }
 @media (max-width: 640px) {
-  .try-simple { top: 8px; left: 8px; right: 96px; bottom: auto; max-width: none; display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 28px 4px 8px; font-size: 12px; }
-  .try-simple p { margin: 0; display: inline; }
+  .try-simple { top: 50px; left: 8px; right: 118px; bottom: auto; max-width: none; display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 28px 4px 8px; font-size: 12px; }
+  .try-simple p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .try-simple div { margin: 0; display: flex; gap: 6px; }
   .try-simple .ts-more, .try-simple .ts-wide, .try-simple #face-card-keep { display: none; }
   .try-simple button { padding: 5px 8px; font-size: 12px; }
