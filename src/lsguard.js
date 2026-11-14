@@ -11,6 +11,8 @@ const COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const OWNER = /^-?\d+:\d+(?:,-?\d+:\d+)*$/;
 const MAX_SIDE = 4000; // Layerscape shrinks a photo to 2,000 px on its long side
 const MAX_ID = 32767; // its pixel owners are an Int16Array
+const MAX_ASPECT = 6; // a long thin photo makes its backdrop artwork huge
+const MAX_PIECES = 2000, MAX_LAYERS = 64, LAYER_PIXELS = 3e8; // more than that is refused, never cut short: every layer is a full-size canvas
 const int = (v) => Number.isInteger(v);
 const fin = (v) => typeof v === "number" && Number.isFinite(v);
 const clamp = (v, lo, hi, def) => (fin(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -40,7 +42,7 @@ function ownerPixels(s) {
   let n = 0;
   for (const run of s.split(",")) {
     const [v, c] = run.split(":").map(Number);
-    if (v < -1 || v > MAX_ID) return -1;
+    if (v < -1 || v > MAX_ID || !(c >= 1)) return -1;
     n += c;
   }
   return n;
@@ -49,10 +51,12 @@ function ownerPixels(s) {
 export function cleanLayerscape(d) {
   if (!isObj(d) || d.app !== "layerscape") return null;
   const image = pic(d.image);
-  if (!image || !int(d.W) || !int(d.H) || d.W < 1 || d.H < 1 || d.W > MAX_SIDE || d.H > MAX_SIDE) return null;
+  if (!image || !int(d.W) || !int(d.H) || d.W < 1 || d.H < 1 || d.W > MAX_SIDE || d.H > MAX_SIDE || Math.max(d.W, d.H) > MAX_ASPECT * Math.min(d.W, d.H)) return null;
+  if (Array.isArray(d.pieces) && d.pieces.length > MAX_PIECES) return null;
+  if (isObj(d.layers) && Array.isArray(d.layers.list) && (d.layers.list.length > MAX_LAYERS || d.layers.list.length * d.W * d.H > LAYER_PIXELS)) return null;
   if (typeof d.owner !== "string" || d.owner.length > 16 * d.W * d.H || !OWNER.test(d.owner) || ownerPixels(d.owner) !== d.W * d.H) return null;
   const pieces = [], ids = new Set();
-  for (const p of Array.isArray(d.pieces) ? d.pieces.slice(0, 500) : []) {
+  for (const p of Array.isArray(d.pieces) ? d.pieces : []) {
     if (!isObj(p) || !int(p.id) || p.id < 0 || p.id > MAX_ID || ids.has(p.id)) continue;
     ids.add(p.id);
     const q = {
@@ -61,7 +65,7 @@ export function cleanLayerscape(d) {
       auto: p.auto === true, depth: clamp(p.depth, 0, 1, 0.5), flatBase: p.flatBase !== false, scale: clamp(p.scale, 0.25, 3, 1),
       dx: clamp(p.dx, -1000, 1000, 0), cloneOf: int(p.cloneOf) && p.cloneOf >= 0 && p.cloneOf <= MAX_ID ? p.cloneOf : null,
     };
-    if (int(p.layer) && p.layer >= 0 && p.layer < 256) q.layer = p.layer;
+    if (int(p.layer) && p.layer >= 0 && p.layer < MAX_LAYERS) q.layer = p.layer;
     pieces.push(q);
   }
   for (const q of pieces) if (q.cloneOf != null && !ids.has(q.cloneOf)) q.cloneOf = null;
@@ -69,7 +73,7 @@ export function cleanLayerscape(d) {
   if (isObj(d.layers) && Array.isArray(d.layers.list)) {
     const at = (v, side) => (int(v) && Math.abs(v) <= side ? v : 0);
     layers = {
-      list: d.layers.list.slice(0, 256).map((s) => (isObj(s) ? { name: name(s.name, ""), x: at(s.x, d.W), y: at(s.y, d.H), png: pic(s.png) } : null)),
+      list: d.layers.list.map((s) => (isObj(s) ? { name: name(s.name, ""), x: at(s.x, d.W), y: at(s.y, d.H), png: pic(s.png) } : null)),
       bg: pic(d.layers.bg),
     };
   }

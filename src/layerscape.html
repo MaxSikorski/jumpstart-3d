@@ -2944,6 +2944,7 @@ async function parsePSD(buf) {
         const exLen = u32(), exEnd = o + exLen;
         const mLen = u32();
         if (mLen >= 18) { const m0 = o; r.mask = { top: i32(), left: i32(), bottom: i32(), right: i32(), def: u8[o], flags: u8[o + 1] }; o = m0; }
+        if (r.mask && (r.mask.right - r.mask.left > 30000 || r.mask.bottom - r.mask.top > 30000 || (r.mask.right - r.mask.left) * (r.mask.bottom - r.mask.top) > 1e8)) throw new Error("That file has a layer bigger than Layerscape can open."); // jumpstart-3d: a crafted file must not freeze the page
         o += mLen; skip(); // blending ranges
         const nl = u8[o]; r.name = ""; for (let i = 0; i < nl; i++) r.name += String.fromCharCode(u8[o + 1 + i]); o += (nl + 1 + 3) & ~3;
         while (o + 12 <= exEnd) {

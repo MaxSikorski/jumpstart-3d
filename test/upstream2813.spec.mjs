@@ -104,6 +104,7 @@ test("3D Print Sim: turn, scale, copy and arrange an object on the plate; the de
     return (await plate()).copies;
   }, { timeout: 60_000, intervals: [1500] }).toBe(2);
   const placed = await plate();
+  await page.click("#ps-tab-objects"); // J.Siwek 2.9.8.9.x: Arrange moved into the Objects tab
   await page.click("#ps-arrange");
   await expect.poll(async () => (await plate()).at, { timeout: 60_000 }).not.toBe(placed.at);
   expect((await plate()).copies).toBe(2);

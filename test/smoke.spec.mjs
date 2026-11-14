@@ -1372,8 +1372,8 @@ test("Tutorials: the Parameters tutorial exists and ticks its steps off for a ma
   });
   expect(r.steps).toBeGreaterThanOrEqual(7);
   expect(r.count).toBe(125); // 2.9.8.9.x: his thirteen lamp and workshop lessons (tutorial_lamps.js). 2.9.3: his ten Advanced/Expert projects (tutorial_pro.js) and twelve Chisel tutorials (tutorial_chisel.js)
-  expect(r.beginner).toBe(32); // 2.9.6: his Spinning top and our Turned bead (both Lathe) moved to Advanced with the Lathe
-  expect(r.adv).toBe(55);
+  expect(r.beginner).toBe(38); // 2.9.8.9.x: six lamp and workshop lessons. 2.9.6: his Spinning top and our Turned bead (both Lathe) moved to Advanced with the Lathe
+  expect(r.adv).toBe(62); // 2.9.8.9.x: seven lamp and workshop lessons
   expect(r.arch).toBe(13);
   expect(r.level).toBe("Proficient");
   expect(r.item).toBe("Bracket");
