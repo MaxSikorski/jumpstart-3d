@@ -2,7 +2,7 @@
 // round holes on a flat face and write them as ONE Hole feature. Volumes are checked in bands (the exact values are in test/golden.json).
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, newDoc, body, prim, exportBytes, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, newDoc, body, prim, exportBytes } from "./helpers.mjs";
 
 let page, errors;
 test.beforeAll(async ({ browser }, info) => {
@@ -409,9 +409,7 @@ test("Phase 3 step 2b: a hex is sized across flats, with a flat facing along the
   expect(Math.abs(top.y - 3.464)).toBeLessThan(1e-3);
 });
 
-// quarantined: in Firefox a double-click on a timeline item does not open its edit dialog (app bug candidate, see the PR notes)
-test("Phase 3 step 2b: moving a point in the sketch keeps the cut; double-clicking Extrude cut shows every profile", async ({}, info) => {
-  quarantine(info, ["site-firefox", "single-firefox"], "double-click on a timeline item does not open its dialog in Firefox");
+test("Phase 3 step 2b: moving a point in the sketch keeps the cut; double-clicking Extrude cut shows every profile", async () => {
   await cutShape([100, 60, 10], { face: "+z", layout: { type: "grid", cols: 4, rows: 1, pitch: 15 }, hole: { shape: "square", width: 6 } });
   await run(() => {
     __store.update((doc) => {
