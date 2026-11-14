@@ -1,3 +1,4 @@
+import { show } from "./teach.js";
 // Fasteners parts library: bolts, screws, nuts, washers, inserts and pins in metric (ISO) and
 // inch (UNC) sizes. Each part is built from plain primitives (so it stays light and editable as
 // a group), with an optional modeled thread (the Thread feature) on the shank or in the hole.
@@ -126,7 +127,7 @@ const threadMod = (c, pitch, clear) => ({ id: "th" + Math.random().toString(36).
 // returns { node, name, color, height } or throws with a message
 export function fastenerPart(kindId, std, size, length, opts = {}) {
   const s = sizeData(std, size);
-  if (!s) throw new Error("Pick a size");
+  if (!s) throw new Error(`Pick a size, got ${show(size)}. Use a listed fastener size such as M8.`);
   const kind = kindOf(kindId);
   const L = Math.max(0.5, +length || defaultLength(kindId, std, size));
   const thread = (!!opts.threads && !!kind.thread) || kind.thread === "cut"; // jumpstart-3d: fasteners (a tap cutter is always threaded)
@@ -257,7 +258,7 @@ export function fastenerPart(kindId, std, size, length, opts = {}) {
       break;
     }
     // end jumpstart-3d
-    default: throw new Error("Unknown part");
+    default: throw new Error(`Unknown part, got ${show(kindId)}. Pick a listed fastener kind.`);
   }
   // jumpstart-3d: fasteners. Left-hand threads; and a modeled inside thread is cut from the ISO minor diameter (D1 = d - 1.0825 P),
   // as the Thread feature's ISO profile expects (kernel.js threadGroove), so Print offset None fits a bolt exactly.
@@ -332,25 +333,25 @@ const findStd = (STD, key) => STD.find((s) => (isMetric(key) ? s[3] === "iso" &&
 export function resolve(spec, STD) {
   spec = spec ?? {};
   const type = spec.type;
-  if (!TYPES.some((t) => t[0] === type)) throw new Error('type must be "bolt", "nut", "rod" or "cutter"');
+  if (!TYPES.some((t) => t[0] === type)) throw new Error(('type must be "bolt", "nut", "rod" or "cutter"') + `, got ${show(type)}. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const key = spec.size;
   const std = SIZES.includes(key) && findStd(STD, key);
-  if (!std) throw new Error(`unknown size "${key}"; sizes: ${SIZES.join(", ")}`);
+  if (!std) throw new Error((`unknown size ${show(key)}; sizes: ${SIZES.join(", ")}`) + `. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const [, d, p] = std;
   const [af, k, nutAf, m] = HEX[diaKey(key)];
   let length = 0;
   if (type !== "nut") {
     length = spec.length;
-    if (typeof length !== "number" || !isFinite(length) || length < 3 * p - 1e-9) throw new Error(`length must be a number of at least ${+(3 * p).toFixed(3)} mm for ${key}`);
+    if (typeof length !== "number" || !isFinite(length) || length < 3 * p - 1e-9) throw new Error((`length must be a number of at least ${+(3 * p).toFixed(3)} mm for ${key}`) + `, got ${show(length)}. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
     const turns = Math.round(length / p);
-    if (turns > MAX_TURNS) throw new Error(tooMany(turns));
+    if (turns > MAX_TURNS) throw new Error(`Too many turns (${turns}; the most is ${MAX_TURNS}), got length ${show(length)}. Use a shorter length or pick a larger size.`);
   }
   const clear = spec.clear === undefined ? 0 : spec.clear;
-  if (typeof clear !== "number" || !isFinite(clear) || clear < -1 || clear > 0) throw new Error("clear must be a number from -1 to 0 (mm)");
+  if (typeof clear !== "number" || !isFinite(clear) || clear < -1 || clear > 0) throw new Error(("clear must be a number from -1 to 0 (mm)") + `, got ${show(clear)}. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const left = spec.left === undefined ? false : spec.left;
-  if (typeof left !== "boolean") throw new Error("left must be true or false");
+  if (typeof left !== "boolean") throw new Error(("left must be true or false") + `, got ${show(left)}. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const at = spec.at === undefined ? [0, 0, 0] : spec.at;
-  if (!vec3(at)) throw new Error("at must be [x, y, z] in mm");
+  if (!vec3(at)) throw new Error(("at must be [x, y, z] in mm") + `, got ${show(at)}. Example: JS3D.fastener({type: "bolt", size: "M8", length: 20}).`);
   const given = spec.name === undefined || spec.name === null ? "" : String(spec.name).trim();
   const name = given ? given : type === "nut" ? `${key} nut` : `${key}×${lengthText(length)} ${NOUN[type]}`;
   return { type, key, d, p, af, k, nutAf, m, length, clear, left, at, name };

@@ -70,11 +70,11 @@ test("faces and edges list the shape in world terms and refuse unknown picks", a
   expect(vertical[0]).toMatchObject({ type: "line", direction: [0, 0, 1] });
   expect(await run((id) => JS3D.faces(id, "front").then((f) => f[0].normal), body)).toEqual([0, -1, 0]);
   expect(await run((id) => JS3D.faces(id, [0, 1]).then((f) => f.map((x) => x.index)), body)).toEqual([0, 1]);
-  expect(await failure((id) => JS3D.faces(id, "cone"), body)).toMatch(/^no faces match "cone" on Body 1$/);
-  expect(await failure((id) => JS3D.faces(id, 17), body)).toBe("Body 1 has no face 17 (it has 0 to 5)");
-  expect(await failure((id) => JS3D.edges(id, 400), body)).toMatch(/^Body 1 has no edge 400 \(it has 0 to \d+; seams and smooth joins are not edges\)$/);
+  expect(await failure((id) => JS3D.faces(id, "cone"), body)).toMatch(/^no faces match "cone" on "Body 1"/);
+  expect(await failure((id) => JS3D.faces(id, 17), body)).toContain("Body 1 has no face 17 (it has 0 to 5)");
+  expect(await failure((id) => JS3D.edges(id, 400), body)).toMatch(/^Body 1 has no edge 400 \(it has 0 to \d+; seams and smooth joins are not edges\)/);
   expect(await failure((id) => JS3D.edges(id, "edges of"), body)).toMatch(/unknown word "edges"|unexpected/);
-  expect(await failure(() => JS3D.faces("nope"))).toBe("no body nope");
+  expect(await failure(() => JS3D.faces("nope"))).toMatch(/^no body "nope"/);
 });
 
 test("fillet the top edges and chamfer the vertical ones, with the volumes the maths gives", async () => {
@@ -131,13 +131,13 @@ test("a sketch on a face and a cut right through", async () => {
   const m = await run((id) => JS3D.get(id).node.mods.at(-1), body);
   expect(m).toMatchObject({ t: "bool", op: "cut", tool: { t: "extrude", dist: -26 } });
   expect(await failure((id) => JS3D.sketch({ on: { body: id, face: "#Z" }, shapes: [{ type: "circle", diameter: 4 }] }), body)).toMatch(/matches 4 faces; a sketch needs exactly one/);
-  expect(await failure((id) => JS3D.sketch({ on: { body: id, face: "hole" }, shapes: [{ type: "circle", diameter: 4 }] }), body)).toBe('face "hole" on Body 1 is not flat (it is a cylinder)');
+  expect(await failure((id) => JS3D.sketch({ on: { body: id, face: "hole" }, shapes: [{ type: "circle", diameter: 4 }] }), body)).toContain('face "hole" on "Body 1" is not flat (it is a cylinder)');
 });
 
 test("revolve a profile about a world axis, and refuse an axis not in the plane", async () => {
   await fresh();
   const sk = await run(() => JS3D.sketch({ on: "XZ", shapes: [{ type: "polyline", points: [[0, 0], [10, 0], [10, 20], [0, 20]] }] }));
-  expect(await failure((s) => JS3D.revolve({ sketch: s, axis: "Y" }), sk.sketch)).toBe("axis Y is not in the plane of Sketch 1; use X or Z");
+  expect(await failure((s) => JS3D.revolve({ sketch: s, axis: "Y" }), sk.sketch)).toContain('axis "Y" is not in the plane of "Sketch 1"; use X or Z');
   const { body } = await run((s) => JS3D.revolve({ sketch: s, axis: "z" }), sk.sketch);
   expect(await volumeOf(body)).toBeCloseTo(Math.PI * 100 * 20, 0);
   const env = await run(() => JS3D.save());
@@ -159,8 +159,8 @@ test("holes and a pattern: three M3 holes along x; off-face and overlapping poin
   expect(await failure((id) => JS3D.hole(id, { face: "top", points: [[40, 0, 25]], size: "M3" }), body)).toMatch(/^point 1 \[40, 0, 25\] is not on the face, or the hole there runs over its edge$/);
   expect(await failure((id) => JS3D.hole(id, { face: "top", points: [[-10, 0, 25], [-7.5, 0, 25]], size: "M3" }), body)).toBe("holes 1 and 2 overlap (centres 2.5 mm apart; each is 3.4 mm wide)");
   expect(await failure((id) => JS3D.hole(id, { face: "top", points: [[0, 0, 25]], shape: "hex", size: "M3" }), body)).toMatch(/round holes/);
-  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 3, spacing: 0 }), [body, h.feature])).toBe("spacing must be a number of mm, not 0");
-  expect(await failure((id) => JS3D.pattern(id, { features: ["nope"], type: "rect", axis: "x", count: 3, spacing: 5 }), body)).toBe('feature "nope" is not on Body 1');
+  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 3, spacing: 0 }), [body, h.feature])).toContain("spacing must be a number of mm, not 0, got 0");
+  expect(await failure((id) => JS3D.pattern(id, { features: ["nope"], type: "rect", axis: "x", count: 3, spacing: 5 }), body)).toContain('feature "nope" is not on "Body 1"');
 });
 
 test("the proof: a 60 x 40 x 25 enclosure, 2 mm walls, filleted rim, four M3 holes, built only through calls", async () => {
@@ -383,19 +383,19 @@ test("pattern: spacing2 0 with count2 1 is accepted; spacing is needed only wher
   const feat = h.feature;
   const p = await run(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 2, spacing: 20, count2: 1, spacing2: 0 }), [body, feat]);
   expect(p.copies).toBe(1);
-  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 1, spacing: 20, count2: 2, axis2: "y", spacing2: 0 }), [body, feat])).toBe("spacing2 must be a number of mm, not 0");
-  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 2, spacing: 0 }), [body, feat])).toBe("spacing must be a number of mm, not 0");
-  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 200, spacing: 0.01, count2: 200, axis2: "y", spacing2: 0.01, both: true }), [body, feat])).toBe("this pattern would make 159200 copies; the most is 1999 (counting the original, 2000 in all)");
-  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 200, spacing: 0.01, count2: 11, axis2: "y", spacing2: 0.01 }), [body, feat])).toBe("this pattern would make 2199 copies; the most is 1999 (counting the original, 2000 in all)");
-  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "constructor", count: 2, spacing: 5 }), [body, feat])).toBe('axis must be "x", "y", "z" or [x, y, z]');
+  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 1, spacing: 20, count2: 2, axis2: "y", spacing2: 0 }), [body, feat])).toContain("spacing2 must be a number of mm, not 0, got 0");
+  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 2, spacing: 0 }), [body, feat])).toContain("spacing must be a number of mm, not 0, got 0");
+  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 200, spacing: 0.01, count2: 200, axis2: "y", spacing2: 0.01, both: true }), [body, feat])).toContain("this pattern would make 159200 copies; the most is 1999");
+  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "x", count: 200, spacing: 0.01, count2: 11, axis2: "y", spacing2: 0.01 }), [body, feat])).toContain("this pattern would make 2199 copies; the most is 1999");
+  expect(await failure(([id, f]) => JS3D.pattern(id, { features: [f], type: "rect", axis: "constructor", count: 2, spacing: 5 }), [body, feat])).toContain('axis must be "x", "y", "z" or [x, y, z], got "constructor"');
 });
 
 test("limits: long expressions, long selectors and prototype names are refused plainly", async () => {
   await fresh();
   const { body } = await makeBox();
-  expect(await failure(() => JS3D.sketch({ shapes: [{ type: "circle", diameter: "1+".repeat(150) + "1" }] }))).toBe("shapes[0].diameter is too long; an expression can have at most 200 characters");
-  expect(await failure((id) => JS3D.fillet(id, "top", "1+".repeat(150) + "1"), body)).toBe("r is too long; an expression can have at most 200 characters");
-  expect(await failure((id) => JS3D.faces(id, "top or ".repeat(80) + "top"), body)).toMatch(/^a selector can be at most 500 characters; this one has 5\d\d$/);
+  expect(await failure(() => JS3D.sketch({ shapes: [{ type: "circle", diameter: "1+".repeat(150) + "1" }] }))).toContain("shapes[0].diameter is too long; an expression can have at most 200 characters");
+  expect(await failure((id) => JS3D.fillet(id, "top", "1+".repeat(150) + "1"), body)).toContain("r is too long; an expression can have at most 200 characters");
+  expect(await failure((id) => JS3D.faces(id, "top or ".repeat(80) + "top"), body)).toMatch(/^a selector can be at most 500 characters; this one has 5\d\d/);
   expect(await failure((id) => JS3D.faces(id, "constructor"), body)).toMatch(/^unknown word "constructor"; use top, bottom/);
   expect(await failure(() => JS3D.sketch({ shapes: Array(200).fill({ type: "polyline", points: Array.from({ length: 200 }, (_, i) => [i, (i % 2) * 3]) }) }))).toBe("this sketch would have 40000 points; the most is 2000 per call — split it into several sketches");
 });

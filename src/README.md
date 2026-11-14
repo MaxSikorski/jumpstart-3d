@@ -11,6 +11,8 @@ Files J.Siwek never shipped. Their first line usually says what they do. Keep th
 | File | What it does |
 |---|---|
 | `apicontract.js` | Versioned scripting API call and property manifest |
+| `teach.js` | Short, safe values for API error messages |
+| `kernelhints.js` | Suggestions for recognized geometry-engine errors |
 | `lsguard.js` | Layerscape project guard: `cleanLayerscape(d)` keeps only embedded pictures, whole-number ids, hex colours, plain words and numbers from a diorama (doc.layerscape, a saved or opened project) before J.Siwek's `layerscape.html` opens it, or refuses it (`layerscape.js` and `layerscape.html` call it); it drops layers no piece uses and throws an Error saying why when the used layers would need more than about 300 MB. `layerscape.js` keeps a refused or unreadable diorama in the design until the user agrees to replace it |
 | `safeurl.js` | Shared embedded raster URL rule and load-time removal of unsafe media and sketch pictures; runtime video blobs never come from project data |
 | `dragarrow.js` | Shared outlined pull arrow for Extrude and Offset face: theme colours, pixel sizing and shaft/head picking |

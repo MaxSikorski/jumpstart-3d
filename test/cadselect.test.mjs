@@ -119,34 +119,34 @@ test('case and spacing do not matter', () => {
 
 test('an empty result is an empty list; unknown indices say what exists', () => {
   same(select(box, 'cone'), []);
-  assert.throws(() => select(box, 'face 17'), { message: 'Box has no face 17 (it has 0 to 5)' });
-  assert.throws(() => edgesOf(box, 'edge 40'), { message: 'Box has no edge 40 (it has 0 to 11; seams and smooth joins are not edges)' });
+  assert.throws(() => select(box, 'face 17'), { message: "Box has no face 17 (it has 0 to 5). Call JS3D.faces(id) to see the available indices." });
+  assert.throws(() => edgesOf(box, 'edge 40'), { message: "Box has no edge 40 (it has 0 to 11; seams and smooth joins are not edges). Call JS3D.edges(id) to see the available indices." });
   const withSeam = { ...box, edgeMax: 14 };
-  assert.throws(() => edgesOf(withSeam, 'edge 40'), { message: 'Box has no edge 40 (it has 0 to 14; seams and smooth joins are not edges)' });
+  assert.throws(() => edgesOf(withSeam, 'edge 40'), { message: "Box has no edge 40 (it has 0 to 14; seams and smooth joins are not edges). Call JS3D.edges(id) to see the available indices." });
 });
 
 test('every error text', () => {
   const bad = (s, message, k = 'face') => assert.throws(() => select(box, s, k), { message });
-  bad('', 'empty selector');
-  bad('   ', 'empty selector');
-  bad('top )', 'unexpected ")" at character 4 in "top )"');
-  bad('top and', 'unexpected "" at character 7 in "top and"');
-  bad('top @', 'unexpected "@" at character 4 in "top @"');
-  bad('>Q', 'unexpected "Q" at character 1 in ">Q"');
-  bad('roof', 'unknown word "roof"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, plane, cylinder, cone, sphere, torus, other, hole, all, not, and, or, (, ), edges of, face N, edge N');
-  bad('roof', 'unknown word "roof"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, line, circle, ellipse, other, all, not, and, or, (, ), edges of, face N, edge N', 'edge');
-  bad('edges of top', '"edges of" is for edges; this call takes faces');
-  bad('circle', '"circle" is an edge type; face types are plane, cylinder, cone, sphere, torus, other, hole');
-  bad('plane', '"plane" is a face type; edge types are line, circle, ellipse, other', 'edge');
-  bad('+Z', '+Z and -Z are for faces; for edges use |Z or >Z', 'edge');
-  bad('-Z', '+Z and -Z are for faces; for edges use |Z or >Z', 'edge');
-  bad('[1]', 'an index [n] only follows >X, <X ... or top, bottom, front, back, left, right');
-  bad('plane[1]', 'an index [n] only follows >X, <X ... or top, bottom, front, back, left, right');
-  bad('(top', 'missing ")" in "(top"');
-  bad('edge 2', 'unexpected "edge" at character 0 in "edge 2"');
-  bad('face 2', 'unexpected "face" at character 0 in "face 2"', 'edge');
-  bad('constructor', 'unknown word "constructor"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, plane, cylinder, cone, sphere, torus, other, hole, all, not, and, or, (, ), edges of, face N, edge N');
-  bad('toString', 'unknown word "tostring"; use top, bottom, front, back, left, right, >Z, <Z, |Z, #Z, +Z, -Z, plane, cylinder, cone, sphere, torus, other, hole, all, not, and, or, (, ), edges of, face N, edge N');
+  bad('', "empty selector, got \"\". Example: \"top\".");
+  bad('   ', "empty selector, got \"   \". Example: \"top\".");
+  bad('top )', "unexpected \")\" at character 4 in \"top )\". Example selector: \"top\".");
+  bad('top and', "unexpected \"\" at character 7 in \"top and\". Example selector: \"top\".");
+  bad('top @', "unexpected \"@\" at character 4 in \"top @\". Example selector: \"top\".");
+  bad('>Q', "unexpected \"Q\" at character 1 in \">Q\". Example selector: \"top\".");
+  bad('roof', /^unknown word "roof"; use top, bottom, .*, plane, cylinder, .*, edge N\. Example: "top"\.$/);
+  bad('roof', /^unknown word "roof"; use top, bottom, .*, line, circle, .*, edge N\. Example: "edges of top"\.$/, 'edge');
+  bad('edges of top', "\"edges of\" is for edges; this call takes faces, got \"edges of top\". Use a face selector such as \"top\".");
+  bad('circle', "\"circle\" is an edge type; face types are plane, cylinder, cone, sphere, torus, other, hole. Use one of those face types.");
+  bad('plane', "\"plane\" is a face type; edge types are line, circle, ellipse, other. Use one of those edge types.", 'edge');
+  bad('+Z', "+Z and -Z are for faces; for edges use |Z or >Z, got \"+Z\". Example: \"|Z\".", 'edge');
+  bad('-Z', "+Z and -Z are for faces; for edges use |Z or >Z, got \"-Z\". Example: \"|Z\".", 'edge');
+  bad('[1]', "an index [n] only follows >X, <X ... or top, bottom, front, back, left, right, got \"[1]\". Example: \"top[0]\".");
+  bad('plane[1]', "an index [n] only follows >X, <X ... or top, bottom, front, back, left, right, got \"plane[1]\". Example: \"top[0]\".");
+  bad('(top', "missing \")\" in \"(top\". Add a closing parenthesis.");
+  bad('edge 2', "unexpected \"edge\" at character 0 in \"edge 2\". Example selector: \"top\".");
+  bad('face 2', "unexpected \"face\" at character 0 in \"face 2\". Example selector: \"top\".", 'edge');
+  bad('constructor', /^unknown word "constructor"; use top, bottom, /);
+  bad('toString', /^unknown word "tostring"; use top, bottom, /);
   assert.equal(select(box, 'top' + ' or top'.repeat(60), 'face').length, 1);
-  bad('top' + ' or top'.repeat(72), 'a selector can be at most 500 characters; this one has 507');
+  bad('top' + ' or top'.repeat(72), "a selector can be at most 500 characters; this one has 507, got \"top or top or top or top or top or top or top or top or to…. Shorten the selector.");
 });

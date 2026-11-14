@@ -279,7 +279,7 @@ test("guards: a warning at 110 holes, a refusal at 225 (Create off), tapped hole
   expect(await bad({ face: "+z", layout: { type: "circle", count: 1, radius: 5 }, hole: { dia: 3 } })).toBe("count must be a whole number from 2 to 200");
   expect(await bad({ face: "+z", layout: { type: "circle", count: 4, radius: 0 }, hole: { dia: 3 } })).toBe("radius must be a positive number of mm");
   expect(await bad({ face: "+z", layout: { type: "circle", count: 4, radius: 5, center: [1, 2] }, hole: { dia: 3 } })).toBe("center must be [x, y, z] in mm");
-  expect(await failure(() => JS3D.holePattern({ body: "nope" }))).toBe("no body nope");
+  expect(await failure(() => JS3D.holePattern({ body: "nope" }))).toMatch(/^no body "nope"/);
   // a sphere has no flat face, and a body marked as a hole takes no holes
   const sphere = await run(() => JS3D.add("sphere", { size: [20, 20, 20] }));
   expect(await failure(async (sid) => { await JS3D.holePattern({ body: sid, face: "+z", layout: { type: "grid", cols: 1, rows: 1 }, hole: { dia: 3 } }); }, sphere)).toMatch(/ has no flat face facing \+z$/);
