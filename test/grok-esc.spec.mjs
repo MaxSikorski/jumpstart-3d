@@ -193,6 +193,9 @@ test("3D Print Sim: Escape closes it, as its X does, and the design is unlocked 
   // again from its Scale box (the object picked by its name chip), which keeps its keys from the app
   await page.evaluate(() => window.__app.advanced.openPrintSim());
   await expect.poll(() => page.evaluate(() => window.__app.simLock)).toBe(true);
+  // after the first slice (the panel redraws when it lands): the object tools are in the Process card's Objects tab
+  await expect.poll(() => page.evaluate(() => document.getElementById("ps-status")?.textContent || ""), { timeout: 90_000 }).toMatch(/Sliced/);
+  await page.click("#ps-tab-objects");
   await page.click("#ps-obj-0");
   await page.locator("#ps-oscale").focus();
   expect(await page.evaluate(() => document.activeElement.id)).toBe("ps-oscale");
