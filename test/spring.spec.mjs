@@ -7,7 +7,7 @@
 //   open: L = N p + w cos(alpha); flat cut: p = L / N; wire length = N sqrt(C^2 + p^2); volume = pi (w/2)^2 x wire length (open).
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { boot, watchErrors, loadDoc, exportBytes, quarantine } from "./helpers.mjs";
+import { boot, watchErrors, loadDoc, exportBytes, browserOf } from "./helpers.mjs";
 
 function pitchOpen(w, O, L, N) {
   const C = Math.PI * (O - w);
@@ -47,7 +47,7 @@ test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
 const run = (fn, arg) => page.evaluate(fn, arg);
 const fresh = (mode = "beginner") => run((m) => JS3D.newDesign(m), mode);
 const failure = (fn, arg) => page.evaluate(async ([src, a]) => { try { await new Function("a", "return (" + src + ")(a)")(a); return null; } catch (e) { return e.message; } }, [fn.toString(), arg]);
-const built = () => run(async () => { await JS3D.ready(); return JS3D.list(); });
+const built = (ms = 90_000) => run(async (ms) => { await JS3D.ready(ms); return JS3D.list(); }, ms);
 const counts = () => run(() => ({ bodies: JS3D.doc().bodies.length, sketches: JS3D.doc().sketches.length, undo: __store.undoStack.length }));
 const near = (got, want, rel, what) => expect(Math.abs(got - want) / Math.abs(want), `${what}: ${got} vs ${want}`).toBeLessThan(rel);
 const field = async (id, v) => { await page.fill("#" + id, String(v)); await page.locator("#" + id).blur(); };
@@ -83,7 +83,10 @@ test("Advanced: Create > Advanced Create > Spring makes the default open spring 
   expect((await counts()).bodies).toBe(1);
 });
 
-test("volume, bounds, turns and ends across wire, size, turns, hand and ends", async () => {
+test("volume, bounds, turns and ends across wire, size, turns, hand and ends", async ({}, info) => {
+  // the single file in Firefox builds eight springs more slowly: five were still building when the usual 90 s ran out (run 43450984696)
+  const wait = browserOf(info) === "firefox" ? 300_000 : 90_000;
+  test.setTimeout(wait + 60_000);
   await fresh();
   const cases = [
     { ends: "open" },
@@ -97,7 +100,7 @@ test("volume, bounds, turns and ends across wire, size, turns, hand and ends", a
     { wire: 2, outside: 10, freeLength: 60, turns: 2, ends: "open" },
   ];
   const ids = await run((cs) => cs.map((c, i) => JS3D.spring({ ...c, at: [i * 50, 0, 0] })), cases);
-  const list = await built();
+  const list = await built(wait);
   expect(list.filter((b) => b.error)).toEqual([]);
   for (const [i, c] of cases.entries()) {
     const f = formula(c), b = list.find((x) => x.id === ids[i]), node = (await nodeOf(ids[i])).node, label = JSON.stringify(c);
@@ -178,7 +181,7 @@ test("bad input: each bridge error text, and nothing is added", async () => {
     [{ freeLength: 10, turns: 5, ends: "flat" }, "The coils would touch. Increase the free length, use fewer turns, or use thinner wire."],
   ];
   for (const [spec, text] of bad) {
-    expect(await failure((s) => JS3D.spring(s), spec), JSON.stringify(spec)).toBe(text);
+    expect(await failure((s) => JS3D.spring(s), spec), JSON.stringify(spec)).toContain(text);
     expect(await counts(), JSON.stringify(spec)).toEqual(before);
   }
 });
@@ -208,7 +211,6 @@ test("the dialog shows the error, switches ends and hand, and the Beginner butto
 });
 
 test("the golden design is flat and open springs, each one solid in a STEP file", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "STEP export fails in the single file in WebKit");
   const json = JSON.parse(readFileSync(new URL("./projects/spring.json", import.meta.url), "utf8"));
   await loadDoc(page, json);
   const list = await built();

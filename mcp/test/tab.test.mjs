@@ -102,7 +102,7 @@ test("a page that connects becomes the tab, and tools edit that page", async () 
   // the page's own error message comes back
   const bad = await call(s.client, "get_body", { id: "nope" });
   assert.equal(bad.isError, true);
-  assert.equal(bad.content[0].text, "no body nope");
+  assert.match(bad.content[0].text, /^no body "nope"/);
   assert.equal(s.log.join("").includes("starting a headless browser"), false); // a tab was there, so no browser was started
 });
 

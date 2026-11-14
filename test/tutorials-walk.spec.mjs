@@ -1,4 +1,4 @@
-// Plays the seven batch-2 community lessons (c4-*) the way a student would: starts each from the Tutorials list, follows the
+// Plays the seven batch-2 community lessons (c4-*) and the batch-5 ones (c5-*) the way a student would: starts each from the Tutorials list, follows the
 // lesson text through the real buttons, boxes and canvas clicks, and asserts that each step's own check ticks and that the
 // lesson finishes. tutorials.spec.mjs only proves the targets exist; this proves the instructions work and the checks can tick.
 import { test, expect } from "@playwright/test";
@@ -19,11 +19,14 @@ test.afterEach(() => { expect(errors, "console or page errors").toEqual([]); });
 const cur = () => page.evaluate(() => window.__app.tutorials.current);
 const doneHas = async (i) => (await cur())?.done.includes(i);
 const ticks = (i, what) => expect.poll(() => doneHas(i), { message: `step ${i + 1} (${what}) ticks itself off`, timeout: 8000 }).toBe(true);
-const next = () => page.click("#tut-next");
+const next = async () => { // a lesson panel that Show me made small opens again first, as a student does (one click on its line)
+  if (await page.locator("#tut-panel .tut-mini-line").count()) await page.click("#tut-panel .tut-mini-line");
+  await page.click("#tut-next");
+};
 
 async function startLesson(id, mode) {
   await page.evaluate(() => window.__app.tutorials.close());
-  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.(?:c4-|c-first-print)/.test(k) || /^p\.(?:c4-|c-first-print)/.test(k)) localStorage.removeItem(k); });
+  await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/\.p\.(?:c4-|c5-|c-first-print)/.test(k) || /^p\.(?:c4-|c5-|c-first-print)/.test(k)) localStorage.removeItem(k); });
   await loadDoc(page, newDoc("Untitled", mode));
   await page.click("#btn-tutorials");
   await page.click("#tut-tab-" + mode);
@@ -448,5 +451,207 @@ for (const [lesson, title, kind, size, cutter, cutSize, z, extra] of holeCases) 
     expect((await cur()).step).toBe(step + 1);
     await noErrors();
     await page.evaluate(() => window.__app.tutorials.close());
+  });
+}
+
+// Tutorials batch 5 (every toolbar button): the laser cut file in Beginner, and the 3D Print Sim's own toolbar in Advanced.
+// Each is played in Original and in Simple, with the buttons each face shows.
+const downloadOf = async (click) => {
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), click()]);
+  const chunks = [];
+  for await (const chunk of await dl.createReadStream()) chunks.push(chunk);
+  return { name: dl.suggestedFilename(), text: Buffer.concat(chunks).toString("utf8") };
+};
+const showMe = async () => { // Show me as a student presses it (the panel opens first if it is small); returns what it outlines
+  await page.evaluate(() => { document.querySelector("#tut-panel .tut-mini-line")?.click(); document.getElementById("tut-show").click(); });
+  return page.evaluate(() => { const e = document.querySelector(".tut-spot"); return e ? e.id || "for:" + e.dataset.for : null; });
+};
+async function inFace(face, fn) {
+  const before = await page.evaluate(() => document.documentElement.dataset.face || "original");
+  await page.evaluate((f) => window.__app.setFace(f, true), face);
+  try { await fn(); } finally {
+    await page.evaluate(() => window.__app.tutorials.close());
+    await page.evaluate((f) => window.__app.setFace(f, true), before);
+  }
+}
+// Advanced Primitives: open the item, type into the boxes the step names, OK
+async function primitive(id, fields) {
+  await page.click("#ad-prims"); await page.click("#" + id);
+  for (const [k, v] of Object.entries(fields)) { await page.locator("#" + k).fill(String(v)); await page.keyboard.press("Tab"); }
+  await page.click("#cmd-ok"); await waitIdle(page);
+}
+const psim = () => page.evaluate(() => { const s = window.__app.advanced.printSim.st; return { view: s.view, lastG: !!s.lastG }; });
+
+for (const face of ["original", "simple"]) {
+  test(`c5-laser-tag in ${face}: a 3 mm tag with a hole, saved as laser SVG and DXF files`, async () => {
+    await inFace(face, async () => {
+      await startLesson("c5-laser-tag", "beginner");
+      await addTile("box", false, { w: 60, d: 30, h: 3 });
+      await ticks(1, "thin plate"); await next();
+      await addTile("cylinder", true, { w: 6, d: 6, h: 10, x: -22, z: -2 });
+      await page.mouse.click(700, 120); await page.keyboard.press("Control+a"); // the lesson's first way, in both faces (c-first-print plays the dragged rectangle in Simple; around this 60 mm tag it can run off the 3D view)
+      expect((await page.evaluate(() => [...window.__app.sel])).length, "both shapes selected").toBe(2);
+      await page.click(face === "simple" ? "#sr-group" : "#bb-group"); await waitIdle(page);
+      await ticks(2, "the hole goes through the tag");
+      const bs = await bodies(page);
+      expect(bs.length).toBe(1);
+      expect(bs[0].volume).toBeCloseTo(60 * 30 * 3 - Math.PI * 3 * 3 * 3, -1); // 5400 minus the 6 mm hole through 3 mm: about 5315
+      await next();
+      await page.evaluate(() => window.__app.select([]));
+      // Simple: More > Workshop > Laser cut file; Original: Open/Export > Laser cut file .svg
+      const svg = await downloadOf(async () => {
+        if (face === "simple") { // as a student: Show me points at More; open it, and Show me scrolls to Laser cut file and makes the lesson panel small when it covers it
+          expect(await showMe()).toBe("sr-more");
+          await page.click("#sr-more");
+          expect(await showMe()).toBe("for:exp-laser-svg");
+          await page.click('#simple-more button[data-for="exp-laser-svg"]');
+        }
+        else { await page.click("#btn-export"); await page.click("#exp-laser-svg"); }
+      });
+      expect(svg.name).toMatch(/^Lopez, Maria, Laser Tag.* laser\.svg$/);
+      expect(svg.text).toContain("<svg");
+      expect(svg.text, "the cut lines are red").toMatch(/stroke="?(#ff0000|#f00|red)/i);
+      await ticks(3, "laser file");
+      const dxf = await downloadOf(async () => { await page.click("#btn-export"); await page.click("#exp-laser-dxf"); });
+      expect(dxf.name).toMatch(/ laser\.dxf$/);
+      expect(dxf.text).toContain("CUT");
+      expect(await page.evaluate(() => window.__app.mode)).toBe("beginner");
+      expect(await page.evaluate(() => document.documentElement.dataset.face || "original")).toBe(face);
+      await next();
+      await finishLesson();
+    });
+  });
+
+  test(`c5-print-plate in ${face}: two parts arranged, turned and sliced in the 3D Print Sim`, async () => {
+    await inFace(face, async () => {
+      await startLesson("c5-print-plate", "advanced");
+      await primitive("ad-box", { "pr-w": 40, "pr-d": 20, "pr-h": 10 });
+      await primitive("ad-cyl", { "pr-pos0": 40 });
+      await ticks(1, "two parts"); await next();
+      await page.click("#ws-print"); await expect(page.locator("#ps-r-arrange")).toBeVisible();
+      await ticks(2, "Print Sim open"); await next();
+      await page.click("#ps-r-arrange");
+      await ticks(3, "arranged"); await next();
+      await page.click("#ps-r-rx");
+      await ticks(4, "turned"); await next();
+      await page.click("#ps-r-auto");
+      await page.click("#ps-r-slice");
+      await ticks(5, "sliced");
+      expect((await psim()).view).toBe("layers");
+      await page.click("#ps-r-prepare"); await expect.poll(async () => (await psim()).view).toBe("model");
+      await page.click("#ps-r-preview"); await expect.poll(async () => (await psim()).view).toBe("layers");
+      await next();
+      await finishLesson();
+    });
+  });
+
+  test(`c5-print-watch in ${face}: layers, strength, the print played and its G-code saved`, async () => {
+    test.setTimeout(120_000);
+    await inFace(face, async () => {
+      await startLesson("c5-print-watch", "advanced");
+      await primitive("ad-box", { "pr-w": 30, "pr-d": 30, "pr-h": 20 });
+      await ticks(1, "block"); await next();
+      await page.click("#ws-print"); await page.click("#ps-r-layers");
+      await ticks(2, "layers"); await next();
+      await page.click("#ps-r-strength");
+      await ticks(3, "strength");
+      await page.click("#ps-r-model"); await expect.poll(async () => (await psim()).view).toBe("model");
+      await next();
+      const playing = () => page.evaluate(() => document.getElementById("ps-play")?.getAttribute("aria-pressed") === "true");
+      await expect.poll(async () => { if (!(await playing())) await page.click("#ps-r-play"); return playing(); }, { timeout: 30_000 }).toBe(true); // Play waits for the slice ("Still slicing"): press it again only while it is not playing
+      await ticks(4, "playing");
+      await page.click("#ps-r-play"); await expect.poll(playing).toBe(false); // the lesson says: Play print again pauses it
+      await next();
+      const g = await downloadOf(() => page.click("#ps-r-gcode"));
+      expect(g.name).toMatch(/\.gcode$/);
+      expect(g.text).toMatch(/^G1 /m);
+      await ticks(5, "G-code saved");
+      await next();
+      await finishLesson();
+    });
+  });
+}
+
+// Batch 5, makers with their own window. Layerscape (an iframe over the app) covers the lesson panel, so
+// c5-slot-puzzle's Layerscape step is one step read before the window opens; Next is pressed once Layerscape has closed.
+for (const face of ["original", "simple"]) {
+  test(`c5-slot-puzzle in ${face}: a ball cut into 100 mm slot-together ribs by Layerscape, the ball deleted`, async () => {
+    test.setTimeout(240_000);
+    await inFace(face, async () => {
+      await startLesson("c5-slot-puzzle", "beginner");
+      await addTile("sphere", false, { w: 40, d: 40, h: 40, x: 100 });
+      await ticks(1, "ball to the side"); await next();
+      expect(await showMe(), "Show me points at Layerscape (Simple: at More, which holds it)").toBe(face === "simple" ? "sr-more" : "bb-layerscape");
+      if (face === "simple") { // as a student: open More, press Show me again (it scrolls to Layerscape and makes the lesson panel small when it covers it), then click
+        await page.click("#sr-more");
+        expect(await showMe()).toBe("for:bb-layerscape");
+        await page.click('#simple-more button[data-for="bb-layerscape"]');
+      }
+      else await page.click("#bb-layerscape");
+      const frame = page.frameLocator("#layerscape iframe");
+      await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 120_000 }).toBe(true);
+      await frame.locator('#lsMode [data-mode="puzzle"]').click();
+      await frame.locator('#pzKind [data-k="slot"]').click();
+      await frame.locator("#pz_design").click();
+      await expect.poll(() => frame.locator("body").evaluate(() => window.__layerscape.puzzle?.model?.kind), { timeout: 90_000 }).toBe("slot");
+      const seq = await frame.locator("body").evaluate(() => window.__layerscape.puzzle.seq);
+      await frame.locator("#pz_size").fill("100"); await frame.locator("#pz_size").press("Enter");
+      await expect.poll(() => frame.locator("body").evaluate(() => window.__layerscape.puzzle.seq), { message: "the puzzle is rebuilt at Size 100", timeout: 30_000 }).toBeGreaterThan(seq);
+      await frame.locator("#pzXDesign").click();
+      await expect(page.locator("#layerscape")).toHaveCount(0, { timeout: 90_000 });
+      await waitIdle(page);
+      await ticks(2, "pieces in the design");
+      const parts = (await bodies(page)).filter((b) => b.name !== "Sphere 1");
+      expect(parts.length, "slot-together ribs").toBeGreaterThanOrEqual(4);
+      expect(parts.filter((b) => b.error || !(b.volume > 0)), "every rib is a solid").toEqual([]);
+      const longest = await page.evaluate(() => { const app = window.__app, box = app.scene.bodyTightBox(window.__store.doc.bodies.find((b) => b.node.t === "mesh").id).clone(); for (const b of window.__store.doc.bodies) if (b.node.t === "mesh") box.union(app.scene.bodyTightBox(b.id)); const s = box.getSize(box.min.clone()); return Math.max(s.x, s.y, s.z); });
+      expect(longest, "the puzzle's longest side is the Size typed in Layerscape").toBeCloseTo(100, -1);
+      await next();
+      // the ball, beside the 100 mm puzzle: click it, then Delete (in Simple, the quick-fix Delete)
+      // the app fits the view to the new pieces on a timer after they are built, so the ball can move under the pointer: aim again until it is picked
+      await expect(async () => {
+        const [bx, by] = await screenOf(100, 0, 20);
+        await page.mouse.click(bx, by);
+        expect(await page.evaluate(() => window.__app.sel.map((id) => window.__store.doc.bodies.find((b) => b.id === id)?.node.kind))).toEqual(["sphere"]);
+      }).toPass({ timeout: 15_000 });
+      await page.click(face === "simple" ? '#simple-fixes button[data-for="bb-del"]' : "#bb-del"); await waitIdle(page);
+      await ticks(3, "ball deleted");
+      expect(await page.evaluate(() => window.__store.doc.bodies.some((b) => b.node.kind === "sphere"))).toBe(false);
+      await next();
+      await finishLesson();
+    });
+  });
+
+  test(`c5-maker-tour in ${face}: a bin from Simulate, then Layerscape, the Helmet Maker and Color lithophane open and close`, async () => {
+    test.setTimeout(180_000);
+    await inFace(face, async () => {
+      await startLesson("c5-maker-tour", "advanced");
+      expect(await showMe(), "before the Simulate tab is open, Show me points at it").toBe("ws-simulate");
+      await page.click("#ws-simulate");
+      expect(await showMe(), "with Simulate open, Show me points at Bin & Box Maker").toBe("sim-bins");
+      await page.click("#sim-bins"); await page.click("#cmd-ok"); await waitIdle(page);
+      await ticks(1, "bin"); await next();
+      expect(await showMe()).toBe("sim-layerscape");
+      await page.click("#sim-layerscape");
+      await ticks(2, "Layerscape open");
+      const frame = page.frameLocator("#layerscape iframe");
+      await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 120_000 }).toBe(true);
+      await frame.locator("#lsBack").click();
+      await expect(page.locator("#layerscape")).toHaveCount(0);
+      await next();
+      expect(await showMe()).toBe("sim-helmet");
+      await page.click("#sim-helmet");
+      await ticks(3, "Helmet Maker open");
+      await page.click("#cf-back"); await expect(page.locator("#cosforge")).toHaveCount(0);
+      await next();
+      expect(await showMe(), "before the 3D Print Sim is open, Show me points at its tab").toBe("ws-print");
+      await page.click("#ws-print");
+      expect(await showMe()).toBe("ps-r-litho");
+      await page.click("#ps-r-litho");
+      await ticks(4, "Color Lithophane Studio open");
+      await page.click("#cl-close"); await expect(page.locator("#clitho")).toHaveCount(0);
+      await next();
+      await finishLesson();
+    });
   });
 }

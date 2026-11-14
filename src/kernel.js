@@ -3,7 +3,7 @@ import { readStepShape, beginStepBuild, stepStage, denseStep } from "./stepload.
 // Geometry kernel: turns the document's node trees into OpenCascade solids
 // and meshes. Runs inside a Web Worker in the app, and directly in Node for tests.
 import * as R from "replicad";
-import { simplifiedResult } from "replicad/shape-functions"; // jumpstart-3d: the round-face-safe merge after a boolean (exported for the STEP import)
+import { simplifiedResult, exportShapeSTEPBytes } from "replicad/shape-functions"; // jumpstart-3d: the round-face-safe merge after a boolean (exported for the STEP import); STEP as bytes (the Safari single file)
 import { fontBytes, registerFont } from "./fonts.js";
 import { facePatCells } from "./facepat.js";
 import { isNearEmpty } from "./pieces.js"; // jumpstart-3d: films left by a cut
@@ -4352,7 +4352,7 @@ export function exportStep(bodies) {
   }
   if (!shapes.length) throw new Error("Nothing to export");
   const comp = shapes.length === 1 ? shapes[0] : R.makeCompound(shapes);
-  return comp.blobSTEP();
+  return exportShapeSTEPBytes(comp); // jumpstart-3d: bytes, not a Blob: Safari cannot read a Blob made in this worker when the single file started it
 }
 // jumpstart-3d: Manifold gets what it needs from here (a function call at load time, so meshbool.js does not import kernel.js)
 initMeshBool({ evalNode, assetBytes, solidFromMesh, makeCompound: (shapes) => R.makeCompound(shapes), isNearEmpty, stableKey, cacheGet, cachePut, nothingLeft: NOTHING_LEFT });
