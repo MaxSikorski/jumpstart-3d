@@ -143,7 +143,7 @@ async function canvasPoint(page, x, y) {
 test('design rail replaces the ribbon and keeps More in the rail', async ({ page }, info) => {
   desktop(info);
   await expect(page.locator('#ribbon')).toBeHidden();
-  expect(await railIds(page)).toEqual(['ad-sketch','ad-extrude','ad-revolve','ad-edge','ad-hole','ad-shell','ad-pattern','ad-measure']);
+  expect(await railIds(page)).toEqual(['ad-prims','ad-sketch','ad-extrude','ad-revolve','ad-edge','ad-hole','ad-shell','ad-pattern','ad-measure']);
   expect(await page.locator('#sr-more').evaluate(b => b.parentElement.id)).toBe('simple-rail');
 });
 
@@ -207,7 +207,7 @@ test('Beginner sketch uses the sketch rail and restores Beginner tools', async (
 
 test('phone shows six rail tools and More, with Pattern and Measure in More', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'Phone tab bar only.');
-  await expect(page.locator('#sar button:visible')).toHaveCount(6); await expect(page.locator('#sr-more')).toBeVisible();
+  expect(await railIds(page)).toEqual(['ad-prims','ad-sketch','ad-extrude','ad-edge','ad-hole','ad-shell']); await expect(page.locator('#sr-more')).toBeVisible();
   await page.click('#sr-more'); await expect(page.locator('#simple-more [data-for="ad-pattern"]:visible')).toBeVisible(); await expect(page.locator('#simple-more [data-for="ad-measure"]:visible')).toBeVisible();
 });
 
@@ -307,4 +307,30 @@ test('Advanced More has icons, one Workshop, and searchable import and plane nam
     await page.fill('#simple-find', query);
     await expect(page.locator(`#simple-more [data-for="${id}"]`)).toBeVisible();
   }
+});
+
+
+test('Primitives opens beside the rail and Box creates a body', async ({ page }, info) => {
+  desktop(info); const before = await page.evaluate(() => window.__store.doc.bodies.length);
+  await page.click('#sar-ad-prims'); await expect(page.locator('#ribbon-menu')).toBeVisible();
+  const button = await page.locator('#sar-ad-prims').boundingBox(), menu = await page.locator('#ribbon-menu').boundingBox();
+  expect(menu.x).toBeGreaterThanOrEqual(button.x + button.width);
+  await page.click('#ribbon-menu #ad-box'); await page.click('#cmd-ok'); await expect.poll(() => page.evaluate(() => window.__store.doc.bodies.length)).toBeGreaterThan(before);
+});
+
+test('pressed Rectangle returns to Select', async ({ page }) => {
+  await enterSketch(page); await page.click('#sar-sk-rect'); await expect(page.locator('#sar-sk-rect')).toHaveAttribute('aria-pressed','true');
+  await page.click('#sar-sk-rect'); await expect.poll(() => page.evaluate(() => window.__app.sketcher.tool)).toBe('select');
+});
+
+test('Main tools is first and unchanged status is not rewritten', async ({ page }, info) => {
+  desktop(info); await page.click('#sr-more'); await expect(page.locator('#simple-more section').first().locator('h3')).toHaveText('Main tools');
+  await page.click('#sr-more'); await enterSketch(page);
+  const changes = await page.evaluate(async () => { const note = document.querySelector('#sap-note'); let count = 0; const observer = new MutationObserver(records => count += records.length); observer.observe(note, {childList:true, characterData:true, subtree:true}); window.__app.refreshUI(); await new Promise(resolve => setTimeout(resolve, 0)); observer.disconnect(); return count; });
+  expect(changes).toBe(0);
+});
+
+test('Beginner Find import does not leave an empty panel', async ({ page }) => {
+  await page.evaluate(() => window.__app.setMode('beginner')); await page.click('#sr-more'); await page.fill('#simple-find','import');
+  expect(await page.locator('#simple-more button[data-for]:visible').count() + await page.locator('#simple-empty:visible').count()).toBeGreaterThan(0);
 });

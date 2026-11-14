@@ -36,16 +36,16 @@ export function initSimpleAdvanced(app, plate, collapse) {
   const rail = $('simple-rail'), more = $('simple-more'), sar = document.createElement('div');
   sar.id = 'sar'; $('sr-more').before(sar);
   const sets = {
-    design: [['ad-sketch','Sketch','sketch',1],['ad-extrude','Extrude','extrude',1],['ad-revolve','Revolve','revolve',1,'ad-features'],['ad-edge','Fillet','fillet',1],['ad-hole','Hole','hole',1],['ad-shell','Shell','shell',1],['ad-pattern','Pattern','pattern'],['ad-measure','Measure','measure']],
+    design: [['ad-prims','Primitives','box',1],['ad-sketch','Sketch','sketch',1],['ad-extrude','Extrude','extrude',1],['ad-revolve','Revolve','revolve',0,'ad-features'],['ad-edge','Fillet','fillet',1],['ad-hole','Hole','hole',1],['ad-shell','Shell','shell',1],['ad-pattern','Pattern','pattern'],['ad-measure','Measure','measure']],
     sketch: [['sk-line','Line','line',1],['sk-rect','Rectangle','rect',1],['sk-circle','Circle','circle',1],['sk-arc3','Arc','arc3'],['sk-dim','Dimension','dim',1],['sk-constraints','Constraints','constraints',1],['sk-trim','Trim','trim'],['sk-extrude','Extrude','extrude'],['sk-finish','Finish','finish',1]],
     print: [['ws-design','Design','back',1],['ps-r-auto','Auto orient','printer3d',1],['ps-r-lay','Lay on face','drop',1],['ps-r-arrange','Arrange','pattern',1],['ps-r-slice','Slice','printsim',1],['ps-r-play','Play','motion',1],['ps-r-gcode','G-code','archExport']],
     simulate: [['ws-design','Design','back',1],['sim-joint','Joint','joint',1],['sim-drive','Drive','drive',1],['sim-motion','Motion','motion',1],['sim-stress','Stress','stress',1],['sim-render','Render','render',1],['sim-reset','Reset pose','clearSim'],['sim-apply','Apply pose','move']]
   };
   const groups = [
     ["Workspaces", [
-      ["ws-design","Design",null,"more","Design"],
-      ["ws-print","3D Print Sim",null,"more","3D Print Sim"],
-      ["ws-simulate","Simulate",null,"more","Simulate"]
+      ["ws-design","Design",null,"sketch","Design"],
+      ["ws-print","3D Print Sim",null,"printsim","3D Print Sim"],
+      ["ws-simulate","Simulate",null,"motion","Simulate"]
     ]],
     ["Create", [
       ["ad-sketch3d","3D Sketch",null,"spline","Draw lines in 3D on a body, a virtual sphere or cube, or in the air, with a split camera view. Works with touch, pen, mouse and trackpad."],
@@ -79,7 +79,7 @@ export function initSimpleAdvanced(app, plate, collapse) {
       ["ad-chamfer","Chamfer","ad-edge-more","chamfer","Bevel edges (C)"],
       ["ad-offset","Offset face","ad-advmod","offset","Offset face / press pull (Q): click faces, or drag a box around a whole body"],
       ["ad-clearance","Clearance","ad-advmod","joint","Give moving parts room: finds bodies that touch or overlap and cuts a small gap (0.2-0.5 mm) so they don't print fused"],
-      ["ad-combine","Combine","ad-advmod","combine","Join, cut or intersect bodies (B)"],
+      ["ad-combine","Combine","ad-advmod","combine","Combine: group join cut subtract or intersect bodies (B)"],
       ["ad-splitbody","Split body","ad-advmod","splitBody","Cut a body into pieces with a plane, a face or another body"],
       ["ad-splitface","Split face","ad-advmod","splitFace","Divide faces with a plane or sketch curve (the shape stays the same)"],
       ["ad-move","Move/Copy","ad-transform","move","Move / Copy (M)"],
@@ -108,7 +108,7 @@ export function initSimpleAdvanced(app, plate, collapse) {
       ["ad-fasteners","Fasteners","ad-features","thread","Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch), with optional modeled threads"],
       ["ad-hinge","Quick Hinge","ad-features","hinge","Ready-made hinges: print-in-place, pin (filament, screw or printed pin) or living hinges, laid on any face"],
       ["ad-gear","Gear","ad-features","gear","Spur gears, bevel gears and racks by module and tooth count"],
-      ["ad-gears","Gears","ad-features","gear","Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study"],
+      ["ad-gears","Gear library","ad-features","gear","Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study"],
       ["ad-nameplate","Name plate","ad-features","tag","A tag or name plate sized to its text, with raised or cut-in letters"],
       ["ad-knurl","Knurled knob","ad-features","knurl","A knob or grip with straight V grooves all round and an optional round, hex or D bore"],
       ["ad-spring","Spring","ad-features","spring","A compression spring of round wire, with open ends or ends cut flat"]
@@ -147,16 +147,17 @@ export function initSimpleAdvanced(app, plate, collapse) {
       ["sim-sglass","Stained Glass","ws-simulate","stainedglass","Turn an object or a lamp shade into stained glass (a Tiffany-style lamp or a glass statue): glass and frame thickness, painting, STL / 3MF / OBJ export"],
       ["sim-fasteners","Fasteners",null,"thread","Parts library: bolts, screws, nuts, washers, heat-set inserts and pins (metric and inch)"],
       ["sim-hinge","Quick Hinge",null,"hinge","Ready-made hinges: print-in-place, pin or living hinges, without FlexiGen"],
-      ["sim-gears","Gears",null,"gear","Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study"],
+      ["sim-gears","Gear library",null,"gear","Gear library: involute spur gears, pairs, ring gears, rack and pinion and planetary sets, with joints for a motion study"],
       ["sim-chipcarve","Chip Carving",null,"chipcarve","Chip carve a board, plate, log or a shape from your design with chip knives, a stab knife, pencil and sanding block. Pen pressure sets the depth. Add it to the design or export STL, 3MF or OBJ."],
       ["sim-lathe","Lathe",null,"lathe","Turn a body or a wood blank on a virtual lathe"]
     ]],
     ["3D Print Sim", [
-      ["ps-r-prepare","Prepare",null,"more","Prepare"],
-      ["ps-r-preview","Preview",null,"more","Preview"],
+      ["ps-r-prepare","Prepare",null,"body","Prepare"],
+      ["ps-r-preview","Preview",null,"pattern","Preview"],
       ["ps-r-rx","Rotate X",null,"revolve","Turn 90° about X"],
       ["ps-r-ry","Rotate Y",null,"revolve","Turn 90° about Y"],
       ["ps-r-model","Model",null,"body","Part, overhangs and supports"],
+      ["ps-r-layers","Layers",null,"pattern","Layer-by-layer print preview"],
       ["ps-r-strength","Strength",null,"stress","Strong and weak spots of the print"]
     ]],
     ["Sketch", [
@@ -177,16 +178,16 @@ export function initSimpleAdvanced(app, plate, collapse) {
       ["sk-ins-img","Image to trace","sk-insert","image","Place a picture on this sketch plane to trace over"]
     ]],
     ["Constraints", [
-      ["sk-c-coincident","Coincident","sk-constraints","more","Coincident"],
-      ["sk-c-horizontal","Horizontal","sk-constraints","more","Horizontal"],
-      ["sk-c-vertical","Vertical","sk-constraints","more","Vertical"],
-      ["sk-c-parallel","Parallel","sk-constraints","more","Parallel"],
-      ["sk-c-perpendicular","Perpendicular","sk-constraints","more","Perpendicular"],
-      ["sk-c-tangent","Tangent","sk-constraints","more","Tangent"],
-      ["sk-c-concentric","Concentric","sk-constraints","more","Concentric"],
-      ["sk-c-equal","Equal","sk-constraints","more","Equal"],
-      ["sk-c-midpoint","Midpoint","sk-constraints","more","Midpoint"],
-      ["sk-c-fixed","Fixed","sk-constraints","more","Fixed"]
+      ["sk-c-coincident","Coincident","sk-constraints","cCoincident","Coincident"],
+      ["sk-c-horizontal","Horizontal","sk-constraints","cHorizontal","Horizontal"],
+      ["sk-c-vertical","Vertical","sk-constraints","cVertical","Vertical"],
+      ["sk-c-parallel","Parallel","sk-constraints","cParallel","Parallel"],
+      ["sk-c-perpendicular","Perpendicular","sk-constraints","cPerpendicular","Perpendicular"],
+      ["sk-c-tangent","Tangent","sk-constraints","cTangent","Tangent"],
+      ["sk-c-concentric","Concentric","sk-constraints","cConcentric","Concentric"],
+      ["sk-c-equal","Equal","sk-constraints","cEqual","Equal"],
+      ["sk-c-midpoint","Midpoint","sk-constraints","cMidpoint","Midpoint"],
+      ["sk-c-fixed","Fixed","sk-constraints","lock","Fixed"]
     ]]
   ];
   const back = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7"/></svg>';
@@ -196,22 +197,22 @@ export function initSimpleAdvanced(app, plate, collapse) {
     b.innerHTML = (icon === 'back' ? back : ICON[icon] || ICON.select) + '<span></span>'; b.querySelector('span').textContent = label; return b;
   }
   for (const [set, items] of Object.entries(sets)) for (const [id,label,icon,phone,via] of items) {
-    const b = button(id,label,icon,via); b.id = 'sar-' + id; b.dataset.set = set; if (phone) b.dataset.phone = 'true'; sar.append(b);
+    const b = button(id,label,icon,via); b.id = 'sar-' + id; b.dataset.set = set; if (phone) b.dataset.phone = 'true'; if (set === 'sketch' && ({'sk-rect':'Rect','sk-dim':'Dim','sk-constraints':'Constr.'})[id]) { b.dataset.shortLabel = ({'sk-rect':'Rect','sk-dim':'Dim','sk-constraints':'Constr.'})[id]; b.setAttribute('aria-label', label); } sar.append(b);
   }
   // Design appears in two sets but must have a unique id.
   sar.querySelectorAll('#sar-ws-design')[1].removeAttribute('id');
   const ai = more.querySelector('.simple-ai');
   function section(name, cls = '') { const s = document.createElement('section'); s.className = 'sadv-group ' + cls; const h = document.createElement('h3'); h.textContent = name; const grid = document.createElement('div'); grid.className = 'simple-grid'; s.append(h,grid); ai.before(s); return s; }
   for (const [name, items] of groups) { const s = section(name, ['Sketch','Constraints'].includes(name) ? '' : 'sadv-advanced-only'); s.dataset.group = name; for (const [id,label,via,icon,title] of items) { const b = button(id,label,icon,via); b.title = title; s.lastChild.append(b); } }
-  const onrail = section('On the rail','simple-arrange sadv-onrail');
+  const onrail = section('Main tools','simple-arrange sadv-onrail'); more.insertBefore(onrail, more.querySelector('section'));
   for (const [set,items] of Object.entries(sets)) for (const [id,label,icon,phone,via] of items) { const b = button(id,label,icon,via); b.dataset.set = set; if (phone) b.dataset.phone = 'true'; onrail.lastChild.append(b); }
   const aliases = section('Aliases','sadv-alias');
-  for (const [id,via] of [['ad-hole-m','ad-features'],['ad-fastbtn'],['ad-ins-fast','ad-insert'],['ad-ins-hinge','ad-insert'],['ad-ins-gear','ad-insert']]) aliases.lastChild.append(button(id,id,'more',via));
+  for (const [id,via] of [['ad-hole-m','ad-features'],['ad-fastbtn'],['ad-ins-fast','ad-insert'],['ad-ins-hinge','ad-insert'],['ad-ins-gear','ad-insert'],['ps-r-litho']]) aliases.lastChild.append(button(id,id,'more',via));
   const other = section('Other','sadv-other');
-  const titles = Object.fromEntries(groups.flatMap(([, items]) => items.map(([id,, , , title]) => [id, title]))); Object.assign(titles, {'ws-design':'Design: sketch, extrude, pattern and measure','ws-print':'3D Print Sim: orient, arrange, slice and G-code','ws-simulate':'Simulate: joint, motion, stress and voxel'});
-  let previousSet = '', menuFromRail = false, ignoreClick = false;
+  const titles = Object.fromEntries(groups.flatMap(([, items]) => items.map(([id,, , , title]) => [id, title]))); Object.assign(titles, {'ws-design':'Design: sketch, extrude, pattern and measure','ws-print':'3D Print Sim: orient, arrange, slice and G-code','ws-simulate':'Simulate: joint, motion, stress and voxel', 'ad-edge':'Round (fillet) or bevel (chamfer) edges; switch between them in More › Modify', 'ad-shell':'Shell: hollow out a body, leaving walls', 'ad-prims':'Primitives: shapes box cylinder'});
+  let previousSet = '', menuFromRail = null, ignoreClick = false;
   const proxyFor = plate.proxyFor;
-  const canonical = {'ad-hole-m':'ad-hole', 'ad-fastbtn':'ad-fasteners', 'ad-ins-fast':'ad-fasteners', 'ad-ins-hinge':'ad-hinge', 'ad-ins-gear':'ad-gears'};
+  const canonical = {'ad-hole-m':'ad-hole', 'ad-fastbtn':'ad-fasteners', 'ad-ins-fast':'ad-fasteners', 'ad-ins-hinge':'ad-hinge', 'ad-ins-gear':'ad-gears', 'ps-r-litho':'simple-run-litho'};
   plate.proxyFor = id => proxyFor(canonical[id] || id);
   rail.addEventListener('keydown', e => {
     if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key) || !e.target.closest('button')) return;
@@ -234,37 +235,41 @@ export function initSimpleAdvanced(app, plate, collapse) {
     e.stopPropagation(); $('sr-more').click(); $('sk-rect-more')?.click();
     document.querySelector('#ribbon-menu #sk-rect')?.click();
   }, true);
-  window.addEventListener('pointerdown', e => { if (root.dataset.face === 'simple' && e.target.closest?.('#sar [data-for="sk-constraints"]') && menuFromRail && $('ribbon-menu')) { ignoreClick = true; e.stopPropagation(); } }, true);
+  window.addEventListener('pointerdown', e => { if (root.dataset.face === 'simple' && e.target.closest?.('#sar button') === menuFromRail && menuFromRail && $('ribbon-menu')) { ignoreClick = true; e.stopPropagation(); } }, true);
   sar.addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b || b.dataset.for !== 'sk-constraints') return;
-    if (ignoreClick) { ignoreClick = false; e.stopImmediatePropagation(); menuFromRail = false; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); b.focus(); return; }
+    const b = e.target.closest('button'); if (!b) return;
+    if (app.sketcher?.active && b.getAttribute('aria-pressed') === 'true' && !$(b.dataset.for)?.hasAttribute('aria-haspopup') && b.dataset.for !== 'sk-finish') { e.stopImmediatePropagation(); app.sketcher.setTool('select'); app.refreshUI(); return; }
+    if (!$(b.dataset.for)?.hasAttribute('aria-haspopup')) return;
+    if (ignoreClick) { ignoreClick = false; e.stopImmediatePropagation(); menuFromRail = null; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); b.focus(); return; }
     // The delegated handler opens the original menu after this listener.
-    queueMicrotask(() => { const menu = $('ribbon-menu'); if (!menu) return; menuFromRail = true; const r = b.getBoundingClientRect(); if (matchMedia('(max-width: 640px)').matches) { menu.style.left = '0px'; menu.style.width = '100%'; menu.style.top = Math.max(0, rail.getBoundingClientRect().top - menu.offsetHeight) + 'px'; } else { menu.style.left = Math.min(r.right + 6, innerWidth - menu.offsetWidth) + 'px'; menu.style.top = Math.max(0, Math.min(r.top, innerHeight - menu.offsetHeight)) + 'px'; } });
+    queueMicrotask(() => { const menu = $('ribbon-menu'); if (!menu) return; menuFromRail = b; const r = b.getBoundingClientRect(); if (matchMedia('(max-width: 640px)').matches) { menu.style.left = '0px'; menu.style.width = '100%'; menu.style.top = Math.max(0, rail.getBoundingClientRect().top - menu.offsetHeight) + 'px'; } else { menu.style.left = Math.min(r.right + 6, innerWidth - menu.offsetWidth) + 'px'; menu.style.top = Math.max(0, Math.min(r.top, innerHeight - menu.offsetHeight)) + 'px'; } });
   });
-  window.addEventListener('keydown', e => { if (root.dataset.face !== 'simple' || e.key !== 'Escape' || !menuFromRail || !$('ribbon-menu')) return; e.preventDefault(); e.stopImmediatePropagation(); menuFromRail = false; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); $('sar-sk-constraints')?.focus(); }, true);
+  window.addEventListener('keydown', e => { if (root.dataset.face !== 'simple' || e.key !== 'Escape' || !menuFromRail || !$('ribbon-menu')) return; e.preventDefault(); e.stopImmediatePropagation(); const target = menuFromRail; menuFromRail = null; document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); target.focus(); }, true);
   function updateRail() {
     if (root.dataset.face !== 'simple') return;
     const set = app.sketcher?.active ? 'sketch' : app.mode === 'advanced' ? app.advanced.workspace : '';
-    const focused = sar.contains(document.activeElement); rail.dataset.set = set;
+    const focused = sar.contains(document.activeElement); rail.dataset.set = set; rail.setAttribute('aria-label', ({design:'Design tools', sketch:'Sketch tools', print:'3D Print Sim tools', simulate:'Simulate tools'})[set] || 'Simple tools');
     for (const b of sar.querySelectorAll('button')) b.hidden = b.dataset.set !== set;
     if (focused && previousSet !== set) requestAnimationFrame(() => [...rail.querySelectorAll('button:not([hidden]):not(:disabled)')].find(b => b.getClientRects().length)?.focus()); previousSet = set;
-    $('sap-note').hidden = set !== 'sketch'; $('sap-note').textContent = $('sk-note')?.textContent || '';
+    const note = $('sap-note'), noteText = $('sk-note')?.textContent || ''; note.hidden = set !== 'sketch'; if (note.textContent !== noteText) note.textContent = noteText;
     for (const b of [...sar.querySelectorAll('button'), ...more.querySelectorAll('.sadv-group button')]) {
       const original = $(b.dataset.for); if (original) {
         if (b.dataset.iconFallback && original.querySelector('svg')) { b.querySelector('svg')?.remove(); b.prepend(original.querySelector('svg').cloneNode(true)); }
-        b.disabled = original.disabled; const pressed = original.getAttribute('aria-pressed') ?? original.getAttribute('aria-selected'); if (pressed !== null) b.setAttribute('aria-pressed', pressed); else b.removeAttribute('aria-pressed');
+        b.disabled = original.disabled; const pressed = b.dataset.for === 'ws-design' && b.closest('#sar') ? null : original.getAttribute('aria-pressed') ?? original.getAttribute('aria-selected'); if (pressed !== null) b.setAttribute('aria-pressed', pressed); else b.removeAttribute('aria-pressed');
+        if (original.hasAttribute('aria-haspopup')) { b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', original.getAttribute('aria-expanded') || 'false'); } else { b.removeAttribute('aria-haspopup'); b.removeAttribute('aria-expanded'); }
         if (!titles[b.dataset.for]) b.title = original.title || original.textContent.trim();
         if (['ad-edge','sk-rect'].includes(b.dataset.for)) { const svg = original.querySelector('svg'), old = b.querySelector('svg'); if (svg && old) old.replaceWith(svg.cloneNode(true)); }
         if (['ad-edge','sk-cpin'].includes(b.dataset.for)) b.querySelector('span').textContent = original.querySelector('span')?.textContent.trim() || original.textContent.trim();
       } else b.disabled = false;
-      if (titles[b.dataset.for]) b.title = titles[b.dataset.for];
+      if (titles[b.dataset.for]) b.title = titles[b.dataset.for]; if (b.dataset.for === 'ws-design' && b.closest('#sar')) b.title = 'Back to Design';
     }
-    for (const original of document.querySelectorAll('#ribbon button[id]')) {
+    if (app.mode !== 'advanced') other.lastChild.replaceChildren();
+    if (app.mode === 'advanced') for (const original of document.querySelectorAll('#ribbon button[id]')) {
       if (original.hasAttribute('aria-haspopup') || more.querySelector(`[data-for="${original.id}"]`) || sar.querySelector(`[data-for="${original.id}"]`)) continue;
       const b = button(original.id, original.getAttribute('aria-label') || original.textContent.trim()); b.title = original.title; other.lastChild.append(b);
     }
   }
-  new MutationObserver(updateRail).observe($('ribbon'), {childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:['aria-pressed','disabled','aria-selected']});
+  new MutationObserver(updateRail).observe($('ribbon'), {childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:['aria-pressed','disabled','aria-selected','aria-expanded']});
 
   let timelineCount = timeline.querySelectorAll('.tl-item').length;
   new MutationObserver(() => {
@@ -290,6 +295,9 @@ export function initSimpleAdvanced(app, plate, collapse) {
   new MutationObserver(update).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   const style = document.createElement('style'); style.id = 'simpleadvanced-css'; style.textContent = `
 #simple-adv-panel { display: none; }
+#sap-note { padding: 8px 12px; font: 13px/1.35 var(--f-ui); color: var(--ink-2); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+html[data-face="simple"] .simple-panel button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+html[data-face="simple"] #simple-rail[data-set="sketch"] ~ #simple-more [data-group="Workshop"] { display: none; }
 html[data-face="simple"] #app[data-mode="advanced"] .work { --sap-rail-w: 80px; --sap-panel-w: 280px; grid-template-columns: var(--sap-rail-w) minmax(0, 1fr) var(--sap-panel-w); }
 html[data-face="simple"] #app[data-mode="advanced"] #simple-adv-panel { display: flex; grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; background: var(--panel); color: var(--ink); border-left: 1px solid var(--line); font-family: var(--f-ui); }
 html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { --sap-panel-w: 0px; }
@@ -355,8 +363,13 @@ html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .w
  html[data-face="simple"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="rail"] #app[data-mode="advanced"] .work, html[data-face="simple"][data-simple-hide~="panel"] #app[data-mode="advanced"] .work, html[data-face="simple"] body.ps-orca #app[data-mode="advanced"] .work { --sap-rail-w:0px; grid-template-rows:minmax(0,1fr) auto 58px; }
  html[data-face="simple"] #app[data-mode="advanced"] #simple-rail { grid-column:1 / -1; grid-row:3; width:100%; flex-direction:row; overflow:hidden; border-right:0; border-top:1px solid var(--line); }
  html[data-face="simple"] #simple-rail[data-set] #sar button:not([data-phone]) { display:none; }
- html[data-face="simple"] #simple-more:not(.searching) .sadv-onrail button[data-phone] { display:none; }
+ html[data-face="simple"] #simple-more .sadv-onrail button[data-phone] { display:none; }
  html[data-face="simple"] #app[data-mode="advanced"] #simple-more:not([hidden]) { left:0; right:0; top:auto; bottom:58px; width:100%; max-height:min(70vh,calc(100% - 58px)); border-radius:10px 10px 0 0; }
+ html[data-face="simple"] #app[data-mode="advanced"] #simple-collapse-rail { display:none; }
+ html[data-face="simple"] #app[data-mode="advanced"] .work:not(:has(#simple-adv-panel.expanded)) #viewport > .simple-collapse { bottom:44px; }
+ html[data-face="simple"] #app[data-mode="advanced"] .work:has(#simple-adv-panel.expanded) #viewport > .simple-collapse { bottom:50%; }
+ html[data-face="simple"] #simple-rail #sar button[data-short-label] span { font-size:0; }
+ html[data-face="simple"] #simple-rail #sar button[data-short-label]::after { content:attr(data-short-label); font-size:10px; }
  html[data-face="simple"] #app[data-mode="advanced"] .work:has(#simple-adv-panel.expanded) #simple-rail { display:flex; }
 }
 `; document.head.append(style);
