@@ -13,6 +13,8 @@ const CSS = `
  html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-save, #btn-undo, #btn-redo) { min-width: 44px; }
  :root .viewport { --cube: 96px; --nav-top: calc(40px + var(--cube) + 42px); }
  :root :is(.viewcube, .cube-arrows) { top: 40px; right: 40px; }
+ /* the cube is drawn 96 px wide (an inline size from its renderer, which beat J.Siwek's 72 px phone rule): hold it to the size its arrows sit around, so it covers no more of the model than needed; picking measures the drawn size */
+ :root .viewcube { width: var(--cube) !important; height: var(--cube) !important; }
  :root :is(.cube-arrow, .cube-roll) { width: 44px; height: 44px; box-sizing: border-box; }
  :root .cube-arrow { font-size: 13px; line-height: 44px; }
  :root .cube-roll { padding: 9px; }
