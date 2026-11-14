@@ -53,7 +53,7 @@ const MIN_SIZE_KEYS = new Set(["w", "d", "h", "size"]); // 0.01 mm is the smalle
 const INTEGER_KEYS = new Set(["sides", "points"]);
 const COLOR = /^#[0-9a-f]{6}$/i;
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const AGENT_KEY = "jumpstart.agent", AGENT_URL = "ws://127.0.0.1:8822", AGENT_RETRY_MS = 3000;
+const AGENT_KEY = "jumpstart.agent", AGENT_URL = "ws://127.0.0.1:8822", AGENT_RETRY_MS = 3000, AGENT_HINT_MS = 5000;
 const base64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 
 export function initBridge(app) {
@@ -508,7 +508,7 @@ export function initBridge(app) {
   // its calls one at a time; it retries every few seconds while on. The "Connect to AI agent" menu row is the user's switch,
   // remembered in this browser; with it off (the default) no connection is ever made and no socket exists.
   const link = { on: false, url: AGENT_URL, state: "off", warned: false };
-  let sock = null, retry = 0, queue = Promise.resolve();
+  let sock = null, retry = 0, queue = Promise.resolve(), waitHint = 0;
   function closeLink() {
     clearTimeout(retry);
     const s = sock;
@@ -520,6 +520,16 @@ export function initBridge(app) {
     if (!b) return;
     b.setAttribute("aria-checked", link.on);
     b.querySelector("small").textContent = link.on ? "· " + link.state : "";
+    // Chrome's local-network question is easy to miss: after 5 s of "waiting" the note's sentence about it lights up.
+    // Retries set "waiting" again every few seconds; the 5 s count from the first one.
+    const hint = document.getElementById("agent-lna");
+    if (link.on && link.state === "waiting") {
+      if (!waitHint) waitHint = setTimeout(() => { if (link.on && link.state === "waiting") hint?.classList.add("hot"); }, AGENT_HINT_MS);
+    } else {
+      clearTimeout(waitHint);
+      waitHint = 0;
+      hint?.classList.remove("hot");
+    }
   }
   function openLink() {
     closeLink();
@@ -575,6 +585,7 @@ export function initBridge(app) {
   };
   const row = document.querySelector("#menu-theme button[data-agent]");
   if (row) row.addEventListener("click", () => app.setAgent(!link.on));
+  if (location.protocol === "file:") document.getElementById("agent-lna")?.remove(); // the single file is never asked about the local network
 
   Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls
