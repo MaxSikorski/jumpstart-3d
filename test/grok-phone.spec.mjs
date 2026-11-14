@@ -175,9 +175,10 @@ test.describe("a short phone window", () => {
       expect(m.sw, face).toBeLessThanOrEqual(m.w);
     }
   });
-  test("the view buttons stay inside the view, clear of the collapsed sheet, and none overlap", async ({ page }) => {
+  test("the view buttons stay one narrow column inside the view, clear of the collapsed sheet and the other buttons, each one reachable", async ({ page }) => {
     const check = async (label) => {
-      const t = await page.evaluate(() => [...document.querySelectorAll(".navbtns button, .cube-arrow, .cube-roll, .simple-collapse")].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== "none")
+      // the column itself (it scrolls inside itself when the view is short), the cube arrows and the panel buttons
+      const t = await page.evaluate(() => [...document.querySelectorAll(".navbtns, .cube-arrow, .cube-roll, .simple-collapse")].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== "none")
         .map((e) => { const r = e.getBoundingClientRect(); return { name: e.id || e.className, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }));
       const view = await rect(page.locator("#viewport")), sheet = page.locator("#simple-panel");
       const floor = (await sheet.isVisible()) ? Math.min(view.bottom, (await rect(sheet)).top) : view.bottom;
@@ -190,7 +191,16 @@ test.describe("a short phone window", () => {
         const a = t[i], b = t[j], w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
         expect(w > 0.5 && h > 0.5, `${label}: ${a.name} overlaps ${b.name}`).toBe(false);
       }
-      expect(t.filter((a) => a.name.startsWith("nav-")).length, label).toBeGreaterThanOrEqual(4);
+      const column = await rect(page.locator(".navbtns"));
+      expect(column.width, `${label}: one column, so it does not spread over the model`).toBeLessThanOrEqual(48);
+      const buttons = page.locator(".navbtns button:visible");
+      expect(await buttons.count(), label).toBeGreaterThanOrEqual(4);
+      for (const b of await buttons.all()) {
+        await b.scrollIntoViewIfNeeded();
+        const r = await rect(b);
+        expect(r.top >= column.top - 0.5 && r.bottom <= column.bottom + 0.5, `${label}: a view button can be scrolled into the column`).toBe(true);
+        expect(await onTop(b), `${label}: a view button is tappable`).toBe(true);
+      }
     };
     await check("empty plate");
     await page.locator('#shapes .tile[data-kind="box"]').tap();

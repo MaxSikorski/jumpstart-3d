@@ -22,9 +22,9 @@ const CSS = `
  :root .cube-arrow.d { bottom: -36px; left: calc((var(--cube) - 44px) / 2) !important; }
  :root .cube-roll.ccw { left: -36px; top: -36px; }
  :root .cube-roll.cw { right: -36px; top: -36px; }
- /* the view buttons fill a column under the cube; on a short screen they wrap into a second column to the left instead of running under the bottom edge */
- :root .navbtns { display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 44px); gap: 2px; direction: rtl; top: var(--nav-top); max-height: calc(100% - var(--nav-top) - 8px); }
- :root .navbtns > * { direction: ltr; }
+ /* the view buttons: one column under the cube; on a short screen it scrolls inside itself instead of running under the bottom edge
+    (wrapping into more columns would cover the model) */
+ :root .navbtns { top: var(--nav-top); gap: 2px; max-height: calc(100% - var(--nav-top) - 8px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: none; }
  :root .navbtns button { min-width: 44px; min-height: 44px; }
 }
 /* status-bar controls are 44 px on a touch tablet (its bar is already 56 px tall) and in Simple on a phone, where the bar grows to fit them;
