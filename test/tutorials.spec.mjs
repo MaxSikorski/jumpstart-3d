@@ -16,6 +16,8 @@ import { ICON } from "../src/icons.js";
 import { boot, watchErrors, loadDoc, newDoc, waitIdle, bodies, quarantine } from "./helpers.mjs";
 
 let page, errors, project;
+// JS3D_FACE=simple walks every lesson in Simple (read once here, so a CI run can switch it with one edit of this line)
+const SIMPLE = process.env.JS3D_FACE === "simple";
 const quarantined = new Set();
 const tutorials = []; // { id, mode, title, steps }, read from the running app so the test sees exactly what users see
 const exportedIn = new Set(), savedIn = new Set(), startedIds = new Set(); // exportedIn and savedIn: "<mode>:<repeat index>", so --repeat-each runs each time
@@ -28,7 +30,7 @@ test.beforeAll(async ({ browser }, info) => {
   page.on("dialog", (d) => d.accept()); // the Lathe asks "Start over?" before it throws work away
   await page.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
   await page.emulateMedia({ reducedMotion: "reduce" }); // the "Next" button pulses when a step is done; reduced motion turns that off, so plain clicks do not wait for it
-  if (process.env.JS3D_FACE === "simple") await page.addInitScript(() => { try { localStorage.setItem("jumpstart.face", "simple"); } catch {} });
+  if (SIMPLE) await page.addInitScript(() => { try { localStorage.setItem("jumpstart.face", "simple"); } catch {} });
   await boot(page, info);
   const list = await page.evaluate(() => window.__app.tutorials.list.map((t) => ({
     id: t.id, mode: t.mode, level: t.level, title: t.title, item: t.item, learn: t.learn, minutes: t.minutes,
@@ -138,7 +140,7 @@ async function normalize({ keepLathe = false } = {}) {
 }
 
 async function tool(id, via) {
-  if (process.env.JS3D_FACE !== "simple") { if (via) await page.click(via); await page.click("#" + id); return; }
+  if (!SIMPLE) { if (via) await page.click(via); await page.click("#" + id); return; }
   const rail = page.locator('#simple-rail [data-for="' + id + '"]:visible');
   if (await rail.count()) await rail.first().click();
   else { await page.click('#sr-more'); await page.locator('#simple-more [data-for="' + id + '"]:visible').first().click(); }
@@ -426,7 +428,7 @@ function referenced() {
 }
 
 test("every toolbar and menu button is used by a tutorial, or is a known gap in test/tutorial-gaps.json", async () => {
-  test.skip(process.env.JS3D_FACE === "simple", "Button coverage runs in Original");
+  test.skip(SIMPLE, "Button coverage runs in Original");
   const universe = await collectUniverse();
   const used = referenced();
   const gapsFile = new URL("./tutorial-gaps.json", import.meta.url);
