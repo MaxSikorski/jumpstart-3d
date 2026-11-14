@@ -8,9 +8,9 @@ const CSS = `
 :root #menu-theme { max-height: calc(100vh - 46px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px); max-height: calc(100dvh - 46px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px); }
 /* J.Siwek's stylesheet sits in <body>, after this one: every rule starts with :root so it wins by specificity, not by order */
 @media (pointer: coarse) {
- :root .topbar :is(#btn-save, #btn-undo, #btn-redo) { min-height: 44px; justify-content: center; }
+ :root .topbar :is(#btn-save, #btn-projects, #btn-undo, #btn-redo) { min-height: 44px; justify-content: center; }
  /* 44 px wide as well in Simple; Original's phone bar has no room for that (Export would wrap onto a new row) */
- html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-save, #btn-undo, #btn-redo) { min-width: 44px; }
+ html[data-face="simple"] #app:is([data-mode="beginner"], [data-mode="advanced"]) .topbar :is(#btn-save, #btn-projects, #btn-undo, #btn-redo) { min-width: 44px; }
  :root .viewport { --cube: 96px; --nav-top: calc(40px + var(--cube) + 42px); }
  :root :is(.viewcube, .cube-arrows) { top: 40px; right: 40px; }
  /* the cube is drawn 96 px wide (an inline size from its renderer, which beat J.Siwek's 72 px phone rule): hold it to the size its arrows sit around, so it covers no more of the model than needed; picking measures the drawn size */

@@ -252,3 +252,95 @@ test("in Simple every lesson can point at its top-bar buttons, and Simple comes 
   console.log(`[${info.project.name}] ${switched.length} of ${lessons.length} lessons ran in Original: ${switched.join(", ")}`);
   if (!mobile(info)) expect(switched.length, "most lessons stay in Simple").toBeLessThan(lessons.length / 2);
 });
+
+// Your designs sits in Simple's top bar, right after Save (it used to be only under More › App › Designs).
+const designsDialog = (page) => page.getByRole("dialog", { name: "Your designs" });
+async function opensDesigns(page, how) {
+  const btn = page.locator(".topbar #btn-projects");
+  await expect(btn).toBeVisible();
+  const b = await btn.boundingBox();
+  if (how === "mouse") await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); else await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2);
+  const dialog = designsDialog(page);
+  await expect(dialog).toBeVisible();
+  expect(await dialog.locator(".pcard").count(), "the dialog lists the open design").toBeGreaterThanOrEqual(1);
+  await expect(dialog.locator(".pcard.current")).toHaveCount(1);
+  return dialog;
+}
+
+test("Simple shows Your designs in the top bar after Save, in Beginner and Advanced", async ({ page }, info) => {
+  test.skip(mobile(info), "the phone version is the next test");
+  await boot(page, info); await toSimple(page);
+  await page.locator('#shapes .tile[data-kind="box"]').click(); await waitIdle(page);
+  for (const width of [1280, 1440]) {
+    await page.setViewportSize({ width, height: 880 });
+    for (const mode of ["beginner", "advanced"]) {
+      await page.evaluate((m) => window.__app.switchMode(m), mode);
+      const btn = page.locator(".topbar #btn-projects");
+      await expect(btn, `${mode} at ${width}`).toBeVisible();
+      await expect(page.getByRole("button", { name: "Your designs" })).toHaveCount(1);
+      await expect(btn).toHaveAttribute("title", "Your designs");
+      await expect(btn.locator(".lbl"), "the word shows from 1280 px").toBeVisible();
+      const r = await page.evaluate(() => { const rc = (s) => document.querySelector(s).getBoundingClientRect(); return { save: rc("#btn-save").right, btn: rc("#btn-projects").left, btnRight: rc("#btn-projects").right, mode: rc(".modeswitch").left, h: document.querySelector(".topbar").offsetHeight }; });
+      expect(r.btn, "right of Save").toBeGreaterThanOrEqual(r.save);
+      expect(r.btnRight, "left of the mode switch").toBeLessThanOrEqual(r.mode);
+      expect(r.h, "one row").toBeLessThan(50);
+      const dialog = await opensDesigns(page, "mouse");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(btn).toBeFocused();
+    }
+  }
+  await page.setViewportSize({ width: 1024, height: 880 });
+  await expect(page.locator(".topbar #btn-projects .lbl"), "icon only below 1280 px").toBeHidden();
+  await expect(page.getByRole("button", { name: "Your designs" })).toBeVisible();
+  expect(await page.evaluate(() => document.querySelector(".topbar").offsetHeight)).toBeLessThan(50);
+  await page.evaluate(() => window.__app.switchMode("beginner"));
+  // Original: the button is back in its old spot, as J.Siwek ships it
+  await page.click("#face-original");
+  await expect(face(page)).toHaveAttribute("data-face", "original");
+  await expect(page.locator("#btn-projects")).toBeVisible();
+  expect(await page.evaluate(() => document.getElementById("btn-projects").previousElementSibling.id)).toBe("btn-full");
+  expect(await page.evaluate(() => document.querySelector(".topbar").offsetHeight)).toBeLessThan(50);
+});
+
+test("Simple's top bar stays one row at 1366 and 1920 with Designs in it", async ({ page }, info) => {
+  test.skip(mobile(info), "phones are checked separately");
+  await boot(page, info); await toSimple(page);
+  for (const width of [1366, 1920]) {
+    await page.setViewportSize({ width, height: 880 });
+    for (const mode of ["beginner", "advanced"]) {
+      await page.evaluate((m) => window.__app.switchMode(m), mode);
+      await expect(page.locator(".topbar #btn-projects")).toBeVisible();
+      expect(await page.evaluate(() => document.querySelector(".topbar").offsetHeight), `${mode} at ${width}`).toBeLessThan(50);
+    }
+  }
+});
+
+test("on a phone Simple shows Your designs as a 44 px button that opens the list", async ({ page }, info) => {
+  test.skip(!mobile(info)); await boot(page, info); await toSimple(page);
+  await page.locator('#shapes .tile[data-kind="box"]').click().catch(() => {}); await waitIdle(page);
+  for (const width of [375, 390]) {
+    await page.setViewportSize({ width, height: 667 });
+    const btn = page.locator(".topbar #btn-projects");
+    await expect(btn, `at ${width}`).toBeVisible();
+    await expect(page.getByRole("button", { name: "Your designs" })).toHaveCount(1);
+    const b = await btn.boundingBox();
+    expect(b.width, "44 px wide").toBeGreaterThanOrEqual(44); expect(b.height, "44 px tall").toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no sideways scroll").toBe(true);
+    expect(await page.evaluate(() => { const rc = (s) => document.querySelector(s).getBoundingClientRect(); return Math.abs(rc("#btn-save").top - rc("#btn-export").top) < 20 && rc("#btn-save").right <= rc("#btn-projects").left + 0.5; }), "Save and Export on one row").toBe(true);
+    const dialog = await opensDesigns(page, "tap");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  }
+});
+
+test("the lesson that opens Your designs now runs in Simple", async ({ page }, info) => {
+  await boot(page, info); await page.evaluate(() => window.__app.setFace("simple", true));
+  const r = await page.evaluate(() => {
+    const t = window.__app.tutorials.list.find((x) => x.id === "c4-top-bar"), step = t.steps.find((s) => s.title === "Open your designs");
+    window.__app.onLessonStart({ steps: [step] }); // a lesson made of just that step
+    return { sel: step.show.sel, face: window.__app.face };
+  });
+  expect(r.sel).toBe("#btn-projects");
+  expect(r.face, "no switch to Original for that step").toBe("simple");
+});
