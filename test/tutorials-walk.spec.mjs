@@ -459,6 +459,10 @@ const downloadOf = async (click) => {
   for await (const chunk of await dl.createReadStream()) chunks.push(chunk);
   return { name: dl.suggestedFilename(), text: Buffer.concat(chunks).toString("utf8") };
 };
+const showMe = async () => { // Show me as a student presses it (the panel opens first if it is small); returns what it outlines
+  await page.evaluate(() => { document.querySelector("#tut-panel .tut-mini-line")?.click(); document.getElementById("tut-show").click(); });
+  return page.evaluate(() => { const e = document.querySelector(".tut-spot"); return e ? e.id || "for:" + e.dataset.for : null; });
+};
 async function inFace(face, fn) {
   const before = await page.evaluate(() => document.documentElement.dataset.face || "original");
   await page.evaluate((f) => window.__app.setFace(f, true), face);
@@ -494,7 +498,12 @@ for (const face of ["original", "simple"]) {
       await page.evaluate(() => window.__app.select([]));
       // Simple: More > Workshop > Laser cut file; Original: Open/Export > Laser cut file .svg
       const svg = await downloadOf(async () => {
-        if (face === "simple") { await page.click("#sr-more"); await page.click('#simple-more button[data-for="exp-laser-svg"]'); }
+        if (face === "simple") { // as a student: Show me points at More; open it, and Show me scrolls to Laser cut file and makes the lesson panel small when it covers it
+          expect(await showMe()).toBe("sr-more");
+          await page.click("#sr-more");
+          expect(await showMe()).toBe("for:exp-laser-svg");
+          await page.click('#simple-more button[data-for="exp-laser-svg"]');
+        }
         else { await page.click("#btn-export"); await page.click("#exp-laser-svg"); }
       });
       expect(svg.name).toMatch(/^Lopez, Maria, Laser Tag.* laser\.svg$/);
@@ -522,9 +531,8 @@ for (const face of ["original", "simple"]) {
       await page.click("#ps-r-arrange");
       await ticks(3, "arranged"); await next();
       await page.click("#ps-r-rx");
-      await ticks(4, "turned");
+      await ticks(4, "turned"); await next();
       await page.click("#ps-r-auto");
-      await next();
       await page.click("#ps-r-slice");
       await ticks(5, "sliced");
       expect((await psim()).view).toBe("layers");
@@ -547,9 +555,10 @@ for (const face of ["original", "simple"]) {
       await ticks(3, "strength");
       await page.click("#ps-r-model"); await expect.poll(async () => (await psim()).view).toBe("model");
       await next();
-      await expect.poll(async () => { await page.click("#ps-r-play"); return page.evaluate(() => document.getElementById("ps-play")?.getAttribute("aria-pressed")); }, { timeout: 30_000 }).toBe("true"); // Play waits for the slice ("Still slicing")
+      const playing = () => page.evaluate(() => document.getElementById("ps-play")?.getAttribute("aria-pressed") === "true");
+      await expect.poll(async () => { if (!(await playing())) await page.click("#ps-r-play"); return playing(); }, { timeout: 30_000 }).toBe(true); // Play waits for the slice ("Still slicing"): press it again only while it is not playing
       await ticks(4, "playing");
-      await page.click("#ps-play"); await expect(page.locator("#ps-play")).toHaveAttribute("aria-pressed", "false");
+      await page.click("#ps-r-play"); await expect.poll(playing).toBe(false); // the lesson says: Play print again pauses it
       await next();
       const g = await downloadOf(() => page.click("#ps-r-gcode"));
       expect(g.name).toMatch(/\.gcode$/);
