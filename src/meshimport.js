@@ -43,7 +43,7 @@ export function parseSTL(buffer) { return repairMesh(stlPositions(buffer)).mesh;
 // A 3MF file is a zip with an XML model inside: objects (meshes or groups of other
 // objects), placed by the build items, with the units written in the file.
 const inflateRaw = inflate;
-function readZip(buf) {
+export function readZip(buf) {
   const u8 = new Uint8Array(buf), dv = new DataView(buf);
   let e = -1;
   for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }

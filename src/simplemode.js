@@ -15,6 +15,7 @@ const TOOLS = {
 };
 const PARTS = ["fastener", "gear", "nameplate", "knurl", "spring", "hinge"];
 const MAKERS = ["bins", "neon", "cosforge"];
+TOOLS.layerscape = ["Layerscape", "layerscape"]; MAKERS.push("layerscape"); // J.Siwek 2.9.8.9.x: his new Beginner maker
 
 function initPlate(app) {
   const $ = (id) => document.getElementById(id);
@@ -59,6 +60,20 @@ function initPlate(app) {
   }
   ai.querySelector(".simple-grid").append(appGroup.querySelector('[data-for="btn-chat"]'));
   { const b = appGroup.querySelector('[data-for="btn-autosave"]'); b.textContent = "Crash recovery"; b.title = "Your design is already saved in this browser after every change. Crash recovery keeps extra copies you can go back to."; }
+  // J.Siwek 2.9.8.x tools that live in Original's menus. activate() clicks the element named by data-for, so each one gets a hidden runner.
+  const runners = document.createElement("div"); runners.hidden = true; document.body.append(runners);
+  const workshop = group(more, "Workshop", []).querySelector(".simple-grid");
+  for (const [id, label, icon, title, run] of [
+    ["simple-run-rib", "Rib", "rib", "Reinforce: straight ribs or corner gussets standing on a flat face", () => app.advanced.rib()],
+    ["simple-run-keyhole", "Keyhole slot", "keyhole", "Cut keyhole slots in a face so the part hangs on screws", () => app.advanced.keyhole()],
+    ["simple-run-jigs", "Jig Maker", "jig", "Woodworking jigs: miter box, dowel and pocket-hole jigs, squares, drill guides and joint jigs", () => app.advanced.jigs()],
+    ["simple-run-helmet", "Helmet Maker", "helmet", "Build a sci-fi helmet sized to your head (opens in its own window)", () => app.cosforge.open({ mode: "helmet" })],
+    ["simple-run-litho", "Colour lithophane", "image", "Turn a photo into a full-colour lithophane printed with white, cyan, magenta and yellow filament", () => app.colorLitho.open()],
+    ["exp-laser-svg", "Laser cut file", "layerscape", "Flat parts (like a 3 mm acrylic panel) as a laser file: the outline and holes to cut, recesses to engrave"],
+  ]) {
+    if (run) { const r = document.createElement("button"); r.type = "button"; r.id = id; r.onclick = run; runners.append(r); }
+    const b = document.createElement("button"); b.type = "button"; b.dataset.for = id; b.title = title; b.innerHTML = (ICON[icon] || "") + `<span>${label}</span>`; workshop.append(b);
+  }
   const footer = document.createElement("button"); footer.id = "simple-original"; footer.type = "button"; footer.textContent = "Switch to Original →"; more.append(footer);
   const find = $("simple-find");
   function filter() {
