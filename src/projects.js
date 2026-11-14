@@ -240,9 +240,10 @@ export function initProjects(app) {
   app.recovery = rec;
   // the Autosave button in the top bar
   const asBtn = $("btn-autosave");
-  // jumpstart-3d: the button says what it is: the design is saved after every change anyway, this only keeps extra crash copies (Grok review)
+  // jumpstart-3d: the button says what it is: the design is saved after every change anyway, this only keeps extra crash copies (Grok review).
+  // The visible label stays as short as "Autosave: Off" (the Original top bar is one row only just); the full name is in the aria-label and tooltip.
   asBtn.title = "Your design is already saved in this browser after every change. Crash recovery keeps extra copies you can go back to.";
-  const showAutosave = () => { asBtn.textContent = rec.enabled ? "Crash recovery: On" : "Crash recovery: Off"; asBtn.setAttribute("aria-pressed", rec.enabled ? "true" : "false"); };
+  const showAutosave = () => { asBtn.textContent = rec.enabled ? "Recovery: On" : "Recovery: Off"; asBtn.setAttribute("aria-label", rec.enabled ? "Crash recovery: On" : "Crash recovery: Off"); asBtn.setAttribute("aria-pressed", rec.enabled ? "true" : "false"); };
   asBtn.onclick = () => {
     rec.setEnabled(!rec.enabled);
     showAutosave();

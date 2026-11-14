@@ -956,7 +956,7 @@ export const COMMUNITY_TUTORIALS = [
         when: "A small block gives crash recovery and your designs list something to hold.",
         check: (t) => t.prim("box").some((b) => t.near(b.node.p.w, 20, 1) && t.near(b.node.p.h, 10, 1)) },
       { title: "Turn on crash recovery", tool: "Crash recovery", icon: "finish", show: { sel: "#btn-autosave, #cz-autosave", via: "#btn-theme" },
-        how: ["Click <b>Crash recovery: Off</b> in the top bar (on a smaller screen it is in <b>Customize</b>, under Workspace). It changes to <b>On</b>. If it already says On, leave it."],
+        how: ["Click <b>Recovery: Off</b> in the top bar (on a smaller screen it is in <b>Customize</b>, under Workspace). It changes to <b>On</b>. If it already says On, leave it."],
         when: "Your design is already saved in this browser after every change. Crash recovery also keeps extra copies every few moments and offers them back if the app closes unexpectedly.",
         tip: "Backups are separate from your own Save versions." },
       { title: "Open your designs", tool: "Your designs", icon: "import", show: { sel: "#btn-projects" },
