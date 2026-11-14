@@ -177,6 +177,12 @@ groups of features: J.Siwek's own, and the ones this community build adds.
 - **Print tools:** layer-by-layer preview, section analysis and multi-filament colours. Export to
   STL, 3MF, STEP and DXF (Chisel also exports OBJ).
 - A projector window, pictures and video on objects, and Picture to 3D.
+- **2.9.8.3 to 2.9.8.9.8:** **Layerscape** turns a photo into a layered, slot-together diorama to
+  laser cut or 3D print, with a puzzle maker and building kits, kept in the design. **Helmet Maker**
+  in CosForge builds a helmet, including its shape from photos. **Jig Maker** makes woodworking
+  jigs, solid or honeycomb inside. A full-colour lithophane from white, cyan, magenta and yellow filament, Rib and
+  Keyhole slot features, laser cut files (SVG, DXF) from flat parts, Box Maker dovetail fit and
+  joining plates, silk and rainbow filament looks, and thirteen new lamp and workshop lessons.
 
 ### Added by this community build
 

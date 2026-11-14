@@ -94,7 +94,7 @@ export function initPrintSim(app, X) {
     supports: "none", threshold: 45, plateOnly: false, view: "model", R: new THREE.Matrix4(), ids: [],
     // objects on the plate: { key, id (body), X (sim placement), home, s (scale), n (copy no.) }; osel: picked objects
     inst: [], osel: new Set(), copyN: 0, oang: 90,
-    pickFace: false, layerMax: 0,
+    pickFace: false, layerMax: 0, ptab: "quality",
     // filaments: slots[i] = { color }, and the slot each body prints with (grouped by color at first)
     slots: [], slotOf: new Map(), colorBy: "auto",
     // full color: every design color mixed from cyan, magenta, yellow, black and white filaments
@@ -113,6 +113,10 @@ export function initPrintSim(app, X) {
   let A = null; // analysis (overhangs, supports)
   let S = null; // slice result
   let sliceJob = 0, slider = null, legendEl = null;
+  // objects that aren't in the design (from the Color Lithophane Studio): id -> { name, color, data }
+  const EXT = new Map();
+  const bodyOf = (id) => findBody(store.doc, id) || EXT.get(id) || null;
+  const viewOf = (id) => scene.views.get(id) || (EXT.has(id) ? { data: EXT.get(id).data } : null);
 
   const disposeGroup = (g) => { for (const c of [...g.children]) { g.remove(c); c.traverse((o) => { o.geometry && o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose()); }); } };
 
@@ -120,13 +124,29 @@ export function initPrintSim(app, X) {
   function buildPlate() {
     disposeGroup(plateG);
     const P = PRINTERS[st.printer], dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(P.w, P.d), new THREE.MeshBasicMaterial({ color: dark ? 0x3a424c : 0xd5dbe1, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));
+    // a textured build plate like Orca Slicer's: dark PEI, a 10 mm grid with bolder 50 mm lines
+    // from the centre, the plate's name and number in a corner
+    const k = Math.min(6, 2048 / Math.max(P.w, P.d)), cv = document.createElement("canvas");
+    cv.width = Math.round(P.w * k); cv.height = Math.round(P.d * k);
+    const g = cv.getContext("2d");
+    g.fillStyle = dark ? "#33373d" : "#4a4f56"; g.fillRect(0, 0, cv.width, cv.height);
+    // a faint speckle, like textured PEI
+    for (let i = 0; i < (cv.width * cv.height) / 90; i++) { g.fillStyle = Math.random() < 0.5 ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.05)"; g.fillRect(Math.random() * cv.width, Math.random() * cv.height, 1.5, 1.5); }
+    const line = (x0, y0, x1, y1, c, w) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+    for (let x = 0; x <= P.w / 2 + 1e-6; x += 10) for (const sx of x ? [-1, 1] : [1]) { const px = (P.w / 2 + sx * x) * k, bold = x % 50 === 0; line(px, 0, px, cv.height, bold ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.09)", bold ? 1.6 : 1); }
+    for (let y = 0; y <= P.d / 2 + 1e-6; y += 10) for (const sy of y ? [-1, 1] : [1]) { const py = (P.d / 2 + sy * y) * k, bold = y % 50 === 0; line(0, py, cv.width, py, bold ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.09)", bold ? 1.6 : 1); }
+    g.strokeStyle = "rgba(0,150,136,0.9)"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, cv.width - 3, cv.height - 3);
+    g.fillStyle = "rgba(255,255,255,0.32)"; g.font = `600 ${Math.round(7 * k)}px system-ui, sans-serif`; g.textBaseline = "bottom";
+    g.fillText(P.name.replace(/\s*\(.*\)/, "") + " · Textured PEI Plate", 6 * k, cv.height - 5 * k);
+    g.fillStyle = "rgba(0,150,136,0.95)"; g.fillRect(4 * k, 4 * k, 12 * k, 12 * k);
+    g.fillStyle = "#fff"; g.font = `700 ${Math.round(9 * k)}px system-ui, sans-serif`; g.textBaseline = "middle"; g.textAlign = "center"; g.fillText("1", 10 * k, 10.5 * k);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(P.w, P.d), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));
     plate.position.z = -0.02;
     plateG.add(plate);
-    const pts = [];
-    for (let x = -P.w / 2; x <= P.w / 2 + 1e-6; x += 10) pts.push(new THREE.Vector3(x, -P.d / 2, 0), new THREE.Vector3(x, P.d / 2, 0));
-    for (let y = -P.d / 2; y <= P.d / 2 + 1e-6; y += 10) pts.push(new THREE.Vector3(-P.w / 2, y, 0), new THREE.Vector3(P.w / 2, y, 0));
-    plateG.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: dark ? 0x56606c : 0xb3bcc6 })));
+    // the plate's edge, a few millimetres thick
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(P.w + 4, P.d + 4, 3), new THREE.MeshBasicMaterial({ color: dark ? 0x1f2226 : 0x2b2f34 }));
+    edge.position.z = -1.6; plateG.add(edge);
     const box = new THREE.Box3(new THREE.Vector3(-P.w / 2, -P.d / 2, 0), new THREE.Vector3(P.w / 2, P.d / 2, P.h));
     const bh = new THREE.Box3Helper(box, dark ? 0x7d8996 : 0x8e99a5);
     bh.material.transparent = true; bh.material.opacity = 0.45;
@@ -149,6 +169,7 @@ export function initPrintSim(app, X) {
 
   // ------------------------------------------------------------ the parts on the plate
   function targetIds() {
+    if (EXT.size) return [...EXT.keys()];
     const sel = app.sel.map((id) => findBody(store.doc, id)).filter((b) => b && !b.hole);
     const list = sel.length ? sel : store.doc.bodies.filter((b) => !b.hole && !b.hidden);
     return list.map((b) => b.id);
@@ -166,7 +187,7 @@ export function initPrintSim(app, X) {
   }
   const instOf = (key) => st.inst.find((q) => q.key === key);
   const isCopy = (q) => q.key !== q.id;
-  const instName = (q) => (findBody(store.doc, q.id)?.name || "Body") + (isCopy(q) ? ` · copy ${q.n}` : "");
+  const instName = (q) => (bodyOf(q.id)?.name || "Body") + (isCopy(q) ? ` · copy ${q.n}` : "");
   const hasLayout = () => st.inst.some((q) => isCopy(q) || !isIdent(q.X));
   const isIdent = (m) => m.elements.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-9);
   // world triangles of the objects after the sim placement, dropped on the plate and centred
@@ -176,7 +197,7 @@ export function initPrintSim(app, X) {
     // the design's own layout (no sim moves) sets the centre, so moving one object leaves the rest
     const box0 = new THREE.Box3();
     for (const q of st.inst) {
-      const b = findBody(store.doc, q.id), v = scene.views.get(q.id);
+      const b = bodyOf(q.id), v = viewOf(q.id);
       if (!b || !v || !v.data) continue;
       const base = st.R.clone().multiply(M4(b.m));
       const M = q.X.clone().multiply(base), V = v.data.vertices, bk = new THREE.Box3();
@@ -788,7 +809,7 @@ export function initPrintSim(app, X) {
   function ensureSlots() {
     for (const id of st.ids) {
       if (st.slotOf.has(id) && st.slots[st.slotOf.get(id)]) continue;
-      const c = (findBody(store.doc, id)?.color || "#a7b0ba").toLowerCase();
+      const c = (bodyOf(id)?.color || "#a7b0ba").toLowerCase();
       let i = st.slots.findIndex((q) => q.color.toLowerCase() === c);
       if (i < 0) { st.slots.push({ color: c }); i = st.slots.length - 1; }
       st.slotOf.set(id, i);
@@ -1309,15 +1330,30 @@ export function initPrintSim(app, X) {
     vp.request();
   }
   const hiddenOthers = () => store.doc.bodies.filter((b) => !st.ids.includes(b.id)).map((b) => b.id);
+  function layerSpan(k) {
+    if (!S || !S.cum) return [0, 0];
+    const i0 = k ? (S.layerEnd[k - 1] || 0) / 2 : 0, i1 = (S.layerEnd[k] || 0) / 2;
+    return [i0 ? S.cum[i0 - 1] : 0, i1 ? S.cum[i1 - 1] : 0];
+  }
+  function vLabel(k) {
+    const t = slider && slider.querySelector("#ps-vtop");
+    if (t) t.innerHTML = S ? `<b>${k + 1}</b><span>${fmt((k + 1) * S.lh, 2)}</span>` : "";
+    const b = slider && slider.querySelector(".psv-bot");
+    if (b) b.textContent = S ? `${S.nL} layers` : "";
+    const tr = slider && slider.querySelector(".psv-track");
+    if (tr && tr.clientHeight) tr.style.setProperty("--psvh", Math.max(60, tr.clientHeight - 18) + "px");
+  }
   function setLayer(k) {
     st.layerMax = Math.max(0, Math.min(S ? S.nL - 1 : 0, k));
     clip.constant = st.view === "layers" && S ? (st.layerMax + 1) * S.lh + 1e-3 : 1e9;
     const ls = layG.children[0];
     if (ls && S) ls.geometry.setDrawRange(0, S.layerEnd[st.layerMax] || 0);
     if (slider) {
-      slider.querySelector("input").max = S ? S.nL - 1 : 0;
-      slider.querySelector("input").value = st.layerMax;
+      slider.querySelector("#ps-layer").max = S ? S.nL - 1 : 0;
+      slider.querySelector("#ps-layer").value = st.layerMax;
       slider.querySelector(".lv").textContent = S ? `Layer ${st.layerMax + 1} / ${S.nL} · ${fmt((st.layerMax + 1) * S.lh, 2)} mm` : "";
+      const mv = slider.querySelector("#ps-move"); if (mv) mv.value = 1000;
+      vLabel(st.layerMax);
     }
     vp.request();
   }
@@ -1326,9 +1362,18 @@ export function initPrintSim(app, X) {
     const host = document.getElementById("viewport");
     if (st.view === "layers" && S && byFilament()) {
       const T = toolsOf();
-      legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Filament"), ...usedSlots().map((sl) => el("div", { class: "it" }, el("i", { style: { backgroundColor: st.slots[sl].color, outline: "1px solid rgba(0,0,0,.25)" } }), "F" + (sl + 1) + (T.kind === "heads" ? " · nozzle " + headName(headOf(sl)) : ""))));
+      const plan = lastPlan;
+      legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Filament"), ...usedSlots().map((sl) => el("div", { class: "it" }, el("i", { style: { backgroundColor: st.slots[sl].color, outline: "1px solid rgba(0,0,0,.25)" } }), "F" + (sl + 1) + (st.slots[sl].name ? " " + st.slots[sl].name : "") + (T.kind === "heads" ? " · nozzle " + headName(headOf(sl)) : "") + (plan && plan.slotGrams && plan.slotGrams.get(sl) ? ` · ${fmt(plan.slotGrams.get(sl), 1)} g` : ""))), // jumpstart-3d: backgroundColor (a colour can never be a picture address)
+        plan && plan.changes ? el("div", { class: "it" }, `${plan.changes} filament changes`) : null);
     } else if (st.view === "layers" && S) {
-      legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Line type"), ...LEGEND.map(([k, l]) => el("div", { class: "it" }, el("i", { style: { background: "#" + COL[k].toString(16).padStart(6, "0") } }), l)));
+      const L = S.len || {}, tm = {}, mo = motionFor(st.printer, PRINTERS[st.printer]) || {}, v = mo.v || SPEEDS;
+      let tot = 0; for (const [k] of LEGEND) { tm[k] = (L[k] || 0) / Math.max(5, v[k] || SPEEDS[k] || 100); tot += tm[k]; }
+      const clock = (x) => { x = Math.round(x); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), s2 = x % 60; return h ? `${h}h${String(m).padStart(2, "0")}m` : m ? `${m}m${String(s2).padStart(2, "0")}s` : `${s2}s`; };
+      const est = estimates(), sc = tot > 0 && est.secs ? est.secs / tot : 1;
+      legendEl = el("div", { class: "pslegend orca" }, el("div", { class: "t" }, el("span", {}, "Line Type"), el("span", {}, "Time"), el("span", {}, "%")),
+        ...LEGEND.filter(([k]) => (L[k] || 0) > 0 || k === "outer").map(([k, l]) => el("div", { class: "it" }, el("i", { style: { background: "#" + COL[k].toString(16).padStart(6, "0") } }), el("span", { class: "nm" }, l), el("span", { class: "tm" }, clock(tm[k] * sc)), el("span", { class: "pc" }, tot ? Math.round((tm[k] / tot) * 100) + "%" : ""))),
+        el("div", { class: "sum" }, el("span", {}, "Total estimated time"), el("b", {}, clock(est.secs || 0))),
+        el("div", { class: "sum" }, el("span", {}, "Filament"), el("b", {}, `${fmt(est.meters || 0, 2)} m · ${fmt(est.grams || 0, 1)} g`)));
     } else if (st.view === "strength" && S) {
       legendEl = el("div", { class: "pslegend" }, el("div", { class: "t" }, "Print strength"), el("div", { class: "it" }, el("i", { style: { background: "#33bf59" } }), "Strong"), el("div", { class: "it" }, el("i", { style: { background: "#facc26" } }), "Weaker"), el("div", { class: "it" }, el("i", { style: { background: "#eb2e29" } }), "Weak point"), el("div", { class: "it" }, el("i", { style: { background: "#ff2d55", borderRadius: "50%" } }), "Too thin to print well"));
     } else if (st.view === "model") {
@@ -1397,6 +1442,7 @@ export function initPrintSim(app, X) {
     st.ids = targetIds();
     dropStalePaint(); // jumpstart-3d: painted 3MF
     { const pp = getPlatePref(); if (pp.printer !== "generic" && pp.printer !== "none") st.printer = pp.printer; } // jumpstart-3d: open on the printer chosen under Printer plate…
+    document.body.classList.add("ps-orca");
     root.visible = true;
     vp.grid.visible = false;
     buildPlate();
@@ -1410,11 +1456,16 @@ export function initPrintSim(app, X) {
       wide: true,
       ok() { closeCmd(false); },
       hint: () => st.paintTool === "paint" ? `Painting with F${st.brush + 1}: click or drag over faces. Drag empty space to turn the view.` : st.paintTool === "fill" ? `Click a body to print it all with F${st.brush + 1}.` : st.paintTool === "erase" ? "Click painted faces to remove their paint." : st.pickFace ? "Click the face that should lie on the plate." : st.osel.size ? "Drag the picked object to move it. Turn, scale or copy it on the right. Click empty space to let go." : "Click an object to turn, scale or copy it (only in the sim). Then check the layers and Export G-code.",
-      build(body) {
+      build(body0) {
         const P = PRINTERS[st.printer];
-        const nm = st.ids.map((id) => findBody(store.doc, id)?.name).filter(Boolean);
-        body.append(el("div", { class: "hint", style: { padding: 0 } }, `${nm.length ? nm.length === 1 ? nm[0] : nm.length + " bodies" : "Nothing"} on the plate. Nothing here changes your design.`));
-        const solids = store.doc.bodies.filter((b) => !b.hole);
+        // laid out like Orca Slicer: Printer, Filament and Process (with its tabs), then the plate
+        const card = (id, title, ...extra) => { const c = el("section", { class: "pscard", id: "ps-card-" + id }, el("div", { class: "pscard-h" }, el("i", { class: "pscard-dot" }), el("b", {}, title), ...extra)); body0.append(c); return c; };
+        let body = card("plate", EXT.size ? "Plate: " + (st.extName || "colour lithophane") : "Plate");
+        const nm = st.ids.map((id) => bodyOf(id)?.name).filter(Boolean);
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, `${nm.length ? nm.length === 1 ? nm[0] : nm.length + (EXT.size ? " parts" : " bodies") : "Nothing"} on the plate. Nothing here changes your design.`));
+        if (EXT.size) body.append(el("div", { class: "hint", style: { padding: 0 } }, "Full colour: each part prints with its own filament, so the colour layers change filament as they go up, like Orca Slicer printing a colour lithophane. ", el("button", { class: "linkbtn", id: "ps-ext-back", onclick: () => clearExternal() }, "Back to my design")));
+        if (app.colorLitho) body.append(el("button", { class: "btn", id: "ps-litho", title: "Color Lithophane Studio: a photo becomes a full-colour lithophane printed with white, cyan, magenta and yellow, then sliced here", onclick: () => app.colorLitho.open() }, "🖼 Color lithophane…"));
+        const solids = EXT.size ? [] : store.doc.bodies.filter((b) => !b.hole);
         if (solids.length > 1) {
           const pl = el("div", { class: "psplate" }, el("div", { class: "subhead", style: { margin: "0 0 3px" } }, "On the plate"));
           for (const b of solids) {
@@ -1445,6 +1496,7 @@ export function initPrintSim(app, X) {
           }
           body.append(pl);
         }
+        body = card("printer", "Printer");
         // printers grouped by brand
         const groups = new Map();
         for (const [k, p] of Object.entries(PRINTERS)) { if (!groups.has(p.brand)) groups.set(p.brand, []); groups.get(p.brand).push([k, p]); }
@@ -1456,6 +1508,10 @@ export function initPrintSim(app, X) {
         psel.onchange = () => { st.printer = psel.value; setPlatePref({ printer: psel.value }); buildPlate(); filamentsChanged(); }; // jumpstart-3d: the same choice as Printer plate…
         body.append(row("Printer", psel, "ps-printer"));
         body.append(el("div", { class: "hint pstools", id: "ps-tools", style: { padding: 0 } }, toolText(P)));
+        body = card("filament", "Filament");
+        const fsel = el("select", { class: "num", id: "ps-fil" }, ...Object.entries(FILAMENTS).map(([k, m]) => el("option", { value: k, selected: k === st.filament }, m.name)));
+        fsel.onchange = () => { st.filament = fsel.value; if (S) buildStrength(); renderPanel(); applyView(); };
+        body.append(row("Material", fsel, "ps-fil"));
         // the filaments: one per toolhead / spool slot. Pick a color for each, pick one as the
         // paint brush, and paint faces of the model with it (like Orca's color painting)
         ensureSlots();
@@ -1473,13 +1529,14 @@ export function initPrintSim(app, X) {
             const on = !!st.paintTool && st.paintTool !== "erase" && st.brush === sl;
             const rowEl = el("div", { class: "psfrow" + (on ? " on" : "") + (used.includes(sl) ? "" : " idle"), id: "ps-frow-" + sl, role: "radio", "aria-checked": on ? "true" : "false", tabindex: 0, title: "Paint with F" + (sl + 1),
               onclick: () => { st.brush = sl; if (!st.paintTool || st.paintTool === "erase") st.paintTool = "paint"; st.view = "model"; applyView(); renderPanel(); } },
-              ci, el("b", {}, "F" + (sl + 1)), el("span", {}, q.ink ? `${q.name} · ${where}` : where), el("i", {}, g ? fmt(g, 1) + " g" : used.includes(sl) ? "" : "not used"));
+              ci, el("b", {}, "F" + (sl + 1)), el("span", {}, q.ink || q.name ? `${q.name} · ${where}` : where), el("i", {}, g ? fmt(g, 1) + " g" : used.includes(sl) ? "" : "not used"));
             fl.append(rowEl);
           }
-          const canAdd = !cmykOn() && st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, MAX_SLOTS)); // jumpstart-3d: painted 3MF (the file codes 15 filaments)
+          const canAdd = !EXT.size && !cmykOn() && st.slots.length < (T.kind === "single" ? 8 : Math.min(T.slots, MAX_SLOTS)); // jumpstart-3d: painted 3MF (the file codes 15 filaments)
           body.append(el("div", { class: "subhead" }, `Filaments (${used.length} used)`), fl);
           // full color from CMYK (+ white)
           const cm = st.cmyk;
+          if (!EXT.size) {
           body.append(el("label", { class: "check", title: "Mix any color from cyan, magenta, yellow, black and white filaments, changing filament layer by layer" }, el("input", { type: "checkbox", id: "ps-cmyk", checked: cmykOn(), onchange: (e) => { cm.on = e.target.checked; if (cm.on) ensureInks(); MIX.clear(); filamentsChanged(); renderPanel(); } }), "Full color (CMYK)"));
           if (cmykOn()) {
             ensureInks();
@@ -1495,23 +1552,46 @@ export function initPrintSim(app, X) {
             const n = inkSlots().length;
             body.append(el("div", { class: "hint", style: { padding: 0 } }, `${n === 5 ? "Load cyan, magenta, yellow, black and white" : "This printer has 4 spaces: load cyan, magenta, yellow and black"} (F${inkSlots()[0] + 1}-F${inkSlots()[n - 1] + 1}). Each color is mixed over ${cm.n} layers, so use thin layers (0.08-0.12 mm): the layers blend by eye. It changes filament often, so expect more time and purge.${lastPlan ? ` This print: ${lastPlan.changes} changes, ${fmt((lastPlan.flushVol || 0) / 1000 * 1.24, 1)} g purged.` : ""}`));
           }
+          }
           if (canAdd) fl.append(el("button", { class: "btn psadd", id: "ps-addfil", onclick: () => { st.slots.push({ color: nextFilColor() }); st.brush = st.slots.length - 1; renderPanel(); } }, "+ Add filament"));
           // color painting
-          body.append(row("Paint", seg([["off", "Off"], ["paint", "Faces"], ["fill", "Whole body"], ["erase", "Erase"]], st.paintTool || "off", (v) => { st.paintTool = v === "off" ? null : v; if (st.paintTool) { st.view = "model"; applyView(); } hoverFace(-1); renderPanel(); }, "ps-paint")));
-          body.append(el("div", { class: "hint", style: { padding: 0 } }, st.paintTool === "paint" ? `Click or drag over faces to paint them with F${st.brush + 1}. Painted faces print their walls and top/bottom skins in that filament.` : st.paintTool === "fill" ? `Click a body to print all of it with F${st.brush + 1}.` : st.paintTool === "erase" ? "Click painted faces to give them back their body's filament." : "Pick a filament above, then paint faces of the model with it to print them in that color.",
+          if (!EXT.size) body.append(row("Paint", seg([["off", "Off"], ["paint", "Faces"], ["fill", "Whole body"], ["erase", "Erase"]], st.paintTool || "off", (v) => { st.paintTool = v === "off" ? null : v; if (st.paintTool) { st.view = "model"; applyView(); } hoverFace(-1); renderPanel(); }, "ps-paint")));
+          if (!EXT.size) body.append(el("div", { class: "hint", style: { padding: 0 } }, st.paintTool === "paint" ? `Click or drag over faces to paint them with F${st.brush + 1}. Painted faces print their walls and top/bottom skins in that filament.` : st.paintTool === "fill" ? `Click a body to print all of it with F${st.brush + 1}.` : st.paintTool === "erase" ? "Click painted faces to give them back their body's filament." : "Pick a filament above, then paint faces of the model with it to print them in that color.",
             st.paint.size ? el("button", { class: "linkbtn", id: "ps-clearpaint", onclick: () => { st.paint.clear(); filamentsChanged(); } }, " Clear all paint") : null));
         }
-        const fsel = el("select", { class: "num", id: "ps-fil" }, ...Object.entries(FILAMENTS).map(([k, m]) => el("option", { value: k, selected: k === st.filament }, m.name)));
-        fsel.onchange = () => { st.filament = fsel.value; if (S) buildStrength(); renderPanel(); applyView(); };
-        body.append(row("Filament", fsel, "ps-fil"));
-        body.append(row("Layer height", seg([[0.12, "0.12"], [0.16, "0.16"], [0.2, "0.20"], [0.28, "0.28"]], st.layer, (v) => { st.layer = v; rebuild(); }, "ps-lh")));
-        body.append(row("Walls", seg([[1, "1"], [2, "2"], [3, "3"], [4, "4"]], st.walls, (v) => { st.walls = v; rebuild(); }, "ps-walls")));
-        body.append(sliderRow("Infill", "ps-infill", st.infill, 0, 100, 5, "%", (v) => { st.infill = v; clearTimeout(st.infT); st.infT = setTimeout(() => rebuild(), 350); }));
+        const proc = card("process", "Process", el("span", { class: "pscard-sub" }, "Global"));
+        const TABS = [["quality", "Quality"], ["strength", "Strength"], ["speed", "Speed"], ["support", "Support"], ["others", "Others"], ["objects", "Objects"]];
+        if (!TABS.some(([k]) => k === st.ptab)) st.ptab = "quality";
+        proc.append(el("div", { class: "pstabs", role: "tablist", "aria-label": "Process settings" }, ...TABS.map(([k, l]) => el("button", { role: "tab", id: "ps-tab-" + k, "aria-selected": String(st.ptab === k), onclick: () => { st.ptab = k; renderPanel(); } }, l))));
+        const pane = (k) => { const d = el("div", { class: "pstab", id: "ps-pane-" + k, role: "tabpanel" }); if (st.ptab !== k) d.hidden = true; proc.append(d); return d; };
+        body = pane("quality");
+        body.append(el("div", { class: "subhead" }, "Layer height"));
+        body.append(row("Layer height", seg([[0.08, "0.08"], [0.1, "0.10"], [0.12, "0.12"], [0.16, "0.16"], [0.2, "0.20"], [0.28, "0.28"]], st.layer, (v) => { st.layer = v; rebuild(); }, "ps-lh")));
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, `Line width ${LW} mm (0.4 mm nozzle). ${st.layer <= 0.1 ? "Fine layers: smooth, and what colour lithophanes need, but slow." : st.layer >= 0.28 ? "Draft layers: quick, with visible steps." : "Standard quality."}`));
+        body = pane("strength");
+        body.append(el("div", { class: "subhead" }, "Walls"));
+        body.append(row("Wall loops", seg([[1, "1"], [2, "2"], [3, "3"], [4, "4"]], st.walls, (v) => { st.walls = v; rebuild(); }, "ps-walls")));
+        body.append(el("div", { class: "subhead" }, "Top / bottom shells"));
+        body.append(row("Top layers", seg([[2, "2"], [3, "3"], [4, "4"], [5, "5"], [6, "6"]], st.topN, (v) => { st.topN = v; rebuild(); }, "ps-topn")));
+        body.append(row("Bottom layers", seg([[2, "2"], [3, "3"], [4, "4"], [5, "5"]], st.botN, (v) => { st.botN = v; rebuild(); }, "ps-botn")));
+        body.append(el("div", { class: "subhead" }, "Sparse infill"));
+        body.append(sliderRow("Infill density", "ps-infill", st.infill, 0, 100, 5, "%", (v) => { st.infill = v; clearTimeout(st.infT); st.infT = setTimeout(() => rebuild(), 350); }));
+        body = pane("speed");
+        body.append(el("div", { class: "subhead" }, "Speed"));
+        body.append(row("Speed", seg(SPEED_PRESETS.map(([k, n]) => [k, n]), st.speed, (v) => { st.speed = v; renderPanel(); }, "ps-speedp")));
+        { const mo = motionFor(st.printer, P) || {}, v = mo.v || SPEEDS, f = (SPEED_PRESETS.find((q) => q[0] === st.speed) || [0, 0, 1])[2];
+          body.append(el("div", { class: "pskv", id: "ps-speeds" }, el("div", { class: "pskv-h" }, mo.name || "Standard profile"),
+            ...[["Outer wall", v.outer], ["Inner wall", v.inner], ["Sparse infill", v.sparse], ["Internal solid infill", v.solid], ["Top surface", v.top], ["Bridge", v.bridge], ["Support", v.support], ["Travel", mo.travel]].filter((q) => q[1]).map(([k, x]) => el("div", {}, el("span", {}, k), el("b", {}, Math.round(x * (k === "Travel" ? 1 : f)) + " mm/s"))),
+            mo.first ? el("div", {}, el("span", {}, "First layer"), el("b", {}, `${mo.first.wall} / ${mo.first.infill} mm/s`)) : null,
+            mo.acc ? el("div", {}, el("span", {}, "Acceleration"), el("b", {}, `${mo.acc.def} mm/s² (outer wall ${mo.acc.outer || mo.acc.def})`)) : null)); }
+        body.append(el("div", { class: "hint", style: { padding: 0 } }, "Speeds of a standard 0.20 mm profile for this printer; the preset scales them, and the print time follows the printer's accelerations, like Orca Slicer."));
+        body = pane("support");
         body.append(el("div", { class: "subhead" }, "Supports"));
         body.append(row("Type", seg([["none", "None"], ["normal", "Normal"], ["tree", "Tree"]], st.supports, (v) => { st.supports = v; rebuild(false); }, "ps-sup")));
         body.append(sliderRow("Overhang limit", "ps-thr", st.threshold, 10, 80, 1, "°", (v) => { st.threshold = v; clearTimeout(st.thrT); st.thrT = setTimeout(() => rebuild(false), 250); }));
         body.append(el("div", { class: "hint", style: { padding: 0 } }, "Surfaces that lean out more than this from upright need support under them. 45° is the rule of thumb for most printers."));
         body.append(el("label", { class: "check" }, el("input", { type: "checkbox", id: "ps-plate", checked: st.plateOnly, onchange: (e) => { st.plateOnly = e.target.checked; rebuild(false); } }), "On build plate only"));
+        body = pane("objects");
         body.append(el("div", { class: "subhead" }, "Orientation"));
         body.append(el("div", { class: "psbtns" },
           el("button", { class: "btn" + (st.pickFace ? " primary" : ""), id: "ps-lay", title: "Click the face of an object that should lie on the plate", onclick: () => { st.pickFace = !st.pickFace; renderPanel(); } }, "Lay on face"),
@@ -1521,12 +1601,15 @@ export function initPrintSim(app, X) {
           el("button", { class: "btn", id: "ps-arrange", title: "Pack every object neatly on the plate", onclick: () => arrange() }, "Arrange"),
           el("button", { class: "btn", id: "ps-reset", title: "Undo every turn, scale, move and copy made in the sim", onclick: () => resetAll() }, "Reset")));
         objectBox(body);
-        body.append(el("div", { class: "subhead" }, "View"));
+        body = pane("others");
+        gcodeBox(body);
+        body = card("preview", "Preview");
         body.append(row("Show", seg([["model", "Model"], ["layers", "Layers"], ["strength", "Strength"]], st.view, (v) => { st.view = v; applyView(); renderPanel(); X.onView && X.onView(); }, "ps-view")));
         if (st.view === "layers") body.append(row("Color by", seg([["type", "Line type"], ["filament", "Filament"]], byFilament() ? "filament" : "type", (v) => { st.colorBy = v; lineColors(); legend(); renderPanel(); }, "ps-colorby")));
         body.append(el("button", { class: "btn primary", id: "ps-play2", style: { width: "100%" }, onclick: () => togglePlay() }, anim.playing ? "❚❚ Pause print" : "▶ Play the print"));
         body.append(el("div", { class: "hint", id: "ps-status", style: { padding: 0 } }, S ? `Sliced: ${S.nL} layers.` : W ? "Slicing…" : ""));
-        gcodeBox(body);
+        body.append(el("button", { class: "btn ps-export", id: "ps-gcode2", style: { width: "100%" }, disabled: !(S && S.lines), onclick: () => exportGcode() }, "⬇ Export G-code"));
+        if (W) body = card("summary", "Estimate");
         if (W) body.append(results(P));
         if (W) { const ab = adviceBox(); if (ab) body.append(ab); }
       },
@@ -1605,8 +1688,13 @@ export function initPrintSim(app, X) {
         el("button", { class: "btn primary", id: "ps-play", "aria-pressed": "false", onclick: () => togglePlay() }, "▶ Play print"),
         el("button", { class: "btn", id: "ps-restart", title: "Back to the first layer", onclick: () => { pause(); showTime(0); } }, "⏮"),
         spd,
-        el("span", { class: "lv" }, "")),
-      el("input", { type: "range", min: 0, max: 0, step: 1, value: 0, id: "ps-layer", "aria-label": "Layer", oninput: (e) => { pause(); if (nozzle) nozzle.visible = false; setLayer(+e.target.value); if (S && S.cum) anim.t = S.cum[Math.max(0, S.layerEnd[st.layerMax] / 2 - 1)] || 0; } }));
+        el("span", { class: "lv" }, ""),
+        // Orca's bottom slider: the moves within the layer
+        el("input", { type: "range", class: "psmove", min: 0, max: 1000, step: 1, value: 1000, id: "ps-move", "aria-label": "Moves in this layer", oninput: (e) => { pause(); if (!S || !S.cum) return; const [t0, t1] = layerSpan(st.layerMax); showTime(t0 + ((t1 - t0) * +e.target.value) / 1000); } })),
+      // Orca's layer slider, up the right-hand side: the top layer shown, its number and height
+      el("div", { class: "psvbar" }, el("span", { class: "psv-top", id: "ps-vtop" }, ""),
+        el("div", { class: "psv-track" }, el("input", { type: "range", min: 0, max: 0, step: 1, value: 0, id: "ps-layer", "aria-label": "Layer", oninput: (e) => { pause(); if (nozzle) nozzle.visible = false; setLayer(+e.target.value); if (S && S.cum) anim.t = S.cum[Math.max(0, S.layerEnd[st.layerMax] / 2 - 1)] || 0; } })),
+        el("span", { class: "psv-bot" }, "1")));
     slider.addEventListener("keydown", (e) => e.stopPropagation());
     document.getElementById("viewport").append(slider);
     rebuild();
@@ -1616,7 +1704,9 @@ export function initPrintSim(app, X) {
   function frame() {
     if (!W) return;
     const s2 = W.size, cx = (W.box.min.x + W.box.max.x) / 2, cy = (W.box.min.y + W.box.max.y) / 2, hx = Math.max(10, s2.x / 2) * 1.15, hy = Math.max(10, s2.y / 2) * 1.15;
-    vp.fit(new THREE.Box3(new THREE.Vector3(cx - hx, cy - hy, 0), new THREE.Vector3(cx + hx + Math.max(hx, hy) * 1.1, cy + hy, Math.max(s2.z, 8))));
+    // the settings are down the left (like Orca Slicer): leave room for them on that side
+    const ext = Math.max(hx, hy) * 1.1;
+    vp.fit(new THREE.Box3(new THREE.Vector3(cx - hx - ext, cy - hy, 0), new THREE.Vector3(cx + hx + ext * 0.25, cy + hy, Math.max(s2.z, 8))));
   }
   function results(P) {
     const box = el("div", { class: "simres" });
@@ -1700,8 +1790,14 @@ export function initPrintSim(app, X) {
   function buildCopies() {
     for (const c of [...copyG.children]) { copyG.remove(c); c.material.dispose(); }
     if (!W) return;
+    for (const [id, P] of W.pose) {
+      const x = EXT.get(id); if (!x) continue;
+      const m = new THREE.Mesh(geoOf(id, x.data), new THREE.MeshStandardMaterial({ color: x.color || "#a7b0ba", roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide }));
+      m.matrixAutoUpdate = false; m.matrix.copy(P); m.userData = { key: id, P, ext: true };
+      copyG.add(m);
+    }
     for (const { k, id, P } of W.cpose) {
-      const b = findBody(store.doc, id), v = scene.views.get(id);
+      const b = bodyOf(id), v = viewOf(id);
       if (!b || !v || !v.data) continue;
       const m = new THREE.Mesh(geoOf(id, v.data), new THREE.MeshStandardMaterial({ color: b.color || "#a7b0ba", roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide }));
       m.matrixAutoUpdate = false;
@@ -1869,7 +1965,7 @@ export function initPrintSim(app, X) {
   const platePt = (e, z = 0) => { const n = new THREE.Vector3(0, 0, 1).transformDirection(root.matrixWorld), o = root.localToWorld(new THREE.Vector3(0, 0, z)); const p = vp.rayPlane(e, new THREE.Plane().setFromNormalAndCoplanarPoint(n, o)); return p ? root.worldToLocal(p) : null; };
   function dragPreview(d) {
     const T = new THREE.Matrix4().makeTranslation(d.x, d.y, 0);
-    for (const c of copyG.children) if (st.osel.has(c.userData.key)) { const b = findBody(store.doc, W.ids[W.keys.indexOf(c.userData.key)]); if (b) c.matrix.copy(T).multiply(c.userData.P).multiply(M4(b.m)); }
+    for (const c of copyG.children) if (st.osel.has(c.userData.key)) { if (c.userData.ext) { c.matrix.copy(T).multiply(c.userData.P); continue; } const b = findBody(store.doc, W.ids[W.keys.indexOf(c.userData.key)]); if (b) c.matrix.copy(T).multiply(c.userData.P).multiply(M4(b.m)); }
     const pose = new Map(W.pose);
     for (const k of st.osel) if (W.pose.has(k)) pose.set(k, T.clone().multiply(W.pose.get(k)));
     scene.state.pose = pose; scene.refresh();
@@ -1927,6 +2023,7 @@ export function initPrintSim(app, X) {
   }
   function teardown() {
     stopAnim();
+    document.body.classList.remove("ps-orca");
     if (banner) { banner.remove(); banner = null; }
     if (nozzle) { root.remove(nozzle); nozzle.traverse((o) => { o.geometry && o.geometry.dispose(); o.material && o.material.dispose(); }); nozzle = null; }
     sliceJob++;
@@ -2005,9 +2102,11 @@ export function initPrintSim(app, X) {
     st.layerMax = k;
     clip.constant = (k + 1) * S.lh + 1e-3;
     if (slider) {
-      const inp = slider.querySelector("input"); inp.max = S.nL - 1; inp.value = k;
+      const inp = slider.querySelector("#ps-layer"); inp.max = S.nL - 1; inp.value = k;
       const clock = (x) => { x = Math.round(x); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), s2 = x % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s2).padStart(2, "0"); };
       slider.querySelector(".lv").textContent = `Layer ${k + 1} / ${S.nL} · ${fmt((k + 1) * S.lh, 2)} mm · ${clock(anim.t)} of ${clock(S.total)}` + (st.toolNow ? ` · ${st.toolNow}` : "");
+      const [t0, t1] = layerSpan(k), mv = slider.querySelector("#ps-move"); if (mv) mv.value = Math.round(t1 > t0 ? ((anim.t - t0) / (t1 - t0)) * 1000 : 1000);
+      vLabel(k);
     }
     vp.request();
   }
@@ -2035,7 +2134,8 @@ export function initPrintSim(app, X) {
     if (b) { b.textContent = anim.playing ? "❚❚ Pause" : "▶ Play print"; b.setAttribute("aria-pressed", anim.playing ? "true" : "false"); }
   }
   function stopAnim() { pause(); if (nozzle) nozzle.visible = false; anim.t = 0; }
-  const setView = (v) => { if (v !== "layers") stopAnim(); st.view = v; applyView(); renderPanel(); };
+  // like Orca's Preview, the layers open showing the whole print (the top layer)
+  const setView = (v) => { if (v !== "layers") stopAnim(); if (v === "layers" && st.view !== "layers" && S) st.layerMax = S.nL - 1; st.view = v; applyView(); renderPanel(); };
   const layFace = () => { st.pickFace = !st.pickFace; renderPanel(); };
   const togglePlay = () => (anim.playing ? pause() : play());
   // ------------------------------------------------------------ G-code
@@ -2054,8 +2154,8 @@ export function initPrintSim(app, X) {
     const sup = st.supports !== "none" && A && A.cols && A.cols.length ? { cols: A.cols, sp: st.supports === "tree" ? 3 : 2 } : null;
     const r = makeGcode(S, sup, gcodeOptions());
     st.lastG = { secs: r.secs, grams: r.grams, meters: r.filamentMM / 1000, size: r.text.length };
-    const names = st.ids.map((id) => findBody(store.doc, id)?.name).filter(Boolean);
-    const base = ((names.length === 1 ? names[0] : (store.doc.name || "Plate")) + " " + PRINTERS[st.printer].name.replace(/\s*\(.*\)/, "")).replace(/[\\/:*?"<>|]+/g, "").trim();
+    const names = st.ids.map((id) => bodyOf(id)?.name).filter(Boolean);
+    const base = ((st.extName ? st.extName : names.length === 1 ? names[0] : (store.doc.name || "Plate")) + " " + PRINTERS[st.printer].name.replace(/\s*\(.*\)/, "")).replace(/[\\/:*?"<>|]+/g, "").trim();
     const bytes = new TextEncoder().encode(r.text);
     if (app.projects && app.projects.saveModel) await app.projects.saveModel(base + ".gcode", bytes);
     renderPanel();
@@ -2072,7 +2172,6 @@ export function initPrintSim(app, X) {
     const nf = (id, label, val, on, min, max) => el("label", {}, label, el("input", { type: "number", class: "num", id, value: val, min, max, step: 1, onchange: (e) => on(+e.target.value) }));
     r3.append(nf("ps-tnoz", "Nozzle °C", st.nozzleT ?? tn, (v) => { st.nozzleT = v; }, 150, 450), nf("ps-tbed", "Bed °C", st.bedT ?? tb, (v) => { st.bedT = v; }, 0, 130), nf("ps-fan", "Fan %", st.fanP ?? fan, (v) => { st.fanP = Math.max(0, Math.min(100, v)); }, 0, 100));
     body.append(r3);
-    body.append(row("Speed", seg(SPEED_PRESETS.map(([k, n]) => [k, n]), st.speed, (v) => { st.speed = v; renderPanel(); }, "ps-speedp")));
     body.append(row("Skirt", seg([[0, "None"], [1, "1"], [2, "2"], [3, "3"]], st.skirt, (v) => { st.skirt = v; renderPanel(); }, "ps-skirt")));
     body.append(row("Brim", seg([[0, "None"], [3, "3 mm"], [5, "5 mm"], [8, "8 mm"]], st.brim, (v) => { st.brim = v; renderPanel(); }, "ps-brim")));
     body.append(row("Retraction", seg([[0, "Off"], [0.4, "0.4"], [0.8, "0.8"], [1.5, "1.5"], [5, "5 mm"]], st.retract, (v) => { st.retract = v; renderPanel(); }, "ps-retract")));
@@ -2081,5 +2180,25 @@ export function initPrintSim(app, X) {
     if (st.lastG) body.append(el("div", { class: "hint", id: "ps-gcode-info", style: { padding: 0 } }, `Last G-code: ${Math.floor(st.lastG.secs / 3600)} h ${Math.round((st.lastG.secs % 3600) / 60)} min · ${st.lastG.grams.toFixed(1)} g · ${st.lastG.meters.toFixed(2)} m of filament · ${(st.lastG.size / 1e6).toFixed(1)} MB`));
     body.append(el("div", { class: "hint", style: { padding: 0 } }, fl === "bambu" ? "Bambu Lab printers: open the .gcode in Bambu Studio or Orca Slicer to send it over Wi-Fi, or print it from the SD card." : fl === "klipper" ? "Klipper printers (Creality K series, Voron…): upload the .gcode in the printer's web page (Mainsail / Fluidd) or copy it to a USB stick." : "Copy the .gcode to the printer's SD card or USB stick, or send it with the printer's app or OctoPrint."));
   }
-  return { open, teardown, st, autoOrient, turnObj, scaleObj, dupObj, delObj, arrange, resetAll, selectKey: (k, add) => { selectKey(k, add); drawSel(); renderPanel(); }, world: () => W, setView, layFace, rotate, togglePlay, exportGcode, gcodeOptions, setIds: (ids) => { st.ids = ids; stopAnim(); st.refit = true; rebuild(); } };
+  // objects from outside the design (the Color Lithophane Studio): each part with its filament
+  function loadExternal(list, o = {}) {
+    EXT.clear();
+    const ID = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    list.forEach((p, i) => EXT.set("ext:" + i, { id: "ext:" + i, name: p.name, color: p.color, m: ID, data: { vertices: p.V, triangles: p.I } }));
+    st.extName = o.name || "";
+    st.inst = []; st.osel.clear(); st.paint.clear(); st.paintTool = null; st.R = new THREE.Matrix4();
+    st.cmyk.on = false;
+    if (o.slots) { st.slots = o.slots.map((q) => ({ color: q.color, name: q.name })); st.slotOf = new Map(list.map((p, i) => ["ext:" + i, p.slot || 0])); }
+    if (o.layer) st.layer = o.layer;
+    if (o.infill != null) st.infill = o.infill;
+    st.topN = Math.max(st.topN, 3);
+    // a printer that can hold all the filaments
+    if (toolsOf().kind === "single" || (toolsOf().slots || 1) < st.slots.length) st.printer = "x1";
+    st.ids = targetIds(); st.refit = true; st.view = "model"; st.ptab = "quality";
+  }
+  function clearExternal() {
+    EXT.clear(); st.extName = ""; st.inst = []; st.osel.clear(); st.slotOf = new Map(); st.slots = [];
+    stopAnim(); st.ids = targetIds(); st.refit = true; buildPlate(); rebuild(); renderPanel();
+  }
+  return { open, teardown, st, loadExternal, clearExternal, hasExternal: () => EXT.size > 0, autoOrient, turnObj, scaleObj, dupObj, delObj, arrange, resetAll, selectKey: (k, add) => { selectKey(k, add); drawSel(); renderPanel(); }, world: () => W, setView, layFace, rotate, togglePlay, exportGcode, gcodeOptions, setIds: (ids) => { st.ids = ids; stopAnim(); st.refit = true; rebuild(); } };
 }

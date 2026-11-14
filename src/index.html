@@ -985,6 +985,80 @@ body.fp-on .toasts { position: fixed; z-index: 175 !important; }
 .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0; }
 .subhead { font: 600 11px/1.3 var(--f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 10px 0 4px; }
 .simres { margin-top: 8px; }
+/* ---- 3D Print Sim, laid out like Orca Slicer: settings down the left, layer slider on the right */
+body.ps-orca { --orca: #009688; --orca-2: #00796b; --orca-soft: rgba(0,150,136,.12); }
+body.ps-orca #browser { display: none; }
+body.ps-orca #cmd { left: 0; right: auto; top: 0; bottom: 0; height: auto; max-height: none; width: 372px; border-radius: 0; border-width: 0 1px 0 0; box-shadow: 2px 0 14px rgba(0,0,0,.10); background: var(--panel-2); }
+body.ps-orca #cmd header { background: var(--panel); }
+body.ps-orca #cmd header h4 { letter-spacing: .04em; }
+body.ps-orca #cmd .body { padding: 8px; gap: 8px; }
+body.ps-orca #cmd footer { background: var(--panel); }
+body.ps-orca #cmd .btn.primary, body.ps-orca .orca-slice { background: var(--orca); border-color: var(--orca); color: #fff; }
+body.ps-orca #cmd .btn.primary:hover, body.ps-orca .orca-slice:hover { background: var(--orca-2); border-color: var(--orca-2); }
+body.ps-orca #cmd .seg button[aria-pressed="true"] { background: var(--orca); border-color: var(--orca); color: #fff; }
+body.ps-orca #cmd input[type="range"] { accent-color: var(--orca); }
+body.ps-orca #cmd input[type="checkbox"] { accent-color: var(--orca); }
+.pscard { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.pscard-h { display: flex; align-items: center; gap: 7px; margin: -2px 0 0; font: 700 13px/1.2 var(--f-ui); }
+.pscard-h b { flex: 1; }
+.pscard-dot { width: 4px; height: 14px; border-radius: 2px; background: var(--orca, #009688); display: inline-block; }
+.pscard-sub { font: 600 11px/1 var(--f-ui); color: var(--orca, #009688); background: var(--orca-soft, rgba(0,150,136,.12)); padding: 3px 7px; border-radius: 10px; }
+.pstabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--line); margin: 0 -10px; padding: 0 6px; }
+.pstabs button { font: 600 12px/1 var(--f-ui); padding: 8px 8px 7px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink-2); cursor: pointer; }
+.pstabs button[aria-selected="true"] { color: var(--orca, #009688); border-bottom-color: var(--orca, #009688); }
+.pstabs button:hover { color: var(--ink); }
+.pstab { display: flex; flex-direction: column; gap: 8px; }
+.pstab[hidden] { display: none; }
+.pskv { display: grid; gap: 3px; font-size: 12px; border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 8px; }
+.pskv > div { display: flex; justify-content: space-between; gap: 8px; }
+.pskv span { color: var(--ink-2); }
+.pskv .pskv-h { font-weight: 600; color: var(--ink); }
+.orca-tabs { display: flex; align-items: center; gap: 2px; padding: 0 10px; border-right: 1px solid var(--line-2); }
+.orca-tabs button { font: 700 13px/1 var(--f-ui); padding: 9px 14px; border-radius: 6px; border: 0; background: none; color: var(--ink-2); cursor: pointer; }
+.orca-tabs button[aria-selected="true"] { background: rgba(0,150,136,.14); color: #009688; }
+.orca-sp { flex: 1; }
+.orca-slice { align-self: center; margin: 0 14px; padding: 9px 20px; font: 700 13px/1 var(--f-ui); border-radius: 6px; background: #009688; border: 1px solid #009688; color: #fff; cursor: pointer; }
+body.ps-orca .pslegend { left: 386px; top: 12px; }
+.pslegend.orca { min-width: 220px; pointer-events: none; }
+.pslegend.orca .t { display: grid; grid-template-columns: 1fr 52px 34px; font-weight: 700; border-bottom: 1px solid var(--line-2); padding-bottom: 3px; }
+.pslegend.orca .it { display: grid; grid-template-columns: 14px 1fr 52px 34px; gap: 7px; }
+.pslegend.orca .tm, .pslegend.orca .pc { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.pslegend.orca .sum { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line-2); padding-top: 3px; margin-top: 2px; }
+/* the layer slider up the right, the moves slider and playback along the bottom */
+body.ps-orca .pslayers { position: absolute; inset: 0; width: auto; min-width: 0; background: none; border: 0; box-shadow: none; padding: 0; pointer-events: none; display: block; }
+body.ps-orca .pslayers[hidden] { display: none; }
+body.ps-orca .psplay { position: absolute; left: calc(386px + (100% - 386px - 90px) / 2); transform: translateX(-50%); bottom: 50px; width: min(640px, calc(100% - 520px)); min-width: 300px; pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.14); }
+body.ps-orca .psplay .btn.primary { background: #009688; border-color: #009688; }
+.psmove { flex-basis: 100%; accent-color: #009688; }
+.psvbar { display: none; }
+body.ps-orca .psvbar { position: absolute; right: 74px; top: 120px; bottom: 60px; width: 54px; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: auto; }
+.psv-top { background: #009688; color: #fff; border-radius: 5px; padding: 3px 6px; font: 600 11px/1.15 var(--f-mono); text-align: center; display: flex; flex-direction: column; min-width: 48px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+.psv-top span { font-weight: 400; opacity: .9; }
+.psv-bot { font: 600 10.5px/1.2 var(--f-ui); color: var(--ink-2); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; white-space: nowrap; }
+.psv-track { flex: 1; width: 28px; position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+/* the range turned upright: rotated about its centre to fill the track */
+.psv-track input { position: absolute; left: 50%; top: 50%; width: var(--psvh, 400px); transform: translate(-50%, -50%) rotate(-90deg); accent-color: #009688; margin: 0; }
+@media (max-width: 900px) { body.ps-orca #cmd { width: min(320px, 85%); } body.ps-orca .pslegend { display: none; } body.ps-orca .psplay { left: 50%; width: calc(100% - 40px); } }
+/* Color Lithophane Studio */
+.clitho .cl-flat { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 56px 24px 40px; background: #20242a; }
+.clitho .cl-glow { padding: 18px; border-radius: 10px; background: #2b3036; box-shadow: 0 0 0 1px #3a4048; }
+.clitho .cl-glow.on { background: radial-gradient(circle, #fffef6 0%, #f3efe0 70%, #d9d2bd 100%); box-shadow: 0 0 60px rgba(255,248,220,.35); }
+.clitho .cl-pic { display: block; width: min(820px, 58vw); max-height: calc(100vh - 220px); object-fit: contain; height: auto; image-rendering: auto; border-radius: 2px; }
+.clitho .cl-tabs { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; background: var(--panel); border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.clitho .cl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.clitho .cl-num { display: flex; align-items: center; gap: 6px; }
+.clitho .cl-num input { width: 70px; }
+.clitho .cl-note { color: var(--ink-2); font-size: 12px; }
+.clitho .cl-fils { display: flex; flex-direction: column; gap: 5px; }
+.clitho .cl-fil { display: grid; grid-template-columns: 18px 30px 1fr auto auto; gap: 6px; align-items: center; font-size: 12.5px; }
+.clitho .cl-fil.off { opacity: .55; }
+.clitho .cl-fil input[type="color"] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
+.clitho .cl-td { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--ink-2); }
+.clitho .cl-td input { width: 52px; padding: 2px 4px; }
+.clitho .cl-g { font-style: normal; font-size: 11px; color: var(--ink-2); min-width: 42px; text-align: right; }
+.clitho .cl-lock { text-align: center; color: #009688; font-weight: 700; }
+.clitho .cl-sum { display: grid; gap: 3px; font-size: 12.5px; }
+
 .simtiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 8px; }
 .simtile { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--panel-2); display: flex; flex-direction: column; gap: 2px; }
 .simtile span { font-size: 11px; color: var(--ink-3); }
@@ -1197,6 +1271,17 @@ body.s3d-on .tut-panel { z-index: 96; }
 .cf-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
 .cf-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); cursor: pointer; text-align: center; min-width: 0; }
 .cf-card:hover { border-color: #c2410c; box-shadow: 0 2px 8px rgba(194,65,12,.18); }
+/* Helmet Maker */
+.cf-card.on, .cf-card[aria-pressed="true"] { border-color: #c2410c; box-shadow: 0 0 0 2px rgba(194,65,12,.35); }
+.cf-mode { margin-right: 8px; white-space: nowrap; }
+.cf-helmet .cf-brand small { color: #c2410c; font-weight: 600; }
+.cf-auto { font-size: 10.5px; color: var(--muted); padding: 0 4px; }
+.cf-hm-read { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: 12px; line-height: 1.5; }
+.cf-hm-pad { display: block; width: 100%; max-width: 280px; aspect-ratio: 280 / 150; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: crosshair; touch-action: none; margin: 4px 0; }
+.cf-hm-prev { border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.cf-hm-out { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.cf-hm-img { width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+.cf-sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.25); }
 .cf-card b { font-size: 11.5px; line-height: 1.15; }
 .cf-card small { font-size: 9.5px; color: var(--muted); line-height: 1.15; }
 .cf-thumb { width: 78px; height: 78px; }
@@ -1583,6 +1668,21 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
 .cpal.icons .cgrid button { padding: 4px; }
 .cpal .chint { padding: 0 9px 7px; font-size: 11px; color: var(--ink-3); max-width: 260px; }
 .cpal.icons .chint { display: none; }
+
+/* Picture to 3D model (v2.9.8.9.5) */
+#pf-preset, #pf-tool, #pf-mode, #pf-res { flex-wrap: wrap; }
+#pf-preset button, #pf-tool button, #pf-mode button, #pf-res button { flex: 1 1 auto; }
+#pf-cut, #pf-3d { width: 100%; height: auto; }
+#pf-3d { background: radial-gradient(#ffffff, #dfe4ea); border-radius: 6px; cursor: grab; }
+/* Helmet Maker: photos (v2.9.8.9.5) */
+.cf-hm-photos { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.cf-hm-ph canvas { max-width: 220px; }
+.cf-hm-ph { border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cf-hm-ph.on { border-color: var(--accent); }
+.cf-hm-ph small { color: var(--ink-3); font-size: 11px; }
+.cf-hm-ph canvas { width: 100%; height: auto; border-radius: 5px; }
+.cf-hm-ph .cf-btnrow { flex-wrap: wrap; }
+.cf-hm-ph .cf-btnrow .btn { flex: 1 1 auto; padding-left: 6px; padding-right: 6px; }
 </style>
 
 <div id="app" data-mode="beginner">
@@ -1689,6 +1789,8 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <button data-act="dxf" title="Every sketch, flat, for laser or vinyl cutters and other CAD">Sketches as DXF <small>.dxf</small></button>
         <!-- jumpstart-3d: body drawing -->
         <button data-act="bodydxf" title="Top, Front and Right views of the bodies, flat and at full size, for woodworking plans, laser cutters and other CAD">Bodies as DXF drawing… <small>.dxf</small></button>
+        <button data-act="laser-svg" id="exp-laser-svg" title="Flat parts (like a 3 mm acrylic lamp panel) as a laser file: the outline and holes to cut (red), recesses in the top to engrave (black)">Laser cut file <small>.svg</small></button>
+        <button data-act="laser-dxf" id="exp-laser-dxf" title="Flat parts as a laser file with layers CUT and ENGRAVE">Laser cut file <small>.dxf</small></button>
         <hr>
         <button data-act="json">Save Project File <small>.json</small></button>
         <button data-act="savedl" id="save-dl-toggle" role="menuitemcheckbox" aria-checked="true" title="Every Save (Ctrl+S) also downloads the project file (.json) to your Downloads, so work isn't lost when the browser is cleared">Download a file on every Save <small>on</small></button><!-- jumpstart-3d: his Save download switch, beside Save Project File (Open a project file is at the top of this menu) -->
@@ -1750,7 +1852,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
     <h1 class="sp-title">JumpStart <b>3D</b></h1>
     <p class="sp-tag">Design it · Build it · Print it</p>
     <!-- jumpstart-3d: match version.js before the app loads. -->
-    <p class="sp-ver" id="sp-ver">Version 2.9.8.2 · community build 35</p>
+    <p class="sp-ver" id="sp-ver">Version 2.9.8.9.8 · community build 35</p>
     <div class="sp-bar"><i id="loading-bar"></i></div>
     <p class="sp-msg" id="loading-msg">Starting the geometry engine…</p>
   </div>
