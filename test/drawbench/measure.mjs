@@ -106,8 +106,12 @@ export async function measurePart(call) {
   const shown = (await call("list")).filter((b) => !b.hole && !b.hidden);
   const part = { bodies: [], body: null, box: null, size: null, volume: null, volumeFrom: null, solids: 0, holes: [], faces: [] };
   if (!shown.length) return part;
-  const ins = await call("inspect");
-  part.bodies = ins.bodies.map(({ id, name, error, volumeFrom, solids }) => ({ id, name, error: error ?? null, volumeFrom: volumeFrom ?? null, solids: solids ?? 0 }));
+  // an imported mesh builds as a closed solid of flat triangles (inspect calls it "solid"), so ask the saved design whether
+  // any part of a body, group children included, is a mesh
+  const ins = await call("inspect"), saved = (await call("save")).doc.bodies;
+  const hasMesh = (node) => !!node && (node.t === "mesh" || (node.children ?? []).some((c) => hasMesh(c.node)));
+  part.bodies = ins.bodies.map(({ id, name, error, volumeFrom, solids }) => ({ id, name, error: error ?? null, volumeFrom: volumeFrom ?? null, solids: solids ?? 0,
+    mesh: hasMesh(saved.find((s) => s.id === id)?.node) }));
   part.solids = part.bodies.reduce((n, b) => n + (b.solids || 0), 0);
   if (part.bodies.length !== 1 || part.bodies[0].error) return part;
   const b = ins.bodies[0];

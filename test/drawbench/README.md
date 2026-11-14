@@ -103,8 +103,8 @@ A part spec, the format of the design's section 5, so `check_spec` and `jumpstar
 design to score in a fresh design, saves it and opens the saved file again (so every number comes from the file the person
 gets), and measures it with the app's own calls. It never reads a spec the AI wrote.
 
-1. **Gate** (check `gate`): exactly one visible solid body, built without error, an exact solid (not a mesh), with the
-   truth's `solids` count. If the gate fails, every other check is `not run` and fails.
+1. **Gate** (check `gate`): exactly one visible solid body, built without error, a CAD solid (no imported mesh anywhere in
+   it: the app builds a closed mesh as a solid of triangles, so the saved design is asked), with the truth's `solids` count. If the gate fails, every other check is `not run` and fails.
 2. **Turns:** of the 24 right-angle turns (no mirror images), keep those that make the truth's box sizes match the built
    box within the `size` tolerance; if none does, keep the closest ones. For each, the truth's box low corner sits on the
    built box's low corner.

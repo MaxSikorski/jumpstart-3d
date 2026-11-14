@@ -70,7 +70,7 @@ test("distance, radius, volume, solids and overlap", () => {
   e = evidence(); e.overlap.shared = 90; assert.equal(byId(check(part(), truth(), e), "overlap").status, "fail");
 });
 test("gate failures prevent all other checks", () => {
-  for (const change of [(p) => p.bodies.push({}), (p) => { p.bodies[0].error = "broken"; }, (p) => { p.volumeFrom = "mesh"; }, (p) => { p.solids = 2; }]) {
+  for (const change of [(p) => p.bodies.push({}), (p) => { p.bodies[0].error = "broken"; }, (p) => { p.volumeFrom = "mesh"; }, (p) => { p.bodies[0].mesh = true; }, (p) => { p.solids = 2; }]) {
     const p = part(); change(p); assert.equal(gate(truth(), p).status, "fail"); assert.ok(gate(truth(), p).note);
     const r = finish({ truth: truth(), kase: kase(), part: p, scored: [], editable: [{ id: "edit-W", status: "pass" }] });
     assert.equal(r.pose, null); assert.ok(r.checks.slice(1).every((c) => c.status === "not run")); assert.equal(r.pass, false);
@@ -179,4 +179,10 @@ test("an enlargement inside a hole is not a counterbore, and a blind counterbore
   assert.match(byId(check(p, t), "bcb").note, /the counterbore of the Ø5 hole at \[40, 25\] is at its closed end/);
   p.holes = [blind([0, 0, 1], [{ dia: 5, from: 0, to: 5 }, { dia: 10, from: 5, to: 10 }])];
   assert.equal(byId(check(p, t), "bcb").status, "pass");
+});
+
+test("a body with an imported mesh in it fails the gate even when it builds as a closed solid", () => {
+  const p = part();
+  p.bodies[0].mesh = true;
+  assert.deepEqual(gate(truth(), p), { id: "gate", kind: "gate", status: "fail", note: "the body is a mesh (triangles), not a CAD solid", gating: true });
 });

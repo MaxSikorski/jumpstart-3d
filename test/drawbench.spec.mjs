@@ -67,9 +67,9 @@ test("a part left as a mesh fails the gate and nothing else is scored", async ({
   const mesh = { ...saved, doc: { ...saved.doc, sketches: [], params: [], assets: { m: { kind: "mesh", name: "plate", data: packed.toString("base64") } },
     bodies: [{ id: "b1", name: "Plate mesh", m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], node: { t: "mesh", asset: "m", k: 1, keepPos: true, mods: [] } }] } };
   const { result, part } = await scoreDesign(call, { kase, truth, truthBuild, design: { project: JSON.stringify(mesh) } });
-  expect(part.volumeFrom).toBe("mesh");
+  expect(part.bodies[0].mesh).toBe(true); // the app builds a closed mesh as a solid of triangles, so inspect alone cannot tell
   expect(part.size.map((v) => Math.round(v))).toEqual([80, 50, 6]);
-  expect(result.checks[0]).toMatchObject({ id: "gate", status: "fail", note: "body is not an exact solid" });
+  expect(result.checks[0]).toMatchObject({ id: "gate", status: "fail", note: "the body is a mesh (triangles), not a CAD solid" });
   expect(result.checks.slice(1).every((c) => c.status === "not run")).toBe(true);
   expect(result.pass).toBe(false);
   expect(result.score.passed).toBe(0);

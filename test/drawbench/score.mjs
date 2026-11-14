@@ -133,6 +133,7 @@ export function gate(truth, part) {
   let note = "";
   if (part.bodies.length !== 1) note = `found ${part.bodies.length} visible bodies, expected 1`;
   else if (part.bodies[0].error) note = `body failed to build: ${part.bodies[0].error}`;
+  else if (part.bodies[0].mesh) note = "the body is a mesh (triangles), not a CAD solid";
   else if (part.volumeFrom !== "solid" || part.bodies[0].volumeFrom !== "solid") note = "body is not an exact solid";
   else if (part.solids !== expected || part.bodies[0].solids !== expected) note = `found ${part.solids} solids, expected ${expected}`;
   return { id: "gate", kind: "gate", status: note ? "fail" : "pass", note, gating: true };
