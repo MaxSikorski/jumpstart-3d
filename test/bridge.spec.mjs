@@ -73,7 +73,7 @@ test("add and the other calls refuse bad input with plain messages", async () =>
   // turning or scaling about "the middle" needs a built shape; the answer must not depend on timing
   const unbuilt = await run(() => { const b = JS3D.add("box", { size: [13.37, 7.11, 9.5] }); const out = []; // a size nobody built before: an identical shape would come from the cache at once
     for (const f of [() => JS3D.rotate(b, "z", 5), () => JS3D.scale(b, 2)]) { try { f(); out.push(null); } catch (e) { out.push(e.message); } } return out; });
-  for (const m of unbuilt) expect(m).toMatch(/Box \d+ is still being built: await JS3D.ready\(\) first, or pass opts.about/);
+  for (const m of unbuilt) expect(m).toMatch(/Box \d+ is still being built or has a build error/);
   expect(await run(() => { const b = JS3D.list().at(-1).id; JS3D.rotate(b, "z", 5, { about: [0, 0, 0] }); JS3D.scale(b, 2, { about: [0, 0, 0] }); return true; })).toBe(true); // a given point needs no wait
 });
 

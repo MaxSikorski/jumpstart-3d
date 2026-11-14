@@ -115,8 +115,8 @@ test("library hardware records settings and stands on the requested plane", asyn
   const before = await undoCount(), count = await run(() => JS3D.list().length);
   expect(await failure(() => JS3D.hardware({ part: "cutter", size: "M3" }))).toMatch(/^part must be one of:/);
   expect(await failure(() => JS3D.hardware({ part: "shcs", size: "M30" }))).toMatch(/^unknown size "M30" for part "shcs"; sizes:/);
-  expect(await failure(() => JS3D.hardware({ part: "washer", size: "M4", length: 5 }))).toBe('length is not used for part "washer"');
-  expect(await failure(() => JS3D.hardware({ part: "washer", size: "M4", threads: true }))).toBe('part "washer" has no thread');
+  expect(await failure(() => JS3D.hardware({ part: "washer", size: "M4", length: 5 }))).toContain('length is not used for part "washer", got 5');
+  expect(await failure(() => JS3D.hardware({ part: "washer", size: "M4", threads: true }))).toContain('part "washer" has no thread, got threads: true');
   expect(await failure(() => JS3D.hardware({ part: "rod", size: "M3", length: 300, threads: true }))).toMatch(/^Too many turns \(600/);
   expect(await undoCount()).toBe(before); expect(await run(() => JS3D.list().length)).toBe(count);
 });
@@ -134,7 +134,7 @@ test("whole-body textures change exported mesh and keep a dialog layer", async (
   expect(await failure((id) => JS3D.texture(id, { texture: "nope" }), id)).toBe(`unknown texture "nope"; list_textures (JS3D.textures()) gives the ${LIB.length} keys`);
   expect(await undoCount()).toBe(steps);
   const hole = await run(() => JS3D.add("box", { hole: true, name: "Cutter" }));
-  expect(await failure((id) => JS3D.texture(id), hole)).toBe("Cutter is marked as a hole; textures go on solid bodies");
+  expect(await failure((id) => JS3D.texture(id), hole)).toContain("Cutter is marked as a hole; textures go on solid bodies");
 });
 test("texture on chosen faces", async () => {
   await fresh(); const id = await run(() => JS3D.add("box", { size: [40,30,20] }));
@@ -167,7 +167,7 @@ test("generator names are trimmed and limited", async () => {
     const result = await run((kind) => { const o = { name: "  " + "x".repeat(256) + "  " }; return kind === "boxMaker" ? JS3D.boxMaker(o).id : JS3D.hardware({ ...o, part: "washer", size: "M4" }); }, kind);
     expect((await run((id) => JS3D.get(id).name, result)).length).toBe(256);
     const before = await undoCount();
-    expect(await failure((kind) => kind === "boxMaker" ? JS3D.boxMaker({ name: "x".repeat(257) }) : JS3D.hardware({ part: "washer", size: "M4", name: "x".repeat(257) }), kind)).toBe("name can have at most 256 characters");
+    expect(await failure((kind) => kind === "boxMaker" ? JS3D.boxMaker({ name: "x".repeat(257) }) : JS3D.hardware({ part: "washer", size: "M4", name: "x".repeat(257) }), kind)).toContain("name can have at most 256 characters, got ");
     expect(await undoCount()).toBe(before);
   }
 });
@@ -199,6 +199,6 @@ test("drawing gives three measured DXF views, inches, bytes and no undo step", a
   expect(inches).toContain('$INSUNITS\r\n70\r\n1\r\n'); expect(inches).toContain('1.575"');
   expect(await run(() => JS3D.invoke("drawing", [{}]))).toHaveProperty("$bytes"); expect(await undoCount()).toBe(before);
   await fresh(); const empty = await undoCount();
-  expect(await failure(() => JS3D.drawing())).toBe("nothing to draw: holes and hidden shapes are left out");
-  expect(await failure(() => JS3D.drawing({ views: [] }))).toBe(viewsError); expect(await undoCount()).toBe(empty);
+  expect(await failure(() => JS3D.drawing())).toContain("nothing to draw: holes and hidden shapes are left out");
+  expect(await failure(() => JS3D.drawing({ views: [] }))).toContain(viewsError + ", got []"); expect(await undoCount()).toBe(empty);
 });
