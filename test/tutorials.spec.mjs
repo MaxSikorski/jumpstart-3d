@@ -201,9 +201,11 @@ async function prepareFor(sel, mode) {
 }
 
 // What "Show me" does for this step, checked from the outside. It must highlight an element that is the one the data asks for.
+// J.Siwek's buttons that run the same command as another one: Simple shows one button for both (the canonical list in src/simpleadvanced.js), so Show me may point at that one
+const SIMPLE_SAME = { "ad-hole-m": "ad-hole", "ad-fastbtn": "ad-fasteners", "ad-ins-fast": "ad-fasteners", "ad-ins-hinge": "ad-hinge", "ad-ins-gear": "ad-gears", "ps-r-litho": "simple-run-litho" };
 async function checkShowMe(tutId, i, show, mode) {
   const at = `${tutId} step ${i + 1}`;
-  const showMe = () => page.evaluate(({ sel, via, tile }) => {
+  const showMe = () => page.evaluate(({ sel, via, tile, same }) => {
     document.querySelector("#tut-panel .tut-mini-line")?.click(); // Show me can make the lesson panel small when it covers the target (jumpstart-3d: phone tutorials); the next press opens it first
     document.getElementById("tut-show").click(); // the same handler a mouse click runs
     const e = document.querySelector(".tut-spot");
@@ -213,9 +215,9 @@ async function checkShowMe(tutId, i, show, mode) {
       id: e.id, onScreen: e.getClientRects().length > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight,
       bubble: !!document.querySelector("#tut-bubble"),
       isTile: tile ? e.dataset.kind === tile.kind && e.classList.contains("tile") && e.classList.contains("hole") === tile.hole : false,
-      isSel: sel ? e.matches(sel) || (document.documentElement.dataset.face === "simple" && (sel.split(",").some((s) => s.trim() === "#" + e.dataset.for) || ["sr-more", "sr-shapes"].includes(e.id))) : false, isVia: via ? e.matches(via) : false,
+      isSel: sel ? e.matches(sel) || (document.documentElement.dataset.face === "simple" && (sel.split(",").some((s) => s.trim() === "#" + e.dataset.for || (e.dataset.for && same[s.trim().slice(1)] === e.dataset.for)) || ["sr-more", "sr-shapes"].includes(e.id))) : false, isVia: via ? e.matches(via) : false,
     };
-  }, { sel: show.sel || null, via: show.via || null, tile: show.tile ? { kind: show.tile, hole: !!show.hole } : null });
+  }, { sel: show.sel || null, via: show.via || null, tile: show.tile ? { kind: show.tile, hole: !!show.hole } : null, same: SIMPLE_SAME });
   let spot = await showMe(), prepared = null;
   if (!spot) { // the target only exists after earlier work: do that work, then wait for the step's own target to appear
     prepared = await prepareFor(show.sel || "", mode);
