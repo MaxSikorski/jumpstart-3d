@@ -1,0 +1,10 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "sketch", "args": [{ "on": "XZ", "name": "Half profile", "shapes": [{ "type": "polyline", "points": [[6, 0], [20, 0], [20, 5], [11, 5], [11, 25], [6, 25], [6, 12]] }] }], "as": "profile" },
+    { "call": "revolve", "args": [{ "sketch": "$profile.sketch", "axis": "Z", "name": "Flanged bushing" }], "as": "part" },
+    { "call": "hole", "args": ["$part.body", { "face": "+z and <z", "points": [[15.5, 0, 5], [-15.5, 0, 5], [0, 15.5, 5], [0, -15.5, 5]], "dia": 4.5 }] }
+  ]
+}

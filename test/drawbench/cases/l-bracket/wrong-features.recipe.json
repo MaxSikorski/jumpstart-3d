@@ -1,0 +1,12 @@
+{
+  "jumpstart": "recipe",
+  "version": 1,
+  "needs": "1.9",
+  "steps": [
+    { "call": "setParam", "args": ["L", "60"] },
+    { "call": "sketch", "args": [{ "on": "YZ", "name": "L profile", "shapes": [{ "type": "polyline", "points": [[0, 0], [40, 0], [40, 40], [35, 40], [35, 5], [0, 5]] }] }], "as": "profile" },
+    { "call": "extrude", "args": [{ "sketch": "$profile.sketch", "dist": "L", "name": "L-bracket" }], "as": "part" },
+    { "call": "hole", "args": ["$part.body", { "face": "+z and <z", "points": [[15, 17.5, 5], [45, 17.5, 5]], "dia": 6.5 }] },
+    { "call": "hole", "args": ["$part.body", { "face": "-y and >y", "points": [[30, 35, 25]], "dia": 7.0711 }] }
+  ]
+}

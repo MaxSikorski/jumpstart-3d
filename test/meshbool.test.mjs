@@ -289,8 +289,8 @@ describe("joins and cuts with an imported mesh run on Manifold", () => {
     const shape = K.evalNode(join);
     approx(K._test.safeVolume(shape), r.mesh.volume, 0.5, "B-rep volume");
     shape.delete();
-    const blob = K.exportStep([{ id: "b", node: join, m: I() }]);
-    assert.ok(blob.size > 1000, "STEP file made (" + blob.size + " bytes)");
+    const step = K.exportStep([{ id: "b", node: join, m: I() }]);
+    assert.ok(step.length > 1000, "STEP file made (" + step.length + " bytes)");
     // a mod Manifold does not do (Split body: keep everything below z 5) runs on the B-rep built from the Manifold result
     const below = build1({ ...join, mods: [{ t: "halfspace", plane: { o: [0, 0, 5], n: [0, 0, 1] }, side: -1 }] });
     assert.ok(below.ok, below.error);

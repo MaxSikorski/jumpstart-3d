@@ -11,13 +11,42 @@ export function initLayerscape(app) {
   let frame = null;
   if (!window.__JS3D_SAVE__) window.__JS3D_SAVE__ = (filename, bytes) => app.projects.saveModel(filename, bytes);
   const theme = () => { const t = document.documentElement.dataset.ui || "light"; return t === "dark" ? "dark" : "light"; };
+  // a diorama in the design that Layerscape refuses or can't read is never saved over unless the user says so (checked
+  // at every save, so Undo or opening again can't get round it), and Layerscape only saves into the design it was opened for
+  let held = null, heldNote = "", declined = null, openedFor, opening = null;
+  const unreadable = new Set(); // dioramas whose pictures couldn't be read, this session
+  const cannotOpen = (raw) => { if (!raw) return false; if (unreadable.has(raw)) return true; try { return !cleanLayerscape(JSON.parse(raw)); } catch (e) { return true; } };
+  const hold = (raw, why) => {
+    held = raw;
+    heldNote = `The Layerscape diorama saved with this design couldn't be opened. ${why} It stays in your design unchanged, and Layerscape asks before saving over it.`;
+    app.toast(heldNote, "err");
+  };
   window.__JS3D_LS__ = {
     theme,
-    project() { try { return store.doc.layerscape ? cleanLayerscape(JSON.parse(store.doc.layerscape)) : null; } catch (e) { return null; } }, // jumpstart-3d: only safe pictures and fields
+    project() { // jumpstart-3d: only safe pictures and fields; a refused one is held
+      held = null; declined = null; openedFor = store.doc.id; opening = store.doc.layerscape || null;
+      if (!opening) return null;
+      let d = null, why = "It isn't a diorama Layerscape can open safely.";
+      try { d = cleanLayerscape(JSON.parse(opening)); } catch (e) { if (!(e instanceof SyntaxError) && e && e.message) why = e.message; }
+      if (!d) hold(opening, why);
+      return d;
+    },
+    // Layerscape couldn't open the design's diorama (a picture that can't be read)
+    couldNotOpen(e) { if (opening && held === null) { unreadable.add(opening); hold(opening, e && typeof e.message === "string" && e.message ? e.message : "One of its pictures couldn't be read."); } }, // e comes from the frame's window, so no instanceof
+    heldNote: () => (held !== null && store.doc.layerscape === held ? heldNote : ""),
     clean: cleanLayerscape, // jumpstart-3d: layerscape.html checks every project it opens (a design, a saved one, a file)
     store(d) {
       const json = JSON.stringify(d);
       if (store.doc.layerscape === json) return;
+      if (store.doc.id !== openedFor) { app.toast("Layerscape was opened for another design, so it didn't save into this one."); return false; }
+      if (cannotOpen(store.doc.layerscape)) {
+        if (declined === store.doc.layerscape || !confirm(`This design keeps a Layerscape diorama that couldn't be opened.\n\nReplace it with "${d.name}"? Undo brings the old one back. Cancel keeps it.`)) {
+          declined = store.doc.layerscape;
+          app.toast("Kept the Layerscape diorama saved with your design. Layerscape didn't save over it.");
+          return false;
+        }
+        app.toast(`Replaced the Layerscape diorama that couldn't be opened with "${d.name}". Undo brings the old one back.`);
+      }
       // the time it was saved isn't a change worth an undo step
       try { const old = store.doc.layerscape && JSON.parse(store.doc.layerscape); if (old) { delete old.updated; const nd = { ...d }; delete nd.updated; if (JSON.stringify(old) === JSON.stringify(nd)) return; } } catch (e) {}
       store.update((doc) => { doc.layerscape = json; }, "Layerscape diorama");
@@ -79,6 +108,7 @@ export function initLayerscape(app) {
   };
   function open() {
     close();
+    document.body.classList.add("ls-on"); // toasts show over Layerscape
     frame = document.createElement("div");
     frame.className = "flexigen layerscape";
     frame.id = "layerscape";
@@ -101,7 +131,7 @@ export function initLayerscape(app) {
     // end jumpstart-3d
     document.body.append(frame);
   }
-  function close() { if (frame) { frame.remove(); frame = null; } }
+  function close() { if (frame) { frame.remove(); frame = null; } document.body.classList.remove("ls-on"); }
   // follow JumpStart 3D's light / dark look
   new MutationObserver(() => { const w = frame && frame.querySelector("iframe").contentWindow; if (w && w.document) w.document.documentElement.dataset.theme = theme(); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ["data-ui"] });

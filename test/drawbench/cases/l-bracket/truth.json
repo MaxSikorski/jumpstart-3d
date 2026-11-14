@@ -1,0 +1,17 @@
+{
+  "spec": 1,
+  "name": "L-bracket",
+  "units": "mm",
+  "source": { "kind": "drawing", "projection": "third", "scale": "dimensioned" },
+  "checks": [
+    { "id": "size", "kind": "size", "value": [60, 40, 40], "tol": 0.1, "from": "stated" },
+    { "id": "holes-6.5", "kind": "holes", "dia": 6.5, "count": 2, "axis": "z", "through": true, "at": [[15, 17.5], [45, 17.5]], "tol": 0.1, "from": "stated" },
+    { "id": "holes-5", "kind": "holes", "dia": 5, "count": 2, "axis": "y", "through": true, "at": [[15, 25], [45, 25]], "tol": 0.1, "from": "stated" },
+    { "id": "base-t", "kind": "distance", "a": { "near": [30, 10, 5] }, "b": { "near": [30, 10, 0] }, "value": 5, "tol": 0.1, "from": "stated" },
+    { "id": "wall-t", "kind": "distance", "a": { "near": [30, 35, 20] }, "b": { "near": [30, 40, 20] }, "value": 5, "tol": 0.1, "from": "stated" },
+    { "id": "volume", "kind": "volume", "value": 21971.82, "tol": "1%", "from": "derived", "note": "60*40*5 + 60*5*35 - 2*pi*3.25^2*5 - 2*pi*2.5^2*5" },
+    { "id": "solids", "kind": "solids", "value": 1 }
+  ],
+  "assumed": [],
+  "questions": []
+}

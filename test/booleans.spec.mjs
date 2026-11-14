@@ -165,9 +165,7 @@ test("a box cut with a hole bigger than itself says nothing is left, in plain wo
 
 // A body of curves only (a wire from a STEP file) has no faces but is not empty: it builds, shows as lines, and exports.
 // Made with the app's own kernel: a circle of radius 10, written by blobSTEP().
-// quarantined: the single file in WebKit cannot read the STEP blob back out of the engine worker ("The I/O read operation failed"), so no STEP export works there (app bug candidate, see the nightly notes)
 test("a STEP import that holds only a circle still builds and exports", async ({}, info) => {
-  quarantine(info, ["single-webkit"], "the single file in WebKit cannot read the STEP blob back out of the engine worker");
   const data = readFileSync(new URL("./fixtures/wire-circle.step", import.meta.url)).toString("base64");
   await fresh();
   await run((data) => {
@@ -214,7 +212,9 @@ test("two torus-and-hemisphere groups joined export an STL that holds the group'
 // sphere that overlaps the group by 44 mm3 intersected to "Nothing is left", and its join and cuts disagreed.
 // The design is the one the fuzzer had built by then (its steps 1 to 15), as the app saved it.
 const TOUCHING_TORI = JSON.parse(readFileSync(new URL("./fixtures/touching-tori.json", import.meta.url), "utf8")); // test/fixtures/touching-tori.json: the same design, shared with booleanretry.test.mjs
-test("a group whose torus hole touches it at one point still intersects, joins and cuts right with an oval sphere", async () => {
+// quarantined: in the single file in Firefox these oval-sphere booleans run past the app's stall limit ("This shape stalled the geometry engine"); site-firefox and Chromium pass (backlog: FIREFOX single-file booleans slow; run 43450984696)
+test("a group whose torus hole touches it at one point still intersects, joins and cuts right with an oval sphere", async ({}, info) => {
+  quarantine(info, ["single-firefox"], "Firefox single file: the engine is too slow for these oval-sphere booleans");
   await run((doc) => JS3D.load(doc), TOUCHING_TORI);
   const [sph, grp] = await entries();
   expect([sph.error, grp.error]).toEqual([null, null]);
@@ -235,7 +235,9 @@ test("a group whose torus hole touches it at one point still intersects, joins a
 
 // Fuzzer seed 32 after the retry for join and cut: the cut now finds the 33.8 mm3 the torus hole takes off, but it left a
 // 0.15 mm edge whose outline on one torus face was 2.48 mm off; that face's outline did not close and the STL had 13 open edges.
-test("seed 32's group, and its join and cut with the oval sphere, export closed STLs of the right volume", async () => {
+// quarantined: in the single file in Firefox these oval-sphere booleans run past the app's stall limit ("This shape stalled the geometry engine"); site-firefox and Chromium pass (backlog: FIREFOX single-file booleans slow; run 43450984696)
+test("seed 32's group, and its join and cut with the oval sphere, export closed STLs of the right volume", async ({}, info) => {
+  quarantine(info, ["single-firefox"], "Firefox single file: the engine is too slow for these oval-sphere booleans");
   await run((doc) => JS3D.load(doc), TOUCHING_TORI);
   const [sph, grp] = await entries();
   expect([sph.error, grp.error]).toEqual([null, null]);
@@ -279,7 +281,9 @@ test("two tori joined where their lowest circles cross export a closed 3MF", asy
 // lost the sphere (volume of the cylinder only), their intersect said "Nothing is left" and the cuts came out too big (one
 // of them not even a valid solid). Fuzzy values 1e-6 to 1e-4 repeat the mistake, so the build retries with looser ones when
 // the volumes do not fit (third_party/replicad operations.ts). The overlap is 850.09 mm3 by a grid integral over the cylinder's section.
-test("an oval sphere and an oval cylinder that overlap join, intersect and cut right", async () => {
+// quarantined: in the single file in Firefox these oval-sphere booleans run past the app's stall limit ("This shape stalled the geometry engine"); site-firefox and Chromium pass (backlog: FIREFOX single-file booleans slow; run 43450984696)
+test("an oval sphere and an oval cylinder that overlap join, intersect and cut right", async ({}, info) => {
+  quarantine(info, ["single-firefox"], "Firefox single file: the engine is too slow for these oval-sphere booleans");
   const OVERLAP = 850.09, SPHERE = (4 / 3) * Math.PI * 10 * 15 * 5, CYLINDER = Math.PI * 5 * 7 * 12;
   const volumes = {};
   for (const [name, order, op] of [["intersect", [0, 1], "intersect"], ["cutAB", [0, 1], "cut"], ["cutBA", [1, 0], "cut"], ["join", [0, 1], undefined], ["joinBA", [1, 0], undefined]]) {

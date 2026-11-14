@@ -1,0 +1,15 @@
+{
+  "spec": 1,
+  "name": "Counterbored block",
+  "units": "mm",
+  "source": { "kind": "drawing", "projection": "first", "scale": "dimensioned" },
+  "checks": [
+    { "id": "size", "kind": "size", "value": [50, 30, 20], "tol": 0.1, "from": "stated" },
+    { "id": "holes-6.6", "kind": "holes", "dia": 6.6, "count": 2, "axis": "z", "through": true, "at": [[10, 15], [40, 15]], "cbore": { "dia": 11, "depth": 6.5 }, "opens": "+z", "tol": 0.1, "from": "stated" },
+    { "id": "holes-5", "kind": "holes", "dia": 5, "count": 1, "axis": "y", "through": false, "depth": 10, "at": [[25, 10]], "opens": "-y", "tol": 0.1, "from": "stated" },
+    { "id": "volume", "kind": "volume", "value": 27644.5, "tol": "1%", "from": "derived", "note": "50*30*20 - 2*(pi*3.3^2*20 + pi*(5.5^2-3.3^2)*6.5) - pi*2.5^2*10" },
+    { "id": "solids", "kind": "solids", "value": 1 }
+  ],
+  "assumed": [],
+  "questions": []
+}
