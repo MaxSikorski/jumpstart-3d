@@ -125,6 +125,8 @@ export function initProjects(app) {
     let updated = null, doc, thumb;
     try {
       await startGate;
+      // jumpstart-3d: embed scratch
+      if (app.embed && app.embed.isScratch(store.doc.id)) return { local: false, any: false };
       doc = store.doc;
       const r = record(); // taken after the wait, so the resumed design is saved, never the blank one
       thumb = r[2].thumb;
@@ -151,9 +153,13 @@ export function initProjects(app) {
   // older copy than the one IndexedDB holds (a design moved over on an earlier visit leaves its old copy behind), and a save
   // that failed meanwhile (localStorage full) was never retried.
   ps.onSwitch(async () => {
+    // jumpstart-3d: embed scratch
+    if (app.embed && app.embed.isScratch(store.doc.id)) return;
     let cur = null;
     const rev = await revOf(store.doc.id);
     try { cur = JSON.parse(await ps.get(store.doc.id)); } catch (e) {}
+    // jumpstart-3d: embed scratch
+    if (app.embed && app.embed.isScratch(store.doc.id)) return;
     const newer = cur && opened.id === store.doc.id && (cur._updated || 0) > opened.at;
     // this tab saved the design on localStorage, IndexedDB holds another version and the copy did not keep ours: do not open the other one over it; the write keeps it as "(before fallback)"
     const mine = newer && opened.rev && opened.rev.startsWith(ps.tab + ":") && rev !== opened.rev && !ps.fallbackKept(opened.id);
@@ -177,6 +183,8 @@ export function initProjects(app) {
   const versionName = (doc = store.doc, v = verOf(doc)) => (doc.name || "Untitled") + (v ? " v" + v : "");
   function bumpVersion() {
     const doc = store.doc, v = verOf(doc) + 1;
+    // jumpstart-3d: embed scratch
+    if (app.embed && app.embed.isScratch(doc.id)) return doc.ver || 0;
     doc.ver = v;
     if (store.view && store.view !== doc) store.view.ver = v;
     ls.set(VER_KEY + doc.id, String(v));
@@ -211,6 +219,8 @@ export function initProjects(app) {
     return JSON.stringify(out, null, 1);
   }
   async function saveVersion() {
+    // jumpstart-3d: embed scratch
+    if (app.embed && app.embed.isScratch(store.doc.id)) return false;
     const v = bumpVersion();
     if (!(await save(true)).any) return false; // jumpstart-3d: failed save: the error toast is already up, no "Saved as"
     mirror.now(); // jumpstart-3d: copies in a folder (not awaited)
@@ -225,7 +235,7 @@ export function initProjects(app) {
 
   // ---------------------------------------------------------------- crash recovery
   const rec = initRecovery({
-    getDoc: () => store.doc,
+    getDoc: () => app.embed && app.embed.isScratch(store.doc.id) ? null : store.doc, // jumpstart-3d: embed scratch
     toast: (m, k) => app.toast(m, k),
     restore: (doc, asCopy, name) => {
       if (asCopy) {
@@ -339,7 +349,8 @@ export function initProjects(app) {
     if (app.command) app.command.cancel();
     app.exitSketch();
     store.load(doc || newDoc("Untitled", mode));
-    saveNow();
+    // jumpstart-3d: embed scratch
+    if (!(app.embed && app.embed.isScratch(store.doc.id))) saveNow();
     const b = app.scene.allBox(); app.vp.setView("home", b.isEmpty() ? null : b); // jumpstart-3d: frame shapes already built, like open()
   }
 
@@ -879,7 +890,7 @@ export function initProjects(app) {
   renderSaveDl();
   $("file-import").onchange = (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; };
   $("btn-projects").onclick = () => openModal();
-  window.addEventListener("beforeunload", () => { if (started && (dirty || saving)) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null, editedAt); } }); // jumpstart-3d: designs storage (putNow starts its writes before this returns; nothing is awaited)
+  window.addEventListener("beforeunload", () => { if (started && (dirty || saving) && !(app.embed && app.embed.isScratch(store.doc.id))) { const r = record(true); ps.putNow(r[0], r[1], r[2], opened.id === r[0] ? opened : null, editedAt); } }); // jumpstart-3d: embed scratch
 
   return {
     // a finished render (PNG) goes through the same save path as models
@@ -928,7 +939,10 @@ export function initProjects(app) {
         } catch (e) {}
       });
     },
-    changed() { dirty = true; editedAt = Date.now(); setState("Unsaved changes"); saveSoon(); rec.touch(); },
+    changed() { if (app.embed && app.embed.isScratch(store.doc.id)) return; dirty = true; editedAt = Date.now(); setState("Unsaved changes"); saveSoon(); rec.touch(); }, // jumpstart-3d: embed scratch
+    // jumpstart-3d: embed scratch
+    embedReady: startGate,
+    embedNew: (doc) => createNew(doc, doc.mode),
     saveNow,
     saveVersion,
     versionName,

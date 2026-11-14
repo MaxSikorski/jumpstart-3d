@@ -19,6 +19,8 @@ suite runs on GitHub Actions: the smoke and golden specs gate every pull request
 
 | File | Coverage |
 |---|---|
+| `embed.test.mjs` | Embed origin, channel and scratch history checks |
+| `embed.spec.mjs` | Browser iframe and activation checks |
 | `safeurl.test.mjs` | Allowed raster data, rejected addresses and kinds, document cleanup |
 | `mediasrc.spec.mjs` | Both builds: no project URL requests through load or direct use; embedded pictures still display |
 

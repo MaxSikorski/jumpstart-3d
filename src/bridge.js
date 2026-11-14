@@ -45,6 +45,7 @@ import { paramNameOk, removeParam, setExpr, evalExpr, exprScope, applyParams } f
 import { historyCalls } from "./bridgehistory.js";
 import { uid } from "./util.js";
 import { initBridgeCad } from "./bridgecad.js"; // jumpstart-3d: advanced CAD calls
+import { embedActive, startEmbed } from "./embed.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
@@ -576,5 +577,9 @@ export function initBridge(app) {
   Object.assign(api, inspectCalls(app, { need, idList, built, ready, shot: screenshotDataURL }));
   Object.assign(api, initBridgeGen(app, { edit, need, idList, ready, api })); // jumpstart-3d: generator calls
   window.JS3D = api;
-  app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
+  if (embedActive()) {
+    if (app.projects) startEmbed(app, api);
+    else document.addEventListener("DOMContentLoaded", () => startEmbed(app, api), { once: true });
+  }
+  else app.setAgent(null, true); // the app has read its other settings by now (loadPrefs); this one needs window.JS3D
 }

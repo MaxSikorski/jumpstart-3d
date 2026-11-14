@@ -424,6 +424,83 @@ Check each tool result for an error before continuing. The headless end-to-end t
 - It does not push, publish or save anything outside this browser. `load`
   does save the opened design in this browser's storage, as opening a file does.
 
+## Embedding in another website
+
+A website can open JumpStart 3D in an iframe and control a temporary design. The design starts blank in Beginner mode and is not saved. The website cannot read or change the user's saved designs through this channel. Modern browsers also separate an embedded site's storage from the host's storage. The user can still open a design inside the frame; that closes the channel. The website can show its own copy of this open-source app, and clicks inside the frame are the user's own.
+
+```html
+<iframe src="https://cad.example/?embed=https%3A%2F%2Fschool.example"
+  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
+  referrerpolicy="no-referrer" title="JumpStart 3D"></iframe>
+```
+
+Replace both addresses with the app and host origins. The `embed` value accepts up to eight exact cross-origin addresses, separated by commas or spaces. HTTPS is required except for HTTP localhost, 127.0.0.1, and [::1]. Paths, trailing slashes, credentials and wildcards are not accepted. An invalid list leaves a temporary design without a channel. A top-level page or a file opened from disk does not activate embedding.
+
+- `allow-scripts` lets the app run.
+- `allow-same-origin` gives the app its own origin and storage.
+- `allow-popups` lets the user open the full app.
+- `allow-popups-to-escape-sandbox` lets that full app run outside the frame's restrictions.
+- `allow-downloads` allows user-initiated downloads inside the app.
+- `referrerpolicy="no-referrer"` keeps the host page address out of the iframe request.
+
+The app sends `{type:"js3d-ready", protocol:1, apiVersion, calls}` to each allowed origin. A host can send `{type:"js3d-hello", protocol:1}` to request it again, at most once per second. Send `{type:"js3d-call", protocol:1, id, call, args}` and receive `{type:"js3d-result", protocol:1, id, result}` or the same message with `error` instead of `result`. IDs must be positive safe integers, strictly increasing. Undefined results become null; byte results are `Uint8Array` objects.
+
+Calls run one at a time in arrival order. Up to 16 may wait; at most 30 calls per second are accepted. Arguments must be simple JSON-like values, at most 1 MiB and 32 levels deep, with no `__proto__`, `constructor`, or `prototype` keys. Results are limited to 32 MiB. If a result is too large, the edit itself has already happened. `export` returns bytes and does not download. `setMode` and `newDesign` accept only `beginner` and `advanced`; a new design remains temporary. `printCheck` defaults to the generic printer and 45 degrees.
+
+The ready message lists the available calls from: `supports`, `describe`, `ready`, `kinds`, `list`, `get`, `doc`, `save`, `params`, `mode`, `selection`, `add`, `fastener`, `holePattern`, `gear`, `namePlate`, `knurl`, `spring`, `remove`, `delete`, `duplicate`, `move`, `moveTo`, `rotate`, `resize`, `scale`, `setHole`, `setColor`, `rename`, `setHidden`, `group`, `ungroup`, `setParam`, `removeParam`, `bind`, `undo`, `redo`, `select`, `fit`, `setMode`, `screenshot`, `screenshotDataURL`, `export`, `newDesign`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `pattern`, `faces`, `edges`, `inspect`, `measure`, `printCheck`, `collisions`, `section`, `boxMaker`, `gearSet`, `hardware`, `textures`, `texture`, `drawing`, `checkpoint`, `checkpoints`, `diff`, `rollback`. Calls missing from this app version are unavailable. `run`, `codeCad`, `load`, `invoke`, `connect`, `disconnect`, `connection`, `internals`, `version`, `appVersion`, `apiVersion` and all other names are refused.
+
+Stop closes the channel until reload. Opening a different design also closes it. The app sends `{type:"js3d-closed", protocol:1, reason:"stopped"}` or `reason:"design-changed"`; calls that finish after closure get no reply.
+
+A complete host example (serve it from the allowed origin and change the app address):
+
+```html
+<iframe id="cad" title="JumpStart 3D"
+  src="https://cad.example/?embed=https%3A%2F%2Fschool.example"
+  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
+  referrerpolicy="no-referrer"></iframe>
+<script>
+const frame = document.querySelector('#cad');
+const origin = 'https://cad.example';
+const pending = new Map();
+let nextId = 0, started = false;
+function call(name, ...args) {
+  const id = ++nextId;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    frame.contentWindow.postMessage(
+      { type: 'js3d-call', protocol: 1, id, call: name, args }, origin);
+  });
+}
+window.addEventListener('message', async event => {
+  if (event.source !== frame.contentWindow || event.origin !== origin) return;
+  const msg = event.data;
+  if (!msg || msg.protocol !== 1) return;
+  if (msg.type === 'js3d-result') {
+    const task = pending.get(msg.id);
+    if (!task) return;
+    pending.delete(msg.id);
+    if (msg.error) task.reject(new Error(msg.error));
+    else task.resolve(msg.result);
+  } else if (msg.type === 'js3d-closed') {
+    for (const task of pending.values()) task.reject(new Error(msg.reason));
+    pending.clear();
+  } else if (msg.type === 'js3d-ready' && !started) {
+    started = true;
+    try {
+      const id = await call('add', 'box', { size: { w: 40, d: 30, h: 20 } });
+      await call('ready');
+      console.log(await call('get', id));
+      const bytes = await call('export', 'stl');
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'model/stl' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'box.stl'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { console.error(error); }
+  }
+});
+</script>
+```
+
 ## Part 2: The project file format
 
 A project is one JSON document. This part was written by looking at real files:
