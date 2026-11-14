@@ -336,6 +336,9 @@ html[data-face="simple"] #app[data-mode="beginner"] #simple-plate-label { displa
  #simple-sheet-handle .sheet-grip { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--line); }
  #simple-sheet-handle .sheet-name { font: 600 14px/1.2 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
  #simple-sheet-handle .sheet-size { font: 13px/1.2 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+ /* the panel buttons at the foot of the view move above the collapsed sheet, and step aside while it is open */
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) .work:has(> #simple-panel.has-selection:not(.expanded)) #viewport > .simple-collapse { bottom: 60px; }
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) .work:has(> #simple-panel.has-selection.expanded) #viewport > .simple-collapse { display: none !important; }
 }
 
 #simple-rail, .simple-panel { display: none; }

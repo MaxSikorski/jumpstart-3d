@@ -44,8 +44,11 @@ const CSS = `
 /* Simple on a touch tablet: the view sits between the 80 px rail and the shape panel, the lesson panel starts 10 px into it */
 @media (pointer: coarse) and (min-width: 641px) and (max-width: 860px) { html[data-face="simple"]:has(#app[data-mode="beginner"]) .tut-panel.mini { max-width: calc(100vw - 236px - 90px - 148px - 8px); } }
 @media (pointer: coarse) and (min-width: 861px) and (max-width: 1100px) { html[data-face="simple"]:has(#app[data-mode="beginner"]) .tut-panel.mini { max-width: calc(100vw - 236px - 90px - 172px - 8px); } }
-/* Simple on a phone: keep them clear of the collapsed shape sheet at the foot of the view */
-@media (pointer: coarse) and (max-width: 640px) { html[data-face="simple"] .work:has(> #simple-panel.has-selection:not(.expanded)) .navbtns { max-height: calc(100% - var(--nav-top) - 64px); } }
+/* Simple on a phone: keep them clear of the panel buttons at the foot of the view, and of the collapsed shape sheet under them */
+@media (pointer: coarse) and (max-width: 640px) {
+ html[data-face="simple"] #app[data-mode="beginner"] .navbtns { max-height: calc(100% - var(--nav-top) - 56px); }
+ html[data-face="simple"]:not([data-simple-hide~="panel"]) .work:has(> #simple-panel.has-selection:not(.expanded)) .navbtns { max-height: calc(100% - var(--nav-top) - 112px); }
+}
 `;
 
 export function initPhoneFit() {

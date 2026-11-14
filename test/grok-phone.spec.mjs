@@ -71,6 +71,16 @@ test("after tapping Box the sheet is collapsed, the box stays in view, and the h
   await expect(handle).toContainText(selinfo);
   const collapsed = await rect(sheet);
   expect(collapsed.height, "collapsed: just the handle row").toBeLessThanOrEqual(72);
+  for (const part of [".sheet-name", ".sheet-size"]) expect(await onTop(handle.locator(part)), `the handle's ${part.slice(7)} is not covered`).toBe(true);
+  // the panel buttons (Simple's collapse handles) float above the sheet: none may sit on it
+  const clear = async (label) => {
+    const box = await rect(sheet);
+    for (const b of await page.evaluate(() => [...document.querySelectorAll(".simple-collapse")].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== "none").map((e) => { const r = e.getBoundingClientRect(); return { id: e.id, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }))) {
+      const w = Math.min(b.right, box.right) - Math.max(b.left, box.left), h = Math.min(b.bottom, box.bottom) - Math.max(b.top, box.top);
+      expect(w > 0.5 && h > 0.5, `${label}: ${b.id} sits on the sheet`).toBe(false);
+    }
+  };
+  await clear("collapsed");
 
   const bodyBox = () => page.evaluate(() => {
     const app = window.__app, vp = app.vp, id = app.selected()[0].id, box = app.scene.bodyTightBox(id), V = box.min.constructor;
@@ -85,6 +95,7 @@ test("after tapping Box the sheet is collapsed, the box stays in view, and the h
   await handle.tap();
   await expect(handle).toHaveAttribute("aria-expanded", "true");
   const open = await rect(sheet), railBox = await rect(rail), head = await rect(handle);
+  await clear("open");
   expect(open.height).toBeGreaterThan(150);
   expect(open.bottom, "the open sheet ends at the tool strip, not under it").toBeLessThanOrEqual(railBox.top + 0.5);
   expect((await bodyBox()).bottom, "the box stays visible above the open sheet").toBeLessThanOrEqual(open.top);
@@ -166,7 +177,7 @@ test.describe("a short phone window", () => {
   });
   test("the view buttons stay inside the view, clear of the collapsed sheet, and none overlap", async ({ page }) => {
     const check = async (label) => {
-      const t = await page.evaluate(() => [...document.querySelectorAll(".navbtns button, .cube-arrow, .cube-roll")].filter((e) => e.getClientRects().length)
+      const t = await page.evaluate(() => [...document.querySelectorAll(".navbtns button, .cube-arrow, .cube-roll, .simple-collapse")].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== "none")
         .map((e) => { const r = e.getBoundingClientRect(); return { name: e.id || e.className, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }));
       const view = await rect(page.locator("#viewport")), sheet = page.locator("#simple-panel");
       const floor = (await sheet.isVisible()) ? Math.min(view.bottom, (await rect(sheet)).top) : view.bottom;
