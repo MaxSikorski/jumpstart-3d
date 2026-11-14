@@ -65,7 +65,7 @@ async function fetchAsset(file) {
 
 // The text of helpers/<file>: inline in the single file, else fetched from the same origin once and kept in memory (a failed load is forgotten, so a retry starts fresh).
 export function helperAsset(file) {
-  if (embedActive() && /\.html$/i.test(file)) return Promise.reject(unavailable(({"floorplan.html": "Floor Planner", "chisel.html": "Chisel", "flexigen.html": "FlexiGen", "meshstep.html": "Mesh to STEP", "neon.html": "Neon"})[file] || file));
+  if (embedActive() && /\.html$/i.test(file)) return Promise.reject(unavailable(({"floorplan.html": "Floor Planner", "chisel.html": "Chisel", "flexigen.html": "FlexiGen", "meshstep.html": "Mesh to STEP", "neon.html": "Neon", "layerscape.html": "Layerscape"})[file] || file));
   if (INLINE[file]) return Promise.resolve(INLINE[file]);
   if (!loaded.has(file)) {
     const p = fetchAsset(file);

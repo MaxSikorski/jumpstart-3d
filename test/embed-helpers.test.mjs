@@ -20,6 +20,7 @@ test('embedded helper pages are refused and data stays available', async () => {
       await assert.rejects(helperPage(name), e => e.message === `${title} is not available in the temporary workspace. Open the full app to use it.` && helperFailText(title, e) === e.message);
     }
     await assert.rejects(helperAsset('floorplan.html'), /Floor Planner is not available in the temporary workspace/);
+    await assert.rejects(helperAsset('layerscape.html'), /Layerscape is not available in the temporary workspace/);
     assert.equal(await helperAsset('fonts_more.js'), 'test data');
   } finally { globalThis.window = previousWindow; globalThis.location = previousLocation; }
 });
