@@ -1,8 +1,9 @@
 // Display units for the whole app: millimetres or inches. The model itself always stays
 // in millimetres; this only changes what people see and type.
 import { fmt, parseLength } from "./util.js";
+import { embedActive } from "./embedmode.js"; // jumpstart-3d: a framed app never reads the saved unit
 
-let unit = (() => { try { return localStorage.getItem("js3d-skunit") === "in" ? "in" : "mm"; } catch (e) { return "mm"; } })();
+let unit = (() => { if (embedActive()) return "mm"; try { return localStorage.getItem("js3d-skunit") === "in" ? "in" : "mm"; } catch (e) { return "mm"; } })();
 const subs = new Set();
 
 export const getUnit = () => unit;
