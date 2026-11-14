@@ -84,6 +84,7 @@ async function paintTheCube() {
   await page.waitForFunction(() => document.querySelector("#ps-status")?.textContent.startsWith("Sliced"));
   const paint = async (slot, side) => { await page.click("#ps-frow-" + slot); await clickSide(page, side); };
   const settled = async () => { await page.waitForTimeout(400); await page.waitForFunction(() => document.querySelector("#ps-status")?.textContent.startsWith("Sliced")); };
+  await page.click("#ps-tab-objects"); // J.Siwek 2.9.8.9.x: Orientation moved into the Objects tab
   await page.click("#ps-rx"); // the cube lies on another side: the face that was at the back is on top
   await settled();
   await clickSide(page, "top"); // F5

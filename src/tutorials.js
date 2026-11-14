@@ -8,10 +8,11 @@ import { MORE } from "./tutorial_data_more.js";
 import { PRO_TUTORIALS } from "./tutorial_pro.js";
 import { ARCH_TUTORIALS } from "./tutorial_arch.js";
 import { CHISEL_TUTORIALS } from "./tutorial_chisel.js";
+import { LAMP_TUTORIALS } from "./tutorial_lamps.js";
 import { landArrays, GROUND, PLANTS } from "./archland.js";
 // jumpstart-3d: register community lessons without changing the author's data.
 import { COMMUNITY_TUTORIALS } from "./tutorial_data_community.js";
-const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...PRO_TUTORIALS, ...ARCH_TUTORIALS, ...CHISEL_TUTORIALS, ...COMMUNITY_TUTORIALS];
+const TUTORIALS = [...BASE_TUTORIALS, ...MORE, ...PRO_TUTORIALS, ...LAMP_TUTORIALS, ...ARCH_TUTORIALS, ...CHISEL_TUTORIALS, ...COMMUNITY_TUTORIALS];
 import { store, resolveNode, bodyKey } from "./store.js"; // jumpstart-3d: read already-built volumes without asking the kernel to build
 import { el } from "./util.js";
 import { ICON } from "./icons.js";

@@ -316,7 +316,8 @@ test("c4-sketch-constraints: a crooked box becomes a rectangular plate with two 
   await openSketchXY(); await next();
   await page.click("#sk-line");
   for (const [x, y] of [[-20, -15], [22, -13], [19, 17], [-18, 14], [-20, -15]]) await clickSketch(x, y);
-  await page.keyboard.press("Escape");
+  // J.Siwek 2.9.8.9.7: closing the shape puts the Line tool down (Esc now would leave the sketch)
+  await expect.poll(() => page.evaluate(() => window.__app.sketcher.tool)).toBe("select");
   await ticks(2, "four lines"); await next();
   await pickConstraint("sk-c-horizontal"); await clickSketch(...(await lineMid(0)));
   await pickConstraint("sk-c-vertical"); await clickSketch(...(await lineMid(3)));
