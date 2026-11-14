@@ -582,7 +582,11 @@ for (const face of ["original", "simple"]) {
       await addTile("sphere", false, { w: 40, d: 40, h: 40, x: 100 });
       await ticks(1, "ball to the side"); await next();
       expect(await showMe(), "Show me points at Layerscape (Simple: at More, which holds it)").toBe(face === "simple" ? "sr-more" : "bb-layerscape");
-      if (face === "simple") { await page.click("#sr-more"); await page.click('#simple-more button[data-for="bb-layerscape"]'); }
+      if (face === "simple") { // as a student: open More, press Show me again (it scrolls to Layerscape and makes the lesson panel small when it covers it), then click
+        await page.click("#sr-more");
+        expect(await showMe()).toBe("for:bb-layerscape");
+        await page.click('#simple-more button[data-for="bb-layerscape"]');
+      }
       else await page.click("#bb-layerscape");
       const frame = page.frameLocator("#layerscape iframe");
       await expect.poll(() => frame.locator("body").evaluate(() => !!window.__layerscapeReady), { timeout: 120_000 }).toBe(true);
