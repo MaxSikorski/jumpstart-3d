@@ -1501,6 +1501,13 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
 .chat-btns { display: flex; align-items: center; gap: 6px; }
 #chat-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--ink-3); }
 :root[data-ui="contrast"] #chat { border-width: 2px; }
+.chat-form .chat-testrow { display: flex; align-items: center; gap: 8px; }
+.chat-form .chat-testrow .btn { flex: none; }
+#chat-test-result { min-width: 0; font-size: 11.5px; line-height: 1.4; color: var(--ink-2); overflow-wrap: anywhere; }
+details.chat-msg.hint > summary { cursor: pointer; color: var(--ink-2); }
+/* jumpstart-3d: agent row note. the setup link, and the local-network sentence lit up after 5 s of "waiting" (bridge.js) */
+.menu .agent-note a { color: var(--accent); }
+#agent-lna.hot { display: block; margin-top: 4px; padding: 4px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--ink); border-left: 3px solid var(--accent); }
 
 /* ---------------------------------------------------------------- layouts (theme menu → Layout) */
 #menu-theme { max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain; }
@@ -1660,7 +1667,7 @@ html.ios .topbar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padd
         <hr>
         <div class="menu-head">AI agent</div>
         <button data-agent role="menuitemcheckbox" aria-checked="false" title="Lets a program on this computer edit this design">Connect to AI agent <small></small></button>
-        <div class="menu-note">Lets a program on this computer edit this design (see mcp/README.md). Off unless you turn it on. Setup for any agent: see mcp/AGENT-SETUP.md in the repository.</div>
+        <div class="menu-note agent-note">Lets a program on this computer edit this design. Off unless you turn it on. Setup for any agent: <a href="https://github.com/MaxSikorski/jumpstart-3d/blob/main/mcp/AGENT-SETUP.md" target="_blank" rel="noopener noreferrer">AGENT-SETUP.md on GitHub</a>. <span id="agent-lna">Chrome will ask to allow access to your local network; this row says 'waiting' until you allow it.</span></div>
         <!-- jumpstart-3d: end Customize menu groups -->
       </div>
     </div>

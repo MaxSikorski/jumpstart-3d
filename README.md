@@ -298,7 +298,7 @@ claude plugin install jumpstart-3d@maxsikorski
 ### Edit the design you have open
 
 For an agent to edit the JumpStart 3D design open in your browser, turn on **Connect to AI agent**
-in the Theme, performance and mesh detail menu (the half-moon button). It is off unless you turn it
+in the Customize menu (the sliders button in the top bar). It is off unless you turn it
 on. Without that, the agent works in its own invisible browser, which needs Chromium once:
 `npx playwright@1.62.1 install chromium`.
 
@@ -406,7 +406,7 @@ upstream version stays easy to merge.
 - Pre-painted 3MF: what you paint in the 3D Print Sim is written into the 3MF, so Orca and
   PrusaSlicer open it with the colours already on the model. Not yet tried in Orca, Snapmaker
   Orca or Bambu Studio themselves.
-- Mesh detail, in the Theme, performance and mesh detail menu: Normal, Fine, Extra fine, or a
+- Mesh detail, in the Customize menu: Normal, Fine, Extra fine, or a
   custom level up to 32×, for smoother curves in the view and in exports. It asks before building
   more than 500,000 triangles.
 
