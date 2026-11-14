@@ -515,26 +515,22 @@ const SIZES = [
   { w: 768, h: 1024, opts: () => ({ hasTouch: true, isMobile: true, deviceScaleFactor: 1, viewport: { width: 768, height: 1024 }, screen: { width: 768, height: 1024 } }) },
 ];
 
-// The two walks share nothing (each has its own context and page), so they run side by side on separate workers within a shard. --shard splits by test count, so both will usually land in one shard (about 7 minutes in parallel, 14 if run in turn; each nightly shard job has a 30 minute limit).
-test.describe("Show me walks", () => {
-test.describe.configure({ mode: "parallel" });
-for (const { w: W2, h: H2, opts } of SIZES) {
-  test(`${W2} x ${H2} touch: every lesson starts and Show me points at something a finger can reach`, async ({ browser, browserName }, info) => {
-    test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
-    test.skip(buildOf(info) !== "site", "the single file runs the same tutorial code, and the first test in this file already covers it there; this walk takes about 7 minutes per size");
-    test.skip(process.env.GITHUB_JOB === "changed-specs", "the walks run nightly (about 7 minutes each); prove a branch with gh workflow run nightly.yml -f specs=test/phone-tutorials.spec.mjs -f projects=site");
-    test.setTimeout(1_200_000); // 112 lessons now (90 before the Chisel lessons): measured 9.3-9.8 minutes per size on a quiet Mac (558 s and 535 s of walking), so the old 10 minute limit had no room; 20 minutes leaves margin
+// The two walks share nothing (each has its own context and page), so ONE test runs them side by side in one browser. As two tests they ran
+// in turn, because the config runs one worker: on 2026-11-14 (131 lessons) they took 14.1 and 13.3 minutes in the same nightly shard, which
+// then passed its 45 minute limit and was cancelled. Side by side they take about as long as the longer walk. PHONE_TUT_SIZE=375 (or 768)
+// walks one size only. walkSize returns what it found; the test below judges both sizes, so one size's problems never hide the other's.
+async function walkSize(browser, info, { w: W2, h: H2, opts }) {
     const ctx = await browser.newContext({ ...opts(), serviceWorkers: "block", reducedMotion: "reduce" });
-    ctx.setDefaultTimeout(8_000);
-    const p = await ctx.newPage();
-    const errors = watchErrors(p);
-    p.on("dialog", (d) => d.accept()); // the Lathe asks "Start over?" before it throws work away
-    await p.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
-    const phone = W2 < 700, size = `${W2}x${H2}`;
-    const problems = [];
-    const c = { lessons: 0, started: 0, finished: 0, steps: 0, nothing: 0, offscreen: 0, byPanel: 0, byOther: 0, cube: 0, narrowMissing: 0, bubble: 0, other: 0, narrowNoted: 0, known: 0, fine: 0 };
-    const t0 = Date.now();
-    try {
+    try { // from here on the context is closed however the walk ends, so a walk that stops early frees its page while the other one goes on
+      ctx.setDefaultTimeout(8_000);
+      const p = await ctx.newPage();
+      const errors = watchErrors(p);
+      p.on("dialog", (d) => d.accept()); // the Lathe asks "Start over?" before it throws work away
+      await p.addInitScript(() => { try { localStorage.setItem("jumpstart.chisel.intro", "1"); } catch (e) {} });
+      const phone = W2 < 700, size = `${W2}x${H2}`;
+      const problems = [];
+      const c = { lessons: 0, started: 0, finished: 0, steps: 0, nothing: 0, offscreen: 0, byPanel: 0, byOther: 0, cube: 0, narrowMissing: 0, bubble: 0, other: 0, narrowNoted: 0, known: 0, fine: 0 };
+      const t0 = Date.now();
       await boot(p, info);
       expect(await p.evaluate(() => document.documentElement.classList.contains("touch-ui")), "the touch UI is on").toBe(true);
       const only = (process.env.PHONE_TUT_ONLY || "").split(",").filter(Boolean); // PHONE_TUT_ONLY=<id>,<id> walks just those lessons (to look at one quickly)
@@ -676,12 +672,30 @@ for (const { w: W2, h: H2, opts } of SIZES) {
       for (const k of only.length ? [] : known) if (!knownSeen.has(k)) problems.push(`${size} ${k}: this KNOWN entry names a step that was not walked, delete it from KNOWN`);
       console.log(`[${info.project.name}] ${size}: lessons started ${c.started}/${c.lessons}, finished ${c.finished}; steps walked ${c.steps}; Show me found nothing ${c.nothing}; centre off screen ${c.offscreen}; covered by the lesson panel ${c.byPanel}; covered by something else ${c.byOther}; view cube moved ${c.cube}; missing .tut-narrow ${c.narrowMissing}; pop-up off screen ${c.bubble}; other (tap would miss, small panel on the view cube, walk) ${c.other}; fine ${c.fine}; KNOWN steps still failing ${c.known}; excused by the narrow note ${c.narrowNoted}; ${problems.length} problems; ${Math.round((Date.now() - t0) / 1000)} s`);
       if (problems.length) console.log(`[${info.project.name}] ${size} problems:\n` + problems.join("\n"));
-      expect(problems, `Show me problems at ${size}`).toEqual([]);
-      expect(c.started, "every lesson started").toBe(c.lessons);
-      expect(errors).toEqual([]);
+      return { size, problems, started: c.started, lessons: c.lessons, errors: [...errors] };
     } finally { await ctx.close(); }
-  });
 }
+
+test("Show me walks, 375 x 812 and 768 x 1024 touch side by side: every lesson starts and Show me points at something a finger can reach", async ({ browser, browserName }, info) => {
+  test.skip(browserName !== "chromium", "touch emulation (isMobile) is Chromium only");
+  test.skip(buildOf(info) !== "site", "the single file runs the same tutorial code, and the first test in this file already covers it there; the walks take about 12 minutes");
+  test.skip(process.env.GITHUB_JOB === "changed-specs", "the walks run nightly (about 14 minutes); prove a branch with gh workflow run nightly.yml -f specs=test/phone-tutorials.spec.mjs -f projects=site");
+  // one walk alone took 14.1 minutes on a nightly runner at 131 lessons, and two side by side take a little longer than one; 22 minutes
+  // leaves margin, and a stuck walk still fails as a test before the shard's 45 minute job limit cancels the tests after it
+  test.setTimeout(1_320_000);
+  const sizes = SIZES.filter((s) => !process.env.PHONE_TUT_SIZE || String(s.w) === process.env.PHONE_TUT_SIZE);
+  expect(sizes.length, "PHONE_TUT_SIZE names a walked width (375 or 768)").toBeGreaterThan(0);
+  const runs = await Promise.allSettled(sizes.map((s) => walkSize(browser, info, s)));
+  for (const r of runs) {
+    if (r.status !== "fulfilled") continue;
+    const { size, problems, started, lessons, errors } = r.value;
+    expect.soft(problems, `Show me problems at ${size}`).toEqual([]);
+    expect.soft(started, `every lesson started at ${size}`).toBe(lessons);
+    expect.soft(errors, `page errors at ${size}`).toEqual([]);
+  }
+  const stopped = runs.filter((r) => r.status === "rejected").map((r) => r.reason);
+  for (const e of stopped.slice(1)) console.log(`[${info.project.name}] another walk stopped as well: ${e?.stack || e}`);
+  if (stopped.length) throw stopped[0];
 });
 
 // PR 1b, the focused one: on a 375 x 812 phone the open lesson panel covers the colour swatches. Show me makes the panel small and moves it to the
