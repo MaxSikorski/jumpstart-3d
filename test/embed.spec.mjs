@@ -6,7 +6,7 @@ const app = `http://localhost:${port}`;
 const host = `http://127.0.0.1:${port}`;
 async function openHost(page, hostOrigin = host, src = `${app}/?embed=${encodeURIComponent(host)}`) {
   // a page Playwright makes up has no address, so Chromium counts it as a public website and blocks its frame of localhost (Local Network Access); a real host is a public website framing a public app
-  await page.context().grantPermissions(['local-network-access']);
+  if (page.context().browser()?.browserType().name() === 'chromium') await page.context().grantPermissions(['local-network-access'], {origin: hostOrigin});
   await page.route(`${hostOrigin}/__embed-host.html`, (route) => route.fulfill({contentType:'text/html', body:`<iframe src="${src}"></iframe><script>window.messages=[];addEventListener('message',e=>messages.push(e.data));</script>`}));
   await page.goto(`${hostOrigin}/__embed-host.html`);
 }
@@ -43,6 +43,7 @@ test('scratch edits do not write designs and a different load closes the channel
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
   await page.evaluate(async () => { JS3D.add('box'); await __app.projects.saveNow(); });
+  await expect.poll(() => page.evaluate(async () => (await __app.projects._store.list()).every(d => d.thumb)), {timeout: 30000}).toBe(true); // the page's own thumbnail save comes a moment later
   const before = await page.evaluate(() => __app.projects._store.list());
   const normalKeys = await page.evaluate(() => Object.keys(localStorage));
   await openHost(page);
@@ -71,6 +72,7 @@ test('framed without ?embed: a temporary workspace that no website controls and 
   test.skip(buildOf(info) !== 'site', 'iframe tests use the site build');
   await page.goto(app); await page.waitForFunction(() => window.__app?.projects?.started);
   await page.evaluate(async () => { JS3D.add('box'); await __app.projects.saveNow(); localStorage.setItem('top-level-probe', '1'); });
+  await expect.poll(() => page.evaluate(async () => (await __app.projects._store.list()).every(d => d.thumb)), {timeout: 30000}).toBe(true); // the page's own thumbnail save comes a moment later
   const before = await page.evaluate(() => __app.projects._store.list());
   expect(before.length).toBeGreaterThan(0);
   const normalKeys = await page.evaluate(() => Object.keys(localStorage));

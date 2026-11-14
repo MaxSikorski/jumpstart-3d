@@ -47,7 +47,7 @@ export function initProjects(app) {
   async function capabilities() {
     const c = window.claude;
     if (!c || !c.use) return;
-    if (embedActive()) return; // jumpstart-3d: inside a frame, no account designs either (Max, 2026-11-14)
+    if (embedActive()) { downloads = await c.use("downloads").catch(() => null); return; } // jumpstart-3d: inside a frame, no account designs either (Max, 2026-11-14); exports still download
     const [d, u, dl] = await Promise.all([c.use("db").catch(() => null), c.use("user").catch(() => null), c.use("downloads").catch(() => null)]);
     downloads = dl;
     if (d && u) {
