@@ -175,8 +175,8 @@ export class Session {
     for (let t0 = Date.now(); !this.tab && Date.now() - t0 < ms;) await new Promise((r) => setTimeout(r, 100));
   }
   noTab() {
-    const fix = this.wsError ? `The server ${this.wsError}. Set JS3D_WS_PORT, restart, then run JS3D.connect("ws://127.0.0.1:PORT") in the tab.` : "Or restart the server with JS3D_MODE=headless to work without a browser.";
-    return "No JumpStart 3D tab is connected. In the app, open Customize (the sliders button in the top bar), turn on Connect to AI agent, and allow local network access if the browser asks. " + fix;
+    if (this.wsError) return `No JumpStart 3D tab is connected: the server ${this.wsError}. Set JS3D_WS_PORT, restart, then run JS3D.connect("ws://127.0.0.1:PORT") in the tab.`;
+    return "No JumpStart 3D tab is connected. In the app, open Customize (the sliders button in the top bar), turn on Connect to AI agent, and allow local network access if the browser asks. Or restart the server with JS3D_MODE=headless to work without a browser.";
   }
   #callTab(name, args, timeoutMs) {
     const { ws } = this.tab;

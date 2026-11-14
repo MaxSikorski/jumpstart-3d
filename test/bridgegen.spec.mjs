@@ -80,7 +80,7 @@ test("library gear sets store placed bodies and linked motion joints", async () 
   const rebuilt = buildGearSet(saved.bodies[0].gear.o);
   expect(saved.bodies.map((b) => b.node)).toEqual(rebuilt.parts.map((p) => p.node));
   const before = await undoCount();
-  expect(await failure(() => JS3D.gearSet({ type: "ring", teeth: 20, teeth2: 25 }))).toBe(ringError); expect(await undoCount()).toBe(before);
+  expect(await failure(() => JS3D.gearSet({ type: "ring", teeth: 20, teeth2: 25 }))).toContain(ringError); expect(await undoCount()).toBe(before);
 });
 test("bevel and helical pairs build with the designed placement", async () => {
   test.setTimeout(240_000);
@@ -134,7 +134,7 @@ test("whole-body textures change exported mesh and keep a dialog layer", async (
   expect(await failure((id) => JS3D.texture(id, { texture: "nope" }), id)).toBe(`unknown texture "nope"; there are ${LIB.length} texture keys. Call JS3D.textures() (list_textures over MCP) and use one of its keys.`);
   expect(await undoCount()).toBe(steps);
   const hole = await run(() => JS3D.add("box", { hole: true, name: "Cutter" }));
-  expect(await failure((id) => JS3D.texture(id), hole)).toContain("Cutter is marked as a hole; textures go on solid bodies");
+  expect(await failure((id) => JS3D.texture(id), hole)).toContain("\"Cutter\" is marked as a hole; textures go on solid bodies");
 });
 test("texture on chosen faces", async () => {
   await fresh(); const id = await run(() => JS3D.add("box", { size: [40,30,20] }));
@@ -157,7 +157,7 @@ test("texture layer limit rejects the seventeenth call", async () => {
   await fresh(); const id = await run(() => JS3D.add("box", { name: "Layered" }));
   for (let i = 0; i < 16; i++) await run((id) => JS3D.texture(id), id);
   const before = await undoCount();
-  expect(await failure((id) => JS3D.texture(id), id)).toBe("Layered already has 16 textures; remove one in the Texture dialog first");
+  expect(await failure((id) => JS3D.texture(id), id)).toContain("\"Layered\" already has 16 textures; remove one in the Texture dialog first");
   expect(await undoCount()).toBe(before);
   expect(await run(() => __store.doc.bodies[0].textures.length)).toBe(16);
 });

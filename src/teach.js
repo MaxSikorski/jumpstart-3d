@@ -28,7 +28,7 @@ export function show(value) {
       return add(name && typeof name.value === 'string' ? name.value : 'object');
     }
     seen.add(v);
-    const keys = Reflect.ownKeys(v).slice(0, 8);
+    const allKeys = Reflect.ownKeys(v), keys = allKeys.slice(0, 8);
     const descriptors = new Map(keys.map(key => [key, Object.getOwnPropertyDescriptor(v, key)]));
     if (array) {
       // The length descriptor is among an array's own keys, but may fall beyond the budget.
@@ -53,7 +53,7 @@ export function show(value) {
     } else {
       add('{'); let first = true;
       for (const key of keys) { if (cut) break; const d = descriptors.get(key); if (typeof key !== 'string' || !d || !d.enumerable) continue; if (!first) add(','); first = false; walk(key, depth + 1); add(':'); 'value' in d ? walk(d.value, depth + 1) : add('"[getter]"'); }
-      add('}');
+      add(allKeys.length > keys.length ? (first ? '…}' : ',…}') : '}');
     }
     seen.delete(v);
   };
