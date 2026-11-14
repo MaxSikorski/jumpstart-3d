@@ -501,8 +501,10 @@ const readSpot = ({ phone, sel, via }) => {
   const panel = document.getElementById("tut-panel"), cube = document.querySelector(".viewcube");
   out.miniOverCube = false;
   if (phone && panel && panel.classList.contains("mini") && cube && cube.getClientRects().length) {
-    const p = panel.getBoundingClientRect(), c = cube.getBoundingClientRect(), left = c.left - 22;
-    out.miniOverCube = p.right > left && p.left < c.right && p.bottom > c.top && p.top < c.bottom;
+    // the cube and its arrows: they reach 22 px past it with a mouse, and sit around it as 44 px targets on a touch screen
+    const p = panel.getBoundingClientRect(), c = cube.getBoundingClientRect(), arrows = [...document.querySelectorAll(".cube-arrows > *")].map((b) => b.getBoundingClientRect()).filter((r) => r.width);
+    const left = Math.min(c.left - 22, ...arrows.map((r) => r.left)), top = Math.min(c.top, ...arrows.map((r) => r.top)), bottom = Math.max(c.bottom, ...arrows.map((r) => r.bottom));
+    out.miniOverCube = p.right > left && p.left < c.right && p.bottom > top && p.top < bottom;
   }
   return out;
 };
