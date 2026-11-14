@@ -17,8 +17,7 @@ const MOBILE = /mobile\.spec\.mjs/; // its own project: the phone budget needs a
 // CI shards `npm test` over parallel runners. Two specs run whole in jobs of their own and are left out of the shards:
 // the chat judge (its 8-minute mock clock is shared by both builds, so one runner must hold both) with JS3D_SKIP_CHATJUDGE=1,
 // and the golden exports (the export judge job writes and judges them) with JS3D_SKIP_GOLDEN=1. Only the value 1 counts.
-const PHONE = /grok-phone\.spec\.mjs/; // the phone layout at 390 x 844 needs touch, so it runs in the mobile project only
-const BUILDS_IGNORE = [MOBILE, PHONE];
+const BUILDS_IGNORE = [MOBILE];
 if (process.env.JS3D_SKIP_CHATJUDGE === "1") BUILDS_IGNORE.push(/chatjudge\.spec\.mjs/);
 if (process.env.JS3D_SKIP_GOLDEN === "1") BUILDS_IGNORE.push(/golden\.spec\.mjs/);
 
@@ -50,7 +49,7 @@ export default defineConfig({
       : []),
     {
       name: "mobile", // port base + 2: 8766 is the single-file preview in .claude/launch.json
-      testMatch: [MOBILE, PHONE, /simple-(switch|plate|collapse)\.spec\.mjs/],
+      testMatch: [MOBILE, /simple-(switch|plate|collapse)\.spec\.mjs/],
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 667 }, screen: { width: 375, height: 667 }, baseURL: `http://127.0.0.1:${base + 2}/` },
     },
   ],
