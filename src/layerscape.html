@@ -2708,11 +2708,11 @@ async function saveProject(asNew, quiet) {
     if (session !== imgSession) return; // a different picture was opened while this one was saving
     projectId = id; dirty = false; setSaveState("saved", now);
     try { localStorage.setItem("ls-last-project", id); } catch (e) {}
-    if (!quiet) { hostStore(); status(`Saved "${projectName}". Changes now save automatically.${HOST ? " It's kept with your JumpStart 3D design too." : ""}`); }
+    if (!quiet) { const toHost = hostStore() !== false; status(`Saved "${projectName}". Changes now save automatically.${HOST && toHost ? " It's kept with your JumpStart 3D design too." : ""}`); } // jumpstart-3d: not when the design kept a diorama that couldn't be opened
     if (!$("#projModal").hidden) renderProjList();
   } catch (e) {
     console.error(e); setSaveState("error");
-    if (HOST && !quiet) { hostStore(); setSaveState("saved", Date.now()); status(`Saved "${projectName}" with your JumpStart 3D design.`); return; }
+    if (HOST && !quiet && hostStore() !== false) { setSaveState("saved", Date.now()); status(`Saved "${projectName}" with your JumpStart 3D design.`); return; } // jumpstart-3d: (same)
     status("This browser won't let the app store projects here, for example in a private window. Use My projects > Download project file to keep your work.");
   }
 }
@@ -2721,11 +2721,14 @@ async function loadProjectData(d, id) {
   d = HOST && HOST.clean ? HOST.clean(d) : null; // jumpstart-3d: pictures that are embedded data only, safe ids and colours (lsguard.js); outside the app (helpers/layerscape.html opened on its own) no project opens
   if (!d || d.app !== "layerscape" || !d.image || !d.owner) throw new Error("That file isn't a Layerscape project.");
   const im = await loadImage(d.image);
+  if (!fitsIn(im, 4000, 4000)) throw new Error("Its photo is bigger than Layerscape can open."); // jumpstart-3d: every picture is read and checked before anything changes, so a bad one leaves the open project as it was
+  const pics = await readLayers(d.layers, d.W, d.H); // jumpstart-3d: (same)
   const c = document.createElement("canvas"); c.width = d.W; c.height = d.H; c.getContext("2d").drawImage(im, 0, 0, d.W, d.H);
   suppressDirty++;
+  try { // jumpstart-3d: restore tracking if opening fails
   setImage(c, d.name);
   imgURL = d.image; owner = decodeOwner(d.owner, W * H);
-  await restoreLayers(d.layers);
+  restoreLayers(pics); // jumpstart-3d: read above; full-size canvases are made when first used
   pieces = (d.pieces || []).map((p) => ({ ...p })); nextId = Math.max(d.nextId || 1, ...pieces.map((p) => p.id + 1));
   horizon = d.horizon ?? 0.6; Object.assign(S, d.settings || {}); syncSettingsInputs();
   if (d.view) Object.assign(view, d.view);
@@ -2733,7 +2736,7 @@ async function loadProjectData(d, id) {
   currentScene = -1; markGallery();
   projectId = id; setProjectName(d.name); dirty = false;
   setTool("brush"); redrawOverlay(); drawEditor(); renderPieceList(); runBuild();
-  suppressDirty--;
+  } finally { suppressDirty--; } // jumpstart-3d: unsaved-changes tracking comes back on even if opening fails part way
   if (id) { setSaveState("saved", d.updated); try { localStorage.setItem("ls-last-project", id); } catch (e) {} } else setSaveState("unsaved");
 }
 function syncSettingsInputs() { for (const key of Object.keys(S)) { const el = document.getElementById("s_" + key); if (el) el.value = S[key]; } syncShapeFields(); }
@@ -2775,7 +2778,7 @@ $("#projExport").addEventListener("click", async () => {
 $("#projFile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   try { const d = JSON.parse(await f.text()); await loadProjectData(d, null); closeProjects(); status(`Opened "${d.name}" from a project file. Press Save to keep it in this browser.`); }
-  catch (err) { status("That file couldn't be opened. Choose a .layerscape.json file saved from this app."); }
+  catch (err) { status(err && typeof err.message === "string" && err.message && err.name !== "SyntaxError" ? "That file couldn't be opened. " + err.message : "That file couldn't be opened. Choose a .layerscape.json file saved from this app."); } // jumpstart-3d: say why, when the app knows (too many layers, a picture that can't be read); the guard's errors come from the app's window, so no instanceof
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#projModal").hidden) closeProjects(); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveProject(false); } });
 
@@ -3150,16 +3153,31 @@ function serializeLayers() {
     }),
   };
 }
-async function restoreLayers(d) {
-  layers = []; layerBg = null; layerBgData = null;
-  if (!d || !d.list) return;
-  for (const s of d.list) {
-    const c = blankCanvas(W, H);
-    if (s && s.png) c.getContext("2d").drawImage(await loadImage(s.png), s.x, s.y);
-    layers.push({ name: s ? s.name : "", canvas: c, alpha: layerAlpha(c).a });
-  }
-  if (d.bg) { const c = blankCanvas(W, H), g = c.getContext("2d"); g.drawImage(await loadImage(d.bg), 0, 0, W, H); layerBg = c; layerBgData = g.getImageData(0, 0, W, H); }
+// jumpstart-3d: the layer pictures are read and size-checked before the open project changes (readLayers), and each
+// layer gets its full-size canvas only when something first uses it, so layers no piece uses cost nothing (lsguard.js caps the rest)
+const fitsIn = (im, w, h) => im.naturalWidth <= w && im.naturalHeight <= h;
+async function readLayers(d, w, h) {
+  if (!d || !d.list) return null;
+  const read = async (src) => {
+    let im; try { im = await loadImage(src); } catch (e) { throw new Error("One of its layer pictures couldn't be read."); }
+    if (!fitsIn(im, w, h)) throw new Error("One of its layer pictures is bigger than its photo.");
+    return im;
+  };
+  const list = [];
+  for (const s of d.list) list.push({ name: s ? s.name : "", x: s ? s.x : 0, y: s ? s.y : 0, im: s && s.png ? await read(s.png) : null });
+  return { list, bg: d.bg ? await read(d.bg) : null };
 }
+function restoreLayers(r) {
+  layers = []; layerBg = null; layerBgData = null;
+  if (!r) return;
+  for (const s of r.list) {
+    let c = null, a = null;
+    const canvas = () => { if (!c) { c = blankCanvas(W, H); if (s.im) c.getContext("2d").drawImage(s.im, s.x, s.y); s.im = null; } return c; };
+    layers.push({ name: s.name, get canvas() { return canvas(); }, get alpha() { return a || (a = layerAlpha(canvas()).a); } });
+  }
+  if (r.bg) { const c = blankCanvas(W, H), g = c.getContext("2d"); g.drawImage(r.bg, 0, 0, W, H); layerBg = c; layerBgData = g.getImageData(0, 0, W, H); }
+}
+// end jumpstart-3d
 
 /* ---------------- JumpStart 3D ---------------- */
 // When Layerscape runs inside JumpStart 3D: files are saved by JumpStart 3D, the diorama is kept
@@ -3168,7 +3186,7 @@ const HOST = (() => { try { return (window.parent !== window && window.parent.__
 const HOST_SAVE = (() => { try { return (HOST && window.parent.__JS3D_SAVE__) || null; } catch (e) { return null; } })();
 function hostStore() {
   if (!HOST || !img) return;
-  try { HOST.store({ ...serializeProject(), updated: Date.now() }); } catch (e) { console.error(e); }
+  try { return HOST.store({ ...serializeProject(), updated: Date.now() }); } catch (e) { console.error(e); } // jumpstart-3d: false means the design kept its own diorama
 }
 // the average colour of a part's art (plain parts are birch ply)
 function partColor(p) {
@@ -5096,7 +5114,7 @@ async function init() {
     document.documentElement.classList.add("in-js3d");
     try { const t = HOST.theme(); if (t === "dark") document.documentElement.dataset.theme = "dark"; else document.documentElement.dataset.theme = "light"; } catch (e) {}
     let d = null; try { d = HOST.project(); } catch (e) {}
-    if (d) { try { await loadProjectData(d, null); setSaveState("saved", d.updated || Date.now()); status(`"${d.name}" is open from your JumpStart 3D design.`); window.__layerscapeReady = true; return; } catch (e) {} }
+    if (d) { try { await loadProjectData(d, null); setSaveState("saved", d.updated || Date.now()); status(`"${d.name}" is open from your JumpStart 3D design.`); window.__layerscapeReady = true; return; } catch (e) { try { HOST.couldNotOpen(e); } catch (e2) {} } } // jumpstart-3d: keep a diorama that cannot be read (layerscape.js)
   }
   let last = null; try { last = localStorage.getItem("ls-last-project"); } catch (e) {}
   if (last) {
@@ -5105,7 +5123,7 @@ async function init() {
   loadScene(0);
   window.__layerscapeReady = true;
 }
-init();
+init().then(() => { window.__layerscapeReady = true; try { const n = HOST && HOST.heldNote(); if (n) status(n); } catch (e) {} }); // jumpstart-3d: ready after every way of opening (a saved project didn't say so), and say why the design's diorama didn't open
 </script>
 </body>
 </html>
